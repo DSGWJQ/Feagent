@@ -1,0 +1,191 @@
+{
+  "main": {
+    "id": "9550c006f3d82193",
+    "type": "split",
+    "children": [
+      {
+        "id": "9ae3acadefbf0cdd",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7c4ffd3e4e51ce6f",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "需求分析.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "需求分析"
+            }
+          },
+          {
+            "id": "c266881169b690c9",
+            "type": "leaf",
+            "state": {
+              "type": "release-notes",
+              "state": {
+                "currentVersion": "1.10.3"
+              },
+              "icon": "lucide-book-up",
+              "title": "版本说明 1.10.3"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "1942c59c2360672c",
+    "type": "split",
+    "children": [
+      {
+        "id": "76961c24cc8ed568",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "3b5f63ffadc155c3",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "6ff5264c1422e24b",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "acd48ad84d818443",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "b517f82c5e8be0e2",
+    "type": "split",
+    "children": [
+      {
+        "id": "7129146ac234882e",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "1ecbdbacd6bc1cc2",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "需求分析.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "需求分析 的反向链接列表"
+            }
+          },
+          {
+            "id": "4b5764299e2941da",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "需求分析.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "需求分析 的出链列表"
+            }
+          },
+          {
+            "id": "efa176506e6e0403",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "7b205b1ebbf90a2b",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "需求分析.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "需求分析 的大纲"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false,
+      "bases:创建新数据库": false
+    }
+  },
+  "active": "7c4ffd3e4e51ce6f",
+  "lastOpenFiles": [
+    "docs/develop_document.md",
+    "docs",
+    "需求分析.md",
+    "未命名"
+  ]
+}

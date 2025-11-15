@@ -1,0 +1,55 @@
+# Pre-commit hooks for code quality
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Ruff - Python linter and formatter (replaces Black, isort, flake8)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        name: ruff-lint
+      # Run the formatter
+      - id: ruff-format
+        name: ruff-format
+
+  # Pyright - Type checking
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.389
+    hooks:
+      - id: pyright
+        name: pyright
+        additional_dependencies: []
+
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        name: trim-trailing-whitespace
+      - id: end-of-file-fixer
+        name: fix-end-of-file
+      - id: check-yaml
+        name: check-yaml-syntax
+      - id: check-added-large-files
+        name: check-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+        name: check-merge-conflict
+      - id: check-toml
+        name: check-toml-syntax
+
+  # Pytest - Run tests (optional, can be slow)
+  # Uncomment if you want to run tests on every commit
+  # - repo: local
+  #   hooks:
+  #     - id: pytest
+  #       name: pytest
+  #       entry: pytest
+  #       language: system
+  #       pass_filenames: false
+  #       always_run: true
+  #       args: ["-v", "--tb=short"]
+

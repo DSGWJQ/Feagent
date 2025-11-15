@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  # Backend CI
+  backend:
+    name: Backend (Python)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+
+      - name: Run Ruff (Lint)
+        run: |
+          source .venv/bin/activate
+          ruff check src tests
+
+      - name: Run Ruff (Format Check)
+        run: |
+          source .venv/bin/activate
+          ruff format --check src tests
+
+      - name: Run Pyright (Type Check)
+        run: |
+          source .venv/bin/activate
+          pyright src
+
+      - name: Run Pytest (Unit Tests)
+        run: |
+          source .venv/bin/activate
+          pytest tests/unit -v --cov=src --cov-report=xml --cov-report=term
+
+      - name: Run Pytest (Integration Tests)
+        run: |
+          source .venv/bin/activate
+          pytest tests/integration -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: backend
+          name: backend-coverage
+
+  # Frontend CI
+  frontend:
+    name: Frontend (React + TypeScript)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./web
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: ./web
+        run: npm run lint
+
+      - name: Run Type Check
+        working-directory: ./web
+        run: npm run type-check
+
+      - name: Run Tests
+        working-directory: ./web
+        run: npm run test
+
+      - name: Build
+        working-directory: ./web
+        run: npm run build
+
+  # Database Migration Check
+  database:
+    name: Database Migration Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+
+      - name: Check Alembic migrations
+        run: |
+          source .venv/bin/activate
+          alembic check
+
+  # Security Check
+  security:
+    name: Security Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+
+      - name: Run Bandit (Security Linter)
+        run: |
+          source .venv/bin/activate
+          pip install bandit
+          bandit -r src -ll
+
+      - name: Run Safety (Dependency Check)
+        run: |
+          source .venv/bin/activate
+          pip install safety
+          safety check --json || true
+
