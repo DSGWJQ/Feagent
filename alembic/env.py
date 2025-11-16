@@ -13,7 +13,11 @@ from alembic import context
 from src.config import settings
 
 # 导入所有模型（确保 Alembic 能检测到所有表）
-# from src.infrastructure.database.models import Base
+from src.infrastructure.database.base import Base
+
+# 必须导入所有模型，否则 Alembic 无法检测到表
+# 即使没有直接使用，也要导入（让 SQLAlchemy 注册模型）
+from src.infrastructure.database.models import AgentModel, RunModel  # noqa: F401
 
 # Alembic Config 对象
 config = context.config
@@ -26,8 +30,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # 元数据对象（用于自动生成迁移）
-# target_metadata = Base.metadata
-target_metadata = None  # TODO: 导入 Base.metadata
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
@@ -75,4 +78,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-

@@ -36,44 +36,80 @@ project/
   web/                         # 前端（Vite + React + TS）
 ```
 
-依赖方向：API/Infra → Application → Domain（Domain 不依赖框架；Ports 在 Domain/App，Adapters 在 Infra）。
+### 依赖方向（强制要求）
+**API/Infra → Application → Domain**
+- **Domain 不依赖任何框架**（无 SQLAlchemy、FastAPI、LangChain）
+- Ports 在 Domain/App，Adapters 在 Infra
+- ❌ **禁止**：Domain 层导入 SQLAlchemy、FastAPI 等框架
+
+### 开发顺序（强制要求）
+**禁止先设计数据库！必须从业务需求出发！**
+
+1. **需求分析** → 理解业务需求
+2. **Domain 层设计**（TDD 驱动）→ 实体、值对象、领域服务
+   - 先写测试（Red）
+   - 再写实现（Green）
+   - 最后重构（Refactor）
+3. **Ports 定义** → Repository、外部服务接口（Protocol/ABC）
+4. **Infrastructure 层** → ORM 模型、Repository 实现
+5. **数据库迁移** → Alembic 生成迁移脚本
+6. **Application 层** → 用例编排、事务边界
+7. **API 层** → FastAPI 路由、DTO
+
+❌ **错误顺序（禁止）**：数据库设计 → Domain 层 → ORM 模型
+- **问题**：违反 DDD 原则，Domain 层依赖数据库
 
 ---
 
 ## 2. 后端开发规范
 
 ### 2.0 开发模式：TDD（测试驱动开发）
-**强烈推荐采用 TDD 开发流程：**
+**强制要求采用 TDD 开发流程（不可违反）：**
 
-#### 2.0.1 TDD 核心流程
+#### 2.0.1 TDD 核心流程（Red-Green-Refactor）
 1. **编写测试用例**（Red）：
-   - 先写失败的测试，明确需求与验收标准
+   - **先写失败的测试**，明确需求与验收标准
    - 测试即文档，描述业务行为
+   - ❌ **禁止**：先写实现再写测试
 
 2. **实现功能**（Green）：
-   - 编写最小代码使测试通过
+   - 编写**最小代码**使测试通过
    - 优先实现 Domain 层（纯逻辑，易测试）
+   - ❌ **禁止**：过度设计，只写够用的代码
 
 3. **重构优化**（Refactor）：
    - 测试通过后重构代码
    - 测试保证不破坏业务逻辑
+   - ❌ **禁止**：在测试未通过时重构
+
+#### 2.0.1.1 开发节奏要求（强制）
+- **一次只做一个小步骤**：
+  - 例如：只写一个测试用例 + 实现该测试
+  - 禁止一次性写多个测试或多个实现
+- **每完成一个小步骤，停下来等待确认**
+- **每一步都要说明**：
+  - 现在做什么（具体任务）
+  - 为什么这样做（业务或技术原因）
+  - 下一步怎么做（后续计划）
 
 #### 2.0.2 TDD + DDD 最佳实践
-- **Domain 层**：
-  - 纯 Python 类型，无框架依赖 → 单元测试极简
+- **Domain 层**（最先开发）：
+  - **纯 Python 类型，无框架依赖** → 单元测试极简
   - 测试实体/值对象的不变式、状态流转
   - 示例：`test_agent_creation()`, `test_run_state_machine()`
+  - ❌ **禁止**：在 Domain 层导入 SQLAlchemy、FastAPI
 
-- **Application 层**：
+- **Application 层**（Domain 层完成后）：
   - 通过 Ports（Protocol/ABC）→ 易于 Mock 依赖
   - 测试用例编排、事务边界、幂等性
   - 示例：`test_create_agent_use_case()`, `test_idempotent_run()`
 
-- **Infrastructure 层**：
+- **Infrastructure 层**（Application 层完成后）：
   - 集成测试（使用测试数据库/内存队列）
   - 测试适配器实现（Repository、外部服务）
+  - **此时才创建 ORM 模型**
 
-- **API 层**：
+- **API 层**（Infrastructure 层完成后）：
   - E2E 测试（FastAPI TestClient）
   - 测试请求/响应、错误码、SSE 流
 
