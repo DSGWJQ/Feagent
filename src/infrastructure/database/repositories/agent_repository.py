@@ -19,7 +19,7 @@
 """
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from src.domain.entities.agent import Agent
 from src.domain.exceptions import NotFoundError
@@ -32,12 +32,12 @@ class SQLAlchemyAgentRepository:
     实现领域层定义的 AgentRepository Port 接口
 
     依赖：
-    - AsyncSession: SQLAlchemy 异步会话（依赖注入）
+    - Session: SQLAlchemy 同步会话（依赖注入）
 
-    为什么使用 AsyncSession？
-    - 与 FastAPI 异步模型一致
-    - 提高并发性能
-    - 避免阻塞 I/O
+    为什么使用同步 Session？
+    - 当前实现是同步的（Use Case 是同步的）
+    - 简单易懂，易于调试
+    - 未来可以迁移到异步
 
     为什么不显式继承 AgentRepository？
     - 使用 Protocol（结构化子类型）
@@ -45,11 +45,11 @@ class SQLAlchemyAgentRepository:
     - 更灵活，不需要显式继承
     """
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: Session):
         """初始化 Repository
 
         参数：
-            session: SQLAlchemy 异步会话
+            session: SQLAlchemy 同步会话
 
         为什么通过构造函数注入 session？
         - 依赖注入：由外部管理 session 生命周期
@@ -117,7 +117,7 @@ class SQLAlchemyAgentRepository:
     # ==================== Repository 方法 ====================
     # 职责：实现 AgentRepository Port 接口
 
-    async def save(self, agent: Agent) -> None:
+    def save(self, agent: Agent) -> None:
         """保存 Agent 实体（新增或更新）
 
         第一性原理：save() 应该是幂等的
@@ -134,7 +134,7 @@ class SQLAlchemyAgentRepository:
         - merge() 会触发额外的 SELECT 查询
         - 手动判断更清晰，性能更好
 
-        为什么要 await session.commit()？
+        为什么要 session.commit()？
         - 确保数据持久化到数据库
         - 事务提交后才能被其他会话看到
 
@@ -142,7 +142,7 @@ class SQLAlchemyAgentRepository:
             agent: Agent 领域实体
         """
         # 查询实体是否存在
-        result = await self.session.execute(select(AgentModel).where(AgentModel.id == agent.id))
+        result = self.session.execute(select(AgentModel).where(AgentModel.id == agent.id))
         existing_model = result.scalar_one_or_none()
 
         if existing_model:
@@ -159,9 +159,9 @@ class SQLAlchemyAgentRepository:
             self.session.add(new_model)
 
         # 提交事务
-        await self.session.commit()
+        self.session.commit()
 
-    async def get_by_id(self, agent_id: str) -> Agent:
+    def get_by_id(self, agent_id: str) -> Agent:
         """根据 ID 获取 Agent 实体（不存在抛异常）
 
         第一性原理：get 语义表示"期望存在"
@@ -187,7 +187,7 @@ class SQLAlchemyAgentRepository:
         抛出：
             NotFoundError: 当 Agent 不存在时
         """
-        result = await self.session.execute(select(AgentModel).where(AgentModel.id == agent_id))
+        result = self.session.execute(select(AgentModel).where(AgentModel.id == agent_id))
         model = result.scalar_one_or_none()
 
         if model is None:
@@ -195,7 +195,7 @@ class SQLAlchemyAgentRepository:
 
         return self._to_entity(model)
 
-    async def find_by_id(self, agent_id: str) -> Agent | None:
+    def find_by_id(self, agent_id: str) -> Agent | None:
         """根据 ID 查找 Agent 实体（不存在返回 None）
 
         第一性原理：find 语义表示"可能不存在"
@@ -213,7 +213,7 @@ class SQLAlchemyAgentRepository:
         返回：
             Agent 领域实体或 None
         """
-        result = await self.session.execute(select(AgentModel).where(AgentModel.id == agent_id))
+        result = self.session.execute(select(AgentModel).where(AgentModel.id == agent_id))
         model = result.scalar_one_or_none()
 
         if model is None:
@@ -221,7 +221,7 @@ class SQLAlchemyAgentRepository:
 
         return self._to_entity(model)
 
-    async def find_all(self) -> list[Agent]:
+    def find_all(self) -> list[Agent]:
         """查找所有 Agent
 
         第一性原理：查询方法应该返回集合，即使为空
@@ -244,7 +244,7 @@ class SQLAlchemyAgentRepository:
         返回：
             Agent 列表（可能为空）
         """
-        result = await self.session.execute(
+        result = self.session.execute(
             select(AgentModel).order_by(AgentModel.created_at.desc())
         )
         models = result.scalars().all()
@@ -252,7 +252,7 @@ class SQLAlchemyAgentRepository:
         # 转换为领域实体列表
         return [self._to_entity(model) for model in models]
 
-    async def exists(self, agent_id: str) -> bool:
+    def exists(self, agent_id: str) -> bool:
         """检查 Agent 是否存在
 
         第一性原理：exists 只需要知道"是否存在"，不需要加载实体
@@ -277,10 +277,10 @@ class SQLAlchemyAgentRepository:
         返回：
             True 表示存在，False 表示不存在
         """
-        result = await self.session.execute(select(AgentModel.id).where(AgentModel.id == agent_id))
+        result = self.session.execute(select(AgentModel.id).where(AgentModel.id == agent_id))
         return result.scalar_one_or_none() is not None
 
-    async def delete(self, agent_id: str) -> None:
+    def delete(self, agent_id: str) -> None:
         """删除 Agent 实体
 
         第一性原理：delete 应该是幂等的
@@ -297,11 +297,6 @@ class SQLAlchemyAgentRepository:
         - SQLAlchemy ORM 需要先加载对象才能删除
         - 这样可以触发级联删除（删除关联的 Run）
 
-        为什么 delete() 需要 await？
-        - AsyncSession.delete() 是异步方法
-        - 需要 await 才能正确执行
-        - 这是 SQLAlchemy 2.0 asyncio 扩展的要求
-
         级联删除：
         - AgentModel 定义了 cascade="all, delete-orphan"
         - 删除 Agent 时，自动删除所有关联的 Run
@@ -311,12 +306,11 @@ class SQLAlchemyAgentRepository:
             agent_id: Agent ID
         """
         # 查询实体是否存在
-        result = await self.session.execute(select(AgentModel).where(AgentModel.id == agent_id))
+        result = self.session.execute(select(AgentModel).where(AgentModel.id == agent_id))
         model = result.scalar_one_or_none()
 
         # 如果存在，删除实体
         if model is not None:
-            # 注意：AsyncSession.delete() 是异步方法，需要 await
-            await self.session.delete(model)
-            # 提交事务（异步）
-            await self.session.commit()
+            self.session.delete(model)
+            # 提交事务
+            self.session.commit()

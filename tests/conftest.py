@@ -24,4 +24,3 @@ def sample_agent_data() -> dict:
             "timeout": 300,
         },
     }
-

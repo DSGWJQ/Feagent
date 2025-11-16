@@ -1,13 +1,14 @@
 """FastAPI 应用入口"""
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
+from src.interfaces.api.routes import agents, runs
 
 
 @asynccontextmanager
@@ -74,10 +75,14 @@ async def root() -> JSONResponse:
     )
 
 
-# TODO: 注册路由
-# from src.interfaces.api.routes import agents, runs
-# app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
-# app.include_router(runs.router, prefix="/api/runs", tags=["Runs"])
+# 注册路由
+app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
+# Runs 路由有两个端点：
+# 1. POST /api/agents/{agent_id}/runs - 触发 Run（需要 agent_id）
+# 2. GET /api/runs/{run_id} - 获取 Run 详情（独立资源）
+# 因此需要注册两次，使用不同的前缀
+app.include_router(runs.router, prefix="/api/agents", tags=["Runs"])  # POST /{agent_id}/runs
+app.include_router(runs.router, prefix="/api/runs", tags=["Runs"])  # GET /{run_id}
 
 
 if __name__ == "__main__":
@@ -90,4 +95,3 @@ if __name__ == "__main__":
         reload=settings.reload,
         log_level=settings.log_level.lower(),
     )
-

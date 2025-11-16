@@ -16,7 +16,7 @@ from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
-from src.infrastructure.database.engine import engine
+from src.infrastructure.database.engine import async_engine
 
 
 class Base(DeclarativeBase):
@@ -41,7 +41,7 @@ class Base(DeclarativeBase):
 # - 配置会话参数（expire_on_commit、autoflush 等）
 # - 每次调用返回新的会话实例
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
+    bind=async_engine,
     class_=AsyncSession,
     expire_on_commit=False,  # 提交后不过期对象（避免额外查询）
     autoflush=False,  # 不自动 flush（手动控制）

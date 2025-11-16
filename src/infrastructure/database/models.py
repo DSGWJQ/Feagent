@@ -21,7 +21,7 @@ ORM 模型 vs 领域实体：
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.base import Base
@@ -75,7 +75,7 @@ class AgentModel(Base):
     # cascade="all, delete-orphan": 删除 Agent 时级联删除所有 Run
     # back_populates: 双向关系（RunModel.agent）
     runs: Mapped[list["RunModel"]] = relationship(
-        "RunModel", back_populates="agent", cascade="all, delete-orphan"
+        "RunModel", back_populates="agent", cascade="all, delete-orphan", lazy="selectin"
     )
 
     # 索引
@@ -151,6 +151,13 @@ class RunModel(Base):
     # back_populates: 双向关系（AgentModel.runs）
     agent: Mapped["AgentModel"] = relationship("AgentModel", back_populates="runs")
 
+    # 关系（一对多：一个 Run 有多个 Task）
+    # cascade="all, delete-orphan": 删除 Run 时级联删除所有 Task
+    # back_populates: 双向关系（TaskModel.run）
+    tasks: Mapped[list["TaskModel"]] = relationship(
+        "TaskModel", back_populates="run", cascade="all, delete-orphan", lazy="selectin"
+    )
+
     # 索引
     __table_args__ = (
         Index("idx_runs_agent_id", "agent_id"),  # 查询 Agent 的所有 Run
@@ -160,3 +167,104 @@ class RunModel(Base):
 
     def __repr__(self) -> str:
         return f"<RunModel(id={self.id}, agent_id={self.agent_id}, status={self.status})>"
+
+
+class TaskModel(Base):
+    """Task ORM 模型
+
+    表名：tasks
+
+    字段说明：
+    - id: 主键（UUID 字符串，36 字符）
+    - run_id: 外键（关联 Run，级联删除）
+    - name: Task 名称（255 字符）
+    - input_data: 输入数据（JSON 格式）
+    - output_data: 输出数据（JSON 格式，可选）
+    - status: Task 状态（pending/running/succeeded/failed，20 字符）
+    - error: 错误信息（可选，Text）
+    - retry_count: 重试次数（整数，默认 0）
+    - created_at: 创建时间（自动设置）
+    - started_at: 开始执行时间（可选）
+    - finished_at: 完成时间（可选）
+    - events: TaskEvent 列表（JSON 格式，存储为 JSON 数组）
+
+    关系：
+    - run: 多对一关系（多个 Task 属于一个 Run）
+
+    索引：
+    - idx_tasks_run_id: run_id 字段索引（查询 Run 的所有 Task）
+    - idx_tasks_status: status 字段索引（查询特定状态的 Task）
+    - idx_tasks_created_at: created_at 字段索引（按时间排序）
+
+    外键约束：
+    - run_id → runs.id（级联删除）
+    - 删除 Run 时，自动删除所有关联的 Task
+
+    TaskEvent 的持久化：
+    - TaskEvent 是值对象，属于 Task 聚合
+    - 使用 JSON 字段存储 TaskEvent 列表
+    - 格式：[{"timestamp": "2025-11-16T10:00:00Z", "message": "事件消息"}, ...]
+    - 为什么用 JSON？
+      1. TaskEvent 是值对象，没有独立的生命周期
+      2. TaskEvent 总是和 Task 一起查询，不需要单独查询
+      3. 简化数据库设计，避免额外的表和 JOIN
+      4. 符合聚合的完整性（Task 和 TaskEvent 作为一个整体）
+    """
+
+    __tablename__ = "tasks"
+
+    # 主键
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Task ID（UUID）")
+
+    # 外键
+    run_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("runs.id", ondelete="CASCADE"),  # 级联删除
+        nullable=False,
+        comment="关联的 Run ID",
+    )
+
+    # 业务字段
+    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="Task 名称")
+    input_data: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, comment="输入数据（JSON 格式）"
+    )
+    output_data: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, comment="输出数据（JSON 格式）"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", comment="Task 状态"
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True, comment="错误信息")
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="重试次数")
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="开始执行时间"
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="完成时间"
+    )
+
+    # TaskEvent 列表（JSON 格式）
+    # 存储格式：[{"timestamp": "2025-11-16T10:00:00Z", "message": "事件消息"}, ...]
+    events: Mapped[list[dict] | None] = mapped_column(
+        JSON, nullable=True, default=list, comment="TaskEvent 列表（JSON 格式）"
+    )
+
+    # 关系（多对一：多个 Task 属于一个 Run）
+    # back_populates: 双向关系（RunModel.tasks）
+    run: Mapped["RunModel"] = relationship("RunModel", back_populates="tasks")
+
+    # 索引
+    __table_args__ = (
+        Index("idx_tasks_run_id", "run_id"),  # 查询 Run 的所有 Task
+        Index("idx_tasks_status", "status"),  # 查询特定状态的 Task
+        Index("idx_tasks_created_at", "created_at"),  # 按时间排序
+    )
+
+    def __repr__(self) -> str:
+        return f"<TaskModel(id={self.id}, run_id={self.run_id}, name={self.name}, status={self.status})>"

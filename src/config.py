@@ -38,9 +38,7 @@ class Settings(BaseSettings):
 
     # LLM Provider
     openai_api_key: str = Field(default="", description="OpenAI API Key")
-    openai_base_url: str = Field(
-        default="https://api.openai.com/v1", description="OpenAI Base URL"
-    )
+    openai_base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI Base URL")
     openai_model: str = Field(default="gpt-4o-mini", description="OpenAI 模型")
 
     # Security
@@ -49,9 +47,7 @@ class Settings(BaseSettings):
         description="JWT 密钥",
     )
     algorithm: str = Field(default="HS256", description="JWT 算法")
-    access_token_expire_minutes: int = Field(
-        default=30, description="访问令牌过期时间（分钟）"
-    )
+    access_token_expire_minutes: int = Field(default=30, description="访问令牌过期时间（分钟）")
 
     # CORS
     cors_origins: list[str] = Field(
@@ -75,4 +71,3 @@ class Settings(BaseSettings):
 
 # 全局配置实例
 settings = Settings()
-

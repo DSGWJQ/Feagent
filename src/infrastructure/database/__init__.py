@@ -13,6 +13,20 @@
 """
 
 from src.infrastructure.database.base import Base, get_session
-from src.infrastructure.database.engine import engine, get_engine
+from src.infrastructure.database.engine import (
+    async_engine,
+    get_db_session,
+    get_engine,
+    get_sync_engine,
+    sync_engine,
+)
 
-__all__ = ["Base", "engine", "get_engine", "get_session"]
+__all__ = [
+    "Base",
+    "async_engine",
+    "sync_engine",
+    "get_engine",
+    "get_sync_engine",
+    "get_session",
+    "get_db_session",
+]
