@@ -19,7 +19,7 @@
 """
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from src.domain.entities.run import Run, RunStatus
 from src.domain.exceptions import NotFoundError
@@ -32,12 +32,12 @@ class SQLAlchemyRunRepository:
     实现领域层定义的 RunRepository Port 接口
 
     依赖：
-    - AsyncSession: SQLAlchemy 异步会话（依赖注入）
+    - Session: SQLAlchemy 同步会话（依赖注入）
 
-    为什么使用 AsyncSession？
-    - 与 FastAPI 异步模型一致
-    - 提高并发性能
-    - 避免阻塞 I/O
+    为什么使用同步 Session？
+    - 当前实现是同步的（Use Case 是同步的）
+    - 简单易懂，易于调试
+    - 未来可以迁移到异步
 
     为什么不显式继承 RunRepository？
     - 使用 Protocol（结构化子类型）
@@ -45,11 +45,11 @@ class SQLAlchemyRunRepository:
     - 更灵活，不需要显式继承
     """
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: Session):
         """初始化 Repository
 
         参数：
-            session: SQLAlchemy 异步会话
+            session: SQLAlchemy 同步会话
 
         为什么通过构造函数注入 session？
         - 依赖注入：由外部管理 session 生命周期
@@ -121,7 +121,7 @@ class SQLAlchemyRunRepository:
     # ==================== Repository 方法 ====================
     # 职责：实现 RunRepository Port 接口
 
-    async def save(self, run: Run) -> None:
+    def save(self, run: Run) -> None:
         """保存 Run 实体（新增或更新）
 
         第一性原理：save() 应该是幂等的
@@ -138,7 +138,7 @@ class SQLAlchemyRunRepository:
         - merge() 会触发额外的 SELECT 查询
         - 手动判断更清晰，性能更好
 
-        为什么要 await session.commit()？
+        为什么要 session.commit()？
         - 确保数据持久化到数据库
         - 事务提交后才能被其他会话看到
 
@@ -146,7 +146,7 @@ class SQLAlchemyRunRepository:
             run: Run 领域实体
         """
         # 查询实体是否存在
-        result = await self.session.execute(select(RunModel).where(RunModel.id == run.id))
+        result = self.session.execute(select(RunModel).where(RunModel.id == run.id))
         existing_model = result.scalar_one_or_none()
 
         if existing_model:
@@ -164,9 +164,9 @@ class SQLAlchemyRunRepository:
             self.session.add(new_model)
 
         # 提交事务
-        await self.session.commit()
+        self.session.commit()
 
-    async def get_by_id(self, run_id: str) -> Run:
+    def get_by_id(self, run_id: str) -> Run:
         """根据 ID 获取 Run 实体（不存在抛异常）
 
         第一性原理：get 语义表示"期望存在"
@@ -192,7 +192,7 @@ class SQLAlchemyRunRepository:
         抛出：
             NotFoundError: 当 Run 不存在时
         """
-        result = await self.session.execute(select(RunModel).where(RunModel.id == run_id))
+        result = self.session.execute(select(RunModel).where(RunModel.id == run_id))
         model = result.scalar_one_or_none()
 
         if model is None:
@@ -200,7 +200,7 @@ class SQLAlchemyRunRepository:
 
         return self._to_entity(model)
 
-    async def find_by_id(self, run_id: str) -> Run | None:
+    def find_by_id(self, run_id: str) -> Run | None:
         """根据 ID 查找 Run 实体（不存在返回 None）
 
         第一性原理：find 语义表示"可能不存在"
@@ -218,7 +218,7 @@ class SQLAlchemyRunRepository:
         返回：
             Run 领域实体或 None
         """
-        result = await self.session.execute(select(RunModel).where(RunModel.id == run_id))
+        result = self.session.execute(select(RunModel).where(RunModel.id == run_id))
         model = result.scalar_one_or_none()
 
         if model is None:
@@ -226,7 +226,7 @@ class SQLAlchemyRunRepository:
 
         return self._to_entity(model)
 
-    async def find_by_agent_id(self, agent_id: str) -> list[Run]:
+    def find_by_agent_id(self, agent_id: str) -> list[Run]:
         """根据 Agent ID 查找所有 Run
 
         第一性原理：查询方法应该返回集合，即使为空
@@ -252,7 +252,7 @@ class SQLAlchemyRunRepository:
         返回：
             Run 列表（可能为空）
         """
-        result = await self.session.execute(
+        result = self.session.execute(
             select(RunModel)
             .where(RunModel.agent_id == agent_id)
             .order_by(RunModel.created_at.desc())
@@ -262,7 +262,7 @@ class SQLAlchemyRunRepository:
         # 转换为领域实体列表
         return [self._to_entity(model) for model in models]
 
-    async def exists(self, run_id: str) -> bool:
+    def exists(self, run_id: str) -> bool:
         """检查 Run 是否存在
 
         第一性原理：exists 只需要知道"是否存在"，不需要加载实体
@@ -287,10 +287,10 @@ class SQLAlchemyRunRepository:
         返回：
             True 表示存在，False 表示不存在
         """
-        result = await self.session.execute(select(RunModel.id).where(RunModel.id == run_id))
+        result = self.session.execute(select(RunModel.id).where(RunModel.id == run_id))
         return result.scalar_one_or_none() is not None
 
-    async def delete(self, run_id: str) -> None:
+    def delete(self, run_id: str) -> None:
         """删除 Run 实体
 
         第一性原理：delete 应该是幂等的
@@ -307,21 +307,15 @@ class SQLAlchemyRunRepository:
         - SQLAlchemy ORM 需要先加载对象才能删除
         - 这样可以触发 ORM 级别的事件和钩子
 
-        为什么 delete() 需要 await？
-        - AsyncSession.delete() 是异步方法
-        - 需要 await 才能正确执行
-        - 这是 SQLAlchemy 2.0 asyncio 扩展的要求
-
         参数：
             run_id: Run ID
         """
         # 查询实体是否存在
-        result = await self.session.execute(select(RunModel).where(RunModel.id == run_id))
+        result = self.session.execute(select(RunModel).where(RunModel.id == run_id))
         model = result.scalar_one_or_none()
 
         # 如果存在，删除实体
         if model is not None:
-            # 注意：AsyncSession.delete() 是异步方法，需要 await
-            await self.session.delete(model)
-            # 提交事务（异步）
-            await self.session.commit()
+            self.session.delete(model)
+            # 提交事务
+            self.session.commit()

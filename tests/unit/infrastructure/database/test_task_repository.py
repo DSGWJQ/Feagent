@@ -26,7 +26,8 @@ TDD 实践：先写测试，再写实现
 """
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.domain.entities.agent import Agent
 from src.domain.entities.run import Run
@@ -47,7 +48,7 @@ from src.infrastructure.database.repositories.task_repository import (
 
 
 @pytest.fixture
-async def async_engine():
+def engine():
     """创建异步内存数据库引擎
 
     为什么使用 SQLite :memory:？
@@ -55,42 +56,43 @@ async def async_engine():
     - 隔离：每个测试独立，不影响其他测试
     - 简单：不需要清理数据
     """
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
+    engine = create_engine(
+        "sqlite:///:memory:",
         echo=False,  # 不打印 SQL 语句
     )
 
     # 创建所有表
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    Base.metadata.create_all(engine)
 
     yield engine
 
     # 清理
-    await engine.dispose()
+    engine.dispose()
 
 
 @pytest.fixture
-async def async_session_maker(async_engine):
-    """创建异步会话工厂
+def db_session_maker(engine):
+    """创建同步会话工厂
 
     为什么需要 session_maker？
     - 每个测试需要独立的会话
     - 避免会话之间的数据污染
     """
-    return async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+    return sessionmaker(engine, class_=Session, expire_on_commit=False)
 
 
 @pytest.fixture
-async def session(async_session_maker):
-    """创建异步会话
+def session(db_session_maker):
+    """创建同步会话
 
     为什么使用 fixture？
     - 自动管理会话生命周期
     - 测试结束后自动关闭会话
     """
-    async with async_session_maker() as session:
-        yield session
+    session = db_session_maker()
+    yield session
+    session.rollback()
+    session.close()
 
 
 @pytest.fixture
@@ -124,7 +126,7 @@ async def sample_agent(agent_repository):
         goal="掌握 Python 基础语法",
         name="Python 学习助手",
     )
-    await agent_repository.save(agent)
+    agent_repository.save(agent)
     return agent
 
 
@@ -136,7 +138,7 @@ async def sample_run(run_repository, sample_agent):
     - Task 有外键约束，必须先有 Run
     """
     run = Run.create(agent_id=sample_agent.id)
-    await run_repository.save(run)
+    run_repository.save(run)
     return run
 
 
@@ -168,8 +170,7 @@ class TestTaskRepositorySave:
     4. 保存 Task 的 TaskEvent（聚合内的值对象）
     """
 
-    @pytest.mark.asyncio
-    async def test_save_new_task_should_insert_to_database(self, task_repository, sample_task):
+    def test_save_new_task_should_insert_to_database(self, task_repository, sample_task):
         """测试：保存新 Task 应该插入到数据库
 
         验收标准：
@@ -180,10 +181,10 @@ class TestTaskRepositorySave:
         # Arrange - 准备数据（sample_task 已创建）
 
         # Act - 执行操作
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Assert - 验证结果
-        retrieved_task = await task_repository.get_by_id(sample_task.id)
+        retrieved_task = task_repository.get_by_id(sample_task.id)
         assert retrieved_task.id == sample_task.id
         assert retrieved_task.run_id == sample_task.run_id
         assert retrieved_task.name == sample_task.name
@@ -197,8 +198,7 @@ class TestTaskRepositorySave:
         assert retrieved_task.finished_at is None
         assert retrieved_task.events == []  # 初始没有事件
 
-    @pytest.mark.asyncio
-    async def test_save_existing_task_should_update_in_database(self, task_repository, sample_task):
+    def test_save_existing_task_should_update_in_database(self, task_repository, sample_task):
         """测试：保存已存在的 Task 应该更新数据库
 
         验收标准：
@@ -208,19 +208,18 @@ class TestTaskRepositorySave:
         - 字段值已更新
         """
         # Arrange - 先保存
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Act - 修改并再次保存
         sample_task.start()
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Assert - 验证更新
-        retrieved_task = await task_repository.get_by_id(sample_task.id)
+        retrieved_task = task_repository.get_by_id(sample_task.id)
         assert retrieved_task.status == TaskStatus.RUNNING
         assert retrieved_task.started_at is not None
 
-    @pytest.mark.asyncio
-    async def test_save_task_with_state_transition_should_update_timestamps(
+    def test_save_task_with_state_transition_should_update_timestamps(
         self, task_repository, sample_task
     ):
         """测试：保存状态转换的 Task 应该更新时间戳
@@ -231,30 +230,29 @@ class TestTaskRepositorySave:
         - 时间戳正确保存到数据库
         """
         # Arrange - 保存初始状态
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Act - 状态转换：PENDING → RUNNING
         sample_task.start()
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Assert - 验证 started_at
-        retrieved_task = await task_repository.get_by_id(sample_task.id)
+        retrieved_task = task_repository.get_by_id(sample_task.id)
         assert retrieved_task.status == TaskStatus.RUNNING
         assert retrieved_task.started_at is not None
         assert retrieved_task.finished_at is None
 
         # Act - 状态转换：RUNNING → SUCCEEDED
         sample_task.succeed(output_data={"result": "success"})
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Assert - 验证 finished_at
-        retrieved_task = await task_repository.get_by_id(sample_task.id)
+        retrieved_task = task_repository.get_by_id(sample_task.id)
         assert retrieved_task.status == TaskStatus.SUCCEEDED
         assert retrieved_task.finished_at is not None
         assert retrieved_task.output_data == {"result": "success"}
 
-    @pytest.mark.asyncio
-    async def test_save_task_with_events_should_persist_events(self, task_repository, sample_task):
+    def test_save_task_with_events_should_persist_events(self, task_repository, sample_task):
         """测试：保存带有 TaskEvent 的 Task 应该持久化事件
 
         验收标准：
@@ -272,10 +270,10 @@ class TestTaskRepositorySave:
         sample_task.add_event("开始执行任务")
         sample_task.start()
         sample_task.add_event("正在处理数据")
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Act - 从数据库读取
-        retrieved_task = await task_repository.get_by_id(sample_task.id)
+        retrieved_task = task_repository.get_by_id(sample_task.id)
 
         # Assert - 验证事件
         assert len(retrieved_task.events) == 2
@@ -295,10 +293,7 @@ class TestTaskRepositoryGetById:
     2. 获取不存在的 Task（抛异常）
     """
 
-    @pytest.mark.asyncio
-    async def test_get_by_id_with_existing_task_should_return_task(
-        self, task_repository, sample_task
-    ):
+    def test_get_by_id_with_existing_task_should_return_task(self, task_repository, sample_task):
         """测试：获取存在的 Task 应该返回 Task 实体
 
         验收标准：
@@ -306,19 +301,16 @@ class TestTaskRepositoryGetById:
         - 所有字段值正确
         """
         # Arrange
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Act
-        retrieved_task = await task_repository.get_by_id(sample_task.id)
+        retrieved_task = task_repository.get_by_id(sample_task.id)
 
         # Assert
         assert retrieved_task.id == sample_task.id
         assert retrieved_task.name == sample_task.name
 
-    @pytest.mark.asyncio
-    async def test_get_by_id_with_non_existing_task_should_raise_not_found_error(
-        self, task_repository
-    ):
+    def test_get_by_id_with_non_existing_task_should_raise_not_found_error(self, task_repository):
         """测试：获取不存在的 Task 应该抛出 NotFoundError
 
         验收标准：
@@ -334,7 +326,7 @@ class TestTaskRepositoryGetById:
 
         # Act & Assert
         with pytest.raises(NotFoundError) as exc_info:
-            await task_repository.get_by_id(non_existing_id)
+            task_repository.get_by_id(non_existing_id)
 
         assert "Task" in str(exc_info.value)
         assert non_existing_id in str(exc_info.value)
@@ -351,23 +343,19 @@ class TestTaskRepositoryFindById:
     2. 查找不存在的 Task（返回 None）
     """
 
-    @pytest.mark.asyncio
-    async def test_find_by_id_with_existing_task_should_return_task(
-        self, task_repository, sample_task
-    ):
+    def test_find_by_id_with_existing_task_should_return_task(self, task_repository, sample_task):
         """测试：查找存在的 Task 应该返回 Task 实体"""
         # Arrange
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Act
-        found_task = await task_repository.find_by_id(sample_task.id)
+        found_task = task_repository.find_by_id(sample_task.id)
 
         # Assert
         assert found_task is not None
         assert found_task.id == sample_task.id
 
-    @pytest.mark.asyncio
-    async def test_find_by_id_with_non_existing_task_should_return_none(self, task_repository):
+    def test_find_by_id_with_non_existing_task_should_return_none(self, task_repository):
         """测试：查找不存在的 Task 应该返回 None
 
         为什么返回 None？
@@ -378,7 +366,7 @@ class TestTaskRepositoryFindById:
         non_existing_id = "non-existing-task-id"
 
         # Act
-        found_task = await task_repository.find_by_id(non_existing_id)
+        found_task = task_repository.find_by_id(non_existing_id)
 
         # Assert
         assert found_task is None
@@ -397,8 +385,7 @@ class TestTaskRepositoryFindByRunId:
     4. 验证隔离性（不同 Run 的 Task 不混淆）
     """
 
-    @pytest.mark.asyncio
-    async def test_find_by_run_id_with_multiple_tasks_should_return_all_tasks(
+    def test_find_by_run_id_with_multiple_tasks_should_return_all_tasks(
         self, task_repository, sample_run
     ):
         """测试：查找 Run 的所有 Task 应该返回所有 Task
@@ -412,12 +399,12 @@ class TestTaskRepositoryFindByRunId:
         task2 = Task.create(run_id=sample_run.id, name="任务 2")
         task3 = Task.create(run_id=sample_run.id, name="任务 3")
 
-        await task_repository.save(task1)
-        await task_repository.save(task2)
-        await task_repository.save(task3)
+        task_repository.save(task1)
+        task_repository.save(task2)
+        task_repository.save(task3)
 
         # Act
-        tasks = await task_repository.find_by_run_id(sample_run.id)
+        tasks = task_repository.find_by_run_id(sample_run.id)
 
         # Assert
         assert len(tasks) == 3
@@ -426,8 +413,7 @@ class TestTaskRepositoryFindByRunId:
         assert tasks[1].name == "任务 2"
         assert tasks[2].name == "任务 1"
 
-    @pytest.mark.asyncio
-    async def test_find_by_run_id_with_no_tasks_should_return_empty_list(
+    def test_find_by_run_id_with_no_tasks_should_return_empty_list(
         self, task_repository, sample_run
     ):
         """测试：查找没有 Task 的 Run 应该返回空列表
@@ -438,13 +424,12 @@ class TestTaskRepositoryFindByRunId:
         # Arrange - 不创建 Task
 
         # Act
-        tasks = await task_repository.find_by_run_id(sample_run.id)
+        tasks = task_repository.find_by_run_id(sample_run.id)
 
         # Assert
         assert tasks == []
 
-    @pytest.mark.asyncio
-    async def test_find_by_run_id_should_not_return_other_run_tasks(
+    def test_find_by_run_id_should_not_return_other_run_tasks(
         self, task_repository, run_repository, sample_agent
     ):
         """测试：查找 Run 的 Task 应该隔离（不返回其他 Run 的 Task）
@@ -460,19 +445,19 @@ class TestTaskRepositoryFindByRunId:
         # Arrange - 创建两个 Run
         run1 = Run.create(agent_id=sample_agent.id)
         run2 = Run.create(agent_id=sample_agent.id)
-        await run_repository.save(run1)
-        await run_repository.save(run2)
+        run_repository.save(run1)
+        run_repository.save(run2)
 
         # 为 run1 创建 Task
         task1 = Task.create(run_id=run1.id, name="Run1 的任务")
-        await task_repository.save(task1)
+        task_repository.save(task1)
 
         # 为 run2 创建 Task
         task2 = Task.create(run_id=run2.id, name="Run2 的任务")
-        await task_repository.save(task2)
+        task_repository.save(task2)
 
         # Act - 查询 run1 的 Task
-        tasks = await task_repository.find_by_run_id(run1.id)
+        tasks = task_repository.find_by_run_id(run1.id)
 
         # Assert - 只返回 run1 的 Task
         assert len(tasks) == 1
@@ -491,26 +476,24 @@ class TestTaskRepositoryExists:
     2. 检查不存在的 Task
     """
 
-    @pytest.mark.asyncio
-    async def test_exists_with_existing_task_should_return_true(self, task_repository, sample_task):
+    def test_exists_with_existing_task_should_return_true(self, task_repository, sample_task):
         """测试：检查存在的 Task 应该返回 True"""
         # Arrange
-        await task_repository.save(sample_task)
+        task_repository.save(sample_task)
 
         # Act
-        exists = await task_repository.exists(sample_task.id)
+        exists = task_repository.exists(sample_task.id)
 
         # Assert
         assert exists is True
 
-    @pytest.mark.asyncio
-    async def test_exists_with_non_existing_task_should_return_false(self, task_repository):
+    def test_exists_with_non_existing_task_should_return_false(self, task_repository):
         """测试：检查不存在的 Task 应该返回 False"""
         # Arrange
         non_existing_id = "non-existing-task-id"
 
         # Act
-        exists = await task_repository.exists(non_existing_id)
+        exists = task_repository.exists(non_existing_id)
 
         # Assert
         assert exists is False
@@ -527,10 +510,7 @@ class TestTaskRepositoryDelete:
     2. 删除不存在的 Task（幂等性）
     """
 
-    @pytest.mark.asyncio
-    async def test_delete_existing_task_should_remove_from_database(
-        self, task_repository, sample_task
-    ):
+    def test_delete_existing_task_should_remove_from_database(self, task_repository, sample_task):
         """测试：删除存在的 Task 应该从数据库中移除
 
         验收标准：
@@ -538,18 +518,17 @@ class TestTaskRepositoryDelete:
         - 删除后，find_by_id() 返回 None
         """
         # Arrange
-        await task_repository.save(sample_task)
-        assert await task_repository.exists(sample_task.id)
+        task_repository.save(sample_task)
+        assert task_repository.exists(sample_task.id)
 
         # Act
-        await task_repository.delete(sample_task.id)
+        task_repository.delete(sample_task.id)
 
         # Assert
-        assert not await task_repository.exists(sample_task.id)
-        assert await task_repository.find_by_id(sample_task.id) is None
+        assert not task_repository.exists(sample_task.id)
+        assert task_repository.find_by_id(sample_task.id) is None
 
-    @pytest.mark.asyncio
-    async def test_delete_non_existing_task_should_not_raise_error(self, task_repository):
+    def test_delete_non_existing_task_should_not_raise_error(self, task_repository):
         """测试：删除不存在的 Task 不应该抛出异常（幂等性）
 
         验收标准：
@@ -564,5 +543,5 @@ class TestTaskRepositoryDelete:
         non_existing_id = "non-existing-task-id"
 
         # Act & Assert - 不抛异常
-        await task_repository.delete(non_existing_id)
-        await task_repository.delete(non_existing_id)  # 第二次调用也不抛异常
+        task_repository.delete(non_existing_id)
+        task_repository.delete(non_existing_id)  # 第二次调用也不抛异常

@@ -23,7 +23,8 @@ TDD 补救：为已实现的 RunRepository 补充测试用例
 """
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.domain.entities.agent import Agent
 from src.domain.entities.run import Run, RunStatus
@@ -40,7 +41,7 @@ from src.infrastructure.database.repositories.run_repository import (
 
 
 @pytest.fixture
-async def async_engine():
+def engine():
     """创建异步内存数据库引擎
 
     为什么使用 SQLite :memory:？
@@ -48,54 +49,52 @@ async def async_engine():
     - 隔离：每个测试独立，不影响其他测试
     - 简单：不需要清理数据
     """
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
+    engine = create_engine(
+        "sqlite:///:memory:",
         echo=False,  # 不打印 SQL 语句（测试时保持安静）
     )
 
     # 创建所有表
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    Base.metadata.create_all(engine)
 
     yield engine
 
     # 清理：关闭引擎
-    await engine.dispose()
+    engine.dispose()
 
 
 @pytest.fixture
-async def async_session(async_engine):
-    """创建异步数据库会话
+def db_session(engine):
+    """创建同步数据库会话
 
     为什么每个测试都创建新会话？
     - 隔离：每个测试独立，不共享状态
     - 清理：测试结束后自动回滚
     """
-    async_session_maker = async_sessionmaker(
-        async_engine, class_=AsyncSession, expire_on_commit=False
-    )
+    db_session_maker = sessionmaker(engine, class_=Session, expire_on_commit=False)
 
-    async with async_session_maker() as session:
-        yield session
-        # 测试结束后回滚（保持数据库干净）
-        await session.rollback()
+    session = db_session_maker()
+    yield session
+    # 测试结束后回滚（保持数据库干净）
+    session.rollback()
+    session.close()
 
 
 @pytest.fixture
-def run_repository(async_session):
+def run_repository(db_session):
     """创建 RunRepository 实例"""
-    return SQLAlchemyRunRepository(async_session)
+    return SQLAlchemyRunRepository(db_session)
 
 
 @pytest.fixture
-def agent_repository(async_session):
+def agent_repository(db_session):
     """创建 AgentRepository 实例
 
     为什么需要 AgentRepository？
     - Run 依赖 Agent（外键关系）
     - 测试 Run 前需要先创建 Agent
     """
-    return SQLAlchemyAgentRepository(async_session)
+    return SQLAlchemyAgentRepository(db_session)
 
 
 @pytest.fixture
@@ -109,7 +108,7 @@ async def sample_agent(agent_repository):
     agent = Agent.create(
         start="我有一个 CSV 文件包含销售数据", goal="生成销售趋势分析报告", name="测试 Agent"
     )
-    await agent_repository.save(agent)
+    agent_repository.save(agent)
     return agent
 
 
@@ -136,8 +135,7 @@ class TestRunRepositorySave:
     3. 保存 Run 状态变化（PENDING → RUNNING → SUCCEEDED）
     """
 
-    @pytest.mark.asyncio
-    async def test_save_new_run_should_persist_to_database(self, run_repository, sample_run):
+    def test_save_new_run_should_persist_to_database(self, run_repository, sample_run):
         """测试：保存新 Run 应该持久化到数据库
 
         业务需求：
@@ -150,10 +148,10 @@ class TestRunRepositorySave:
         - 查询到的 Run 数据与原始数据一致
         """
         # Act：保存 Run
-        await run_repository.save(sample_run)
+        run_repository.save(sample_run)
 
         # Assert：验证保存成功
-        found_run = await run_repository.get_by_id(sample_run.id)
+        found_run = run_repository.get_by_id(sample_run.id)
         assert found_run is not None, "保存后应该能够查询到 Run"
         assert found_run.id == sample_run.id
         assert found_run.agent_id == sample_run.agent_id
@@ -163,8 +161,7 @@ class TestRunRepositorySave:
         assert found_run.finished_at is None
         assert found_run.error is None
 
-    @pytest.mark.asyncio
-    async def test_save_existing_run_should_update_database(self, run_repository, sample_run):
+    def test_save_existing_run_should_update_database(self, run_repository, sample_run):
         """测试：保存已存在的 Run 应该更新数据库
 
         业务需求：
@@ -178,19 +175,18 @@ class TestRunRepositorySave:
         - 查询到的 Run 数据是最新的
         """
         # Arrange：先保存 Run
-        await run_repository.save(sample_run)
+        run_repository.save(sample_run)
 
         # Act：修改 Run 状态并再次保存
         sample_run.start()  # PENDING → RUNNING
-        await run_repository.save(sample_run)
+        run_repository.save(sample_run)
 
         # Assert：验证更新成功
-        found_run = await run_repository.get_by_id(sample_run.id)
+        found_run = run_repository.get_by_id(sample_run.id)
         assert found_run.status == RunStatus.RUNNING, "status 应该被更新为 RUNNING"
         assert found_run.started_at is not None, "started_at 应该被设置"
 
-    @pytest.mark.asyncio
-    async def test_save_run_with_status_transition_should_update_timestamps(
+    def test_save_run_with_status_transition_should_update_timestamps(
         self, run_repository, sample_run
     ):
         """测试：保存 Run 状态转换应该更新时间戳
@@ -205,22 +201,22 @@ class TestRunRepositorySave:
         - finished_at 在 succeed() 后被设置
         """
         # Arrange：保存初始 Run
-        await run_repository.save(sample_run)
+        run_repository.save(sample_run)
 
         # Act：状态转换 PENDING → RUNNING
         sample_run.start()
-        await run_repository.save(sample_run)
+        run_repository.save(sample_run)
 
         # Assert：验证 started_at 被设置
-        found_run = await run_repository.get_by_id(sample_run.id)
+        found_run = run_repository.get_by_id(sample_run.id)
         assert found_run.started_at is not None
 
         # Act：状态转换 RUNNING → SUCCEEDED
         sample_run.succeed()
-        await run_repository.save(sample_run)
+        run_repository.save(sample_run)
 
         # Assert：验证 finished_at 被设置
-        found_run = await run_repository.get_by_id(sample_run.id)
+        found_run = run_repository.get_by_id(sample_run.id)
         assert found_run.finished_at is not None
         assert found_run.status == RunStatus.SUCCEEDED
 
@@ -236,8 +232,7 @@ class TestRunRepositoryGetById:
     2. 获取不存在的 Run（异常路径）
     """
 
-    @pytest.mark.asyncio
-    async def test_get_by_id_existing_run_should_return_run(self, run_repository, sample_run):
+    def test_get_by_id_existing_run_should_return_run(self, run_repository, sample_run):
         """测试：获取存在的 Run 应该返回 Run 实体
 
         业务需求：
@@ -249,10 +244,10 @@ class TestRunRepositoryGetById:
         - Run 数据与保存的数据一致
         """
         # Arrange：先保存 Run
-        await run_repository.save(sample_run)
+        run_repository.save(sample_run)
 
         # Act：获取 Run
-        found_run = await run_repository.get_by_id(sample_run.id)
+        found_run = run_repository.get_by_id(sample_run.id)
 
         # Assert：验证返回正确的 Run
         assert found_run is not None
@@ -260,8 +255,7 @@ class TestRunRepositoryGetById:
         assert found_run.agent_id == sample_run.agent_id
         assert found_run.status == sample_run.status
 
-    @pytest.mark.asyncio
-    async def test_get_by_id_non_existing_run_should_raise_not_found_error(self, run_repository):
+    def test_get_by_id_non_existing_run_should_raise_not_found_error(self, run_repository):
         """测试：获取不存在的 Run 应该抛出 NotFoundError
 
         业务需求：
@@ -277,7 +271,7 @@ class TestRunRepositoryGetById:
 
         # Act & Assert：验证抛出异常
         with pytest.raises(NotFoundError) as exc_info:
-            await run_repository.get_by_id(non_existing_id)
+            run_repository.get_by_id(non_existing_id)
 
         # 验证异常信息
         assert exc_info.value.entity_type == "Run"
@@ -295,21 +289,19 @@ class TestRunRepositoryFindById:
     2. 查找不存在的 Run（返回 None）
     """
 
-    @pytest.mark.asyncio
-    async def test_find_by_id_existing_run_should_return_run(self, run_repository, sample_run):
+    def test_find_by_id_existing_run_should_return_run(self, run_repository, sample_run):
         """测试：查找存在的 Run 应该返回 Run 实体"""
         # Arrange
-        await run_repository.save(sample_run)
+        run_repository.save(sample_run)
 
         # Act
-        found_run = await run_repository.find_by_id(sample_run.id)
+        found_run = run_repository.find_by_id(sample_run.id)
 
         # Assert
         assert found_run is not None
         assert found_run.id == sample_run.id
 
-    @pytest.mark.asyncio
-    async def test_find_by_id_non_existing_run_should_return_none(self, run_repository):
+    def test_find_by_id_non_existing_run_should_return_none(self, run_repository):
         """测试：查找不存在的 Run 应该返回 None
 
         业务需求：
@@ -321,7 +313,7 @@ class TestRunRepositoryFindById:
         - 不抛异常
         """
         # Act
-        found_run = await run_repository.find_by_id("non-existing-run-id")
+        found_run = run_repository.find_by_id("non-existing-run-id")
 
         # Assert
         assert found_run is None, "不存在的 Run 应该返回 None"
@@ -339,8 +331,7 @@ class TestRunRepositoryFindByAgentId:
     3. 验证排序（按创建时间倒序）
     """
 
-    @pytest.mark.asyncio
-    async def test_find_by_agent_id_with_multiple_runs_should_return_all_runs(
+    def test_find_by_agent_id_with_multiple_runs_should_return_all_runs(
         self, run_repository, sample_agent
     ):
         """测试：查找某个 Agent 的所有 Run 应该返回所有 Run
@@ -358,12 +349,12 @@ class TestRunRepositoryFindByAgentId:
         run2 = Run.create(agent_id=sample_agent.id)
         run3 = Run.create(agent_id=sample_agent.id)
 
-        await run_repository.save(run1)
-        await run_repository.save(run2)
-        await run_repository.save(run3)
+        run_repository.save(run1)
+        run_repository.save(run2)
+        run_repository.save(run3)
 
         # Act：查找该 Agent 的所有 Run
-        runs = await run_repository.find_by_agent_id(sample_agent.id)
+        runs = run_repository.find_by_agent_id(sample_agent.id)
 
         # Assert：验证返回所有 Run
         assert len(runs) == 3, "应该返回 3 个 Run"
@@ -378,8 +369,7 @@ class TestRunRepositoryFindByAgentId:
         assert run2.id in run_ids
         assert run3.id in run_ids
 
-    @pytest.mark.asyncio
-    async def test_find_by_agent_id_with_no_runs_should_return_empty_list(
+    def test_find_by_agent_id_with_no_runs_should_return_empty_list(
         self, run_repository, sample_agent
     ):
         """测试：没有 Run 时应该返回空列表
@@ -393,14 +383,13 @@ class TestRunRepositoryFindByAgentId:
         - 不抛异常
         """
         # Act：查找该 Agent 的所有 Run（没有 Run）
-        runs = await run_repository.find_by_agent_id(sample_agent.id)
+        runs = run_repository.find_by_agent_id(sample_agent.id)
 
         # Assert：验证返回空列表
         assert runs == [], "没有 Run 时应该返回空列表"
         assert isinstance(runs, list), "应该返回 list 类型"
 
-    @pytest.mark.asyncio
-    async def test_find_by_agent_id_should_only_return_runs_for_that_agent(
+    def test_find_by_agent_id_should_only_return_runs_for_that_agent(
         self, run_repository, agent_repository
     ):
         """测试：只返回指定 Agent 的 Run，不返回其他 Agent 的 Run
@@ -416,20 +405,20 @@ class TestRunRepositoryFindByAgentId:
         # Arrange：创建两个 Agent
         agent1 = Agent.create(start="起点1", goal="目的1", name="Agent 1")
         agent2 = Agent.create(start="起点2", goal="目的2", name="Agent 2")
-        await agent_repository.save(agent1)
-        await agent_repository.save(agent2)
+        agent_repository.save(agent1)
+        agent_repository.save(agent2)
 
         # 为每个 Agent 创建 Run
         run1_agent1 = Run.create(agent_id=agent1.id)
         run2_agent1 = Run.create(agent_id=agent1.id)
         run1_agent2 = Run.create(agent_id=agent2.id)
 
-        await run_repository.save(run1_agent1)
-        await run_repository.save(run2_agent1)
-        await run_repository.save(run1_agent2)
+        run_repository.save(run1_agent1)
+        run_repository.save(run2_agent1)
+        run_repository.save(run1_agent2)
 
         # Act：查找 agent1 的 Run
-        runs_agent1 = await run_repository.find_by_agent_id(agent1.id)
+        runs_agent1 = run_repository.find_by_agent_id(agent1.id)
 
         # Assert：只返回 agent1 的 Run
         assert len(runs_agent1) == 2, "agent1 应该有 2 个 Run"
@@ -452,8 +441,7 @@ class TestRunRepositoryExists:
     2. 检查不存在的 Run（返回 False）
     """
 
-    @pytest.mark.asyncio
-    async def test_exists_with_existing_run_should_return_true(self, run_repository, sample_run):
+    def test_exists_with_existing_run_should_return_true(self, run_repository, sample_run):
         """测试：检查存在的 Run 应该返回 True
 
         业务需求：
@@ -464,16 +452,15 @@ class TestRunRepositoryExists:
         - 返回 True
         """
         # Arrange：保存 Run
-        await run_repository.save(sample_run)
+        run_repository.save(sample_run)
 
         # Act：检查 Run 是否存在
-        exists = await run_repository.exists(sample_run.id)
+        exists = run_repository.exists(sample_run.id)
 
         # Assert：验证返回 True
         assert exists is True, "存在的 Run 应该返回 True"
 
-    @pytest.mark.asyncio
-    async def test_exists_with_non_existing_run_should_return_false(self, run_repository):
+    def test_exists_with_non_existing_run_should_return_false(self, run_repository):
         """测试：检查不存在的 Run 应该返回 False
 
         验收标准：
@@ -481,7 +468,7 @@ class TestRunRepositoryExists:
         - 不抛异常
         """
         # Act：检查不存在的 Run
-        exists = await run_repository.exists("non-existing-run-id")
+        exists = run_repository.exists("non-existing-run-id")
 
         # Assert：验证返回 False
         assert exists is False, "不存在的 Run 应该返回 False"
@@ -499,10 +486,7 @@ class TestRunRepositoryDelete:
     3. 删除后无法查询到（验证删除成功）
     """
 
-    @pytest.mark.asyncio
-    async def test_delete_existing_run_should_remove_from_database(
-        self, run_repository, sample_run
-    ):
+    def test_delete_existing_run_should_remove_from_database(self, run_repository, sample_run):
         """测试：删除存在的 Run 应该从数据库中移除
 
         业务需求：
@@ -515,19 +499,18 @@ class TestRunRepositoryDelete:
         - 删除后 find_by_id() 返回 None
         """
         # Arrange：保存 Run
-        await run_repository.save(sample_run)
-        assert await run_repository.exists(sample_run.id) is True
+        run_repository.save(sample_run)
+        assert run_repository.exists(sample_run.id) is True
 
         # Act：删除 Run
-        await run_repository.delete(sample_run.id)
+        run_repository.delete(sample_run.id)
 
         # Assert：验证删除成功
-        assert await run_repository.exists(sample_run.id) is False, "删除后应该不存在"
-        found_run = await run_repository.find_by_id(sample_run.id)
+        assert run_repository.exists(sample_run.id) is False, "删除后应该不存在"
+        found_run = run_repository.find_by_id(sample_run.id)
         assert found_run is None, "删除后应该查询不到"
 
-    @pytest.mark.asyncio
-    async def test_delete_non_existing_run_should_not_raise_error(self, run_repository):
+    def test_delete_non_existing_run_should_not_raise_error(self, run_repository):
         """测试：删除不存在的 Run 不应该抛异常（幂等操作）
 
         业务需求：
@@ -539,7 +522,7 @@ class TestRunRepositoryDelete:
         - 可以多次调用
         """
         # Act & Assert：删除不存在的 Run（不应该抛异常）
-        await run_repository.delete("non-existing-run-id")
+        run_repository.delete("non-existing-run-id")
 
         # 再次删除（验证幂等性）
-        await run_repository.delete("non-existing-run-id")
+        run_repository.delete("non-existing-run-id")

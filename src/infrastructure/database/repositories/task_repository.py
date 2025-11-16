@@ -29,7 +29,7 @@ Task 与 TaskEvent 的持久化：
 from datetime import datetime
 
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from src.domain.entities.task import Task, TaskStatus
 from src.domain.exceptions import NotFoundError
@@ -43,12 +43,12 @@ class SQLAlchemyTaskRepository:
     实现领域层定义的 TaskRepository Port 接口
 
     依赖：
-    - AsyncSession: SQLAlchemy 异步会话（依赖注入）
+    - Session: SQLAlchemy 同步会话（依赖注入）
 
-    为什么使用 AsyncSession？
-    - 与 FastAPI 异步模型一致
-    - 提高并发性能
-    - 避免阻塞 I/O
+    为什么使用同步 Session？
+    - 当前实现是同步的（Use Case 是同步的）
+    - 简单易懂，易于调试
+    - 未来可以迁移到异步
 
     为什么不显式继承 TaskRepository？
     - 使用 Protocol（结构化子类型）
@@ -56,11 +56,11 @@ class SQLAlchemyTaskRepository:
     - 更灵活，不需要显式继承
     """
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: Session):
         """初始化 Repository
 
         参数：
-            session: SQLAlchemy 异步会话
+            session: SQLAlchemy 同步会话
 
         为什么通过构造函数注入 session？
         - 依赖注入：由外部管理 session 生命周期
@@ -180,7 +180,7 @@ class SQLAlchemyTaskRepository:
     # ==================== Repository 方法 ====================
     # 职责：持久化操作（CRUD）
 
-    async def save(self, task: Task) -> None:
+    def save(self, task: Task) -> None:
         """保存 Task 实体（新增或更新）
 
         实现策略：
@@ -199,7 +199,7 @@ class SQLAlchemyTaskRepository:
         """
         # 查询是否存在
         stmt = select(TaskModel).where(TaskModel.id == task.id)
-        result = await self.session.execute(stmt)
+        result = self.session.execute(stmt)
         existing_model = result.scalar_one_or_none()
 
         if existing_model:
@@ -211,9 +211,9 @@ class SQLAlchemyTaskRepository:
             self.session.add(model)
 
         # 提交由调用者控制（事务边界）
-        await self.session.flush()
+        self.session.flush()
 
-    async def get_by_id(self, task_id: str) -> Task:
+    def get_by_id(self, task_id: str) -> Task:
         """根据 ID 获取 Task 实体（不存在抛异常）
 
         实现策略：
@@ -225,7 +225,7 @@ class SQLAlchemyTaskRepository:
         - 返回完整的 Task 聚合（包括所有 TaskEvent）
         """
         stmt = select(TaskModel).where(TaskModel.id == task_id)
-        result = await self.session.execute(stmt)
+        result = self.session.execute(stmt)
         model = result.scalar_one_or_none()
 
         if model is None:
@@ -233,7 +233,7 @@ class SQLAlchemyTaskRepository:
 
         return self._to_entity(model)
 
-    async def find_by_id(self, task_id: str) -> Task | None:
+    def find_by_id(self, task_id: str) -> Task | None:
         """根据 ID 查找 Task 实体（不存在返回 None）
 
         实现策略：
@@ -242,7 +242,7 @@ class SQLAlchemyTaskRepository:
         3. 如果存在，转换为领域实体（包括 TaskEvent）
         """
         stmt = select(TaskModel).where(TaskModel.id == task_id)
-        result = await self.session.execute(stmt)
+        result = self.session.execute(stmt)
         model = result.scalar_one_or_none()
 
         if model is None:
@@ -250,7 +250,7 @@ class SQLAlchemyTaskRepository:
 
         return self._to_entity(model)
 
-    async def find_by_run_id(self, run_id: str) -> list[Task]:
+    def find_by_run_id(self, run_id: str) -> list[Task]:
         """根据 Run ID 查找所有 Task
 
         实现策略：
@@ -266,12 +266,12 @@ class SQLAlchemyTaskRepository:
             .where(TaskModel.run_id == run_id)
             .order_by(TaskModel.created_at.desc())  # 倒序
         )
-        result = await self.session.execute(stmt)
+        result = self.session.execute(stmt)
         models = result.scalars().all()
 
         return [self._to_entity(model) for model in models]
 
-    async def exists(self, task_id: str) -> bool:
+    def exists(self, task_id: str) -> bool:
         """检查 Task 是否存在
 
         实现策略：
@@ -283,10 +283,10 @@ class SQLAlchemyTaskRepository:
         - 比 find_by_id() 更高效
         """
         stmt = select(TaskModel.id).where(TaskModel.id == task_id)
-        result = await self.session.execute(stmt)
+        result = self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
 
-    async def delete(self, task_id: str) -> None:
+    def delete(self, task_id: str) -> None:
         """删除 Task 实体
 
         实现策略：
@@ -299,5 +299,5 @@ class SQLAlchemyTaskRepository:
         - 不需要额外的级联删除逻辑
         """
         stmt = delete(TaskModel).where(TaskModel.id == task_id)
-        await self.session.execute(stmt)
-        await self.session.flush()
+        self.session.execute(stmt)
+        self.session.flush()
