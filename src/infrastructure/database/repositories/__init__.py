@@ -18,5 +18,12 @@ from src.infrastructure.database.repositories.agent_repository import (
 from src.infrastructure.database.repositories.run_repository import (
     SQLAlchemyRunRepository,
 )
+from src.infrastructure.database.repositories.task_repository import (
+    SQLAlchemyTaskRepository,
+)
 
-__all__ = ["SQLAlchemyAgentRepository", "SQLAlchemyRunRepository"]
+__all__ = [
+    "SQLAlchemyAgentRepository",
+    "SQLAlchemyRunRepository",
+    "SQLAlchemyTaskRepository",
+]

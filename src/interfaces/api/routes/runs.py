@@ -24,6 +24,7 @@ from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.repositories import (
     SQLAlchemyAgentRepository,
     SQLAlchemyRunRepository,
+    SQLAlchemyTaskRepository,
 )
 from src.interfaces.api.dto import RunResponse
 
@@ -47,11 +48,20 @@ def get_run_repository(session: Session = Depends(get_db_session)) -> SQLAlchemy
     return SQLAlchemyRunRepository(session)
 
 
+def get_task_repository(session: Session = Depends(get_db_session)) -> SQLAlchemyTaskRepository:
+    """获取 Task Repository
+
+    依赖注入函数：为每个请求创建新的 Repository
+    """
+    return SQLAlchemyTaskRepository(session)
+
+
 @router.post("/{agent_id}/runs", response_model=RunResponse, status_code=status.HTTP_201_CREATED)
 def execute_run(
     agent_id: str,
     agent_repository: SQLAlchemyAgentRepository = Depends(get_agent_repository),
     run_repository: SQLAlchemyRunRepository = Depends(get_run_repository),
+    task_repository: SQLAlchemyTaskRepository = Depends(get_task_repository),
 ) -> RunResponse:
     """触发 Run
 
@@ -94,12 +104,14 @@ def execute_run(
     """
     try:
         # 步骤 1: 创建 Use Case
-        # 为什么需要两个 Repository？
+        # 为什么需要三个 Repository？
         # - ExecuteRunUseCase 需要验证 Agent 存在
         # - ExecuteRunUseCase 需要保存 Run
+        # - ExecuteRunUseCase 需要保存 Task
         use_case = ExecuteRunUseCase(
             agent_repository=agent_repository,
             run_repository=run_repository,
+            task_repository=task_repository,
         )
 
         # 步骤 2: 转换 DTO → Use Case Input
