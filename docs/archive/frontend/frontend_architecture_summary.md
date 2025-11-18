@@ -184,11 +184,11 @@ export function useCreateAgent() {
 export function useSSE(url: string, enabled: boolean = true) {
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  
+
   useEffect(() => {
     if (!enabled || !url) return;
     const eventSource = new EventSource(url);
-    
+
     eventSource.onmessage = (e) => {
       if (e.data === '[DONE]') {
         eventSource.close();
@@ -197,10 +197,10 @@ export function useSSE(url: string, enabled: boolean = true) {
       const event = JSON.parse(e.data);
       setEvents((prev) => [...prev, event]);
     };
-    
+
     return () => eventSource.close();
   }, [url, enabled]);
-  
+
   return { events, isConnected };
 }
 ```
@@ -384,4 +384,3 @@ request.interceptors.response.use(
 
 **最后更新**: 2025-11-14
 **版本**: 1.0.0
-

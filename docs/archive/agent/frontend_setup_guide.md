@@ -442,13 +442,13 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   (response) => {
     const result: Result = response.data;
-    
+
     // 统一处理业务错误码
     if (result.code !== 2000) {
       message.error(result.message || '请求失败');
       return Promise.reject(new Error(result.message));
     }
-    
+
     return result.data;
   },
   (error) => {
@@ -475,7 +475,7 @@ request.interceptors.response.use(
     } else {
       message.error('网络错误，请检查网络连接');
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -569,4 +569,3 @@ pnpm type-check
 - [Ant Design Pro Components](https://procomponents.ant.design/)
 - [TanStack Query 文档](https://tanstack.com/query/latest)
 - [React Router 文档](https://reactrouter.com/)
-

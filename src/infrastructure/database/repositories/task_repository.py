@@ -108,8 +108,10 @@ class SQLAlchemyTaskRepository:
 
         return Task(
             id=model.id,
+            agent_id=model.agent_id,
             run_id=model.run_id,
             name=model.name,
+            description=model.description,
             input_data=model.input_data,
             output_data=model.output_data,
             status=TaskStatus(model.status),  # 字符串 → 枚举
@@ -163,8 +165,10 @@ class SQLAlchemyTaskRepository:
             model = TaskModel(id=entity.id)
 
         # 更新字段
+        model.agent_id = entity.agent_id
         model.run_id = entity.run_id
         model.name = entity.name
+        model.description = entity.description
         model.input_data = entity.input_data
         model.output_data = entity.output_data
         model.status = entity.status.value  # 枚举 → 字符串
@@ -264,6 +268,31 @@ class SQLAlchemyTaskRepository:
         stmt = (
             select(TaskModel)
             .where(TaskModel.run_id == run_id)
+            .order_by(TaskModel.created_at.desc())  # 倒序
+        )
+        result = self.session.execute(stmt)
+        models = result.scalars().all()
+
+        return [self._to_entity(model) for model in models]
+
+    def find_by_agent_id(self, agent_id: str) -> list[Task]:
+        """根据 Agent ID 查找所有 Task
+
+        实现策略：
+        1. 查询数据库（WHERE agent_id = ?）
+        2. 按 created_at 倒序排列（最新的在前）
+        3. 转换为领域实体列表（每个 Task 包括 TaskEvent）
+
+        聚合完整性：
+        - 每个 Task 包含完整的 TaskEvent
+
+        业务场景：
+        - 用户创建 Agent 后，查看生成的工作流（Tasks）
+        - 前端需要展示任务列表
+        """
+        stmt = (
+            select(TaskModel)
+            .where(TaskModel.agent_id == agent_id)
             .order_by(TaskModel.created_at.desc())  # 倒序
         )
         result = self.session.execute(stmt)

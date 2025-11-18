@@ -56,14 +56,18 @@ class TestTaskCreation:
         """测试：使用有效参数创建 Task 应该成功
 
         业务需求：
-        - Task 必须关联一个 Run
+        - Task 必须关联一个 Agent
+        - Task 可以关联一个 Run（执行时）
         - Task 必须有名称（描述这个任务是什么）
+        - Task 可以有描述（详细说明）
         - Task 可以有输入数据（input_data）
 
         验收标准：
         - Task 必须有唯一 ID
-        - run_id 必须被正确保存
+        - agent_id 必须被正确保存
+        - run_id 可以为 None（还没执行）
         - name 必须被正确保存
+        - description 可以为 None
         - 默认状态为 PENDING
         - retry_count 初始为 0
         - 记录创建时间
@@ -72,17 +76,27 @@ class TestTaskCreation:
         - events 初始为空列表
         """
         # Arrange
-        run_id = "test-run-123"
+        agent_id = "test-agent-123"
+        run_id = "test-run-456"
         name = "分析销售数据"
+        description = "使用 pandas 读取 CSV 文件并计算销售总额"
         input_data = {"file_path": "/data/sales.csv"}
 
         # Act
-        task = Task.create(run_id=run_id, name=name, input_data=input_data)
+        task = Task.create(
+            agent_id=agent_id,
+            name=name,
+            description=description,
+            run_id=run_id,
+            input_data=input_data,
+        )
 
         # Assert
         assert task.id is not None, "Task 必须有唯一 ID"
+        assert task.agent_id == agent_id, "agent_id 必须被正确保存"
         assert task.run_id == run_id, "run_id 必须被正确保存"
         assert task.name == name, "name 必须被正确保存"
+        assert task.description == description, "description 必须被正确保存"
         assert task.input_data == input_data, "input_data 必须被正确保存"
         assert task.status == TaskStatus.PENDING, "默认状态应该是 PENDING"
         assert task.retry_count == 0, "retry_count 初始应该为 0"
@@ -106,44 +120,44 @@ class TestTaskCreation:
         - input_data 为 None
         """
         # Act
-        task = Task.create(run_id="test-run-123", name="发送通知")
+        task = Task.create(agent_id="test-agent-123", name="发送通知")
 
         # Assert
         assert task.input_data is None, "不提供 input_data 时应该为 None"
 
-    def test_create_task_with_empty_run_id_should_raise_error(self):
-        """测试：使用空的 run_id 创建 Task 应该抛出错误
+    def test_create_task_with_empty_agent_id_should_raise_error(self):
+        """测试：使用空的 agent_id 创建 Task 应该抛出错误
 
         业务规则：
-        - run_id 是必需的，不能为空
-        - Task 必须属于某个 Run
+        - agent_id 是必需的，不能为空
+        - Task 必须属于某个 Agent
 
         为什么需要这个测试？
-        1. 防止孤儿 Task：Task 必须关联 Run
+        1. 防止孤儿 Task：Task 必须关联 Agent
         2. 符合 DDD 规范：实体必须维护不变式
-        3. 数据完整性：确保 Task 和 Run 的关联关系
+        3. 数据完整性：确保 Task 和 Agent 的关联关系
 
         验收标准：
         - 抛出 DomainError 异常
-        - 错误消息包含 "run_id 不能为空"
+        - 错误消息包含 "agent_id 不能为空"
         """
         # Act & Assert
-        with pytest.raises(DomainError, match="run_id 不能为空"):
-            Task.create(run_id="", name="测试任务")
+        with pytest.raises(DomainError, match="agent_id 不能为空"):
+            Task.create(agent_id="", name="测试任务")
 
-    def test_create_task_with_whitespace_run_id_should_raise_error(self):
-        """测试：使用纯空格的 run_id 创建 Task 应该抛出错误
+    def test_create_task_with_whitespace_agent_id_should_raise_error(self):
+        """测试：使用纯空格的 agent_id 创建 Task 应该抛出错误
 
         业务规则：
-        - run_id 不能是纯空格
+        - agent_id 不能是纯空格
         - 防止用户输入无意义的空白字符
 
         验收标准：
         - 抛出 DomainError 异常
         """
         # Act & Assert
-        with pytest.raises(DomainError, match="run_id 不能为空"):
-            Task.create(run_id="   ", name="测试任务")
+        with pytest.raises(DomainError, match="agent_id 不能为空"):
+            Task.create(agent_id="   ", name="测试任务")
 
     def test_create_task_with_empty_name_should_raise_error(self):
         """测试：使用空的 name 创建 Task 应该抛出错误
@@ -163,7 +177,7 @@ class TestTaskCreation:
         """
         # Act & Assert
         with pytest.raises(DomainError, match="name 不能为空"):
-            Task.create(run_id="test-run-123", name="")
+            Task.create(agent_id="test-agent-123", name="")
 
     def test_create_task_with_whitespace_name_should_raise_error(self):
         """测试：使用纯空格的 name 创建 Task 应该抛出错误
@@ -177,7 +191,7 @@ class TestTaskCreation:
         """
         # Act & Assert
         with pytest.raises(DomainError, match="name 不能为空"):
-            Task.create(run_id="test-run-123", name="   ")
+            Task.create(agent_id="test-agent-123", name="   ")
 
     def test_create_multiple_tasks_should_have_unique_ids(self):
         """测试：创建多个 Task 应该有唯一的 ID
@@ -195,9 +209,9 @@ class TestTaskCreation:
         - 多个 Task 的 ID 不相同
         """
         # Act
-        task1 = Task.create(run_id="test-run-123", name="任务1")
-        task2 = Task.create(run_id="test-run-123", name="任务2")
-        task3 = Task.create(run_id="test-run-123", name="任务3")
+        task1 = Task.create(agent_id="test-agent-123", name="任务1")
+        task2 = Task.create(agent_id="test-agent-123", name="任务2")
+        task3 = Task.create(agent_id="test-agent-123", name="任务3")
 
         # Assert
         assert task1.id != task2.id, "Task ID 必须唯一"
@@ -221,7 +235,7 @@ class TestTaskCreation:
         - name 中间的空格保留
         """
         # Act
-        task = Task.create(run_id="test-run-123", name="  分析 销售 数据  ")
+        task = Task.create(agent_id="test-agent-123", name="  分析 销售 数据  ")
 
         # Assert
         assert task.name == "分析 销售 数据", "应该去除首尾空格，保留中间空格"
@@ -250,7 +264,7 @@ class TestTaskStateTransition:
         - finished_at 仍然为 None
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="测试任务")
+        task = Task.create(agent_id="test-agent-123", name="测试任务")
         assert task.status == TaskStatus.PENDING
 
         # Act
@@ -276,7 +290,7 @@ class TestTaskStateTransition:
         - output_data 被正确保存
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="测试任务")
+        task = Task.create(agent_id="test-agent-123", name="测试任务")
         task.start()
         output_data = {"result": "success", "count": 100}
 
@@ -302,7 +316,7 @@ class TestTaskStateTransition:
         - output_data 为 None
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="发送邮件")
+        task = Task.create(agent_id="test-agent-123", name="发送邮件")
         task.start()
 
         # Act
@@ -326,7 +340,7 @@ class TestTaskStateTransition:
         - error 被正确保存
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="测试任务")
+        task = Task.create(agent_id="test-agent-123", name="测试任务")
         task.start()
         error_message = "文件不存在: /data/sales.csv"
 
@@ -356,7 +370,7 @@ class TestTaskStateTransition:
         - 错误消息包含 "Task 已经在运行中"
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="测试任务")
+        task = Task.create(agent_id="test-agent-123", name="测试任务")
         task.start()
 
         # Act & Assert
@@ -380,7 +394,7 @@ class TestTaskStateTransition:
         - 错误消息包含 "Task 必须先启动"
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="测试任务")
+        task = Task.create(agent_id="test-agent-123", name="测试任务")
 
         # Act & Assert
         with pytest.raises(DomainError, match="Task 必须先启动"):
@@ -403,7 +417,7 @@ class TestTaskStateTransition:
         - 错误消息包含 "Task 已经完成"
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="测试任务")
+        task = Task.create(agent_id="test-agent-123", name="测试任务")
         task.start()
         task.succeed()
 
@@ -433,7 +447,7 @@ class TestTaskRetry:
         - 每次调用 increment_retry_count() 增加 1
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="测试任务")
+        task = Task.create(agent_id="test-agent-123", name="测试任务")
         assert task.retry_count == 0
 
         # Act & Assert
@@ -461,7 +475,7 @@ class TestTaskRetry:
         - finished_at 被清除（准备重新执行）
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="测试任务")
+        task = Task.create(agent_id="test-agent-123", name="测试任务")
         task.start()
         task.fail(error="第一次失败")
         assert task.status == TaskStatus.FAILED
@@ -499,7 +513,7 @@ class TestTaskEvents:
         - 事件按添加顺序排列
         """
         # Arrange
-        task = Task.create(run_id="test-run-123", name="测试任务")
+        task = Task.create(agent_id="test-agent-123", name="测试任务")
 
         # Act
         task.add_event("开始下载文件")

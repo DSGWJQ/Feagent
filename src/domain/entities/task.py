@@ -71,8 +71,10 @@ class Task:
 
     属性说明：
     - id: 唯一标识符（UUID）
-    - run_id: 关联的 Run ID（业务必需）
-    - name: 任务名称（业务必需，描述任务用途）
+    - agent_id: 关联的 Agent ID（业务必需，表示这是哪个 Agent 的任务）
+    - run_id: 关联的 Run ID（可选，执行时设置）
+    - name: 任务名称（业务必需，简短描述）
+    - description: 任务描述（可选，详细说明）
     - status: Task 状态（PENDING/RUNNING/SUCCEEDED/FAILED）
     - input_data: 输入数据（可选，JSON 格式）
     - output_data: 输出数据（可选，JSON 格式）
@@ -94,11 +96,27 @@ class Task:
     2. 调试需求：出错时可以回溯执行过程
     3. 监控需求：实时观察 Task 执行进度
     4. 业务需求：某些业务需要详细的执行日志
+
+    为什么添加 agent_id？
+    - Task 可以在创建 Agent 时生成（作为计划）
+    - Task 也可以在执行 Run 时创建（作为执行步骤）
+    - agent_id 表示这个 Task 属于哪个 Agent
+
+    为什么 run_id 改为可选？
+    - 创建 Agent 时生成的 Task，run_id 为 None（还没执行）
+    - 执行 Run 时，设置 run_id（表示在哪次执行中运行）
+
+    为什么添加 description？
+    - name 是简短的任务名称（如"读取 CSV 文件"）
+    - description 是详细的任务描述（如"使用 pandas 读取 CSV 文件到 DataFrame"）
+    - 提供更好的用户体验和可读性
     """
 
     id: str
-    run_id: str
+    agent_id: str
+    run_id: str | None
     name: str
+    description: str | None
     status: TaskStatus
     input_data: dict | None
     output_data: dict | None
@@ -112,8 +130,10 @@ class Task:
     @classmethod
     def create(
         cls,
-        run_id: str,
+        agent_id: str,
         name: str,
+        description: str | None = None,
+        run_id: str | None = None,
         input_data: dict | None = None,
     ) -> "Task":
         """创建 Task（工厂方法）
@@ -125,41 +145,67 @@ class Task:
         4. 易于测试：可以 mock 工厂方法
 
         参数：
-            run_id: Run ID（必填）
+            agent_id: Agent ID（必填）
             name: 任务名称（必填）
+            description: 任务描述（可选）
+            run_id: Run ID（可选，执行时设置）
             input_data: 输入数据（可选）
 
         返回：
             Task 实例
 
         异常：
-            DomainError: run_id 或 name 为空
+            DomainError: agent_id 或 name 为空
 
         示例：
+        >>> # 创建计划任务（还没执行）
         >>> task = Task.create(
-        ...     run_id="run-123",
+        ...     agent_id="agent-123",
         ...     name="分析销售数据",
-        ...     input_data={"file_path": "/data/sales.csv"}
+        ...     description="使用 pandas 读取 CSV 文件并计算销售总额"
         ... )
+        >>> task.run_id is None
+        True
         >>> task.status
         <TaskStatus.PENDING: 'pending'>
+
+        >>> # 创建执行任务（关联到 Run）
+        >>> task = Task.create(
+        ...     agent_id="agent-123",
+        ...     name="分析销售数据",
+        ...     description="使用 pandas 读取 CSV 文件并计算销售总额",
+        ...     run_id="run-456",
+        ...     input_data={"file_path": "/data/sales.csv"}
+        ... )
+        >>> task.run_id
+        'run-456'
         """
-        # 验证：run_id 不能为空
-        if not run_id or not run_id.strip():
-            raise DomainError("run_id 不能为空")
+        # 验证：agent_id 不能为空
+        if not agent_id or not agent_id.strip():
+            raise DomainError("agent_id 不能为空")
 
         # 验证：name 不能为空
         if not name or not name.strip():
             raise DomainError("name 不能为空")
 
         # 去除首尾空格
-        run_id = run_id.strip()
+        agent_id = agent_id.strip()
         name = name.strip()
+
+        # 处理 run_id（可选）
+        if run_id is not None:
+            run_id = run_id.strip() if run_id.strip() else None
+
+        # 处理 description（可选）
+        if description is not None:
+            description = description.strip() if description.strip() else None
 
         return cls(
             id=str(uuid4()),
+            agent_id=agent_id,
             run_id=run_id,
             name=name,
+            description=description,
             status=TaskStatus.PENDING,
             input_data=input_data,
             output_data=None,

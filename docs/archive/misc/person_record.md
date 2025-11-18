@@ -1,7 +1,7 @@
 # 前端项目初始化工作记录
 
-**日期**: 2025-11-14  
-**任务**: Agent 中台系统前端项目骨架设计与初始化  
+**日期**: 2025-11-14
+**任务**: Agent 中台系统前端项目骨架设计与初始化
 **状态**: ✅ 已完成
 
 ---
@@ -85,7 +85,7 @@
 - 下一步工作建议
 
 #### 1.5 创建初始化脚本
-**文件**: 
+**文件**:
 - `scripts/init-frontend.ps1`（Windows PowerShell 版本）
 - `scripts/init-frontend.sh`（Linux/Mac Bash 版本）
 
@@ -1300,4 +1300,3 @@ async def run_async_migrations() -> None:
 
 **记录人**: Augment Agent
 **完成时间**: 2025-11-14 晚上
-

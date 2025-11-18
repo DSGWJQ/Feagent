@@ -219,9 +219,11 @@ class ExecuteRunUseCase:
             tasks = []
             for task_data in plan:
                 task = Task.create(
+                    agent_id=agent.id,
                     run_id=run.id,
                     name=task_data["name"],
-                    input_data={"description": task_data["description"]},
+                    description=task_data.get("description"),
+                    input_data={"description": task_data.get("description")},
                 )
                 tasks.append(task)
                 # 保存 Task（PENDING 状态）

@@ -24,6 +24,7 @@ DTO vs Domain Entity：
 from src.interfaces.api.dto.agent_dto import (
     AgentResponse,
     CreateAgentRequest,
+    TaskResponse,
 )
 from src.interfaces.api.dto.run_dto import (
     ExecuteRunRequest,
@@ -33,6 +34,7 @@ from src.interfaces.api.dto.run_dto import (
 __all__ = [
     "CreateAgentRequest",
     "AgentResponse",
+    "TaskResponse",
     "ExecuteRunRequest",
     "RunResponse",
 ]

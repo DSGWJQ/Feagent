@@ -166,6 +166,36 @@ class TaskRepository(Protocol):
         """
         ...
 
+    def find_by_agent_id(self, agent_id: str) -> list[Task]:
+        """根据 Agent ID 查找所有 Task
+
+        业务语义：
+        - 查询某个 Agent 的所有计划任务（工作流）
+        - 如果没有 Task，返回空列表（不抛异常）
+        - 按创建时间倒序排列（最新的在前）
+        - 返回完整的 Task 聚合（包括 TaskEvent）
+
+        参数：
+            agent_id: Agent ID
+
+        返回：
+            Task 列表（可能为空，每个 Task 包含 TaskEvent）
+
+        实现要求：
+        - 按 created_at 倒序排列
+        - 返回所有状态的 Task（不过滤）
+        - 每个 Task 包含完整的 TaskEvent
+
+        业务场景：
+        - 用户创建 Agent 后，查看生成的工作流（Tasks）
+        - 前端需要展示任务列表
+
+        聚合完整性：
+        - 每个 Task 必须包含完整的 TaskEvent
+        - TaskEvent 按时间顺序排列
+        """
+        ...
+
     def exists(self, task_id: str) -> bool:
         """检查 Task 是否存在
 

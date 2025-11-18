@@ -143,7 +143,7 @@ async def sample_run(run_repository, sample_agent):
 
 
 @pytest.fixture
-def sample_task(sample_run):
+def sample_task(sample_run, sample_agent):
     """创建示例 Task 实体（未保存到数据库）
 
     为什么不保存到数据库？
@@ -151,6 +151,7 @@ def sample_task(sample_run):
     - 让测试更灵活
     """
     return Task.create(
+        agent_id=sample_agent.id,
         run_id=sample_run.id,
         name="学习 Python 变量",
         input_data={"topic": "variables"},
@@ -386,7 +387,7 @@ class TestTaskRepositoryFindByRunId:
     """
 
     def test_find_by_run_id_with_multiple_tasks_should_return_all_tasks(
-        self, task_repository, sample_run
+        self, task_repository, sample_run, sample_agent
     ):
         """测试：查找 Run 的所有 Task 应该返回所有 Task
 
@@ -395,9 +396,9 @@ class TestTaskRepositoryFindByRunId:
         - 按 created_at 倒序排列（最新的在前）
         """
         # Arrange - 创建 3 个 Task
-        task1 = Task.create(run_id=sample_run.id, name="任务 1")
-        task2 = Task.create(run_id=sample_run.id, name="任务 2")
-        task3 = Task.create(run_id=sample_run.id, name="任务 3")
+        task1 = Task.create(agent_id=sample_agent.id, run_id=sample_run.id, name="任务 1")
+        task2 = Task.create(agent_id=sample_agent.id, run_id=sample_run.id, name="任务 2")
+        task3 = Task.create(agent_id=sample_agent.id, run_id=sample_run.id, name="任务 3")
 
         task_repository.save(task1)
         task_repository.save(task2)
@@ -449,11 +450,11 @@ class TestTaskRepositoryFindByRunId:
         run_repository.save(run2)
 
         # 为 run1 创建 Task
-        task1 = Task.create(run_id=run1.id, name="Run1 的任务")
+        task1 = Task.create(agent_id=sample_agent.id, run_id=run1.id, name="Run1 的任务")
         task_repository.save(task1)
 
         # 为 run2 创建 Task
-        task2 = Task.create(run_id=run2.id, name="Run2 的任务")
+        task2 = Task.create(agent_id=sample_agent.id, run_id=run2.id, name="Run2 的任务")
         task_repository.save(task2)
 
         # Act - 查询 run1 的 Task
@@ -545,3 +546,81 @@ class TestTaskRepositoryDelete:
         # Act & Assert - 不抛异常
         task_repository.delete(non_existing_id)
         task_repository.delete(non_existing_id)  # 第二次调用也不抛异常
+
+
+class TestTaskRepositoryFindByAgentId:
+    """测试：TaskRepository.find_by_agent_id() 方法
+
+    测试场景：
+    1. 查找 Agent 的所有 Task（多个 Task）
+    2. 查找 Agent 的所有 Task（空列表）
+    3. 验证返回顺序（按 created_at 倒序）
+    4. 验证隔离性（不同 Agent 的 Task 不混淆）
+
+    业务场景：
+    - 用户创建 Agent 后，查看生成的工作流（Tasks）
+    - 前端需要展示任务列表
+    """
+
+    def test_find_by_agent_id_should_return_all_tasks(self, task_repository, sample_agent):
+        """测试：find_by_agent_id 应该返回 Agent 的所有 Tasks
+
+        验收标准：
+        - 返回所有属于该 Agent 的 Tasks
+        - 按创建时间倒序排列（最新的在前）
+        """
+        # Arrange
+        task1 = Task.create(agent_id=sample_agent.id, name="任务 1", run_id=None)
+        task2 = Task.create(agent_id=sample_agent.id, name="任务 2", run_id=None)
+        task3 = Task.create(agent_id=sample_agent.id, name="任务 3", run_id=None)
+
+        task_repository.save(task1)
+        task_repository.save(task2)
+        task_repository.save(task3)
+
+        # Act
+        tasks = task_repository.find_by_agent_id(sample_agent.id)
+
+        # Assert
+        assert len(tasks) == 3
+        assert tasks[0].name == "任务 3"  # 最新的在前
+        assert tasks[1].name == "任务 2"
+        assert tasks[2].name == "任务 1"
+
+    def test_find_by_agent_id_should_not_return_other_agent_tasks(
+        self, task_repository, sample_agent
+    ):
+        """测试：find_by_agent_id 不应该返回其他 Agent 的 Tasks
+
+        验收标准：
+        - 只返回指定 Agent 的 Tasks
+        - 不返回其他 Agent 的 Tasks
+        """
+        # Arrange
+        other_agent = Agent.create(start="其他起点", goal="其他目的")
+        task1 = Task.create(agent_id=sample_agent.id, name="任务 1", run_id=None)
+        task2 = Task.create(agent_id=other_agent.id, name="任务 2", run_id=None)
+
+        task_repository.save(task1)
+        task_repository.save(task2)
+
+        # Act
+        tasks = task_repository.find_by_agent_id(sample_agent.id)
+
+        # Assert
+        assert len(tasks) == 1
+        assert tasks[0].name == "任务 1"
+
+    def test_find_by_agent_id_with_no_tasks_should_return_empty_list(
+        self, task_repository, sample_agent
+    ):
+        """测试：find_by_agent_id 没有 Tasks 时应该返回空列表
+
+        验收标准：
+        - 返回空列表（不抛异常）
+        """
+        # Act
+        tasks = task_repository.find_by_agent_id(sample_agent.id)
+
+        # Assert
+        assert tasks == []

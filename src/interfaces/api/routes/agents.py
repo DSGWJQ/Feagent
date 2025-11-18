@@ -32,7 +32,10 @@ from sqlalchemy.orm import Session
 from src.application import CreateAgentInput, CreateAgentUseCase
 from src.domain.exceptions import DomainError, NotFoundError
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories import SQLAlchemyAgentRepository
+from src.infrastructure.database.repositories import (
+    SQLAlchemyAgentRepository,
+    SQLAlchemyTaskRepository,
+)
 from src.interfaces.api.dto import AgentResponse, CreateAgentRequest
 
 # 创建路由器
@@ -61,14 +64,37 @@ def get_agent_repository(session: Session = Depends(get_db_session)) -> SQLAlche
     return SQLAlchemyAgentRepository(session)
 
 
+def get_task_repository(session: Session = Depends(get_db_session)) -> SQLAlchemyTaskRepository:
+    """获取 Task Repository
+
+    这是依赖注入函数：
+    - FastAPI 会自动调用这个函数
+    - 为每个请求创建新的 Repository
+    - 使用数据库会话（Session）
+
+    为什么需要这个函数？
+    1. 依赖注入：解耦路由和 Repository
+    2. 生命周期管理：每个请求有独立的 Repository
+    3. 可测试性：测试时可以 Mock 这个函数
+
+    参数：
+        session: 数据库会话（由 get_db_session 提供）
+
+    返回：
+        SQLAlchemyTaskRepository 实例
+    """
+    return SQLAlchemyTaskRepository(session)
+
+
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
 def create_agent(
     request: CreateAgentRequest,
     agent_repository: SQLAlchemyAgentRepository = Depends(get_agent_repository),
+    task_repository: SQLAlchemyTaskRepository = Depends(get_task_repository),
 ) -> AgentResponse:
     """创建 Agent
 
-    业务场景：用户通过 API 创建 Agent
+    业务场景：用户通过 API 创建 Agent，自动生成工作流（Tasks）
 
     请求体：
     - start: 任务起点描述（必填）
@@ -76,7 +102,7 @@ def create_agent(
     - name: Agent 名称（可选）
 
     响应：
-    - 201 Created: 成功创建，返回 Agent 信息
+    - 201 Created: 成功创建，返回 Agent 信息和生成的 Tasks
     - 422 Unprocessable Entity: 请求数据验证失败
     - 500 Internal Server Error: 服务器内部错误
 
@@ -88,6 +114,10 @@ def create_agent(
     - FastAPI 自动序列化响应
     - 自动生成 OpenAPI 文档
     - 类型安全
+
+    MVP 功能：
+    - 创建 Agent 时，自动调用 LLM 生成工作流（Tasks）
+    - 前端可以立即看到生成的任务列表
 
     示例：
     >>> POST /api/agents
@@ -104,40 +134,48 @@ def create_agent(
     ...     "goal": "分析销售数据",
     ...     "name": "销售分析 Agent",
     ...     "status": "active",
-    ...     "created_at": "2025-11-16T10:00:00"
+    ...     "created_at": "2025-11-16T10:00:00",
+    ...     "tasks": [
+    ...         {
+    ...             "id": "task-1",
+    ...             "agent_id": "agent-123",
+    ...             "name": "读取 CSV 文件",
+    ...             "description": "使用 pandas 读取 CSV 文件到 DataFrame",
+    ...             "status": "pending",
+    ...             "created_at": "2025-11-16T10:00:01"
+    ...         },
+    ...         ...
+    ...     ]
     ... }
     """
     try:
-        # 步骤 1: 创建 Use Case
-        # 为什么每次都创建新的 Use Case？
-        # - Use Case 是无状态的，可以每次创建
-        # - 避免共享状态，防止并发问题
-        # - 符合函数式编程思想
-        use_case = CreateAgentUseCase(agent_repository=agent_repository)
+        # 步骤 1: 创建 Use Case（注入 TaskRepository）
+        # 为什么注入 TaskRepository？
+        # - MVP 功能：创建 Agent 时自动生成 Tasks
+        # - Use Case 需要 TaskRepository 来保存 Tasks
+        use_case = CreateAgentUseCase(
+            agent_repository=agent_repository,
+            task_repository=task_repository,  # 新增：注入 TaskRepository
+        )
 
         # 步骤 2: 转换 DTO → Use Case Input
-        # 为什么需要转换？
-        # - DTO 是 API 层的概念
-        # - Use Case Input 是 Application 层的概念
-        # - 关注点分离：不同层使用不同的数据结构
         input_data = CreateAgentInput(
             start=request.start,
             goal=request.goal,
             name=request.name,
         )
 
-        # 步骤 3: 执行 Use Case
-        # 为什么不捕获异常？
-        # - 异常会被下面的 except 捕获
-        # - 统一异常处理，避免重复代码
+        # 步骤 3: 执行 Use Case（自动生成 Tasks）
         agent = use_case.execute(input_data)
 
-        # 步骤 4: 转换 Domain Entity → DTO
-        # 为什么需要转换？
-        # - Domain Entity 是业务概念
-        # - DTO 是 API 响应格式
-        # - 关注点分离：Domain 层不知道 API 的存在
-        return AgentResponse.from_entity(agent)
+        # 步骤 4: 查询生成的 Tasks
+        # 为什么需要查询？
+        # - Use Case 只返回 Agent，不返回 Tasks
+        # - 需要查询数据库获取生成的 Tasks
+        tasks = task_repository.find_by_agent_id(agent.id)
+
+        # 步骤 5: 转换 Domain Entity → DTO（包含 Tasks）
+        return AgentResponse.from_entity(agent, tasks=tasks)
 
     except DomainError as e:
         # 业务规则违反：返回 400 Bad Request
@@ -148,7 +186,7 @@ def create_agent(
         ) from e
     except Exception as e:
         # 其他异常：返回 500 Internal Server Error
-        # 例如：数据库连接失败
+        # 例如：数据库连接失败、LLM 调用失败
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"创建 Agent 失败: {str(e)}",

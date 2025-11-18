@@ -57,8 +57,8 @@ class TestCreateAgent:
         from src.domain.entities import Agent
 
         mock_agent = Agent.create(
-            start="我有一个 CSV 文件",
-            goal="分析销售数据",
+            start="我有一个 CSV 文件，包含销售数据",
+            goal="分析销售数据并生成报告",
             name="销售分析 Agent",
         )
 
@@ -70,8 +70,8 @@ class TestCreateAgent:
         response = client.post(
             "/api/agents",
             json={
-                "start": "我有一个 CSV 文件",
-                "goal": "分析销售数据",
+                "start": "我有一个 CSV 文件，包含销售数据",
+                "goal": "分析销售数据并生成报告",
                 "name": "销售分析 Agent",
             },
         )
@@ -80,8 +80,8 @@ class TestCreateAgent:
         assert response.status_code == 201
         data = response.json()
         assert data["id"] == mock_agent.id
-        assert data["start"] == "我有一个 CSV 文件"
-        assert data["goal"] == "分析销售数据"
+        assert data["start"] == "我有一个 CSV 文件，包含销售数据"
+        assert data["goal"] == "分析销售数据并生成报告"
         assert data["name"] == "销售分析 Agent"
         assert data["status"] == "active"
         assert "created_at" in data
@@ -132,8 +132,8 @@ class TestCreateAgent:
         response = client.post(
             "/api/agents",
             json={
-                "start": "我有一个 CSV 文件",
-                "goal": "分析数据",
+                "start": "我有一个 CSV 文件，包含销售数据",
+                "goal": "分析销售数据并生成报告",
             },
         )
 

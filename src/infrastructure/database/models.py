@@ -78,6 +78,13 @@ class AgentModel(Base):
         "RunModel", back_populates="agent", cascade="all, delete-orphan", lazy="selectin"
     )
 
+    # 关系（一对多：一个 Agent 有多个 Task）
+    # cascade="all, delete-orphan": 删除 Agent 时级联删除所有 Task
+    # back_populates: 双向关系（TaskModel.agent）
+    tasks: Mapped[list["TaskModel"]] = relationship(
+        "TaskModel", back_populates="agent", cascade="all, delete-orphan", lazy="selectin"
+    )
+
     # 索引
     __table_args__ = (
         Index("idx_agents_status", "status"),  # 查询活跃 Agent
@@ -176,8 +183,10 @@ class TaskModel(Base):
 
     字段说明：
     - id: 主键（UUID 字符串，36 字符）
-    - run_id: 外键（关联 Run，级联删除）
+    - agent_id: 外键（关联 Agent，级联删除）
+    - run_id: 外键（关联 Run，级联删除，可选）
     - name: Task 名称（255 字符）
+    - description: Task 描述（Text，可选）
     - input_data: 输入数据（JSON 格式）
     - output_data: 输出数据（JSON 格式，可选）
     - status: Task 状态（pending/running/succeeded/failed，20 字符）
@@ -189,15 +198,19 @@ class TaskModel(Base):
     - events: TaskEvent 列表（JSON 格式，存储为 JSON 数组）
 
     关系：
-    - run: 多对一关系（多个 Task 属于一个 Run）
+    - agent: 多对一关系（多个 Task 属于一个 Agent）
+    - run: 多对一关系（多个 Task 属于一个 Run，可选）
 
     索引：
+    - idx_tasks_agent_id: agent_id 字段索引（查询 Agent 的所有 Task）
     - idx_tasks_run_id: run_id 字段索引（查询 Run 的所有 Task）
     - idx_tasks_status: status 字段索引（查询特定状态的 Task）
     - idx_tasks_created_at: created_at 字段索引（按时间排序）
 
     外键约束：
-    - run_id → runs.id（级联删除）
+    - agent_id → agents.id（级联删除）
+    - run_id → runs.id（级联删除，可选）
+    - 删除 Agent 时，自动删除所有关联的 Task
     - 删除 Run 时，自动删除所有关联的 Task
 
     TaskEvent 的持久化：
@@ -209,6 +222,20 @@ class TaskModel(Base):
       2. TaskEvent 总是和 Task 一起查询，不需要单独查询
       3. 简化数据库设计，避免额外的表和 JOIN
       4. 符合聚合的完整性（Task 和 TaskEvent 作为一个整体）
+
+    为什么添加 agent_id？
+    - Task 可以在创建 Agent 时生成（作为计划任务）
+    - Task 也可以在执行 Run 时创建（作为执行步骤）
+    - agent_id 表示这个 Task 属于哪个 Agent
+
+    为什么 run_id 改为可选？
+    - 创建 Agent 时生成的 Task，run_id 为 None（还没执行）
+    - 执行 Run 时，设置 run_id（表示在哪次执行中运行）
+
+    为什么添加 description？
+    - name 是简短的任务名称（如"读取 CSV 文件"）
+    - description 是详细的任务描述（如"使用 pandas 读取 CSV 文件到 DataFrame"）
+    - 提供更好的用户体验和可读性
     """
 
     __tablename__ = "tasks"
@@ -217,15 +244,22 @@ class TaskModel(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Task ID（UUID）")
 
     # 外键
-    run_id: Mapped[str] = mapped_column(
+    agent_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("agents.id", ondelete="CASCADE"),  # 级联删除
+        nullable=False,
+        comment="关联的 Agent ID",
+    )
+    run_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("runs.id", ondelete="CASCADE"),  # 级联删除
-        nullable=False,
-        comment="关联的 Run ID",
+        nullable=True,  # 可选
+        comment="关联的 Run ID（可选）",
     )
 
     # 业务字段
     name: Mapped[str] = mapped_column(String(255), nullable=False, comment="Task 名称")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Task 描述")
     input_data: Mapped[dict | None] = mapped_column(
         JSON, nullable=True, comment="输入数据（JSON 格式）"
     )
@@ -255,12 +289,17 @@ class TaskModel(Base):
         JSON, nullable=True, default=list, comment="TaskEvent 列表（JSON 格式）"
     )
 
-    # 关系（多对一：多个 Task 属于一个 Run）
+    # 关系（多对一：多个 Task 属于一个 Agent）
+    # back_populates: 双向关系（AgentModel.tasks）
+    agent: Mapped["AgentModel"] = relationship("AgentModel", back_populates="tasks")
+
+    # 关系（多对一：多个 Task 属于一个 Run，可选）
     # back_populates: 双向关系（RunModel.tasks）
     run: Mapped["RunModel"] = relationship("RunModel", back_populates="tasks")
 
     # 索引
     __table_args__ = (
+        Index("idx_tasks_agent_id", "agent_id"),  # 查询 Agent 的所有 Task
         Index("idx_tasks_run_id", "run_id"),  # 查询 Run 的所有 Task
         Index("idx_tasks_status", "status"),  # 查询特定状态的 Task
         Index("idx_tasks_created_at", "created_at"),  # 按时间排序

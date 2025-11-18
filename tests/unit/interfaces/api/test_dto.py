@@ -55,12 +55,12 @@ class TestCreateAgentRequest:
 
         data = {
             "start": "我有一个 CSV 文件",
-            "goal": "分析数据",
+            "goal": "分析销售数据并生成报告",
         }
         request = CreateAgentRequest(**data)
 
         assert request.start == "我有一个 CSV 文件"
-        assert request.goal == "分析数据"
+        assert request.goal == "分析销售数据并生成报告"
         assert request.name is None
 
     def test_create_agent_request_with_empty_start(self):
@@ -69,7 +69,7 @@ class TestCreateAgentRequest:
 
         data = {
             "start": "",
-            "goal": "分析数据",
+            "goal": "分析销售数据并生成报告",
         }
 
         with pytest.raises(ValidationError) as exc_info:
@@ -103,7 +103,7 @@ class TestCreateAgentRequest:
 
         data = {
             "start": "   ",
-            "goal": "分析数据",
+            "goal": "分析销售数据并生成报告",
         }
 
         with pytest.raises(ValidationError) as exc_info:
@@ -119,14 +119,93 @@ class TestCreateAgentRequest:
 
         data = {
             "start": "  我有一个 CSV 文件  ",
-            "goal": "  分析数据  ",
+            "goal": "  分析销售数据并生成报告  ",
             "name": "  测试 Agent  ",
         }
         request = CreateAgentRequest(**data)
 
         assert request.start == "我有一个 CSV 文件"
-        assert request.goal == "分析数据"
+        assert request.goal == "分析销售数据并生成报告"
         assert request.name == "测试 Agent"
+
+
+class TestTaskResponse:
+    """测试 TaskResponse DTO
+
+    业务场景：API 返回 Task 信息给前端
+
+    字段：
+    - id: Task ID
+    - agent_id: 关联的 Agent ID
+    - name: 任务名称
+    - description: 任务描述（可选）
+    - status: 任务状态
+    - created_at: 创建时间
+    """
+
+    def test_task_response_with_all_fields(self):
+        """测试：提供所有字段时，应该成功创建"""
+        from datetime import datetime
+
+        from src.interfaces.api.dto import TaskResponse
+
+        data = {
+            "id": "task-123",
+            "agent_id": "agent-456",
+            "name": "读取 CSV 文件",
+            "description": "使用 pandas 读取 CSV 文件到 DataFrame",
+            "status": "pending",
+            "created_at": datetime.now(),
+        }
+        response = TaskResponse(**data)
+
+        assert response.id == "task-123"
+        assert response.agent_id == "agent-456"
+        assert response.name == "读取 CSV 文件"
+        assert response.description == "使用 pandas 读取 CSV 文件到 DataFrame"
+        assert response.status == "pending"
+        assert isinstance(response.created_at, datetime)
+
+    def test_task_response_without_description(self):
+        """测试：description 是可选字段"""
+        from datetime import datetime
+
+        from src.interfaces.api.dto import TaskResponse
+
+        data = {
+            "id": "task-123",
+            "agent_id": "agent-456",
+            "name": "读取 CSV 文件",
+            "description": None,
+            "status": "pending",
+            "created_at": datetime.now(),
+        }
+        response = TaskResponse(**data)
+
+        assert response.id == "task-123"
+        assert response.description is None
+
+    def test_task_response_serialization(self):
+        """测试：应该能序列化为 JSON"""
+        from datetime import datetime
+
+        from src.interfaces.api.dto import TaskResponse
+
+        data = {
+            "id": "task-123",
+            "agent_id": "agent-456",
+            "name": "读取 CSV 文件",
+            "description": "使用 pandas 读取 CSV 文件到 DataFrame",
+            "status": "pending",
+            "created_at": datetime.now(),
+        }
+        response = TaskResponse(**data)
+
+        # 测试序列化
+        json_data = response.model_dump()
+        assert json_data["id"] == "task-123"
+        assert json_data["agent_id"] == "agent-456"
+        assert json_data["name"] == "读取 CSV 文件"
 
 
 class TestAgentResponse:
@@ -141,6 +220,7 @@ class TestAgentResponse:
     - name: Agent 名称
     - status: Agent 状态
     - created_at: 创建时间
+    - tasks: 关联的 Tasks（可选）
     """
 
     def test_agent_response_with_all_fields(self):
@@ -156,6 +236,7 @@ class TestAgentResponse:
             "name": "测试 Agent",
             "status": "active",
             "created_at": datetime.now(),
+            "tasks": [],  # 新增：tasks 字段
         }
         response = AgentResponse(**data)
 
@@ -165,6 +246,38 @@ class TestAgentResponse:
         assert response.name == "测试 Agent"
         assert response.status == "active"
         assert isinstance(response.created_at, datetime)
+        assert response.tasks == []  # 新增：验证 tasks 字段
+
+    def test_agent_response_with_tasks(self):
+        """测试：AgentResponse 应该包含 Tasks"""
+        from datetime import datetime
+
+        from src.interfaces.api.dto import AgentResponse, TaskResponse
+
+        task_data = {
+            "id": "task-123",
+            "agent_id": "agent-123",
+            "name": "读取 CSV 文件",
+            "description": "使用 pandas 读取 CSV 文件到 DataFrame",
+            "status": "pending",
+            "created_at": datetime.now(),
+        }
+        task = TaskResponse(**task_data)
+
+        data = {
+            "id": "agent-123",
+            "start": "我有一个 CSV 文件",
+            "goal": "分析数据",
+            "name": "测试 Agent",
+            "status": "active",
+            "created_at": datetime.now(),
+            "tasks": [task],
+        }
+        response = AgentResponse(**data)
+
+        assert len(response.tasks) == 1
+        assert response.tasks[0].id == "task-123"
+        assert response.tasks[0].name == "读取 CSV 文件"
 
     def test_agent_response_serialization(self):
         """测试：应该能序列化为 JSON"""

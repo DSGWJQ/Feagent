@@ -27,7 +27,10 @@
 from dataclasses import dataclass
 
 from src.domain.entities.agent import Agent
+from src.domain.entities.task import Task
 from src.domain.ports.agent_repository import AgentRepository
+from src.domain.ports.task_repository import TaskRepository
+from src.lc.chains.plan_generator import create_plan_generator_chain
 
 
 @dataclass
@@ -63,10 +66,13 @@ class CreateAgentUseCase:
     1. 接收 CreateAgentInput 输入
     2. 调用 Agent.create() 创建领域实体
     3. 调用 Repository.save() 持久化实体
-    4. 返回创建的 Agent
+    4. 调用 LLM 生成执行计划（Tasks）
+    5. 保存 Tasks 到数据库
+    6. 返回创建的 Agent
 
     依赖：
     - AgentRepository: Agent 仓储接口（通过构造函数注入）
+    - TaskRepository: Task 仓储接口（通过构造函数注入）
 
     为什么使用依赖注入？
     1. 解耦：用例不依赖具体的 Repository 实现
@@ -79,21 +85,31 @@ class CreateAgentUseCase:
     - Repository 接口也需要改为异步
     """
 
-    def __init__(self, agent_repository: AgentRepository):
+    def __init__(
+        self,
+        agent_repository: AgentRepository,
+        task_repository: TaskRepository | None = None,
+    ):
         """初始化用例
 
         参数：
             agent_repository: Agent 仓储接口
+            task_repository: Task 仓储接口（可选，用于生成执行计划）
 
         为什么通过构造函数注入？
         - 依赖注入：由外部管理依赖
         - 可测试性：测试时可以注入 Mock
         - 明确依赖：构造函数清晰表达依赖关系
+
+        为什么 task_repository 是可选的？
+        - 向后兼容：旧代码不需要传入 task_repository
+        - 渐进式迁移：可以先不生成 Tasks，后续再添加
         """
         self.agent_repository = agent_repository
+        self.task_repository = task_repository
 
     def execute(self, input_data: CreateAgentInput) -> Agent:
-        """执行用例：创建 Agent
+        """执行用例：创建 Agent 并生成执行计划
 
         业务流程：
         1. 调用 Agent.create() 创建领域实体
@@ -103,7 +119,11 @@ class CreateAgentUseCase:
         2. 调用 Repository.save() 持久化实体
            - 保存到数据库
            - 处理数据库异常
-        3. 返回创建的 Agent
+        3. 调用 LLM 生成执行计划（如果提供了 task_repository）
+           - 使用 PlanGeneratorChain 生成任务列表
+           - 创建 Task 实体
+           - 保存 Tasks 到数据库
+        4. 返回创建的 Agent
 
         参数：
             input_data: 创建 Agent 的输入参数
@@ -114,6 +134,7 @@ class CreateAgentUseCase:
         异常：
             DomainError: 当输入不符合业务规则时（由 Agent.create() 抛出）
             Exception: 当数据库操作失败时（由 Repository.save() 抛出）
+            Exception: 当 LLM 调用失败时（由 PlanGeneratorChain 抛出）
 
         为什么不捕获异常？
         - 异常应该向上传播，由上层（API 层）统一处理
@@ -121,8 +142,12 @@ class CreateAgentUseCase:
         - 保持用例简单，只负责业务逻辑编排
 
         示例：
-        >>> repo = SQLAlchemyAgentRepository(session)
-        >>> use_case = CreateAgentUseCase(agent_repository=repo)
+        >>> agent_repo = SQLAlchemyAgentRepository(session)
+        >>> task_repo = SQLAlchemyTaskRepository(session)
+        >>> use_case = CreateAgentUseCase(
+        ...     agent_repository=agent_repo,
+        ...     task_repository=task_repo
+        ... )
         >>> input_data = CreateAgentInput(
         ...     start="我有一个 CSV 文件",
         ...     goal="分析销售数据",
@@ -150,7 +175,40 @@ class CreateAgentUseCase:
         # - 符合 Repository 模式的最佳实践
         self.agent_repository.save(agent)
 
-        # 步骤 3: 返回创建的 Agent
+        # 步骤 3: 生成执行计划（如果提供了 task_repository）
+        # 为什么要生成执行计划？
+        # - MVP 功能：用户填写表单，AI 生成最小可行工作流
+        # - 提前生成计划，用户可以查看和调整
+        # - 执行时可以直接使用这些 Tasks
+        if self.task_repository is not None:
+            # 3.1: 调用 LLM 生成执行计划
+            # 为什么使用 PlanGeneratorChain？
+            # - 封装了 LLM 调用逻辑（Prompt + LLM + Parser）
+            # - 返回结构化的任务列表
+            # - 便于测试和维护
+            plan_chain = create_plan_generator_chain()
+            plan = plan_chain.invoke(
+                {
+                    "start": agent.start,
+                    "goal": agent.goal,
+                }
+            )
+
+            # 3.2: 创建 Task 实体并保存
+            # 为什么要创建 Task？
+            # - Task 是执行计划的最小单元
+            # - 用户可以查看、调整计划
+            # - 执行时可以直接使用这些 Tasks
+            for task_data in plan:
+                task = Task.create(
+                    agent_id=agent.id,
+                    name=task_data["name"],
+                    description=task_data.get("description"),
+                    run_id=None,  # 还没执行，所以 run_id 为 None
+                )
+                self.task_repository.save(task)
+
+        # 步骤 4: 返回创建的 Agent
         # 为什么返回 Agent 而不是 ID？
         # - 调用者可能需要 Agent 的其他信息（如 created_at）
         # - 避免调用者再次查询数据库

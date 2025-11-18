@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS 测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #1890ff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #40a9ff;
+        }
+        button:disabled {
+            background-color: #d9d9d9;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background-color: #f6ffed;
+            border: 1px solid #b7eb8f;
+            color: #52c41a;
+        }
+        .error {
+            background-color: #fff2f0;
+            border: 1px solid #ffccc7;
+            color: #ff4d4f;
+        }
+        .info {
+            background-color: #e6f7ff;
+            border: 1px solid #91d5ff;
+            color: #1890ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 CORS 跨域测试</h1>
+        <p>这个页面用于测试前端（http://localhost:3000）是否可以访问后端（http://localhost:8000）</p>
+
+        <div>
+            <button onclick="testHealth()">测试 1: 健康检查 (GET)</button>
+            <button onclick="testGetAgents()">测试 2: 获取 Agent 列表 (GET)</button>
+            <button onclick="testCreateAgent()">测试 3: 创建 Agent (POST)</button>
+            <button onclick="clearResult()">清空结果</button>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8000';
+
+        function showResult(message, type = 'info') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+        }
+
+        function clearResult() {
+            document.getElementById('result').textContent = '';
+            document.getElementById('result').className = 'result';
+        }
+
+        async function testHealth() {
+            showResult('正在测试健康检查接口...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                // 检查 CORS 响应头
+                const corsHeaders = {
+                    'access-control-allow-origin': response.headers.get('access-control-allow-origin'),
+                    'access-control-allow-credentials': response.headers.get('access-control-allow-credentials'),
+                    'access-control-allow-methods': response.headers.get('access-control-allow-methods'),
+                    'access-control-allow-headers': response.headers.get('access-control-allow-headers'),
+                };
+
+                showResult(
+                    `✅ 测试成功！\n\n` +
+                    `响应数据：\n${JSON.stringify(data, null, 2)}\n\n` +
+                    `CORS 响应头：\n${JSON.stringify(corsHeaders, null, 2)}`,
+                    'success'
+                );
+            } catch (error) {
+                showResult(
+                    `❌ 测试失败！\n\n` +
+                    `错误信息：${error.message}\n\n` +
+                    `可能的原因：\n` +
+                    `1. 后端服务未启动（http://localhost:8000）\n` +
+                    `2. CORS 配置错误\n` +
+                    `3. 网络连接问题`,
+                    'error'
+                );
+            }
+        }
+
+        async function testGetAgents() {
+            showResult('正在测试获取 Agent 列表...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/agents`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                showResult(
+                    `✅ 测试成功！\n\n` +
+                    `获取到 ${data.length} 个 Agent\n\n` +
+                    `数据：\n${JSON.stringify(data, null, 2)}`,
+                    'success'
+                );
+            } catch (error) {
+                showResult(
+                    `❌ 测试失败！\n\n` +
+                    `错误信息：${error.message}`,
+                    'error'
+                );
+            }
+        }
+
+        async function testCreateAgent() {
+            showResult('正在测试创建 Agent（POST 请求会触发 CORS 预检）...', 'info');
+
+            try {
+                const testData = {
+                    start: '这是一个 CORS 测试 - 测试从浏览器发送 POST 请求到后端 API 是否会被 CORS 策略阻止',
+                    goal: '这是一个 CORS 测试 - 如果这个请求成功，说明 CORS 配置正确，前后端可以正常通信',
+                    name: `CORS 测试 ${new Date().toLocaleTimeString()}`,
+                };
+
+                const response = await fetch(`${API_BASE_URL}/api/agents`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(testData),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`HTTP ${response.status}: ${JSON.stringify(errorData)}`);
+                }
+
+                const data = await response.json();
+
+                // 创建成功后立即删除
+                await fetch(`${API_BASE_URL}/api/agents/${data.id}`, {
+                    method: 'DELETE',
+                });
+
+                showResult(
+                    `✅ 测试成功！\n\n` +
+                    `POST 请求成功，CORS 预检通过！\n\n` +
+                    `创建的 Agent：\n${JSON.stringify(data, null, 2)}\n\n` +
+                    `（已自动删除测试数据）`,
+                    'success'
+                );
+            } catch (error) {
+                showResult(
+                    `❌ 测试失败！\n\n` +
+                    `错误信息：${error.message}\n\n` +
+                    `如果错误提示包含 "CORS" 或 "cross-origin"，说明 CORS 配置有问题`,
+                    'error'
+                );
+            }
+        }
+
+        // 页面加载时自动运行第一个测试
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                showResult('点击上方按钮开始测试 CORS 配置', 'info');
+            }, 500);
+        });
+    </script>
+</body>
+</html>
