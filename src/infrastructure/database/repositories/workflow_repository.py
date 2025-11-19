@@ -214,7 +214,13 @@ class SQLAlchemyWorkflowRepository:
         抛出：
             NotFoundError: 当 Workflow 不存在时
         """
-        stmt = select(WorkflowModel).where(WorkflowModel.id == workflow_id)
+        from sqlalchemy.orm import selectinload
+
+        stmt = (
+            select(WorkflowModel)
+            .where(WorkflowModel.id == workflow_id)
+            .options(selectinload(WorkflowModel.nodes), selectinload(WorkflowModel.edges))
+        )
         model = self.session.scalars(stmt).first()
 
         if model is None:
@@ -236,7 +242,13 @@ class SQLAlchemyWorkflowRepository:
         返回：
             Workflow 实体（包含所有 Node 和 Edge）或 None
         """
-        stmt = select(WorkflowModel).where(WorkflowModel.id == workflow_id)
+        from sqlalchemy.orm import selectinload
+
+        stmt = (
+            select(WorkflowModel)
+            .where(WorkflowModel.id == workflow_id)
+            .options(selectinload(WorkflowModel.nodes), selectinload(WorkflowModel.edges))
+        )
         model = self.session.scalars(stmt).first()
 
         if model is None:

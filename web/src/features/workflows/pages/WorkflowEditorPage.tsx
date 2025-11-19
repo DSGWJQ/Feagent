@@ -27,11 +27,48 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button, message } from 'antd';
-import { PlayCircleOutlined, SaveOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, SaveOutlined, CodeOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
 import { updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecution } from '../hooks/useWorkflowExecution';
 import type { WorkflowNode, WorkflowEdge } from '../types/workflow';
+import NodePalette from '../components/NodePalette';
+import NodeConfigPanel from '../components/NodeConfigPanel';
+import CodeExportModal from '../components/CodeExportModal';
+import { WorkflowAIChat } from '@/shared/components';
+import {
+  StartNode,
+  EndNode,
+  HttpRequestNode,
+  TextModelNode,
+  ConditionalNode,
+  JavaScriptNode,
+  PromptNode,
+  ImageGenerationNode,
+  AudioNode,
+  ToolNode,
+  EmbeddingModelNode,
+  StructuredOutputNode,
+} from '../components/nodes';
+import { getDefaultNodeData } from '../utils/nodeUtils';
+
+/**
+ * 节点类型映射
+ */
+const nodeTypes = {
+  start: StartNode,
+  end: EndNode,
+  httpRequest: HttpRequestNode,
+  textModel: TextModelNode,
+  conditional: ConditionalNode,
+  javascript: JavaScriptNode,
+  prompt: PromptNode,
+  imageGeneration: ImageGenerationNode,
+  audio: AudioNode,
+  tool: ToolNode,
+  embeddingModel: EmbeddingModelNode,
+  structuredOutput: StructuredOutputNode,
+};
 
 /**
  * 初始节点（示例）
@@ -39,21 +76,24 @@ import type { WorkflowNode, WorkflowEdge } from '../types/workflow';
 const initialNodes: Node[] = [
   {
     id: '1',
-    type: 'input',
+    type: 'start',
     position: { x: 50, y: 250 },
-    data: { label: 'Start' },
+    data: {},
   },
   {
     id: '2',
-    type: 'default',
+    type: 'httpRequest',
     position: { x: 350, y: 250 },
-    data: { label: 'HTTP Request' },
+    data: {
+      url: 'https://api.example.com',
+      method: 'GET',
+    },
   },
   {
     id: '3',
-    type: 'output',
+    type: 'end',
     position: { x: 650, y: 250 },
-    data: { label: 'End' },
+    data: {},
   },
 ];
 
@@ -74,8 +114,13 @@ export function WorkflowEditorPage() {
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [configPanelOpen, setConfigPanelOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [chatPanelCollapsed, setChatPanelCollapsed] = useState(false);
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  let nodeIdCounter = useRef(4); // 从 4 开始，因为已有 1, 2, 3
 
   // 工作流执行 Hook
   const {
@@ -84,8 +129,53 @@ export function WorkflowEditorPage() {
     error: executionError,
     currentNodeId,
     nodeStatusMap,
+    nodeOutputMap,
     execute,
   } = useWorkflowExecution();
+
+  /**
+   * 处理工作流更新（从AI聊天返回）
+   */
+  const handleWorkflowUpdate = useCallback((workflow: any) => {
+    console.log('收到工作流更新:', workflow);
+
+    // 转换后端工作流格式到 React Flow 格式
+    const newNodes: Node[] = workflow.nodes.map((node: any) => ({
+      id: node.id,
+      type: mapBackendNodeTypeToFrontend(node.type),
+      position: { x: node.position.x, y: node.position.y },
+      data: node.data || {},
+    }));
+
+    const newEdges: Edge[] = workflow.edges.map((edge: any) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      label: edge.condition,
+    }));
+
+    setNodes(newNodes);
+    setEdges(newEdges);
+
+    message.success('工作流已更新');
+  }, []);
+
+  /**
+   * 映射后端节点类型到前端节点类型
+   */
+  const mapBackendNodeTypeToFrontend = (backendType: string): string => {
+    const typeMap: Record<string, string> = {
+      'start': 'start',
+      'end': 'end',
+      'http': 'httpRequest',
+      'llm': 'textModel',
+      'transform': 'javascript',
+      'database': 'httpRequest', // 暂时映射到 httpRequest
+      'python': 'javascript',
+      'condition': 'conditional',
+    };
+    return typeMap[backendType] || 'httpRequest';
+  };
 
   /**
    * 节点变化处理
@@ -109,30 +199,115 @@ export function WorkflowEditorPage() {
   const onConnect: OnConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), []);
 
   /**
+   * 节点选择处理
+   */
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    setSelectedNode(node);
+    setConfigPanelOpen(true);
+  }, []);
+
+  /**
+   * 拖拽放置节点
+   */
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const type = event.dataTransfer.getData('application/reactflow');
+      if (!type || !reactFlowInstance) return;
+
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      const newNode: Node = {
+        id: `node-${nodeIdCounter.current++}`,
+        type,
+        position,
+        data: getDefaultNodeData(type),
+      };
+
+      setNodes((nds) => [...nds, newNode]);
+    },
+    [reactFlowInstance]
+  );
+
+  /**
+   * 允许拖拽
+   */
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  /**
+   * 点击添加节点（从调色板）
+   */
+  const handleAddNode = useCallback(
+    (type: string) => {
+      if (!reactFlowInstance) return;
+
+      // 在画布中心添加节点
+      const center = reactFlowInstance.getViewport();
+      const position = {
+        x: -center.x / center.zoom + 400,
+        y: -center.y / center.zoom + 300,
+      };
+
+      const newNode: Node = {
+        id: `node-${nodeIdCounter.current++}`,
+        type,
+        position,
+        data: getDefaultNodeData(type),
+      };
+
+      setNodes((nds) => [...nds, newNode]);
+    },
+    [reactFlowInstance]
+  );
+
+  /**
+   * 保存节点配置
+   */
+  const handleSaveNodeConfig = useCallback((nodeId: string, data: any) => {
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
+      )
+    );
+  }, []);
+
+  /**
    * 保存工作流
    */
   const handleSave = useCallback(async () => {
     if (!workflowId) {
       message.error('工作流 ID 不存在');
-      return;
+      throw new Error('工作流 ID 不存在');
     }
 
     setIsSaving(true);
     try {
       // 转换为后端格式
-      const workflowNodes: WorkflowNode[] = nodes.map((node) => ({
+      const workflowNodes = nodes.map((node) => ({
         id: node.id,
         type: node.type || 'default',
-        position: node.position,
+        name: node.data?.name || node.type || '',
+        position: {
+          x: node.position.x,
+          y: node.position.y,
+        },
         data: node.data || {},
       }));
 
-      const workflowEdges: WorkflowEdge[] = edges.map((edge) => ({
+      const workflowEdges = edges.map((edge) => ({
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        label: edge.label as string | undefined,
+        sourceHandle: edge.sourceHandle || null,
+        label: (edge.label as string | undefined) || null,
+        condition: null,
       }));
 
       await updateWorkflow(workflowId, {
@@ -144,6 +319,7 @@ export function WorkflowEditorPage() {
     } catch (error: any) {
       console.error('Failed to save workflow:', error);
       message.error(`保存失败: ${error.message}`);
+      throw error;
     } finally {
       setIsSaving(false);
     }
@@ -158,10 +334,16 @@ export function WorkflowEditorPage() {
       return;
     }
 
-    execute(workflowId, {
-      initial_input: { message: 'test' },
+    // 先保存工作流
+    handleSave().then(() => {
+      // 保存成功后执行
+      execute(workflowId, {
+        initial_input: { message: 'test' },
+      });
+    }).catch((error) => {
+      message.error(`保存失败，无法执行: ${error.message}`);
     });
-  }, [workflowId, execute]);
+  }, [workflowId, execute, handleSave]);
 
   /**
    * 显示执行错误
@@ -173,39 +355,31 @@ export function WorkflowEditorPage() {
   }, [executionError]);
 
   /**
-   * 更新节点状态（根据执行状态）
+   * 更新节点状态和输出（根据执行状态）
    */
   useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => {
         const status = nodeStatusMap[node.id];
-        if (status) {
+        const output = nodeOutputMap[node.id];
+
+        if (status || output) {
           return {
             ...node,
             data: {
               ...node.data,
-              status,
-            },
-            style: {
-              ...node.style,
-              backgroundColor:
-                status === 'running'
-                  ? '#1890ff'
-                  : status === 'completed'
-                    ? '#52c41a'
-                    : status === 'error'
-                      ? '#ff4d4f'
-                      : undefined,
+              status: status || node.data.status,
+              output: output || node.data.output,
             },
           };
         }
         return node;
       })
     );
-  }, [nodeStatusMap]);
+  }, [nodeStatusMap, nodeOutputMap]);
 
   return (
-    <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0 }}>
       {/* 头部工具栏 */}
       <div
         style={{
@@ -214,10 +388,15 @@ export function WorkflowEditorPage() {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          backgroundColor: '#fff',
+          zIndex: 10,
         }}
       >
-        <h1 style={{ margin: 0 }}>工作流编辑器</h1>
+        <h1 style={{ margin: 0, fontSize: '20px' }}>工作流编辑器 - ID: {workflowId}</h1>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <Button icon={<CodeOutlined />} onClick={() => setExportModalOpen(true)}>
+            导出代码
+          </Button>
           <Button icon={<SaveOutlined />} onClick={handleSave} loading={isSaving}>
             保存
           </Button>
@@ -232,22 +411,99 @@ export function WorkflowEditorPage() {
         </div>
       </div>
 
-      {/* React Flow 画布 */}
-      <div style={{ flex: 1 }} ref={reactFlowWrapper}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onInit={setReactFlowInstance}
-          fitView
+      {/* 主内容区域 */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* 左侧节点调色板 */}
+        <NodePalette onAddNode={handleAddNode} />
+
+        {/* React Flow 画布 */}
+        <div style={{ flex: 1, position: 'relative' }} ref={reactFlowWrapper}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onInit={setReactFlowInstance}
+            fitView
+          >
+            <Background gap={16} size={1} />
+            <Controls />
+            <MiniMap />
+          </ReactFlow>
+        </div>
+
+        {/* 右侧AI聊天框 */}
+        <div
+          data-testid="ai-chat-panel"
+          style={{
+            width: chatPanelCollapsed ? '48px' : '400px',
+            height: '100%',
+            backgroundColor: '#fff',
+            borderLeft: '1px solid #f0f0f0',
+            display: 'flex',
+            flexDirection: 'column',
+            transition: 'width 0.3s ease',
+            overflow: 'hidden',
+          }}
         >
-          <Background gap={16} size={1} />
-          <Controls />
-          <MiniMap />
-        </ReactFlow>
+          {/* 聊天框标题栏 */}
+          <div
+            style={{
+              padding: '12px 16px',
+              borderBottom: '1px solid #f0f0f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: '#fafafa',
+              minHeight: '48px',
+            }}
+          >
+            {!chatPanelCollapsed && (
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>AI 助手</h3>
+            )}
+            <Button
+              type="text"
+              size="small"
+              icon={chatPanelCollapsed ? <RightOutlined /> : <LeftOutlined />}
+              onClick={() => setChatPanelCollapsed(!chatPanelCollapsed)}
+              aria-label={chatPanelCollapsed ? '展开' : '折叠'}
+              style={{ marginLeft: chatPanelCollapsed ? 0 : 'auto' }}
+            />
+          </div>
+
+          {/* 聊天框内容 */}
+          {!chatPanelCollapsed && (
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <WorkflowAIChat
+                workflowId={workflowId || 'default'}
+                onWorkflowUpdate={handleWorkflowUpdate}
+                showWelcome={true}
+              />
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* 节点配置面板 */}
+      <NodeConfigPanel
+        open={configPanelOpen}
+        node={selectedNode}
+        onClose={() => setConfigPanelOpen(false)}
+        onSave={handleSaveNodeConfig}
+      />
+
+      {/* 代码导出对话框 */}
+      <CodeExportModal
+        open={exportModalOpen}
+        nodes={nodes}
+        edges={edges}
+        onClose={() => setExportModalOpen(false)}
+      />
 
       {/* 执行日志面板 */}
       {isExecuting || executionLog.length > 0 ? (

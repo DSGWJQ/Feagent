@@ -211,3 +211,40 @@ class UpdateWorkflowRequest(BaseModel):
     edges: list[EdgeDTO] = Field(default_factory=list, description="边列表")
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChatRequest(BaseModel):
+    """对话请求 DTO
+
+    业务场景：用户通过对话式交互修改工作流
+
+    字段：
+    - message: 用户消息（如"添加一个HTTP节点"）
+
+    验证规则：
+    - message 不能为空
+    """
+
+    message: str = Field(..., min_length=1, description="用户消息")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ChatResponse(BaseModel):
+    """对话响应 DTO
+
+    业务场景：返回修改后的工作流和AI回复消息
+
+    字段：
+    - workflow: 更新后的工作流
+    - ai_message: AI 回复消息
+
+    注意：
+    - workflow 包含完整的 nodes 和 edges
+    - ai_message 描述了做了什么修改
+    """
+
+    workflow: "WorkflowResponse"
+    ai_message: str = Field(..., description="AI 回复消息")
+
+    model_config = ConfigDict(from_attributes=True)

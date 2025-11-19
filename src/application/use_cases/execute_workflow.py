@@ -11,11 +11,12 @@
 - 输入输出明确：使用 Input/Output 对象
 """
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
 
 from src.domain.exceptions import DomainError
+from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.services.workflow_executor import WorkflowExecutor
 
@@ -54,13 +55,19 @@ class ExecuteWorkflowUseCase:
 
     依赖：
     - WorkflowRepository: 工作流仓储接口
+    - NodeExecutorRegistry: 节点执行器注册表
     """
 
-    def __init__(self, workflow_repository: WorkflowRepository):
+    def __init__(
+        self,
+        workflow_repository: WorkflowRepository,
+        executor_registry: NodeExecutorRegistry | None = None,
+    ):
         """初始化 Use Case
 
         参数：
             workflow_repository: 工作流仓储接口
+            executor_registry: 节点执行器注册表
 
         为什么通过构造函数注入依赖？
         - 依赖倒置：Use Case 依赖接口，不依赖具体实现
@@ -68,8 +75,9 @@ class ExecuteWorkflowUseCase:
         - 灵活性：可以轻松切换不同的 Repository 实现
         """
         self.workflow_repository = workflow_repository
+        self.executor_registry = executor_registry
 
-    def execute(self, input_data: ExecuteWorkflowInput) -> dict[str, Any]:
+    async def execute(self, input_data: ExecuteWorkflowInput) -> dict[str, Any]:
         """执行工作流（非流式）
 
         业务流程：
@@ -94,10 +102,10 @@ class ExecuteWorkflowUseCase:
         workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
 
         # 2. 创建执行器
-        executor = WorkflowExecutor()
+        executor = WorkflowExecutor(executor_registry=self.executor_registry)
 
         # 3. 执行工作流
-        final_result = executor.execute(workflow, input_data.initial_input)
+        final_result = await executor.execute(workflow, input_data.initial_input)
 
         # 4. 返回结果
         return {
@@ -105,16 +113,17 @@ class ExecuteWorkflowUseCase:
             "final_result": final_result,
         }
 
-    def execute_streaming(
+    async def execute_streaming(
         self, input_data: ExecuteWorkflowInput
-    ) -> Generator[dict[str, Any], None, None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """执行工作流（流式返回）
 
         业务流程：
         1. 获取工作流
         2. 创建 WorkflowExecutor
-        3. 执行工作流，逐个节点生成事件
-        4. 生成最终完成事件
+        3. 设置事件回调
+        4. 执行工作流，通过回调生成事件
+        5. 生成最终完成事件
 
         参数：
             input_data: 输入参数
@@ -123,6 +132,7 @@ class ExecuteWorkflowUseCase:
             事件字典（SSE 格式）：
             - node_start: 节点开始执行
             - node_complete: 节点执行完成
+            - node_error: 节点执行失败
             - workflow_complete: 工作流执行完成
             - workflow_error: 工作流执行失败
 
@@ -134,53 +144,26 @@ class ExecuteWorkflowUseCase:
             workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
 
             # 2. 创建执行器
-            executor = WorkflowExecutor()
+            executor = WorkflowExecutor(executor_registry=self.executor_registry)
 
-            # 3. 拓扑排序
-            sorted_nodes = executor._topological_sort(workflow)
+            # 3. 创建事件队列
+            events: list[dict[str, Any]] = []
 
-            # 4. 逐个执行节点，生成事件
-            for node in sorted_nodes:
-                # 生成 node_start 事件
-                yield {
-                    "type": "node_start",
-                    "node_id": node.id,
-                    "node_type": node.type.value,
-                    "node_name": node.name,
-                }
+            def event_callback(event_type: str, data: dict[str, Any]) -> None:
+                """事件回调函数"""
+                events.append({"type": event_type, **data})
 
-                # 获取节点输入
-                inputs = executor._get_node_inputs(node, workflow)
+            # 4. 设置事件回调
+            executor.set_event_callback(event_callback)
 
-                # 执行节点
-                output = executor._execute_node(node, inputs, input_data.initial_input)
+            # 5. 执行工作流
+            final_result = await executor.execute(workflow, input_data.initial_input)
 
-                # 存储节点输出
-                executor._node_outputs[node.id] = output
+            # 6. 生成所有事件
+            for event in events:
+                yield event
 
-                # 记录执行日志
-                executor.execution_log.append(
-                    {
-                        "node_id": node.id,
-                        "node_type": node.type.value,
-                        "output": output,
-                    }
-                )
-
-                # 生成 node_complete 事件
-                yield {
-                    "type": "node_complete",
-                    "node_id": node.id,
-                    "output": output,
-                }
-
-            # 5. 获取最终结果
-            from src.domain.value_objects.node_type import NodeType
-
-            end_node = next((n for n in sorted_nodes if n.type == NodeType.END), None)
-            final_result = executor._node_outputs.get(end_node.id) if end_node else None
-
-            # 6. 生成 workflow_complete 事件
+            # 7. 生成 workflow_complete 事件
             yield {
                 "type": "workflow_complete",
                 "result": final_result,

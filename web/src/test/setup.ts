@@ -41,3 +41,14 @@ global.IntersectionObserver = class IntersectionObserver {
   }
   unobserve() {}
 } as any;
+
+// Mock Element.scrollIntoView（聊天组件需要）
+Element.prototype.scrollIntoView = vi.fn();
+
+// Mock ResizeObserver（React Flow 需要）
+global.ResizeObserver = class ResizeObserver {
+  constructor() {}
+  disconnect() {}
+  observe() {}
+  unobserve() {}
+} as any;

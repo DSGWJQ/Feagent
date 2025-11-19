@@ -40,3 +40,10 @@ export {
 export type {
   Result,
 } from './api';
+
+// Chat 相关类型
+export type {
+  ChatMessage,
+  MessageRole,
+  AIReplyRule,
+} from './chat';
