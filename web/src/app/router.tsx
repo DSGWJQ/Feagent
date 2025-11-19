@@ -15,6 +15,7 @@
 
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AgentListTest, CreateAgentPage, AgentDetailPage } from '@/features/agents/pages';
+import { WorkflowEditorPage } from '@/features/workflows/pages';
 
 /**
  * 路由配置
@@ -41,6 +42,10 @@ export const router = createBrowserRouter([
   {
     path: '/agents/:id',
     element: <AgentDetailPage />,
+  },
+  {
+    path: '/workflows/:id/edit',
+    element: <WorkflowEditorPage />,
   },
 ]);
 

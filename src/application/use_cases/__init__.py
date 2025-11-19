@@ -14,10 +14,22 @@
 
 from src.application.use_cases.create_agent import CreateAgentInput, CreateAgentUseCase
 from src.application.use_cases.execute_run import ExecuteRunInput, ExecuteRunUseCase
+from src.application.use_cases.execute_workflow import (
+    ExecuteWorkflowInput,
+    ExecuteWorkflowUseCase,
+)
+from src.application.use_cases.update_workflow_by_drag import (
+    UpdateWorkflowByDragInput,
+    UpdateWorkflowByDragUseCase,
+)
 
 __all__ = [
     "CreateAgentUseCase",
     "CreateAgentInput",
     "ExecuteRunUseCase",
     "ExecuteRunInput",
+    "ExecuteWorkflowUseCase",
+    "ExecuteWorkflowInput",
+    "UpdateWorkflowByDragUseCase",
+    "UpdateWorkflowByDragInput",
 ]

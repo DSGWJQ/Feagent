@@ -307,3 +307,171 @@ class TaskModel(Base):
 
     def __repr__(self) -> str:
         return f"<TaskModel(id={self.id}, run_id={self.run_id}, name={self.name}, status={self.status})>"
+
+
+class WorkflowModel(Base):
+    """Workflow ORM 模型
+
+    表名：workflows
+
+    字段说明：
+    - id: 主键（UUID 字符串，wf_ 前缀）
+    - name: 工作流名称（255 字符）
+    - description: 工作流描述（Text，无长度限制）
+    - status: 工作流状态（draft/published/archived，20 字符）
+    - created_at: 创建时间（自动设置）
+    - updated_at: 更新时间（自动更新）
+
+    关系：
+    - nodes: 一对多关系（一个 Workflow 有多个 Node）
+    - edges: 一对多关系（一个 Workflow 有多个 Edge）
+
+    索引：
+    - idx_workflows_status: status 字段索引（查询特定状态的工作流）
+    - idx_workflows_created_at: created_at 字段索引（按时间排序）
+    """
+
+    __tablename__ = "workflows"
+
+    # 主键
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Workflow ID（wf_ 前缀）")
+
+    # 业务字段
+    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="工作流名称")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="", comment="工作流描述")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", comment="工作流状态"
+    )
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now, comment="更新时间"
+    )
+
+    # 关系（一对多：一个 Workflow 有多个 Node）
+    # cascade="all, delete-orphan": 删除 Workflow 时级联删除所有 Node
+    # back_populates: 双向关系（NodeModel.workflow）
+    nodes: Mapped[list["NodeModel"]] = relationship(
+        "NodeModel", back_populates="workflow", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    # 关系（一对多：一个 Workflow 有多个 Edge）
+    # cascade="all, delete-orphan": 删除 Workflow 时级联删除所有 Edge
+    # back_populates: 双向关系（EdgeModel.workflow）
+    edges: Mapped[list["EdgeModel"]] = relationship(
+        "EdgeModel", back_populates="workflow", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    # 索引
+    __table_args__ = (
+        Index("idx_workflows_status", "status"),  # 查询特定状态的工作流
+        Index("idx_workflows_created_at", "created_at"),  # 按时间排序
+    )
+
+    def __repr__(self) -> str:
+        return f"<WorkflowModel(id={self.id}, name={self.name}, status={self.status})>"
+
+
+class NodeModel(Base):
+    """Node ORM 模型
+
+    表名：nodes
+
+    字段说明：
+    - id: 主键（UUID 字符串，node_ 前缀）
+    - workflow_id: 外键（关联 Workflow）
+    - type: 节点类型（http/transform/database 等，20 字符）
+    - name: 节点名称（255 字符）
+    - config: 节点配置（JSON 格式）
+    - position_x: 节点 X 坐标（浮点数）
+    - position_y: 节点 Y 坐标（浮点数）
+
+    关系：
+    - workflow: 多对一关系（多个 Node 属于一个 Workflow）
+
+    索引：
+    - idx_nodes_workflow_id: workflow_id 字段索引（查询 Workflow 的所有 Node）
+    """
+
+    __tablename__ = "nodes"
+
+    # 主键
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Node ID（node_ 前缀）")
+
+    # 外键
+    workflow_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Workflow ID",
+    )
+
+    # 业务字段
+    type: Mapped[str] = mapped_column(String(20), nullable=False, comment="节点类型")
+    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="节点名称")
+    config: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict, comment="节点配置（JSON）"
+    )
+    position_x: Mapped[float] = mapped_column(nullable=False, comment="节点 X 坐标")
+    position_y: Mapped[float] = mapped_column(nullable=False, comment="节点 Y 坐标")
+
+    # 关系（多对一：多个 Node 属于一个 Workflow）
+    # back_populates: 双向关系（WorkflowModel.nodes）
+    workflow: Mapped["WorkflowModel"] = relationship("WorkflowModel", back_populates="nodes")
+
+    # 索引
+    __table_args__ = (Index("idx_nodes_workflow_id", "workflow_id"),)  # 查询 Workflow 的所有 Node
+
+    def __repr__(self) -> str:
+        return f"<NodeModel(id={self.id}, workflow_id={self.workflow_id}, name={self.name}, type={self.type})>"
+
+
+class EdgeModel(Base):
+    """Edge ORM 模型
+
+    表名：edges
+
+    字段说明：
+    - id: 主键（UUID 字符串，edge_ 前缀）
+    - workflow_id: 外键（关联 Workflow）
+    - source_node_id: 源节点 ID（36 字符）
+    - target_node_id: 目标节点 ID（36 字符）
+    - condition: 条件表达式（Text，可选）
+
+    关系：
+    - workflow: 多对一关系（多个 Edge 属于一个 Workflow）
+
+    索引：
+    - idx_edges_workflow_id: workflow_id 字段索引（查询 Workflow 的所有 Edge）
+    """
+
+    __tablename__ = "edges"
+
+    # 主键
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Edge ID（edge_ 前缀）")
+
+    # 外键
+    workflow_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Workflow ID",
+    )
+
+    # 业务字段
+    source_node_id: Mapped[str] = mapped_column(String(36), nullable=False, comment="源节点 ID")
+    target_node_id: Mapped[str] = mapped_column(String(36), nullable=False, comment="目标节点 ID")
+    condition: Mapped[str | None] = mapped_column(Text, nullable=True, comment="条件表达式")
+
+    # 关系（多对一：多个 Edge 属于一个 Workflow）
+    # back_populates: 双向关系（WorkflowModel.edges）
+    workflow: Mapped["WorkflowModel"] = relationship("WorkflowModel", back_populates="edges")
+
+    # 索引
+    __table_args__ = (Index("idx_edges_workflow_id", "workflow_id"),)  # 查询 Workflow 的所有 Edge
+
+    def __repr__(self) -> str:
+        return f"<EdgeModel(id={self.id}, workflow_id={self.workflow_id}, source={self.source_node_id}, target={self.target_node_id})>"

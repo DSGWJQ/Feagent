@@ -5,6 +5,8 @@
 工具列表：
 1. HTTP 请求工具 - 发送 HTTP 请求
 2. 文件读取工具 - 读取文件内容
+3. Python 执行工具 - 执行 Python 代码
+4. 数据库查询工具 - 查询数据库（只读）
 
 使用示例：
 >>> from src.lc.tools import get_http_request_tool, get_read_file_tool
@@ -23,12 +25,16 @@
 >>> print(f"可用工具：{[tool.name for tool in tools]}")
 """
 
+from src.lc.tools.database_tool import get_database_query_tool
 from src.lc.tools.file_tool import get_read_file_tool
 from src.lc.tools.http_tool import get_http_request_tool
+from src.lc.tools.python_tool import get_python_execution_tool
 
 __all__ = [
     "get_http_request_tool",
     "get_read_file_tool",
+    "get_python_execution_tool",
+    "get_database_query_tool",
     "get_all_tools",
 ]
 
@@ -47,9 +53,11 @@ def get_all_tools():
     示例：
     >>> tools = get_all_tools()
     >>> print(f"可用工具：{[tool.name for tool in tools]}")
-    ['http_request', 'read_file']
+    ['http_request', 'read_file', 'execute_python', 'query_database']
     """
     return [
         get_http_request_tool(),
         get_read_file_tool(),
+        get_python_execution_tool(),
+        get_database_query_tool(),
     ]

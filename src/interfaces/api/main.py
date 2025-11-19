@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
-from src.interfaces.api.routes import agents, runs
+from src.interfaces.api.routes import agents, runs, workflows
 
 
 @asynccontextmanager
@@ -153,6 +153,7 @@ app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
 # 因此需要注册两次，使用不同的前缀
 app.include_router(runs.router, prefix="/api/agents", tags=["Runs"])  # POST /{agent_id}/runs
 app.include_router(runs.router, prefix="/api/runs", tags=["Runs"])  # GET /{run_id}
+app.include_router(workflows.router, prefix="/api", tags=["Workflows"])  # /workflows/{workflow_id}
 
 
 if __name__ == "__main__":

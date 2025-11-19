@@ -21,9 +21,13 @@ from src.infrastructure.database.repositories.run_repository import (
 from src.infrastructure.database.repositories.task_repository import (
     SQLAlchemyTaskRepository,
 )
+from src.infrastructure.database.repositories.workflow_repository import (
+    SQLAlchemyWorkflowRepository,
+)
 
 __all__ = [
     "SQLAlchemyAgentRepository",
     "SQLAlchemyRunRepository",
     "SQLAlchemyTaskRepository",
+    "SQLAlchemyWorkflowRepository",
 ]
