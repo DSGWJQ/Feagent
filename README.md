@@ -2,6 +2,29 @@
 
 企业级 Agent 编排与执行平台 - 基于 FastAPI + LangChain + DDD-lite 架构
 
+---
+
+## ⚠️ 开发前必读
+
+**在开始任何开发任务前，请先查看：**
+
+📐 **[四层架构规范](./docs/ARCHITECTURE_GUIDE.md)** ⭐⭐⭐
+
+- **用途**：5 分钟快速了解四层架构，防止开发偏离规范
+- **内容**：Interface → Application → Domain → Infrastructure
+- **包含**：各层职责、DTO 转换、三层校验、聚合根、常见错误
+
+📚 **[完整开发规范](./docs/DEVELOPMENT_GUIDE.md)**
+
+- **用途**：详细的开发规范（TDD、编码规范、测试规范等）
+- **何时查看**：需要了解完整规范时
+
+📋 **[文档索引](./docs/README.md)**
+
+- **用途**：查找所有项目文档
+
+---
+
 ## 项目简介
 
 Agent 中台系统是一个企业级的 AI Agent 编排与执行平台，支持用户通过"起点 + 目的"一句话创建 Agent，系统自动生成执行计划并完成任务。
@@ -99,11 +122,16 @@ agent_data/
 
 ```
 
-## 开发规范
+## 开发文档
 
-- [完整开发规范](docs/develop_document.md)
+### 核心文档（必读）
+- 📐 [四层架构规范](docs/ARCHITECTURE_GUIDE.md) ⭐⭐⭐ - 开发前必读（5 分钟）
+- 📚 [完整开发规范](docs/DEVELOPMENT_GUIDE.md) - TDD、编码规范、测试规范
+- 📋 [需求分析](docs/需求分析.md) - 项目需求与技术选型
+
+### 其他文档
 - [前端架构总结](docs/frontend_architecture_summary.md)
-- [需求分析](docs/需求分析.md)
+- [文档索引](docs/README.md) - 查找所有文档
 
 ## 核心概念
 
