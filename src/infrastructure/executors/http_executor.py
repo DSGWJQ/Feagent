@@ -21,7 +21,7 @@ class HttpExecutor(NodeExecutor):
 
     async def execute(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
         """执行 HTTP 请求节点
-        
+
         配置参数：
             url: 请求 URL
             method: 请求方法（GET, POST, PUT, DELETE, PATCH）
@@ -69,4 +69,3 @@ class HttpExecutor(NodeExecutor):
             raise DomainError(f"HTTP 请求失败: {e.response.status_code} {e.response.text}")
         except httpx.RequestError as e:
             raise DomainError(f"HTTP 请求错误: {str(e)}")
-

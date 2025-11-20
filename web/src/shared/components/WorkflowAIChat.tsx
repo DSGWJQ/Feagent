@@ -149,26 +149,86 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
       className="fake-ai-chat"
       title={
         <Space>
-          <RobotOutlined />
-          <span>AI助手</span>
+          <RobotOutlined style={{ color: '#8b5cf6' }} />
+          <span style={{ color: '#fafafa' }}>AI助手</span>
         </Space>
       }
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-      bodyStyle={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#141414',
+        borderColor: '#262626',
+      }}
+      headStyle={{
+        backgroundColor: '#1a1a1a',
+        borderBottom: '1px solid #262626',
+        color: '#fafafa',
+      }}
+      bodyStyle={{
+        flex: 1,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#141414',
+      }}
     >
       {/* 消息列表 */}
-      <div className="fake-ai-chat__messages" style={{ flex: 1, overflowY: 'auto', marginBottom: 16 }}>
+      <div className="fake-ai-chat__messages" style={{
+        flex: 1,
+        overflowY: 'auto',
+        marginBottom: 16,
+        padding: '16px',
+      }}>
         {messages.map((msg) => (
           <div
             key={msg.id}
             className={`fake-ai-chat__message fake-ai-chat__message--${msg.role}`}
+            style={{
+              display: 'flex',
+              gap: '12px',
+              marginBottom: '16px',
+              animation: 'fadeIn 0.3s ease-in',
+            }}
           >
-            <div className="fake-ai-chat__message-icon">
+            <div
+              className="fake-ai-chat__message-icon"
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: msg.role === 'user' ? '#3b82f6' : '#8b5cf6',
+                color: '#fff',
+                flexShrink: 0,
+              }}
+            >
               {msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
             </div>
-            <div className="fake-ai-chat__message-content">
-              <div className="fake-ai-chat__message-text">{msg.content}</div>
-              <div className="fake-ai-chat__message-time">
+            <div className="fake-ai-chat__message-content" style={{ flex: 1 }}>
+              <div
+                className="fake-ai-chat__message-text"
+                style={{
+                  backgroundColor: msg.role === 'user' ? '#1a1a1a' : '#262626',
+                  color: '#fafafa',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {msg.content}
+              </div>
+              <div
+                className="fake-ai-chat__message-time"
+                style={{
+                  fontSize: '12px',
+                  color: '#8c8c8c',
+                  marginTop: '4px',
+                }}
+              >
                 {msg.timestamp.toLocaleTimeString('zh-CN')}
               </div>
             </div>
@@ -177,12 +237,41 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
 
         {/* 加载状态 */}
         {isLoading && (
-          <div className="fake-ai-chat__message fake-ai-chat__message--assistant">
-            <div className="fake-ai-chat__message-icon">
+          <div
+            className="fake-ai-chat__message fake-ai-chat__message--assistant"
+            style={{
+              display: 'flex',
+              gap: '12px',
+              marginBottom: '16px',
+            }}
+          >
+            <div
+              className="fake-ai-chat__message-icon"
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#8b5cf6',
+                color: '#fff',
+              }}
+            >
               <LoadingOutlined />
             </div>
             <div className="fake-ai-chat__message-content">
-              <div className="fake-ai-chat__message-text">AI正在思考中...</div>
+              <div
+                className="fake-ai-chat__message-text"
+                style={{
+                  backgroundColor: '#262626',
+                  color: '#fafafa',
+                  padding: '12px',
+                  borderRadius: '8px',
+                }}
+              >
+                AI正在思考中...
+              </div>
             </div>
           </div>
         )}
@@ -199,12 +288,21 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
           placeholder="输入消息... (Enter发送, Shift+Enter换行)"
           autoSize={{ minRows: 1, maxRows: 4 }}
           disabled={isLoading}
+          style={{
+            backgroundColor: '#1a1a1a',
+            borderColor: '#434343',
+            color: '#fafafa',
+          }}
         />
         <Button
           type="primary"
           icon={<SendOutlined />}
           onClick={handleSend}
           disabled={isLoading || !inputValue.trim()}
+          style={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            borderColor: 'transparent',
+          }}
         >
           发送
         </Button>

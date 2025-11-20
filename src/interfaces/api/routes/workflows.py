@@ -8,10 +8,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
-from langchain_openai import ChatOpenAI
 
 from src.application.use_cases.execute_workflow import (
     ExecuteWorkflowInput,
@@ -120,15 +119,18 @@ def update_workflow(
     - 400: 业务规则验证失败（如边引用的节点不存在）
     """
     import logging
+
     logger = logging.getLogger(__name__)
 
     try:
-        logger.info(f"[PATCH] 开始更新工作流: workflow_id={workflow_id!r} (type={type(workflow_id).__name__})")
+        logger.info(
+            f"[PATCH] 开始更新工作流: workflow_id={workflow_id!r} (type={type(workflow_id).__name__})"
+        )
         logger.info(f"[PATCH] 请求数据: nodes={len(request.nodes)}, edges={len(request.edges)}")
 
         # 1. 创建 Repository
         workflow_repository = SQLAlchemyWorkflowRepository(db)
-        logger.info(f"[PATCH] Repository 创建成功")
+        logger.info("[PATCH] Repository 创建成功")
 
         # 2. 先测试能否找到工作流
         test_find = workflow_repository.find_by_id(workflow_id)
@@ -143,7 +145,7 @@ def update_workflow(
 
         # 4. 创建 Use Case
         use_case = UpdateWorkflowByDragUseCase(workflow_repository=workflow_repository)
-        logger.info(f"[PATCH] Use Case 创建成功")
+        logger.info("[PATCH] Use Case 创建成功")
 
         # 5. 执行 Use Case
         input_data = UpdateWorkflowByDragInput(
@@ -151,7 +153,7 @@ def update_workflow(
             nodes=nodes,
             edges=edges,
         )
-        logger.info(f"[PATCH] 开始执行 Use Case...")
+        logger.info("[PATCH] 开始执行 Use Case...")
         workflow = use_case.execute(input_data)
         logger.info(f"[PATCH] Use Case 执行成功: workflow_id={workflow.id}")
 

@@ -82,12 +82,13 @@ def create_test_workflow():
 
         # 保存
         repository = SQLAlchemyWorkflowRepository(session)
-        
+
         # 删除已存在的
         try:
             existing = repository.get_by_id("1")
             if existing:
                 from src.infrastructure.database.models import WorkflowModel
+
                 session.query(WorkflowModel).filter_by(id="1").delete()
                 session.commit()
         except:
@@ -108,4 +109,3 @@ def create_test_workflow():
 
 if __name__ == "__main__":
     create_test_workflow()
-

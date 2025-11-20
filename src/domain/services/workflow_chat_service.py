@@ -50,9 +50,7 @@ class WorkflowChatService:
         self.llm = llm
         self.parser = JsonOutputParser()
 
-    def process_message(
-        self, workflow: Workflow, user_message: str
-    ) -> tuple[Workflow, str]:
+    def process_message(self, workflow: Workflow, user_message: str) -> tuple[Workflow, str]:
         """处理用户消息，修改工作流
 
         参数：
@@ -188,9 +186,7 @@ class WorkflowChatService:
 
 请生成修改指令（JSON 格式）。"""
 
-    def _apply_modifications(
-        self, workflow: Workflow, modifications: dict[str, Any]
-    ) -> Workflow:
+    def _apply_modifications(self, workflow: Workflow, modifications: dict[str, Any]) -> Workflow:
         """应用修改到工作流
 
         参数：
@@ -223,9 +219,7 @@ class WorkflowChatService:
                 type=NodeType(node_data["type"]),
                 name=node_data["name"],
                 config=node_data.get("config", {}),
-                position=Position(
-                    x=node_data["position"]["x"], y=node_data["position"]["y"]
-                ),
+                position=Position(x=node_data["position"]["x"], y=node_data["position"]["y"]),
             )
             new_nodes.append(new_node)
 
@@ -280,4 +274,3 @@ class WorkflowChatService:
         )
 
         return modified_workflow
-

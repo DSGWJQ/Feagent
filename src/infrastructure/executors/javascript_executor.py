@@ -15,13 +15,13 @@ from src.domain.ports.node_executor import NodeExecutor
 
 class JavaScriptExecutor(NodeExecutor):
     """JavaScript 代码执行节点执行器
-    
+
     注意：这是一个简化实现，实际应该使用 Node.js 或 QuickJS 等 JS 引擎
     """
 
     async def execute(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
         """执行 JavaScript 节点
-        
+
         配置参数：
             code: JavaScript 代码
         """
@@ -45,14 +45,14 @@ class JavaScriptExecutor(NodeExecutor):
             # 移除 JavaScript 特有的语法
             python_code = code.replace("const ", "").replace("let ", "").replace("var ", "")
             python_code = python_code.replace("===", "==").replace("!==", "!=")
-            
+
             # 执行代码
             exec(python_code, exec_context)
-            
+
             # 返回结果（假设代码中有 return 语句）
             # 这是一个简化实现，实际应该捕获 return 值
             return exec_context.get("result", inputs.get(next(iter(inputs))) if inputs else None)
-            
+
         except Exception as e:
             raise DomainError(f"JavaScript 代码执行失败: {str(e)}")
 
@@ -97,4 +97,3 @@ class ConditionalExecutor(NodeExecutor):
             return {"result": bool(result), "branch": "true" if result else "false"}
         except Exception as e:
             raise DomainError(f"条件表达式评估失败: {str(e)}")
-

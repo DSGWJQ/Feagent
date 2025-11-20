@@ -18,7 +18,7 @@ class StartExecutor(NodeExecutor):
 
     async def execute(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
         """执行 Start 节点
-        
+
         Start 节点返回初始输入
         """
         return context.get("initial_input", {})
@@ -29,7 +29,7 @@ class EndExecutor(NodeExecutor):
 
     async def execute(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
         """执行 End 节点
-        
+
         End 节点返回第一个输入
         """
         if inputs:
@@ -37,4 +37,3 @@ class EndExecutor(NodeExecutor):
             first_key = next(iter(inputs))
             return inputs[first_key]
         return None
-

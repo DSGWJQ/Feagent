@@ -13,7 +13,7 @@ from src.domain.ports.node_executor import NodeExecutor
 
 class LlmExecutor(NodeExecutor):
     """LLM 文本生成节点执行器
-    
+
     支持 OpenAI、Anthropic、Google 等模型
     """
 
@@ -22,7 +22,7 @@ class LlmExecutor(NodeExecutor):
 
     async def execute(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
         """执行 LLM 节点
-        
+
         配置参数：
             model: 模型名称（如 openai/gpt-4）
             temperature: 温度参数
@@ -57,7 +57,9 @@ class LlmExecutor(NodeExecutor):
         # 调用对应的 LLM API
         try:
             if provider == "openai":
-                return await self._call_openai(model_name, prompt, temperature, max_tokens, structured_output, schema_str)
+                return await self._call_openai(
+                    model_name, prompt, temperature, max_tokens, structured_output, schema_str
+                )
             elif provider == "anthropic":
                 return await self._call_anthropic(model_name, prompt, temperature, max_tokens)
             elif provider == "google":
@@ -112,7 +114,9 @@ class LlmExecutor(NodeExecutor):
 
         return content
 
-    async def _call_anthropic(self, model: str, prompt: str, temperature: float, max_tokens: int) -> str:
+    async def _call_anthropic(
+        self, model: str, prompt: str, temperature: float, max_tokens: int
+    ) -> str:
         """调用 Anthropic API"""
         try:
             from anthropic import AsyncAnthropic
@@ -130,8 +134,9 @@ class LlmExecutor(NodeExecutor):
 
         return response.content[0].text
 
-    async def _call_google(self, model: str, prompt: str, temperature: float, max_tokens: int) -> str:
+    async def _call_google(
+        self, model: str, prompt: str, temperature: float, max_tokens: int
+    ) -> str:
         """调用 Google Gemini API"""
         # TODO: 实现 Google Gemini API 调用
         raise DomainError("Google Gemini API 暂未实现")
-

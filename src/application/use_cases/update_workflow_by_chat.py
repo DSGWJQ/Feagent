@@ -61,9 +61,7 @@ class UpdateWorkflowByChatUseCase:
         self.workflow_repository = workflow_repository
         self.chat_service = chat_service
 
-    def execute(
-        self, input_data: UpdateWorkflowByChatInput
-    ) -> tuple[Workflow, str]:
+    def execute(self, input_data: UpdateWorkflowByChatInput) -> tuple[Workflow, str]:
         """执行用例
 
         参数：
@@ -83,9 +81,7 @@ class UpdateWorkflowByChatUseCase:
         # 2. 获取工作流
         workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
         if not workflow:
-            raise NotFoundError(
-                entity_type="Workflow", entity_id=input_data.workflow_id
-            )
+            raise NotFoundError(entity_type="Workflow", entity_id=input_data.workflow_id)
 
         # 3. 调用 Domain Service 处理消息
         modified_workflow, ai_message = self.chat_service.process_message(
@@ -98,4 +94,3 @@ class UpdateWorkflowByChatUseCase:
 
         # 5. 返回结果
         return modified_workflow, ai_message
-

@@ -15,7 +15,8 @@ Domain 层服务：负责执行工作流
 """
 
 from collections import defaultdict, deque
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
@@ -73,10 +74,13 @@ class WorkflowExecutor:
         for node in sorted_nodes:
             # 发送节点开始事件
             if self._event_callback:
-                self._event_callback("node_start", {
-                    "node_id": node.id,
-                    "node_type": node.type.value,
-                })
+                self._event_callback(
+                    "node_start",
+                    {
+                        "node_id": node.id,
+                        "node_type": node.type.value,
+                    },
+                )
 
             try:
                 # 获取节点的输入（来自前驱节点的输出）
@@ -99,20 +103,26 @@ class WorkflowExecutor:
 
                 # 发送节点完成事件
                 if self._event_callback:
-                    self._event_callback("node_complete", {
-                        "node_id": node.id,
-                        "node_type": node.type.value,
-                        "output": output,
-                    })
+                    self._event_callback(
+                        "node_complete",
+                        {
+                            "node_id": node.id,
+                            "node_type": node.type.value,
+                            "output": output,
+                        },
+                    )
 
             except Exception as e:
                 # 发送节点错误事件
                 if self._event_callback:
-                    self._event_callback("node_error", {
-                        "node_id": node.id,
-                        "node_type": node.type.value,
-                        "error": str(e),
-                    })
+                    self._event_callback(
+                        "node_error",
+                        {
+                            "node_id": node.id,
+                            "node_type": node.type.value,
+                            "error": str(e),
+                        },
+                    )
                 raise
 
         # 4. 返回 End 节点的输出
@@ -186,7 +196,9 @@ class WorkflowExecutor:
 
         return inputs
 
-    async def _execute_node(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
+    async def _execute_node(
+        self, node: Node, inputs: dict[str, Any], context: dict[str, Any]
+    ) -> Any:
         """执行单个节点
 
         参数：

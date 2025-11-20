@@ -379,25 +379,72 @@ export function WorkflowEditorPage() {
   }, [nodeStatusMap, nodeOutputMap]);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0 }}>
+    <div style={{
+      width: '100vw',
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      backgroundColor: '#0a0a0a', // 深黑色背景
+      color: '#fafafa', // 浅色文字
+    }}>
       {/* 头部工具栏 */}
       <div
         style={{
-          padding: '16px',
-          borderBottom: '1px solid #f0f0f0',
+          padding: '16px 24px',
+          borderBottom: '1px solid #262626',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          backgroundColor: '#fff',
+          backgroundColor: '#141414', // 深色卡片背景
           zIndex: 10,
         }}
       >
-        <h1 style={{ margin: 0, fontSize: '20px' }}>工作流编辑器 - ID: {workflowId}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '8px',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          }}>
+            <span style={{ fontSize: '20px' }}>✨</span>
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#fafafa' }}>
+              AI 工作流构建器
+            </h1>
+            <p style={{ margin: 0, fontSize: '12px', color: '#8c8c8c' }}>
+              可视化工作流设计器
+            </p>
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <Button icon={<CodeOutlined />} onClick={() => setExportModalOpen(true)}>
+          <Button
+            icon={<CodeOutlined />}
+            onClick={() => setExportModalOpen(true)}
+            style={{
+              backgroundColor: '#262626',
+              borderColor: '#434343',
+              color: '#fafafa'
+            }}
+          >
             导出代码
           </Button>
-          <Button icon={<SaveOutlined />} onClick={handleSave} loading={isSaving}>
+          <Button
+            icon={<SaveOutlined />}
+            onClick={handleSave}
+            loading={isSaving}
+            style={{
+              backgroundColor: '#262626',
+              borderColor: '#434343',
+              color: '#fafafa'
+            }}
+          >
             保存
           </Button>
           <Button
@@ -405,8 +452,12 @@ export function WorkflowEditorPage() {
             icon={<PlayCircleOutlined />}
             onClick={handleExecute}
             loading={isExecuting}
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              borderColor: 'transparent',
+            }}
           >
-            执行
+            运行
           </Button>
         </div>
       </div>
@@ -417,7 +468,7 @@ export function WorkflowEditorPage() {
         <NodePalette onAddNode={handleAddNode} />
 
         {/* React Flow 画布 */}
-        <div style={{ flex: 1, position: 'relative' }} ref={reactFlowWrapper}>
+        <div style={{ flex: 1, position: 'relative', backgroundColor: '#0a0a0a' }} ref={reactFlowWrapper}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -430,10 +481,60 @@ export function WorkflowEditorPage() {
             onDragOver={onDragOver}
             onInit={setReactFlowInstance}
             fitView
+            style={{ backgroundColor: '#0a0a0a' }}
           >
-            <Background gap={16} size={1} />
-            <Controls />
-            <MiniMap />
+            <Background
+              gap={16}
+              size={1}
+              color="#262626"
+              style={{ backgroundColor: '#0a0a0a' }}
+            />
+            <Controls
+              style={{
+                button: {
+                  backgroundColor: '#262626',
+                  borderColor: '#434343',
+                  color: '#fafafa'
+                }
+              }}
+            />
+            <MiniMap
+              nodeColor={(node) => {
+                switch (node.type) {
+                  case 'textModel':
+                    return '#8b5cf6'; // 紫色
+                  case 'embeddingModel':
+                    return '#3b82f6'; // 蓝色
+                  case 'tool':
+                    return '#eab308'; // 黄色
+                  case 'structuredOutput':
+                    return '#10b981'; // 绿色
+                  case 'prompt':
+                    return '#ec4899'; // 粉色
+                  case 'imageGeneration':
+                    return '#06b6d4'; // 青色
+                  case 'audio':
+                    return '#f97316'; // 橙色
+                  case 'javascript':
+                    return '#8b5cf6'; // 紫色
+                  case 'start':
+                    return '#a855f7'; // 深紫色
+                  case 'end':
+                    return '#7c3aed'; // 更深紫色
+                  case 'conditional':
+                    return '#ec4899'; // 粉色
+                  case 'httpRequest':
+                    return '#3b82f6'; // 蓝色
+                  default:
+                    return '#8b5cf6';
+                }
+              }}
+              maskColor="rgba(0, 0, 0, 0.6)"
+              style={{
+                backgroundColor: '#141414',
+                border: '1px solid #262626'
+              }}
+            />
           </ReactFlow>
         </div>
 
@@ -443,8 +544,8 @@ export function WorkflowEditorPage() {
           style={{
             width: chatPanelCollapsed ? '48px' : '400px',
             height: '100%',
-            backgroundColor: '#fff',
-            borderLeft: '1px solid #f0f0f0',
+            backgroundColor: '#141414', // 深色背景
+            borderLeft: '1px solid #262626',
             display: 'flex',
             flexDirection: 'column',
             transition: 'width 0.3s ease',
@@ -455,16 +556,16 @@ export function WorkflowEditorPage() {
           <div
             style={{
               padding: '12px 16px',
-              borderBottom: '1px solid #f0f0f0',
+              borderBottom: '1px solid #262626',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              backgroundColor: '#fafafa',
+              backgroundColor: '#1a1a1a',
               minHeight: '48px',
             }}
           >
             {!chatPanelCollapsed && (
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>AI 助手</h3>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#fafafa' }}>AI 助手</h3>
             )}
             <Button
               type="text"
@@ -472,13 +573,16 @@ export function WorkflowEditorPage() {
               icon={chatPanelCollapsed ? <RightOutlined /> : <LeftOutlined />}
               onClick={() => setChatPanelCollapsed(!chatPanelCollapsed)}
               aria-label={chatPanelCollapsed ? '展开' : '折叠'}
-              style={{ marginLeft: chatPanelCollapsed ? 0 : 'auto' }}
+              style={{
+                marginLeft: chatPanelCollapsed ? 0 : 'auto',
+                color: '#fafafa'
+              }}
             />
           </div>
 
           {/* 聊天框内容 */}
           {!chatPanelCollapsed && (
-            <div style={{ flex: 1, overflow: 'hidden' }}>
+            <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#141414' }}>
               <WorkflowAIChat
                 workflowId={workflowId || 'default'}
                 onWorkflowUpdate={handleWorkflowUpdate}
@@ -514,15 +618,15 @@ export function WorkflowEditorPage() {
             top: 64,
             width: '400px',
             height: 'calc(100vh - 64px)',
-            backgroundColor: '#fff',
-            borderLeft: '1px solid #f0f0f0',
+            backgroundColor: '#141414',
+            borderLeft: '1px solid #262626',
             padding: '16px',
             overflowY: 'auto',
           }}
         >
-          <h3>执行日志</h3>
+          <h3 style={{ color: '#fafafa' }}>执行日志</h3>
           {currentNodeId && (
-            <div style={{ marginBottom: '8px', color: '#1890ff' }}>
+            <div style={{ marginBottom: '8px', color: '#3b82f6' }}>
               正在执行节点: {currentNodeId}
             </div>
           )}
@@ -533,14 +637,15 @@ export function WorkflowEditorPage() {
                 style={{
                   marginBottom: '8px',
                   padding: '8px',
-                  backgroundColor: '#f5f5f5',
+                  backgroundColor: '#1a1a1a',
                   borderRadius: '4px',
+                  border: '1px solid #262626',
                 }}
               >
-                <div style={{ fontWeight: 'bold' }}>
+                <div style={{ fontWeight: 'bold', color: '#fafafa' }}>
                   {entry.node_type} ({entry.node_id})
                 </div>
-                <pre style={{ margin: 0, fontSize: '12px' }}>
+                <pre style={{ margin: 0, fontSize: '12px', color: '#8c8c8c' }}>
                   {JSON.stringify(entry.output, null, 2)}
                 </pre>
               </div>

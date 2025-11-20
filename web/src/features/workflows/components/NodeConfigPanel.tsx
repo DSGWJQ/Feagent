@@ -1,6 +1,6 @@
 /**
  * Node Config Panel - 节点配置面板
- * 
+ *
  * 右侧抽屉，用于配置选中节点的参数
  */
 
@@ -16,6 +16,8 @@ import {
   Button,
   Space,
   Divider,
+  ConfigProvider,
+  theme,
 } from 'antd';
 import type { Node } from '@xyflow/react';
 
@@ -367,25 +369,72 @@ export default function NodeConfigPanel({
   };
 
   return (
-    <Drawer
-      title={node ? `Configure ${node.type} Node` : 'Node Configuration'}
-      placement="right"
-      width={480}
-      open={open}
-      onClose={onClose}
-      extra={
-        <Space>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="primary" onClick={handleSave}>
-            Save
-          </Button>
-        </Space>
-      }
+    <ConfigProvider
+      theme={{
+        algorithm: theme.darkAlgorithm,
+        token: {
+          colorBgContainer: '#141414',
+          colorBgElevated: '#1a1a1a',
+          colorBorder: '#262626',
+          colorText: '#fafafa',
+          colorTextSecondary: '#8c8c8c',
+          colorPrimary: '#8b5cf6',
+        },
+      }}
     >
-      <Form form={form} layout="vertical">
-        {renderConfigForm()}
-      </Form>
-    </Drawer>
+      <Drawer
+        title={node ? `配置 ${node.type} 节点` : '节点配置'}
+        placement="right"
+        width={480}
+        open={open}
+        onClose={onClose}
+        styles={{
+          header: {
+            backgroundColor: '#1a1a1a',
+            borderBottom: '1px solid #262626',
+            color: '#fafafa',
+          },
+          body: {
+            backgroundColor: '#141414',
+            color: '#fafafa',
+          },
+        }}
+        extra={
+          <Space>
+            <Button
+              onClick={onClose}
+              style={{
+                backgroundColor: '#262626',
+                borderColor: '#434343',
+                color: '#fafafa',
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              type="primary"
+              onClick={handleSave}
+              style={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderColor: 'transparent',
+              }}
+            >
+              保存
+            </Button>
+          </Space>
+        }
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          style={{
+            color: '#fafafa',
+          }}
+        >
+          {renderConfigForm()}
+        </Form>
+      </Drawer>
+    </ConfigProvider>
   );
 }
 

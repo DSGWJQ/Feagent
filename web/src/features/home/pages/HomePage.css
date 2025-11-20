@@ -1,0 +1,336 @@
+/**
+ * Home Page 样式
+ * 参考 skal-ventures-template 的深色主题和粒子效果
+ */
+
+.home-page {
+  min-height: 100vh;
+  background: #000000;
+  color: #ffffff;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* 粒子背景 */
+.particles-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: 
+    radial-gradient(circle at 20% 50%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(236, 72, 153, 0.1) 0%, transparent 50%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.particles-background::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, 0.03) 2px, rgba(255, 255, 255, 0.03) 4px),
+    repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255, 255, 255, 0.03) 2px, rgba(255, 255, 255, 0.03) 4px);
+  animation: particleMove 20s linear infinite;
+}
+
+@keyframes particleMove {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(50px, 50px);
+  }
+}
+
+/* 顶部导航 */
+.home-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 50;
+  padding: 2rem 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
+  backdrop-filter: blur(10px);
+}
+
+.home-header-content {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.home-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.home-logo-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.home-nav {
+  display: flex;
+  gap: 2.5rem;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.home-nav-link {
+  color: rgba(255, 255, 255, 0.6);
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  font-size: 14px;
+  transition: color 0.15s ease-out;
+}
+
+.home-nav-link:hover {
+  color: rgba(255, 255, 255, 1);
+}
+
+.home-nav-link-highlight {
+  color: #FFC700;
+  font-weight: 600;
+}
+
+.github-login-btn {
+  color: #FFC700 !important;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  font-size: 14px;
+}
+
+.github-login-btn:hover {
+  color: rgba(255, 199, 0, 0.8) !important;
+}
+
+/* Hero 区域 */
+.home-hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  padding: 0 2rem;
+}
+
+.home-hero-content {
+  text-align: center;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Beta 标签 */
+.beta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(38, 38, 38, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid #424242;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 2rem;
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+}
+
+.beta-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #FFC700;
+  box-shadow: 0 0 8px 2px rgba(255, 199, 0, 0.5);
+}
+
+/* 主标题 */
+.home-title {
+  font-size: clamp(3rem, 8vw, 5rem);
+  font-weight: 200;
+  line-height: 1.2;
+  margin-bottom: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.home-title-italic {
+  font-weight: 300;
+  font-style: italic;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 副标题 */
+.home-subtitle {
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.875rem, 2vw, 1rem);
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 440px;
+  margin: 0 auto 3.5rem;
+  line-height: 1.6;
+}
+
+/* CTA 按钮 */
+.home-cta-btn {
+  height: 56px !important;
+  padding: 0 2.5rem !important;
+  font-size: 16px !important;
+  font-family: 'Courier New', monospace !important;
+  text-transform: uppercase !important;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4) !important;
+  transition: all 0.3s ease !important;
+  margin-right: 1rem;
+}
+
+.home-cta-btn:hover,
+.home-cta-btn.hovering {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 30px rgba(102, 126, 234, 0.6) !important;
+}
+
+.home-secondary-btn {
+  height: 56px !important;
+  padding: 0 2.5rem !important;
+  font-size: 16px !important;
+  font-family: 'Courier New', monospace !important;
+  text-transform: uppercase !important;
+  background: transparent !important;
+  border: 1px solid #424242 !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+  transition: all 0.3s ease !important;
+}
+
+.home-secondary-btn:hover {
+  border-color: #FFC700 !important;
+  color: #FFC700 !important;
+}
+
+/* 功能区域 */
+.home-section {
+  padding: 6rem 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.home-section-content {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.home-section-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 200;
+  text-align: center;
+  margin-bottom: 4rem;
+  letter-spacing: -0.02em;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+.feature-card {
+  background: rgba(26, 26, 26, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid #262626;
+  padding: 2.5rem;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.feature-card:hover {
+  border-color: #8b5cf6;
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(139, 92, 246, 0.2);
+}
+
+.feature-card h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.feature-card p {
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.6;
+}
+
+/* 工作流 CTA 区域 */
+.workflow-cta-section {
+  padding: 8rem 2rem;
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(to bottom, transparent 0%, rgba(139, 92, 246, 0.05) 50%, transparent 100%);
+}
+
+.workflow-cta-content {
+  max-width: 800px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.workflow-cta-title {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  font-weight: 200;
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.workflow-cta-subtitle {
+  font-family: 'Courier New', monospace;
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 3rem;
+}
+
+.workflow-cta-btn {
+  height: 64px !important;
+  padding: 0 3rem !important;
+  font-size: 18px !important;
+  font-family: 'Courier New', monospace !important;
+  text-transform: uppercase !important;
+  background: linear-gradient(135deg, #FFC700 0%, #FF8C00 100%) !important;
+  border: none !important;
+  color: #000000 !important;
+  font-weight: 600 !important;
+  box-shadow: 0 8px 40px rgba(255, 199, 0, 0.4) !important;
+  transition: all 0.3s ease !important;
+}
+
+.workflow-cta-btn:hover {
+  transform: translateY(-4px) scale(1.05) !important;
+  box-shadow: 0 12px 50px rgba(255, 199, 0, 0.6) !important;
+}
+
+
+

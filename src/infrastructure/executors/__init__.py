@@ -32,11 +32,11 @@ def create_executor_registry(
     anthropic_api_key: str | None = None,
 ) -> NodeExecutorRegistry:
     """创建执行器注册表
-    
+
     参数：
         openai_api_key: OpenAI API Key
         anthropic_api_key: Anthropic API Key
-        
+
     返回：
         配置好的执行器注册表
     """
@@ -71,4 +71,3 @@ def create_executor_registry(
     # - structuredOutput
 
     return registry
-

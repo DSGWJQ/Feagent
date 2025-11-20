@@ -8,12 +8,14 @@
  * - 便于测试
  *
  * 路由结构：
- * - / - 重定向到 /agents
+ * - / - Home 页面
  * - /agents - Agent 列表页
  * - /agents/create - 创建 Agent 页面
+ * - /workflows/:id/edit - 工作流编辑器
  */
 
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
+import { HomePage } from '@/features/home/pages';
 import { AgentListTest, CreateAgentPage, AgentDetailPage } from '@/features/agents/pages';
 import { WorkflowEditorPage } from '@/features/workflows/pages';
 
@@ -29,7 +31,7 @@ import { WorkflowEditorPage } from '@/features/workflows/pages';
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Navigate to="/agents" replace />,
+    element: <HomePage />,
   },
   {
     path: '/agents',

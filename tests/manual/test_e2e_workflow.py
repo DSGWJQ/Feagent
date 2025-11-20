@@ -22,6 +22,10 @@ sys.path.insert(0, str(project_root))
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from src.application.use_cases.execute_workflow import (
+    ExecuteWorkflowInput,
+    ExecuteWorkflowUseCase,
+)
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
@@ -32,10 +36,6 @@ from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
 from src.infrastructure.executors import create_executor_registry
-from src.application.use_cases.execute_workflow import (
-    ExecuteWorkflowInput,
-    ExecuteWorkflowUseCase,
-)
 
 
 async def test_e2e_workflow():
@@ -107,12 +107,14 @@ async def test_e2e_workflow():
         # 5. 保存工作流到数据库
         print("📝 步骤 4: 保存工作流到数据库")
         repository = SQLAlchemyWorkflowRepository(session)
-        
+
         # 删除已存在的工作流（如果有）
         try:
             existing = repository.get_by_id("e2e-test-workflow")
             if existing:
-                session.query(type(repository._to_orm(existing))).filter_by(id="e2e-test-workflow").delete()
+                session.query(type(repository._to_orm(existing))).filter_by(
+                    id="e2e-test-workflow"
+                ).delete()
                 session.commit()
         except:
             pass
@@ -142,7 +144,7 @@ async def test_e2e_workflow():
         for log in result["execution_log"]:
             print(f"  - {log['node_type']}: {log.get('output', 'N/A')}")
 
-        print(f"\n✅ 最终结果:")
+        print("\n✅ 最终结果:")
         final_result = result["final_result"]
         if isinstance(final_result, dict):
             print(f"  - userId: {final_result.get('userId')}")
@@ -232,7 +234,9 @@ async def test_conditional_workflow():
         try:
             existing = repository.get_by_id("conditional-test")
             if existing:
-                session.query(type(repository._to_orm(existing))).filter_by(id="conditional-test").delete()
+                session.query(type(repository._to_orm(existing))).filter_by(
+                    id="conditional-test"
+                ).delete()
                 session.commit()
         except:
             pass
@@ -266,4 +270,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

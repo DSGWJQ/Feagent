@@ -1,7 +1,8 @@
 """测试工作流对话接口"""
 
-import requests
 import json
+
+import requests
 
 # 测试 1: 删除HTTP节点
 print("=" * 60)
@@ -70,7 +71,8 @@ if response.status_code == 200:
     print(f"更新时间: {data['updated_at']}")
     print("\n完整节点列表:")
     for i, node in enumerate(data["nodes"], 1):
-        print(f"{i}. {node['name']} ({node['type']}) - 位置: ({node['position']['x']}, {node['position']['y']})")
+        print(
+            f"{i}. {node['name']} ({node['type']}) - 位置: ({node['position']['x']}, {node['position']['y']})"
+        )
 else:
     print(f"错误: {response.text}")
-

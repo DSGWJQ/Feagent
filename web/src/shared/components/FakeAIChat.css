@@ -1,34 +1,36 @@
 /**
- * FakeAIChat 组件样式
+ * FakeAIChat 组件样式 - 深色主题
  */
 
 .fake-ai-chat {
   display: flex;
   flex-direction: column;
+  background-color: #141414;
 }
 
-.fake-ai-chat-messages {
+.fake-ai-chat__messages {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
+  background-color: #141414;
 }
 
-.fake-ai-chat-messages::-webkit-scrollbar {
+.fake-ai-chat__messages::-webkit-scrollbar {
   width: 6px;
 }
 
-.fake-ai-chat-messages::-webkit-scrollbar-track {
-  background: #f1f1f1;
+.fake-ai-chat__messages::-webkit-scrollbar-track {
+  background: #1a1a1a;
   border-radius: 3px;
 }
 
-.fake-ai-chat-messages::-webkit-scrollbar-thumb {
-  background: #888;
+.fake-ai-chat__messages::-webkit-scrollbar-thumb {
+  background: #434343;
   border-radius: 3px;
 }
 
-.fake-ai-chat-messages::-webkit-scrollbar-thumb:hover {
-  background: #555;
+.fake-ai-chat__messages::-webkit-scrollbar-thumb:hover {
+  background: #595959;
 }
 
 .fake-ai-chat-message {
@@ -51,7 +53,46 @@
 }
 
 .fake-ai-chat-input {
-  border-top: 1px solid #f0f0f0;
-  background-color: #fafafa;
+  border-top: 1px solid #262626;
+  background-color: #1a1a1a;
+}
+
+/* Ant Design 组件深色主题覆盖 */
+.fake-ai-chat .ant-card {
+  background-color: #141414;
+  border-color: #262626;
+}
+
+.fake-ai-chat .ant-card-head {
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #262626;
+  color: #fafafa;
+}
+
+.fake-ai-chat .ant-card-body {
+  background-color: #141414;
+}
+
+.fake-ai-chat .ant-input,
+.fake-ai-chat .ant-input-textarea {
+  background-color: #1a1a1a;
+  border-color: #434343;
+  color: #fafafa;
+}
+
+.fake-ai-chat .ant-input::placeholder,
+.fake-ai-chat .ant-input-textarea::placeholder {
+  color: #8c8c8c;
+}
+
+.fake-ai-chat .ant-input:hover,
+.fake-ai-chat .ant-input-textarea:hover {
+  border-color: #595959;
+}
+
+.fake-ai-chat .ant-input:focus,
+.fake-ai-chat .ant-input-textarea:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
 }
 

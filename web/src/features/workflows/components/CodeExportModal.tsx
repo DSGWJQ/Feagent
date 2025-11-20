@@ -1,11 +1,11 @@
 /**
  * Code Export Modal - 代码导出对话框
- * 
+ *
  * 支持导出工作流为 Python 或 TypeScript 代码
  */
 
 import { useState } from 'react';
-import { Modal, Radio, Button, message } from 'antd';
+import { Modal, Radio, Button, message, ConfigProvider, theme } from 'antd';
 import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { Node, Edge } from '@xyflow/react';
 import { generatePythonCode, generateTypeScriptCode } from '../utils/codeGenerator';
@@ -48,60 +48,112 @@ export default function CodeExportModal({
   };
 
   return (
-    <Modal
-      title="导出代码"
-      open={open}
-      onCancel={onClose}
-      width={800}
-      footer={[
-        <Button key="copy" icon={<CopyOutlined />} onClick={handleCopy}>
-          复制代码
-        </Button>,
-        <Button
-          key="download"
-          type="primary"
-          icon={<DownloadOutlined />}
-          onClick={handleDownload}
-        >
-          下载文件
-        </Button>,
-        <Button key="close" onClick={onClose}>
-          关闭
-        </Button>,
-      ]}
+    <ConfigProvider
+      theme={{
+        algorithm: theme.darkAlgorithm,
+        token: {
+          colorBgContainer: '#141414',
+          colorBgElevated: '#1a1a1a',
+          colorBorder: '#262626',
+          colorText: '#fafafa',
+          colorTextSecondary: '#8c8c8c',
+          colorPrimary: '#8b5cf6',
+        },
+      }}
     >
-      <div style={{ marginBottom: 16 }}>
-        <Radio.Group
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-        >
-          <Radio.Button value="python">Python</Radio.Button>
-          <Radio.Button value="typescript">TypeScript</Radio.Button>
-        </Radio.Group>
-      </div>
-
-      <div
-        style={{
-          backgroundColor: '#f5f5f5',
-          padding: 16,
-          borderRadius: 4,
-          maxHeight: 500,
-          overflow: 'auto',
+      <Modal
+        title="导出代码"
+        open={open}
+        onCancel={onClose}
+        width={800}
+        styles={{
+          header: {
+            backgroundColor: '#1a1a1a',
+            borderBottom: '1px solid #262626',
+            color: '#fafafa',
+          },
+          body: {
+            backgroundColor: '#141414',
+            color: '#fafafa',
+          },
+          footer: {
+            backgroundColor: '#1a1a1a',
+            borderTop: '1px solid #262626',
+          },
         }}
+        footer={[
+          <Button
+            key="copy"
+            icon={<CopyOutlined />}
+            onClick={handleCopy}
+            style={{
+              backgroundColor: '#262626',
+              borderColor: '#434343',
+              color: '#fafafa',
+            }}
+          >
+            复制代码
+          </Button>,
+          <Button
+            key="download"
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={handleDownload}
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              borderColor: 'transparent',
+            }}
+          >
+            下载文件
+          </Button>,
+          <Button
+            key="close"
+            onClick={onClose}
+            style={{
+              backgroundColor: '#262626',
+              borderColor: '#434343',
+              color: '#fafafa',
+            }}
+          >
+            关闭
+          </Button>,
+        ]}
       >
-        <pre
+        <div style={{ marginBottom: 16 }}>
+          <Radio.Group
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+          >
+            <Radio.Button value="python">Python</Radio.Button>
+            <Radio.Button value="typescript">TypeScript</Radio.Button>
+          </Radio.Group>
+        </div>
+
+        <div
           style={{
-            margin: 0,
-            fontSize: 12,
-            fontFamily: 'monospace',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
+            backgroundColor: '#1a1a1a',
+            padding: 16,
+            borderRadius: 4,
+            maxHeight: 500,
+            overflow: 'auto',
+            border: '1px solid #262626',
           }}
         >
-          {code}
-        </pre>
-      </div>
-    </Modal>
+          <pre
+            style={{
+              margin: 0,
+              fontSize: 12,
+              fontFamily: 'monospace',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              color: '#fafafa',
+            }}
+          >
+            {code}
+          </pre>
+        </div>
+      </Modal>
+    </ConfigProvider>
   );
 }
 

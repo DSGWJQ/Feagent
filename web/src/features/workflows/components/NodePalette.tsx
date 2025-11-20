@@ -54,14 +54,19 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
       style={{
         width: 280,
         height: '100%',
-        backgroundColor: '#fff',
-        borderRight: '1px solid #f0f0f0',
+        backgroundColor: '#141414', // 深色背景
+        borderRight: '1px solid #262626',
         padding: 16,
         overflowY: 'auto',
       }}
     >
-      <h3 style={{ marginBottom: 16, fontSize: 16, fontWeight: 600 }}>
-        Node Palette
+      <h3 style={{
+        marginBottom: 16,
+        fontSize: 16,
+        fontWeight: 600,
+        color: '#fafafa' // 浅色文字
+      }}>
+        节点调色板
       </h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {nodeTypeConfigs.map((config) => (
@@ -75,6 +80,8 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
               style={{
                 cursor: 'grab',
                 borderLeft: `4px solid ${config.color}`,
+                backgroundColor: '#1a1a1a', // 深色卡片背景
+                borderColor: '#262626',
               }}
               bodyStyle={{
                 padding: '8px 12px',
@@ -99,13 +106,17 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
                 {iconMap[config.icon]}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>
+                <div style={{
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: '#fafafa' // 浅色文字
+                }}>
                   {config.label}
                 </div>
                 <div
                   style={{
                     fontSize: 12,
-                    color: '#8c8c8c',
+                    color: '#8c8c8c', // 灰色描述文字
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',

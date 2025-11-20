@@ -16,22 +16,22 @@ from src.domain.entities.node import Node
 
 class NodeExecutor(ABC):
     """节点执行器接口
-    
+
     每种节点类型都有对应的执行器实现
     """
 
     @abstractmethod
     async def execute(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
         """执行节点
-        
+
         参数：
             node: 节点实体
             inputs: 输入数据（来自前驱节点）
             context: 执行上下文（共享变量）
-            
+
         返回：
             节点输出
-            
+
         异常：
             DomainError: 执行失败
         """
@@ -40,7 +40,7 @@ class NodeExecutor(ABC):
 
 class NodeExecutorRegistry:
     """节点执行器注册表
-    
+
     管理所有节点类型的执行器
     """
 
@@ -49,7 +49,7 @@ class NodeExecutorRegistry:
 
     def register(self, node_type: str, executor: NodeExecutor) -> None:
         """注册执行器
-        
+
         参数：
             node_type: 节点类型
             executor: 执行器实例
@@ -58,10 +58,10 @@ class NodeExecutorRegistry:
 
     def get(self, node_type: str) -> NodeExecutor | None:
         """获取执行器
-        
+
         参数：
             node_type: 节点类型
-            
+
         返回：
             执行器实例，如果未注册则返回 None
         """
@@ -69,12 +69,11 @@ class NodeExecutorRegistry:
 
     def has(self, node_type: str) -> bool:
         """检查是否已注册执行器
-        
+
         参数：
             node_type: 节点类型
-            
+
         返回：
             是否已注册
         """
         return node_type in self._executors
-

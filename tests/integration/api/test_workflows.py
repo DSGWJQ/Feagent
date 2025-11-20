@@ -491,9 +491,7 @@ class TestWorkflowChatAPI:
         assert len(updated_workflow.nodes) >= 3
 
     @patch("src.interfaces.api.routes.workflows.ChatOpenAI")
-    def test_chat_with_nonexistent_workflow_should_fail(
-        self, mock_llm_class, client: TestClient
-    ):
+    def test_chat_with_nonexistent_workflow_should_fail(self, mock_llm_class, client: TestClient):
         """测试：对不存在的工作流发送消息应该失败
 
         场景：
