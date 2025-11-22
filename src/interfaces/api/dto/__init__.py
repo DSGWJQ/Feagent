@@ -26,9 +26,26 @@ from src.interfaces.api.dto.agent_dto import (
     CreateAgentRequest,
     TaskResponse,
 )
+from src.interfaces.api.dto.llm_provider_dto import (
+    DisableLLMProviderRequest,
+    EnableLLMProviderRequest,
+    LLMProviderListResponse,
+    LLMProviderResponse,
+    RegisterLLMProviderRequest,
+    UpdateLLMProviderRequest,
+)
 from src.interfaces.api.dto.run_dto import (
     ExecuteRunRequest,
     RunResponse,
+)
+from src.interfaces.api.dto.tool_dto import (
+    CreateToolRequest,
+    DeprecateToolRequest,
+    PublishToolRequest,
+    ToolListResponse,
+    ToolParameterDTO,
+    ToolResponse,
+    UpdateToolRequest,
 )
 
 __all__ = [
@@ -37,4 +54,19 @@ __all__ = [
     "TaskResponse",
     "ExecuteRunRequest",
     "RunResponse",
+    # Tool DTOs
+    "CreateToolRequest",
+    "UpdateToolRequest",
+    "PublishToolRequest",
+    "DeprecateToolRequest",
+    "ToolResponse",
+    "ToolListResponse",
+    "ToolParameterDTO",
+    # LLMProvider DTOs
+    "RegisterLLMProviderRequest",
+    "UpdateLLMProviderRequest",
+    "EnableLLMProviderRequest",
+    "DisableLLMProviderRequest",
+    "LLMProviderResponse",
+    "LLMProviderListResponse",
 ]

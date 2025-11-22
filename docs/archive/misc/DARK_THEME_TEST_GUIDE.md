@@ -47,7 +47,7 @@
 - **文字**: #fafafa (浅色文字)
 - **次级文字**: #8c8c8c (灰色文字)
 - **主色调**: 紫色渐变 (#667eea → #764ba2)
-- **节点颜色**: 
+- **节点颜色**:
   - 紫色 (#8b5cf6) - Text Model, JavaScript
   - 蓝色 (#3b82f6) - HTTP Request, Embedding Model
   - 黄色 (#eab308) - Tool

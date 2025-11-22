@@ -185,24 +185,6 @@ pytest --cov=src --cov-report=html
 # 查看报告: 打开 htmlcov/index.html
 ```
 
----
-
-## 故障排查与日志
-
-```text
-日志文件: logs/app.log
-日志格式: 简化 JSON（包含 time、level、message）
-Trace ID: 响应头 X-Trace-Id，用于关联请求与日志
-```
-
-```bash
-# 常见排查步骤
-# 1) 触发问题后，根据响应头中的 X-Trace-Id 在日志中检索
-# 2) 查看最近的 500/422 记录，定位具体方法、路径与错误信息
-# 3) 若为参数校验错误（422），响应体的 detail 字段包含具体校验信息
-# 4) 若为服务器错误（500），结合日志与依赖服务状态进一步分析
-```
-
 ### 配置 Pre-commit（可选）
 
 ```bash
@@ -345,3 +327,4 @@ pip install -e ".[dev]" -i https://pypi.tuna.tsinghua.edu.cn/simple
 - [Pydantic 官方文档](https://docs.pydantic.dev/)
 - [Alembic 官方文档](https://alembic.sqlalchemy.org/)
 - [项目开发规范](./develop_document.md)
+

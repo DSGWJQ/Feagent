@@ -16,6 +16,10 @@ from src.application.use_cases.execute_workflow import (
     ExecuteWorkflowInput,
     ExecuteWorkflowUseCase,
 )
+from src.application.use_cases.import_workflow import (
+    ImportWorkflowInput,
+    ImportWorkflowUseCase,
+)
 from src.application.use_cases.update_workflow_by_chat import (
     UpdateWorkflowByChatInput,
     UpdateWorkflowByChatUseCase,
@@ -35,6 +39,8 @@ from src.infrastructure.executors import create_executor_registry
 from src.interfaces.api.dto.workflow_dto import (
     ChatRequest,
     ChatResponse,
+    ImportWorkflowRequest,
+    ImportWorkflowResponse,
     UpdateWorkflowRequest,
     WorkflowResponse,
 )
@@ -417,6 +423,66 @@ def chat_with_workflow(
             detail=str(e),
         )
     except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"服务器内部错误: {str(e)}",
+        )
+
+
+@router.post("/import", response_model=ImportWorkflowResponse, status_code=status.HTTP_201_CREATED)
+def import_workflow(
+    request: ImportWorkflowRequest,
+    db: Session = Depends(get_db_session),
+) -> ImportWorkflowResponse:
+    """导入 Coze 工作流
+
+    V2新功能：支持从 Coze 平台导入工作流
+
+    业务场景：
+    用户从 Coze 平台导出工作流 JSON，通过此接口导入到 Feagent
+
+    参数：
+        request: ImportWorkflowRequest 包含 Coze JSON 数据
+
+    返回：
+        ImportWorkflowResponse 包含导入后的工作流基本信息
+
+    错误：
+        400: 输入数据无效（JSON 格式错误、缺少必需字段、不支持的节点类型等）
+        500: 服务器内部错误
+    """
+    try:
+        # 1. 创建 Repository
+        workflow_repository = SQLAlchemyWorkflowRepository(db)
+
+        # 2. 创建 Use Case
+        use_case = ImportWorkflowUseCase(workflow_repository=workflow_repository)
+
+        # 3. 执行 Use Case
+        input_data = ImportWorkflowInput(coze_json=request.coze_json)
+        output = use_case.execute(input_data)
+
+        # 4. 提交事务
+        db.commit()
+
+        # 5. 返回结果
+        return ImportWorkflowResponse(
+            workflow_id=output.workflow_id,
+            name=output.name,
+            source=output.source,
+            source_id=output.source_id,
+        )
+
+    except DomainError as e:
+        # Domain层验证失败（空JSON、缺少节点、不支持的节点类型、边引用错误等）
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        # 其他未预期的错误
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

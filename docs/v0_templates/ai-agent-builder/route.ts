@@ -30,11 +30,11 @@ export async function POST(req: Request) {
     });
     const images = imageResult.files?.filter(f => f.mediaType.startsWith('image/')).map(f => f.base64) || [];
 
-    return Response.json({ 
+    return Response.json({
       text: result.text,
       images,
       apiData,
-      success: true 
+      success: true
     });
   } catch (error) {
     console.error('Workflow error:', error);

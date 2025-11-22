@@ -20,6 +20,8 @@ from src.infrastructure.database.engine import (
     get_sync_engine,
     sync_engine,
 )
+# 导入所有 ORM 模型，确保它们都被注册到 Base.metadata
+from src.infrastructure.database import models  # noqa: F401
 
 __all__ = [
     "Base",
@@ -29,4 +31,5 @@ __all__ = [
     "get_sync_engine",
     "get_session",
     "get_db_session",
+    "models",
 ]

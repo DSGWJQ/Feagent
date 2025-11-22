@@ -247,4 +247,58 @@ class ChatResponse(BaseModel):
     workflow: "WorkflowResponse"
     ai_message: str = Field(..., description="AI 回复消息")
 
+
+class ImportWorkflowRequest(BaseModel):
+    """导入工作流请求 DTO
+
+    V2新功能：支持从 Coze 平台导入工作流
+
+    业务场景：用户上传 Coze 工作流 JSON 数据，系统导入并创建 Workflow
+
+    字段：
+    - coze_json: Coze 工作流 JSON 数据（dict 格式）
+
+    验证规则：
+    - coze_json 不能为空
+    - 必须是有效的 JSON 结构
+
+    示例：
+    {
+        "coze_json": {
+            "workflow_id": "coze_wf_12345",
+            "name": "测试工作流",
+            "description": "从Coze导入",
+            "nodes": [...],
+            "edges": [...]
+        }
+    }
+    """
+
+    coze_json: dict = Field(..., description="Coze 工作流 JSON 数据")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImportWorkflowResponse(BaseModel):
+    """导入工作流响应 DTO
+
+    V2新功能：返回导入后的工作流基本信息
+
+    字段：
+    - workflow_id: 生成的 Workflow ID
+    - name: 工作流名称
+    - source: 工作流来源（固定为 "coze"）
+    - source_id: 原始 Coze workflow_id
+
+    注意：
+    - 返回的是导入后的 Workflow 基本信息
+    - 如需获取完整工作流详情，调用 GET /workflows/{workflow_id}
+    - source_id 用于追踪原始来源，方便同步更新
+    """
+
+    workflow_id: str = Field(..., description="生成的 Workflow ID")
+    name: str = Field(..., description="工作流名称")
+    source: str = Field(..., description="工作流来源（coze）")
+    source_id: str | None = Field(None, description="原始 Coze workflow_id")
+
     model_config = ConfigDict(from_attributes=True)

@@ -342,6 +342,9 @@ class WorkflowModel(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="draft", comment="工作流状态"
     )
+    # V2新增：工作流来源追踪
+    source: Mapped[str] = mapped_column(String(50), nullable=False, default="feagent", comment="工作流来源（feagent/coze/user等）")
+    source_id: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="原始来源的ID（如Coze workflow_id）")
 
     # 时间戳
     created_at: Mapped[datetime] = mapped_column(
@@ -475,3 +478,172 @@ class EdgeModel(Base):
 
     def __repr__(self) -> str:
         return f"<EdgeModel(id={self.id}, workflow_id={self.workflow_id}, source={self.source_node_id}, target={self.target_node_id})>"
+
+
+class ToolModel(Base):
+    """Tool ORM 模型
+
+    表名：tools
+
+    字段说明：
+    - id: 主键（tool_ 前缀）
+    - name: 工具名称（255 字符）
+    - description: 工具描述（Text）
+    - category: 工具分类（http, database, file等，50 字符）
+    - status: 工具状态（draft, testing, published, deprecated，20 字符）
+    - version: 语义化版本号（50 字符）
+    - parameters: 工具参数列表（JSON 格式）
+    - returns: 返回值 schema（JSON 格式）
+    - implementation_type: 实现类型（builtin, http, javascript, python，50 字符）
+    - implementation_config: 实现配置（JSON 格式）
+    - author: 工具创建者（255 字符）
+    - tags: 工具标签（JSON 格式的字符串列表）
+    - icon: 工具图标 URL（Text，可选）
+    - usage_count: 使用次数（整数，默认 0）
+    - last_used_at: 最后使用时间（可选）
+    - created_at: 创建时间（自动设置）
+    - updated_at: 更新时间（可选）
+    - published_at: 发布时间（可选）
+
+    参数持久化说明：
+    - ToolParameter 是值对象，属于 Tool 聚合
+    - 使用 JSON 字段存储参数列表
+    - 格式：[{"name": "url", "type": "string", "description": "...", "required": true, ...}, ...]
+
+    索引：
+    - idx_tools_status: status 字段索引（查询特定状态的工具）
+    - idx_tools_category: category 字段索引（按分类查询）
+    - idx_tools_created_at: created_at 字段索引（按时间排序）
+    """
+
+    __tablename__ = "tools"
+
+    # 主键
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Tool ID（tool_ 前缀）")
+
+    # 业务字段
+    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="工具名称")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="", comment="工具描述")
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="工具分类（http, database, file等）"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", comment="工具状态"
+    )
+    version: Mapped[str] = mapped_column(String(50), nullable=False, default="0.1.0", comment="版本号")
+
+    # 工具定义
+    parameters: Mapped[list[dict] | None] = mapped_column(
+        JSON, nullable=True, default=list, comment="参数列表（JSON）"
+    )
+    returns: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=dict, comment="返回值 schema（JSON）"
+    )
+
+    # 实现方式
+    implementation_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="builtin", comment="实现类型"
+    )
+    implementation_config: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=dict, comment="实现配置（JSON）"
+    )
+
+    # 元数据
+    author: Mapped[str] = mapped_column(String(255), nullable=False, default="", comment="创建者")
+    tags: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True, default=list, comment="标签列表（JSON）"
+    )
+    icon: Mapped[str | None] = mapped_column(Text, nullable=True, comment="图标 URL")
+
+    # 使用统计
+    usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="使用次数")
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="最后使用时间"
+    )
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="更新时间"
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="发布时间"
+    )
+
+    # 索引
+    __table_args__ = (
+        Index("idx_tools_status", "status"),  # 查询特定状态的工具
+        Index("idx_tools_category", "category"),  # 按分类查询
+        Index("idx_tools_created_at", "created_at"),  # 按时间排序
+    )
+
+    def __repr__(self) -> str:
+        return f"<ToolModel(id={self.id}, name={self.name}, status={self.status})>"
+
+
+class LLMProviderModel(Base):
+    """LLMProvider ORM 模型
+
+    表名：llm_providers
+
+    字段说明：
+    - id: 主键（llm_provider_ 前缀）
+    - name: 提供商标识（openai, deepseek, qwen等，50 字符）
+    - display_name: 显示名称（255 字符）
+    - api_base: API 基础 URL（Text）
+    - api_key: API 密钥（Text，可选）
+    - models: 支持的模型列表（JSON 格式的字符串列表）
+    - enabled: 是否启用（布尔值，默认 True）
+    - config: 额外配置（JSON 格式）
+    - created_at: 创建时间（自动设置）
+    - updated_at: 更新时间（可选）
+
+    索引：
+    - idx_llm_providers_name: name 字段索引（按名称查询）
+    - idx_llm_providers_enabled: enabled 字段索引（查询已启用的提供商）
+    """
+
+    __tablename__ = "llm_providers"
+
+    # 主键
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, comment="LLMProvider ID（llm_provider_ 前缀）"
+    )
+
+    # 业务字段
+    name: Mapped[str] = mapped_column(
+        String(50), nullable=False, unique=True, comment="提供商标识（openai, deepseek等）"
+    )
+    display_name: Mapped[str] = mapped_column(
+        String(255), nullable=False, comment="显示名称"
+    )
+    api_base: Mapped[str] = mapped_column(Text, nullable=False, comment="API 基础 URL")
+    api_key: Mapped[str | None] = mapped_column(Text, nullable=True, comment="API 密钥")
+    models: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=False, default=list, comment="支持的模型列表（JSON）"
+    )
+    enabled: Mapped[bool] = mapped_column(
+        nullable=False, default=True, comment="是否启用"
+    )
+    config: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=dict, comment="额外配置（JSON）"
+    )
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="更新时间"
+    )
+
+    # 索引
+    __table_args__ = (
+        Index("idx_llm_providers_name", "name"),  # 按名称查询
+        Index("idx_llm_providers_enabled", "enabled"),  # 查询已启用的提供商
+    )
+
+    def __repr__(self) -> str:
+        return f"<LLMProviderModel(id={self.id}, name={self.name}, enabled={self.enabled})>"

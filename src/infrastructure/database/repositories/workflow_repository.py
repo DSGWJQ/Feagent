@@ -120,6 +120,8 @@ class SQLAlchemyWorkflowRepository:
             nodes=nodes,
             edges=edges,
             status=WorkflowStatus(model.status),
+            source=model.source,  # V2新增
+            source_id=model.source_id,  # V2新增
             created_at=model.created_at.replace(tzinfo=UTC),
             updated_at=model.updated_at.replace(tzinfo=UTC),
         )
@@ -148,6 +150,8 @@ class SQLAlchemyWorkflowRepository:
             name=entity.name,
             description=entity.description,
             status=entity.status.value,
+            source=entity.source,  # V2新增
+            source_id=entity.source_id,  # V2新增
             created_at=entity.created_at.replace(tzinfo=None),
             updated_at=entity.updated_at.replace(tzinfo=None),
         )

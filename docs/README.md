@@ -1,195 +1,100 @@
-# 📚 文档索引（docs/）
+# Feagent 文档导航
 
-> **注意**：本文件是 `docs/` 目录的索引，不会覆盖项目根目录的 `README.md`
-
-本目录包含 Agent Platform 项目的所有开发文档。
-
----
-
-## 🎯 核心文档（开发必读）
-
-### 1. [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) ⭐⭐⭐
-**四层架构快速参考（开发时必看）**
-
-- **用途**：开发时快速查阅，防止偏离架构规范（精简版，5 分钟读完）
-- **核心内容**：
-  - ✅ **四层架构图**：Interface → Application → Domain → Infrastructure
-  - ✅ **各层职责说明**：每层做什么、不做什么
-  - ✅ **DTO 转换机制**：Request → Input → Entity → ORM → Response
-  - ✅ **三层校验机制**：API 层 → Application 层 → Domain 层
-  - ✅ **聚合根概念**：多实体打包返回（如 Agent + Tasks）
-  - ✅ **常见错误**：Domain 层导入框架、先设计数据库等
-  - ✅ **快速参考表**：各层路径、职责、命名规范、禁止事项
-
-**何时查看**：
-- ❗ **开始任何新功能开发前**（必读，5 分钟）
-- ❗ **不确定代码应该放在哪一层时**
-- ❗ **不确定 DTO 如何转换时**
-- ❗ **不确定如何校验数据时**
-- ❗ **代码审查时**
+> **项目名称**：Feagent（个人开发者智能工作流平台）
+> **项目阶段**：V2 - 智能任务识别与Coze集成
+> **更新日期**：2025-01-22
 
 ---
 
-### 2. [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md) ⭐⭐
-**完整开发规范（详细版）**
+## 🎯 快速开始
 
-- **用途**：完整的开发规范，包含所有细节（929 行，需要时查阅）
-- **核心内容**：
-  - ✅ **开发模式**：TDD（测试驱动开发）+ DDD（领域驱动设计）
-  - ✅ **开发顺序**：需求分析 → Domain 层 → Ports → Infrastructure → Application → API
-  - ✅ **编码规范**：命名规范、代码风格、注释规范
-  - ✅ **测试规范**：测试覆盖率、测试命名、测试分层
-  - ✅ **数据库规范**：事务管理、迁移流程、查询规范
-  - ✅ **API 规范**：RESTful 设计、错误码、SSE 流式响应
-  - ✅ **稳定性规范**：重试、超时、幂等、限流
+### 我是新成员，需要快速上手
+1. 阅读：`需求分析.md` - 理解项目业务
+2. 阅读：`开发规范/00-总体开发规范.md` - 掌握架构
+3. 查看：`.augment/rules/rule_name.md` - 了解开发纪律
 
-**何时查看**：
-- ❗ **不确定如何编写测试时**
-- ❗ **不确定如何命名变量/函数/类时**
-- ❗ **不确定如何处理事务时**
-- ❗ **需要了解完整规范时**
+### 我要开发新功能
+1. 确认需求：`需求分析.md`
+2. 查阅技术方案：`技术方案/` 相关文档
+3. 遵循开发规范：`开发规范/` 对应文档
+4. 参考开发流程：`开发规范/03-开发过程指导.md`
 
 ---
 
-### 3. [需求分析.md](./需求分析.md)
-**项目需求与技术选型**
+## 📚 完整文档结构
 
-- **用途**：理解项目定位、核心功能、技术栈选择
-- **内容**：
-  - ✅ 项目定位：企业内部中台系统
-  - ✅ 核心功能：一句话创建 Agent（起点 + 目的）
-  - ✅ 技术栈建议：后端、前端、开发工具
-  - ✅ Java → Python 组件映射
-  - ✅ 方案评估与设计决策
+### 📂 根目录级文档
 
-**何时查看**：
-- ❗ **项目初期，理解业务需求时**
-- ❗ **技术选型时**
-- ❗ **与产品讨论需求时**
+#### 需求分析.md
+理解项目业务需求和用户目标（5000+字）
 
----
+#### 开发规范/ 文件夹（3个文件，30000+字）
+- **00-总体开发规范.md**：四层架构、开发顺序、命名约定
+- **01-后端开发规范.md**：Python/FastAPI/SQLAlchemy详细规范
+- **02-前端开发规范.md**：React/TypeScript/XYFlow详细规范
+- **03-开发过程指导.md**：完整TDD流程和逐层实现
 
-## 🚧 Workflow 相关文档（新功能）
+#### 技术方案/ 文件夹（5个文件，50000+字）
+- **01-总体架构与技术栈.md**：四层架构、技术选型说明、数据库设计
+- **02-工作流可视化方案.md**：XYFlow节点设计、React组件实现
+- **03-Agent分阶段实施计划.md**：V1-V4演进路线、验收标准
+- **04-Coze集成方案.md**：工作流导入、节点映射、工具互通
+- **05-工具与模型管理系统.md**：工具生命周期、LLM多提供商
 
-### 4. [workflow_requirements.md](./workflow_requirements.md)
-Workflow 功能需求分析
+#### 项目规划/ 文件夹（2个文件，25000+字）
+- **实施路线图.md**：Phase分解、KPI指标、当前V2任务
+- **风险评估与对策.md**：8个风险识别、应急预案
 
-### 5. [workflow_implementation_plan.md](./workflow_implementation_plan.md)
-Workflow 实现计划
-
-### 6. [workflow_api_design.md](./workflow_api_design.md)
-Workflow API 设计
-
-### 7. [workflow_frontend_design.md](./workflow_frontend_design.md)
-Workflow 前端设计
-
-### 8. [backend_changes_for_workflow.md](./backend_changes_for_workflow.md)
-Workflow 后端变更
-
-### 9. [workflow_documentation_index.md](./workflow_documentation_index.md)
-Workflow 文档索引
+#### 项目规则/ 文件夹（3个文件，15000+字）
+- **rule_name.md**：AI助手行为框架和开发纪律
+- **backend_specification.md**：后端开发快速参考
+- **frontend_specification.md**：前端开发快速参考
 
 ---
 
-## 🧹 维护文档
+## 📞 快速查询表
 
-### 10. [CODE_CLEANUP_GUIDE.md](./CODE_CLEANUP_GUIDE.md)
-代码清理指南
-
-### 11. [DOCUMENTATION_CLEANUP_GUIDE.md](./DOCUMENTATION_CLEANUP_GUIDE.md)
-文档清理指南
-
----
-
-## 📦 归档文档
-
-### [archive/](./archive/)
-已归档的旧文档（不再使用，但保留作为参考）
-
-- **agent/**：Agent 相关的旧文档
-  - `backend_setup_guide.md`
-  - `frontend_setup_guide.md`
-  - `llm_setup_guide.md`
-  - `api_reference.md`
-  - 等等
-
-- **frontend/**：前端相关的旧文档
-  - `frontend_architecture_summary.md`
-  - `frontend_complete_summary.md`
-  - 等等
-
-- **misc/**：其他杂项文档
-  - `person_record.md`
-
-- **summaries/**：各种总结文档
+| 问题类型 | 查阅文件 |
+|---------|---------|
+| 不知道某功能的业务意义 | `需求分析.md` |
+| 不懂架构或分层关系 | `开发规范/00-总体开发规范.md` |
+| Python/FastAPI代码问题 | `开发规范/01-后端开发规范.md` |
+| React/TypeScript代码问题 | `开发规范/02-前端开发规范.md` |
+| 工作流可视化问题 | `技术方案/02-工作流可视化方案.md` |
+| 不知道开发流程 | `开发规范/03-开发过程指导.md` |
+| 不知道项目规划 | `项目规划/实施路线图.md` |
+| 遇到了风险或问题 | `项目规划/风险评估与对策.md` |
 
 ---
 
-## 🎓 开发工作流
+## 📦 归档文件夹（docs/archive/）
 
-### 推荐的开发流程：
-
-1. **阅读需求** → `需求分析.md`
-2. **查看架构** → `ARCHITECTURE_GUIDE.md`（5 分钟快速参考）
-3. **编写测试** → TDD Red 阶段
-4. **实现功能** → TDD Green 阶段
-5. **重构优化** → TDD Refactor 阶段
-6. **代码审查** → 对照 `ARCHITECTURE_GUIDE.md` 检查
-
-### 开发时的常见问题：
-
-**Q: 这个功能应该放在哪一层？**
-→ 查看 `ARCHITECTURE_GUIDE.md` 的"四层架构图"和"各层职责说明"
-
-**Q: DTO 如何转换？**
-→ 查看 `ARCHITECTURE_GUIDE.md` 的"DTO 转换机制"
-
-**Q: 如何校验数据？**
-→ 查看 `ARCHITECTURE_GUIDE.md` 的"三层校验机制"
-
-**Q: Domain 层可以导入 SQLAlchemy 吗？**
-→ ❌ **禁止**！查看 `ARCHITECTURE_GUIDE.md` 的"常见错误"
-
-**Q: 应该先写数据库还是先写 Domain 层？**
-→ **先写 Domain 层**！查看 `ARCHITECTURE_GUIDE.md` 的"常见错误"
-
-**Q: 如何编写测试？**
-→ 查看 `DEVELOPMENT_GUIDE.md` 第 2.0 节"TDD 开发模式"
-
-**Q: 如何命名变量/函数/类？**
-→ 查看 `DEVELOPMENT_GUIDE.md` 第 2.1 节"代码与风格"
+过时或历史参考文档：
+- **workflow/**：工作流相关的历史设计（workflow_*.md）
+- **cleanup/**：代码清理参考（CODE_CLEANUP_GUIDE, DOCUMENTATION_CLEANUP_GUIDE）
+- **agent/**, **frontend/**, **misc/**, **summaries/**：其他历史文档
 
 ---
 
-## 📝 文档维护规则
+## 🎯 当前阶段（V2）核心信息
 
-1. **核心文档不要随意归档**：
-   - `DEVELOPMENT_GUIDE.md` 和 `需求分析.md` 必须保留在主目录
+**时间范围**：2025 Q1-Q2
+**核心目标**：
+- 智能任务分类（FSM状态机）
+- Coze工作流导入（完整兼容）
+- 工具生命周期管理（5+工具）
+- 多LLM提供商支持（3+提供商）
+- 前端用户体验增强
 
-2. **新文档命名规范**：
-   - 英文大写：`DEVELOPMENT_GUIDE.md`、`README.md`
-   - 中文：`需求分析.md`
-   - 功能相关：`workflow_*.md`
-
-3. **归档规则**：
-   - 过时的文档移到 `archive/` 目录
-   - 按类型分类：`agent/`、`frontend/`、`misc/`、`summaries/`
-
-4. **文档引用**：
-   - 使用相对路径：`[文档名](./DEVELOPMENT_GUIDE.md)`
-   - 更新引用时检查路径是否正确
-
----
-
-## 🔗 快速链接
-
-- **四层架构**：[ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) ⭐⭐⭐
-- **完整规范**：[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)
-- **需求分析**：[需求分析.md](./需求分析.md)
-- **Workflow 索引**：[workflow_documentation_index.md](./workflow_documentation_index.md)
-- **代码清理**：[CODE_CLEANUP_GUIDE.md](./CODE_CLEANUP_GUIDE.md)
+**待办清单**：
+- [ ] ClassifyTaskUseCase实现
+- [ ] Workflow实体与导入API
+- [ ] Tool实体与执行器框架
+- [ ] LLMProvider管理系统
+- [ ] 前端NodePalette组件
 
 ---
 
-**最后更新**：2025-11-19
-**注意**：本文件是 `docs/` 目录的索引，不会覆盖项目根目录的 `README.md`
+**最后更新**：2025-01-22
+**项目阶段**：V2 - 智能增强
+**文档总量**：100k+ 行业级技术文档

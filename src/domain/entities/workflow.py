@@ -16,9 +16,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from typing import Any, Dict
+
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.exceptions import DomainError
+from src.domain.value_objects.node_type import NodeType
+from src.domain.value_objects.position import Position
 from src.domain.value_objects.workflow_status import WorkflowStatus
 
 
@@ -54,6 +58,8 @@ class Workflow:
     nodes: list[Node] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
     status: WorkflowStatus = WorkflowStatus.DRAFT
+    source: str = "feagent"  # V2新增：工作流来源（feagent/coze/user）
+    source_id: str | None = None  # V2新增：原始来源的ID（如Coze workflow_id）
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -64,6 +70,8 @@ class Workflow:
         description: str,
         nodes: list[Node],
         edges: list[Edge],
+        source: str = "feagent",
+        source_id: str | None = None,
     ) -> "Workflow":
         """创建 Workflow 的工厂方法
 
@@ -106,6 +114,8 @@ class Workflow:
             nodes=nodes.copy(),  # 复制列表，避免外部修改
             edges=edges.copy(),  # 复制列表，避免外部修改
             status=WorkflowStatus.DRAFT,
+            source=source,
+            source_id=source_id,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         )
@@ -204,3 +214,121 @@ class Workflow:
         """
         self.edges = [edge for edge in self.edges if edge.id != edge_id]
         self.updated_at = datetime.now(UTC)
+
+    @staticmethod
+    def from_coze_json(coze_data: Dict[str, Any]) -> "Workflow":
+        """从Coze JSON创建Workflow
+
+        V2功能：支持从Coze平台导入工作流
+
+        业务规则：
+        1. 节点类型映射：llm→LLM, http→HTTP, javascript→JAVASCRIPT等
+        2. 边引用验证：source和target必须存在于节点列表中
+        3. Source追踪：记录来源为"coze"，保存原始workflow_id
+
+        Coze JSON格式示例：
+        {
+            "workflow_id": "coze_wf_12345",
+            "name": "工作流名称",
+            "description": "工作流描述",
+            "nodes": [
+                {
+                    "id": "node_1",
+                    "type": "llm",
+                    "name": "节点名称",
+                    "config": {...},
+                    "position": {"x": 100, "y": 100}
+                }
+            ],
+            "edges": [
+                {"id": "edge_1", "source": "node_1", "target": "node_2"}
+            ]
+        }
+
+        参数：
+            coze_data: Coze工作流JSON数据
+
+        返回：
+            Workflow实例
+
+        抛出：
+            DomainError: 当验证失败时
+        """
+        # Coze节点类型到Feagent节点类型的映射
+        COZE_NODE_TYPE_MAPPING = {
+            "llm": NodeType.LLM,
+            "http": NodeType.HTTP,
+            "javascript": NodeType.JAVASCRIPT,
+            "condition": NodeType.CONDITION,
+            "start": NodeType.START,
+            "end": NodeType.END,
+            "database": NodeType.DATABASE,
+            "transform": NodeType.TRANSFORM,
+            "loop": NodeType.LOOP,
+        }
+
+        # 验证JSON不为空
+        if not coze_data:
+            raise DomainError("Coze JSON不能为空")
+
+        # 提取基本信息
+        workflow_id = coze_data.get("workflow_id", "")
+        name = coze_data.get("name", "")
+        description = coze_data.get("description", "")
+        coze_nodes = coze_data.get("nodes", [])
+        coze_edges = coze_data.get("edges", [])
+
+        # 验证至少有一个节点
+        if not coze_nodes:
+            raise DomainError("至少需要一个节点")
+
+        # 转换节点
+        nodes = []
+        for coze_node in coze_nodes:
+            coze_type = coze_node.get("type", "").lower()
+
+            # 验证节点类型是否支持
+            if coze_type not in COZE_NODE_TYPE_MAPPING:
+                raise DomainError(
+                    f"不支持的Coze节点类型: {coze_type}. "
+                    f"支持的类型: {', '.join(COZE_NODE_TYPE_MAPPING.keys())}"
+                )
+
+            # 映射节点类型
+            node_type = COZE_NODE_TYPE_MAPPING[coze_type]
+
+            # 提取position
+            coze_position = coze_node.get("position", {"x": 0, "y": 0})
+            position = Position(x=coze_position.get("x", 0), y=coze_position.get("y", 0))
+
+            # 创建节点
+            node = Node.create(
+                type=node_type,
+                name=coze_node.get("name", coze_type),
+                config=coze_node.get("config", {}),
+                position=position,
+            )
+            # 保留原始ID，避免edge引用失效
+            node.id = coze_node.get("id", node.id)
+            nodes.append(node)
+
+        # 转换边
+        edges = []
+        for coze_edge in coze_edges:
+            edge = Edge.create(
+                source_node_id=coze_edge.get("source", ""),
+                target_node_id=coze_edge.get("target", ""),
+            )
+            # 保留原始ID
+            edge.id = coze_edge.get("id", edge.id)
+            edges.append(edge)
+
+        # 使用create方法创建Workflow（会自动验证边引用）
+        return Workflow.create(
+            name=name,
+            description=description,
+            nodes=nodes,
+            edges=edges,
+            source="coze",
+            source_id=workflow_id,
+        )
