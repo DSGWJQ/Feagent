@@ -16,7 +16,7 @@ V2新功能：支持多LLM提供商管理
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Dict
+from typing import Any
 
 from src.domain.exceptions import DomainError
 
@@ -49,7 +49,7 @@ class LLMProvider:
     api_key: str | None
     models: list[str]
     enabled: bool = True
-    config: Dict[str, Any] = field(default_factory=dict)
+    config: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
 

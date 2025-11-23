@@ -309,4 +309,3 @@ python scripts/test_workflow_integration.py
 - 用户已在浏览器中打开工作流编辑器
 - 需要测试拖拽、保存、执行功能
 - 根据测试结果修复 Bug
-

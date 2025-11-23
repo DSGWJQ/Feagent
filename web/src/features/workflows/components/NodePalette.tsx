@@ -18,6 +18,9 @@ import {
   FileTextOutlined,
   ToolOutlined,
   DatabaseOutlined,
+  FileOutlined,
+  BellOutlined,
+  RepeatOutlined,
 } from '@ant-design/icons';
 import { nodeTypeConfigs } from '../utils/nodeUtils';
 
@@ -38,6 +41,9 @@ const iconMap: Record<string, React.ReactNode> = {
   FileText: <FileTextOutlined />,
   Wrench: <ToolOutlined />,
   Database: <DatabaseOutlined />,
+  File: <FileOutlined />,
+  Bell: <BellOutlined />,
+  Repeat: <RepeatOutlined />,
 };
 
 export default function NodePalette({ onAddNode }: NodePaletteProps) {
@@ -132,4 +138,3 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
     </div>
   );
 }
-

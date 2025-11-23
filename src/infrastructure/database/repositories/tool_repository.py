@@ -126,7 +126,9 @@ class SQLAlchemyToolRepository:
             parameters=parameters if parameters else None,
             returns=entity.returns if entity.returns else None,
             implementation_type=entity.implementation_type,
-            implementation_config=entity.implementation_config if entity.implementation_config else None,
+            implementation_config=entity.implementation_config
+            if entity.implementation_config
+            else None,
             author=entity.author,
             tags=entity.tags if entity.tags else None,
             icon=entity.icon,
@@ -206,7 +208,11 @@ class SQLAlchemyToolRepository:
         返回：
             Tool 列表（可能为空）
         """
-        stmt = select(ToolModel).where(ToolModel.category == category).order_by(ToolModel.created_at.desc())
+        stmt = (
+            select(ToolModel)
+            .where(ToolModel.category == category)
+            .order_by(ToolModel.created_at.desc())
+        )
         models = self.session.scalars(stmt).all()
 
         return [self._to_entity(model) for model in models]
@@ -217,8 +223,10 @@ class SQLAlchemyToolRepository:
         返回：
             状态为 PUBLISHED 的 Tool 列表
         """
-        stmt = select(ToolModel).where(ToolModel.status == ToolStatus.PUBLISHED.value).order_by(
-            ToolModel.created_at.desc()
+        stmt = (
+            select(ToolModel)
+            .where(ToolModel.status == ToolStatus.PUBLISHED.value)
+            .order_by(ToolModel.created_at.desc())
         )
         models = self.session.scalars(stmt).all()
 

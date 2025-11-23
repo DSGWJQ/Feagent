@@ -28,7 +28,7 @@ V2新功能：
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 from src.domain.entities.workflow import Workflow
 from src.domain.ports.workflow_repository import WorkflowRepository
@@ -53,7 +53,7 @@ class ImportWorkflowInput:
     - coze_json: Coze 工作流 JSON 数据（必填）
     """
 
-    coze_json: Dict[str, Any]
+    coze_json: dict[str, Any]
 
 
 @dataclass

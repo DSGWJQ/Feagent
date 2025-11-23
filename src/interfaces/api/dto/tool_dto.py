@@ -45,18 +45,16 @@ class CreateToolRequest(BaseModel):
 
     name: str = Field(..., description="工具名称", min_length=1, max_length=255)
     description: str = Field(..., description="工具描述")
-    category: str = Field(..., description="工具分类（http, database, file, ai, notification, custom）")
-    author: str = Field(..., description="工具创建者", min_length=1)
-    parameters: list[ToolParameterDTO] | None = Field(
-        default=None, description="工具参数列表"
+    category: str = Field(
+        ..., description="工具分类（http, database, file, ai, notification, custom）"
     )
+    author: str = Field(..., description="工具创建者", min_length=1)
+    parameters: list[ToolParameterDTO] | None = Field(default=None, description="工具参数列表")
     returns: dict[str, Any] | None = Field(default=None, description="返回值 schema")
     implementation_type: str | None = Field(
         default="builtin", description="实现类型（builtin, http, javascript, python）"
     )
-    implementation_config: dict[str, Any] | None = Field(
-        default=None, description="实现配置"
-    )
+    implementation_config: dict[str, Any] | None = Field(default=None, description="实现配置")
     tags: list[str] | None = Field(default=None, description="工具标签列表")
     icon: str | None = Field(default=None, description="工具图标 URL")
 

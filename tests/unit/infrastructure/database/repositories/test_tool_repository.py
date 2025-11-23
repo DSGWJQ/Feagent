@@ -31,7 +31,6 @@ from src.infrastructure.database.repositories.tool_repository import (
     SQLAlchemyToolRepository,
 )
 
-
 # ==================== Fixtures ====================
 
 
@@ -92,7 +91,9 @@ def sample_tool() -> Tool:
 class TestToolRepositorySave:
     """保存 Tool 测试"""
 
-    def test_save_new_tool(self, tool_repository: SQLAlchemyToolRepository, sample_tool: Tool, db_session: Session):
+    def test_save_new_tool(
+        self, tool_repository: SQLAlchemyToolRepository, sample_tool: Tool, db_session: Session
+    ):
         """测试保存新 Tool"""
         tool_repository.save(sample_tool)
         db_session.commit()
@@ -153,9 +154,7 @@ class TestToolRepositoryRetrieval:
         assert retrieved.id == sample_tool.id
         assert retrieved.name == sample_tool.name
 
-    def test_get_by_id_not_found(
-        self, tool_repository: SQLAlchemyToolRepository
-    ):
+    def test_get_by_id_not_found(self, tool_repository: SQLAlchemyToolRepository):
         """测试按 ID 获取 Tool（不存在）"""
         with pytest.raises(NotFoundError):
             tool_repository.get_by_id("tool_nonexistent")
@@ -171,16 +170,12 @@ class TestToolRepositoryRetrieval:
         assert retrieved is not None
         assert retrieved.id == sample_tool.id
 
-    def test_find_by_id_not_found(
-        self, tool_repository: SQLAlchemyToolRepository
-    ):
+    def test_find_by_id_not_found(self, tool_repository: SQLAlchemyToolRepository):
         """测试按 ID 查找 Tool（不存在）"""
         result = tool_repository.find_by_id("tool_nonexistent")
         assert result is None
 
-    def test_find_all(
-        self, tool_repository: SQLAlchemyToolRepository, db_session: Session
-    ):
+    def test_find_all(self, tool_repository: SQLAlchemyToolRepository, db_session: Session):
         """测试查找所有 Tool"""
         # 创建多个 Tool
         tools = [
@@ -206,9 +201,7 @@ class TestToolRepositoryRetrieval:
 class TestToolRepositoryCategory:
     """按分类查询 Tool 测试"""
 
-    def test_find_by_category(
-        self, tool_repository: SQLAlchemyToolRepository, db_session: Session
-    ):
+    def test_find_by_category(self, tool_repository: SQLAlchemyToolRepository, db_session: Session):
         """测试按分类查找 Tool"""
         # 创建不同分类的 Tool
         http_tool = Tool.create(
@@ -242,9 +235,7 @@ class TestToolRepositoryCategory:
 class TestToolRepositoryStatus:
     """按状态查询 Tool 测试"""
 
-    def test_find_published(
-        self, tool_repository: SQLAlchemyToolRepository, db_session: Session
-    ):
+    def test_find_published(self, tool_repository: SQLAlchemyToolRepository, db_session: Session):
         """测试查找已发布的 Tool"""
         # 创建 DRAFT 状态的 Tool
         draft_tool = Tool.create(
@@ -338,9 +329,7 @@ class TestToolRepositoryExists:
 
         assert tool_repository.exists(sample_tool.id) is True
 
-    def test_exists_false(
-        self, tool_repository: SQLAlchemyToolRepository
-    ):
+    def test_exists_false(self, tool_repository: SQLAlchemyToolRepository):
         """测试工具不存在"""
         assert tool_repository.exists("tool_nonexistent") is False
 
@@ -366,16 +355,12 @@ class TestToolRepositoryDelete:
         assert tool_repository.exists(sample_tool.id) is False
         assert tool_repository.find_by_id(sample_tool.id) is None
 
-    def test_delete_nonexistent_tool(
-        self, tool_repository: SQLAlchemyToolRepository
-    ):
+    def test_delete_nonexistent_tool(self, tool_repository: SQLAlchemyToolRepository):
         """测试删除不存在的工具（幂等）"""
         # 应该不抛异常
         tool_repository.delete("tool_nonexistent")
 
-    def test_delete_cascade(
-        self, tool_repository: SQLAlchemyToolRepository, db_session: Session
-    ):
+    def test_delete_cascade(self, tool_repository: SQLAlchemyToolRepository, db_session: Session):
         """测试删除工具时级联删除参数"""
         tool = Tool.create(
             name="测试工具",

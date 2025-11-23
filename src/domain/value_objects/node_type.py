@@ -33,6 +33,8 @@ class NodeType(str, Enum):
     - PROMPT: 提示词节点（构造 LLM 输入）
     - IMAGE: 图像生成节点
     - AUDIO: 音频生成节点
+    - FILE: 文件处理节点（读取、写入、删除等）
+    - NOTIFICATION: 消息通知节点（邮件、Webhook、Slack 等）
     """
 
     # React Flow 默认节点类型（兼容）
@@ -75,6 +77,12 @@ class NodeType(str, Enum):
 
     # 音频节点
     AUDIO = "audio"
+
+    # 文件处理节点
+    FILE = "file"
+
+    # 消息通知节点
+    NOTIFICATION = "notification"
 
     # 其他节点
     EMBEDDING = "embeddingModel"  # V0 前端使用的名称

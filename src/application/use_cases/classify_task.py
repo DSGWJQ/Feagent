@@ -18,7 +18,7 @@ V2新功能：智能任务分类
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 from src.domain.value_objects.task_type import TaskType
 
@@ -35,7 +35,7 @@ class ClassifyTaskInput:
 
     start: str
     goal: str
-    context: Dict[str, Any] | None = None
+    context: dict[str, Any] | None = None
 
 
 @dataclass
@@ -126,20 +126,14 @@ class ClassifyTaskUseCase:
         combined_text = f"{start} {goal}".lower()
 
         # 关键词规则
-        if any(
-            kw in combined_text
-            for kw in ["分析", "统计", "数据", "报表", "图表", "趋势"]
-        ):
+        if any(kw in combined_text for kw in ["分析", "统计", "数据", "报表", "图表", "趋势"]):
             return (
                 TaskType.DATA_ANALYSIS,
                 0.85,
                 "检测到数据分析相关关键词：分析、统计、数据、报表等",
             )
 
-        if any(
-            kw in combined_text
-            for kw in ["写", "生成", "创建", "编写", "翻译", "内容"]
-        ):
+        if any(kw in combined_text for kw in ["写", "生成", "创建", "编写", "翻译", "内容"]):
             return (
                 TaskType.CONTENT_CREATION,
                 0.80,
@@ -153,19 +147,14 @@ class ClassifyTaskUseCase:
                 "检测到研究相关关键词：研究、调查、搜索等",
             )
 
-        if any(
-            kw in combined_text
-            for kw in ["错误", "bug", "问题", "修复", "调试", "为什么"]
-        ):
+        if any(kw in combined_text for kw in ["错误", "bug", "问题", "修复", "调试", "为什么"]):
             return (
                 TaskType.PROBLEM_SOLVING,
                 0.75,
                 "检测到问题解决相关关键词：错误、bug、问题、修复等",
             )
 
-        if any(
-            kw in combined_text for kw in ["自动", "定时", "每天", "每周", "批量"]
-        ):
+        if any(kw in combined_text for kw in ["自动", "定时", "每天", "每周", "批量"]):
             return (
                 TaskType.AUTOMATION,
                 0.75,

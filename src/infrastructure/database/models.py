@@ -343,8 +343,12 @@ class WorkflowModel(Base):
         String(20), nullable=False, default="draft", comment="工作流状态"
     )
     # V2新增：工作流来源追踪
-    source: Mapped[str] = mapped_column(String(50), nullable=False, default="feagent", comment="工作流来源（feagent/coze/user等）")
-    source_id: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="原始来源的ID（如Coze workflow_id）")
+    source: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="feagent", comment="工作流来源（feagent/coze/user等）"
+    )
+    source_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, comment="原始来源的ID（如Coze workflow_id）"
+    )
 
     # 时间戳
     created_at: Mapped[datetime] = mapped_column(
@@ -530,7 +534,9 @@ class ToolModel(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="draft", comment="工具状态"
     )
-    version: Mapped[str] = mapped_column(String(50), nullable=False, default="0.1.0", comment="版本号")
+    version: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="0.1.0", comment="版本号"
+    )
 
     # 工具定义
     parameters: Mapped[list[dict] | None] = mapped_column(
@@ -565,9 +571,7 @@ class ToolModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, comment="创建时间"
     )
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="更新时间"
-    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="更新时间")
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True, comment="发布时间"
     )
@@ -616,17 +620,13 @@ class LLMProviderModel(Base):
     name: Mapped[str] = mapped_column(
         String(50), nullable=False, unique=True, comment="提供商标识（openai, deepseek等）"
     )
-    display_name: Mapped[str] = mapped_column(
-        String(255), nullable=False, comment="显示名称"
-    )
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False, comment="显示名称")
     api_base: Mapped[str] = mapped_column(Text, nullable=False, comment="API 基础 URL")
     api_key: Mapped[str | None] = mapped_column(Text, nullable=True, comment="API 密钥")
     models: Mapped[list[str] | None] = mapped_column(
         JSON, nullable=False, default=list, comment="支持的模型列表（JSON）"
     )
-    enabled: Mapped[bool] = mapped_column(
-        nullable=False, default=True, comment="是否启用"
-    )
+    enabled: Mapped[bool] = mapped_column(nullable=False, default=True, comment="是否启用")
     config: Mapped[dict | None] = mapped_column(
         JSON, nullable=True, default=dict, comment="额外配置（JSON）"
     )
@@ -635,9 +635,7 @@ class LLMProviderModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, comment="创建时间"
     )
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="更新时间"
-    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="更新时间")
 
     # 索引
     __table_args__ = (

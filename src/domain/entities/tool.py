@@ -15,7 +15,7 @@
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from src.domain.exceptions import DomainError
 from src.domain.value_objects.tool_category import ToolCategory
@@ -42,7 +42,7 @@ class ToolParameter:
     description: str
     required: bool = False
     default: Any = None
-    enum: List[str] | None = None  # 枚举值列表
+    enum: list[str] | None = None  # 枚举值列表
 
 
 @dataclass
@@ -91,12 +91,12 @@ class Tool:
     category: ToolCategory
     status: ToolStatus
     version: str
-    parameters: List[ToolParameter] = field(default_factory=list)
-    returns: Dict[str, Any] = field(default_factory=dict)
+    parameters: list[ToolParameter] = field(default_factory=list)
+    returns: dict[str, Any] = field(default_factory=dict)
     implementation_type: str = "builtin"
-    implementation_config: Dict[str, Any] = field(default_factory=dict)
+    implementation_config: dict[str, Any] = field(default_factory=dict)
     author: str = ""
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     icon: str | None = None
     usage_count: int = 0
     last_used_at: datetime | None = None
@@ -217,9 +217,7 @@ class Tool:
         self.parameters.append(param)
         self.updated_at = datetime.now(UTC)
 
-    def set_implementation(
-        self, implementation_type: str, config: Dict[str, Any]
-    ) -> None:
+    def set_implementation(self, implementation_type: str, config: dict[str, Any]) -> None:
         """设置工具实现
 
         参数：

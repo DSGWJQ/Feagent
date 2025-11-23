@@ -1,6 +1,6 @@
 /**
  * 节点工具函数
- * 
+ *
  * 用于节点状态管理、样式计算等
  */
 
@@ -87,6 +87,33 @@ export function getDefaultNodeData(type: string): Record<string, any> {
       return {
         schemaName: 'MySchema',
         mode: 'object',
+      };
+    case 'database':
+      return {
+        database_url: 'sqlite:///agent_data.db',
+        sql: 'SELECT * FROM table_name',
+        params: {},
+      };
+    case 'file':
+      return {
+        operation: 'read',
+        path: '/path/to/file.txt',
+        encoding: 'utf-8',
+        content: '',
+      };
+    case 'notification':
+      return {
+        type: 'webhook',
+        subject: 'Notification',
+        message: 'Your message here',
+        url: 'https://webhook.example.com',
+        include_input: true,
+      };
+    case 'loop':
+      return {
+        type: 'for_each',
+        array: 'items',
+        code: 'result = item',
       };
     default:
       return {};
@@ -189,5 +216,32 @@ export const nodeTypeConfigs: NodeTypeConfig[] = [
     color: '#52c41a',
     icon: 'Database',
   },
+  {
+    type: 'database',
+    label: 'Database',
+    description: 'Execute SQL queries',
+    color: '#1890ff',
+    icon: 'Database',
+  },
+  {
+    type: 'file',
+    label: 'File',
+    description: 'File operations (read/write)',
+    color: '#722ed1',
+    icon: 'File',
+  },
+  {
+    type: 'notification',
+    label: 'Notification',
+    description: 'Send notifications (webhook/email)',
+    color: '#fa8c16',
+    icon: 'Bell',
+  },
+  {
+    type: 'loop',
+    label: 'Loop',
+    description: 'Iterate over arrays or ranges',
+    color: '#1890ff',
+    icon: 'Repeat',
+  },
 ];
-

@@ -18,7 +18,7 @@ V2新功能：支持用户创建自定义工具
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 from src.domain.entities.tool import Tool, ToolParameter
 from src.domain.ports.tool_repository import ToolRepository
@@ -43,9 +43,9 @@ class CreateToolInput:
     description: str
     category: str  # 字符串，将转换为 ToolCategory
     author: str
-    parameters: List[Dict[str, Any]] | None = None
+    parameters: list[dict[str, Any]] | None = None
     implementation_type: str = "builtin"
-    implementation_config: Dict[str, Any] | None = None
+    implementation_config: dict[str, Any] | None = None
 
 
 class CreateToolUseCase:

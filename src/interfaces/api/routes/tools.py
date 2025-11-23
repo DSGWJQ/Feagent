@@ -19,6 +19,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from src.domain.entities.tool import Tool, ToolParameter
 from src.domain.exceptions import DomainError, NotFoundError
 from src.domain.value_objects.tool_category import ToolCategory
 from src.domain.value_objects.tool_status import ToolStatus
@@ -34,7 +35,6 @@ from src.interfaces.api.dto import (
     ToolResponse,
     UpdateToolRequest,
 )
-from src.domain.entities.tool import Tool, ToolParameter
 
 # 创建路由器
 router = APIRouter(prefix="/tools", tags=["tools"])
@@ -236,6 +236,7 @@ def update_tool(
 
         # 更新时间戳
         from datetime import UTC, datetime
+
         tool.updated_at = datetime.now(UTC)
 
         # 保存到数据库

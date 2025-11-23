@@ -293,4 +293,3 @@ python scripts/test_workflow_integration.py
 - ✅ 用户已在浏览器中打开工作流编辑器
 
 **下一步**：根据用户在浏览器中的测试反馈，修复可能存在的 Bug，然后继续实现高级功能。
-

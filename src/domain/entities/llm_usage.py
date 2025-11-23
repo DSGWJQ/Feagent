@@ -15,7 +15,7 @@ V2新功能：记录每次 LLM 调用的成本
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Dict, ClassVar
+from typing import ClassVar
 
 from src.domain.exceptions import DomainError
 
@@ -54,7 +54,7 @@ class LLMUsage:
     created_at: datetime = None
 
     # 定价表（美元）
-    PRICING: ClassVar[Dict[str, Dict[str, Dict[str, float]]]] = {
+    PRICING: ClassVar[dict[str, dict[str, dict[str, float]]]] = {
         "openai": {
             "gpt-4": {"prompt": 0.03 / 1000, "completion": 0.06 / 1000},
             "gpt-4-turbo": {"prompt": 0.01 / 1000, "completion": 0.03 / 1000},
@@ -134,7 +134,9 @@ class LLMUsage:
         )
 
     @staticmethod
-    def calculate_cost(provider: str, model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    def calculate_cost(
+        provider: str, model: str, prompt_tokens: int, completion_tokens: int
+    ) -> float:
         """计算 LLM 调用成本
 
         参数：
@@ -172,7 +174,7 @@ class LLMUsage:
         return sum(usage.cost for usage in usages)
 
     @staticmethod
-    def estimate_cost_by_provider(usages: list["LLMUsage"]) -> Dict[str, float]:
+    def estimate_cost_by_provider(usages: list["LLMUsage"]) -> dict[str, float]:
         """按提供商统计成本
 
         参数：

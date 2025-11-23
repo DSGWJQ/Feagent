@@ -346,30 +346,18 @@ class TestCozeWorkflowImport:
                     "id": "node_1",
                     "type": "llm",  # Coze节点类型
                     "name": "LLM处理",
-                    "config": {
-                        "model": "gpt-4",
-                        "prompt": "处理用户输入"
-                    },
-                    "position": {"x": 100, "y": 100}
+                    "config": {"model": "gpt-4", "prompt": "处理用户输入"},
+                    "position": {"x": 100, "y": 100},
                 },
                 {
                     "id": "node_2",
                     "type": "http",
                     "name": "API调用",
-                    "config": {
-                        "url": "https://api.example.com",
-                        "method": "POST"
-                    },
-                    "position": {"x": 300, "y": 100}
-                }
+                    "config": {"url": "https://api.example.com", "method": "POST"},
+                    "position": {"x": 300, "y": 100},
+                },
             ],
-            "edges": [
-                {
-                    "id": "edge_1",
-                    "source": "node_1",
-                    "target": "node_2"
-                }
-            ]
+            "edges": [{"id": "edge_1", "source": "node_1", "target": "node_2"}],
         }
 
         # Act
@@ -418,7 +406,7 @@ class TestCozeWorkflowImport:
             "name": "空工作流",
             "description": "测试",
             "nodes": [],
-            "edges": []
+            "edges": [],
         }
 
         # Act & Assert
@@ -443,10 +431,10 @@ class TestCozeWorkflowImport:
                     "type": "unsupported_type",  # 不支持的类型
                     "name": "未知节点",
                     "config": {},
-                    "position": {"x": 100, "y": 100}
+                    "position": {"x": 100, "y": 100},
                 }
             ],
-            "edges": []
+            "edges": [],
         }
 
         # Act & Assert
@@ -470,16 +458,16 @@ class TestCozeWorkflowImport:
                     "type": "llm",
                     "name": "LLM节点",
                     "config": {},
-                    "position": {"x": 100, "y": 100}
+                    "position": {"x": 100, "y": 100},
                 }
             ],
             "edges": [
                 {
                     "id": "edge_1",
                     "source": "node_1",
-                    "target": "node_999"  # 不存在的节点
+                    "target": "node_999",  # 不存在的节点
                 }
-            ]
+            ],
         }
 
         # Act & Assert
@@ -503,12 +491,36 @@ class TestCozeWorkflowImport:
             "name": "节点类型映射测试",
             "description": "测试所有支持的节点类型映射",
             "nodes": [
-                {"id": "n1", "type": "llm", "name": "LLM", "config": {}, "position": {"x": 0, "y": 0}},
-                {"id": "n2", "type": "http", "name": "HTTP", "config": {}, "position": {"x": 100, "y": 0}},
-                {"id": "n3", "type": "javascript", "name": "JS", "config": {}, "position": {"x": 200, "y": 0}},
-                {"id": "n4", "type": "condition", "name": "条件", "config": {}, "position": {"x": 300, "y": 0}},
+                {
+                    "id": "n1",
+                    "type": "llm",
+                    "name": "LLM",
+                    "config": {},
+                    "position": {"x": 0, "y": 0},
+                },
+                {
+                    "id": "n2",
+                    "type": "http",
+                    "name": "HTTP",
+                    "config": {},
+                    "position": {"x": 100, "y": 0},
+                },
+                {
+                    "id": "n3",
+                    "type": "javascript",
+                    "name": "JS",
+                    "config": {},
+                    "position": {"x": 200, "y": 0},
+                },
+                {
+                    "id": "n4",
+                    "type": "condition",
+                    "name": "条件",
+                    "config": {},
+                    "position": {"x": 300, "y": 0},
+                },
             ],
-            "edges": []
+            "edges": [],
         }
 
         # Act

@@ -16,9 +16,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.infrastructure.database.base import Base
 # 导入所有模型以确保它们都被注册
 from src.infrastructure.database import models  # noqa: F401
+from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
 from src.interfaces.api.main import app
 

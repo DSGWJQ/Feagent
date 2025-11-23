@@ -29,7 +29,6 @@ from src.infrastructure.database.repositories.llm_provider_repository import (
     SQLAlchemyLLMProviderRepository,
 )
 
-
 # ==================== Fixtures ====================
 
 
@@ -136,9 +135,7 @@ class TestLLMProviderRepositoryRetrieval:
         assert retrieved.id == sample_openai_provider.id
         assert retrieved.name == "openai"
 
-    def test_get_by_id_not_found(
-        self, provider_repository: SQLAlchemyLLMProviderRepository
-    ):
+    def test_get_by_id_not_found(self, provider_repository: SQLAlchemyLLMProviderRepository):
         """测试按 ID 获取 LLMProvider（不存在）"""
         with pytest.raises(NotFoundError):
             provider_repository.get_by_id("llm_provider_nonexistent")
@@ -157,9 +154,7 @@ class TestLLMProviderRepositoryRetrieval:
         assert retrieved.name == "openai"
         assert retrieved.display_name == "OpenAI"
 
-    def test_get_by_name_not_found(
-        self, provider_repository: SQLAlchemyLLMProviderRepository
-    ):
+    def test_get_by_name_not_found(self, provider_repository: SQLAlchemyLLMProviderRepository):
         """测试按名称获取 LLMProvider（不存在）"""
         with pytest.raises(NotFoundError):
             provider_repository.get_by_name("nonexistent")
@@ -178,9 +173,7 @@ class TestLLMProviderRepositoryRetrieval:
         assert retrieved is not None
         assert retrieved.id == sample_openai_provider.id
 
-    def test_find_by_id_not_found(
-        self, provider_repository: SQLAlchemyLLMProviderRepository
-    ):
+    def test_find_by_id_not_found(self, provider_repository: SQLAlchemyLLMProviderRepository):
         """测试按 ID 查找 LLMProvider（不存在）"""
         result = provider_repository.find_by_id("llm_provider_nonexistent")
         assert result is None
@@ -199,9 +192,7 @@ class TestLLMProviderRepositoryRetrieval:
         assert retrieved is not None
         assert retrieved.name == "deepseek"
 
-    def test_find_by_name_not_found(
-        self, provider_repository: SQLAlchemyLLMProviderRepository
-    ):
+    def test_find_by_name_not_found(self, provider_repository: SQLAlchemyLLMProviderRepository):
         """测试按名称查找 LLMProvider（不存在）"""
         result = provider_repository.find_by_name("nonexistent")
         assert result is None
@@ -355,9 +346,7 @@ class TestLLMProviderRepositoryExists:
 
         assert provider_repository.exists(sample_openai_provider.id) is True
 
-    def test_exists_false(
-        self, provider_repository: SQLAlchemyLLMProviderRepository
-    ):
+    def test_exists_false(self, provider_repository: SQLAlchemyLLMProviderRepository):
         """测试提供商不存在"""
         assert provider_repository.exists("llm_provider_nonexistent") is False
 

@@ -154,4 +154,3 @@ uvicorn main:app --reload --port 8000
 - 浏览器类型和版本
 - 具体的操作步骤
 - 预期效果 vs 实际效果
-

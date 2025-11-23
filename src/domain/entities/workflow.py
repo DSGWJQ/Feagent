@@ -14,9 +14,8 @@
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
-
-from typing import Any, Dict
 
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
@@ -216,7 +215,7 @@ class Workflow:
         self.updated_at = datetime.now(UTC)
 
     @staticmethod
-    def from_coze_json(coze_data: Dict[str, Any]) -> "Workflow":
+    def from_coze_json(coze_data: dict[str, Any]) -> "Workflow":
         """从Coze JSON创建Workflow
 
         V2功能：支持从Coze平台导入工作流

@@ -1,9 +1,9 @@
 """快速测试：LLMProvider 和 LLMUsage 实体"""
 
 import pytest
+
 from src.domain.entities.llm_provider import LLMProvider
 from src.domain.entities.llm_usage import LLMUsage
-from src.domain.exceptions import DomainError
 
 
 class TestLLMProvider:
@@ -110,8 +110,8 @@ class TestClassifyTask:
     def test_classify_data_analysis_task(self):
         """测试分类数据分析任务"""
         from src.application.use_cases.classify_task import (
-            ClassifyTaskUseCase,
             ClassifyTaskInput,
+            ClassifyTaskUseCase,
         )
         from src.domain.value_objects.task_type import TaskType
 
@@ -128,8 +128,8 @@ class TestClassifyTask:
     def test_classify_content_creation_task(self):
         """测试分类内容创建任务"""
         from src.application.use_cases.classify_task import (
-            ClassifyTaskUseCase,
             ClassifyTaskInput,
+            ClassifyTaskUseCase,
         )
         from src.domain.value_objects.task_type import TaskType
 
@@ -146,8 +146,8 @@ class TestClassifyTask:
     def test_classify_problem_solving_task(self):
         """测试分类问题解决任务"""
         from src.application.use_cases.classify_task import (
-            ClassifyTaskUseCase,
             ClassifyTaskInput,
+            ClassifyTaskUseCase,
         )
         from src.domain.value_objects.task_type import TaskType
 

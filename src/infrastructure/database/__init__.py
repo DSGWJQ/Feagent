@@ -12,6 +12,8 @@
 - 使用 declarative_base 定义 ORM 模型基类
 """
 
+# 导入所有 ORM 模型，确保它们都被注册到 Base.metadata
+from src.infrastructure.database import models  # noqa: F401
 from src.infrastructure.database.base import Base, get_session
 from src.infrastructure.database.engine import (
     async_engine,
@@ -20,8 +22,6 @@ from src.infrastructure.database.engine import (
     get_sync_engine,
     sync_engine,
 )
-# 导入所有 ORM 模型，确保它们都被注册到 Base.metadata
-from src.infrastructure.database import models  # noqa: F401
 
 __all__ = [
     "Base",

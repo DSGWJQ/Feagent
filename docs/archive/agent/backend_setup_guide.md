@@ -327,4 +327,3 @@ pip install -e ".[dev]" -i https://pypi.tuna.tsinghua.edu.cn/simple
 - [Pydantic 官方文档](https://docs.pydantic.dev/)
 - [Alembic 官方文档](https://alembic.sqlalchemy.org/)
 - [项目开发规范](./develop_document.md)
-

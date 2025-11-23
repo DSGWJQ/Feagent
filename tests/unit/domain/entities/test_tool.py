@@ -10,9 +10,8 @@ TDD 第一步：编写测试用例，明确需求和验收标准
 """
 
 import pytest
-from datetime import datetime
 
-from src.domain.entities.tool import Tool, ToolParameter, ToolStatus, ToolCategory
+from src.domain.entities.tool import Tool, ToolCategory, ToolParameter, ToolStatus
 from src.domain.exceptions import DomainError
 
 

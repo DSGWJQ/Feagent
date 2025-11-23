@@ -16,6 +16,10 @@ from src.application.use_cases.execute_workflow import (
     ExecuteWorkflowInput,
     ExecuteWorkflowUseCase,
 )
+from src.application.use_cases.generate_workflow_from_form import (
+    GenerateWorkflowFromFormUseCase,
+    GenerateWorkflowInput,
+)
 from src.application.use_cases.import_workflow import (
     ImportWorkflowInput,
     ImportWorkflowUseCase,
@@ -430,6 +434,94 @@ def chat_with_workflow(
         )
 
 
+class GenerateWorkflowRequest(BaseModel):
+    """生成工作流请求"""
+
+    description: str
+    goal: str
+
+
+class GenerateWorkflowResponse(BaseModel):
+    """生成工作流响应"""
+
+    workflow_id: str
+    name: str
+    description: str
+    node_count: int
+    edge_count: int
+
+
+class SimpleWorkflowLLMClient:
+    """简单的工作流生成 LLM 客户端"""
+
+    def __init__(self, llm_model: ChatOpenAI):
+        self.llm = llm_model
+
+    async def generate_workflow(self, description: str, goal: str) -> dict[str, Any]:
+        """使用 LLM 生成工作流结构
+
+        参数：
+            description: 工作流描述
+            goal: 工作流目标
+
+        返回：
+            包含节点和边的工作流结构
+        """
+        # 构建 LLM 提示词
+        prompt = f"""
+你是一个工作流设计师。根据以下需求，生成一个 JSON 格式的工作流结构。
+
+需求：
+- 描述：{description}
+- 目标：{goal}
+
+生成的 JSON 必须包含以下字段：
+{{
+  "name": "工作流名称",
+  "description": "工作流描述",
+  "nodes": [
+    {{
+      "type": "start|end|httpRequest|textModel|database|conditional|loop|python|transform|file|notification",
+      "name": "节点名称",
+      "config": {{}},
+      "position": {{"x": 100, "y": 100}}
+    }}
+  ],
+  "edges": [
+    {{"source": "node_1", "target": "node_2"}}
+  ]
+}}
+
+要求：
+1. 必须至少有一个开始节点（start）和一个结束节点（end）
+2. 节点类型必须从支持的类型中选择
+3. 边的source和target必须指向有效的节点
+4. 返回有效的 JSON，不要包含任何其他文本
+
+根据这个需求生成工作流 JSON：
+"""
+
+        # 调用 LLM
+        response = await self.llm.ainvoke(prompt)
+
+        # 解析响应（假设 LLM 返回有效的 JSON）
+        import json
+
+        try:
+            # 尝试提取 JSON（可能在响应的某个位置）
+            text = response.content if hasattr(response, "content") else str(response)
+            # 查找 JSON 对象
+            json_start = text.find("{")
+            json_end = text.rfind("}") + 1
+            if json_start >= 0 and json_end > json_start:
+                json_str = text[json_start:json_end]
+                return json.loads(json_str)
+            else:
+                raise ValueError("响应中未找到有效的 JSON")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"LLM 响应不是有效的 JSON: {str(e)}")
+
+
 @router.post("/import", response_model=ImportWorkflowResponse, status_code=status.HTTP_201_CREATED)
 def import_workflow(
     request: ImportWorkflowRequest,
@@ -476,6 +568,96 @@ def import_workflow(
 
     except DomainError as e:
         # Domain层验证失败（空JSON、缺少节点、不支持的节点类型、边引用错误等）
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        # 其他未预期的错误
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"服务器内部错误: {str(e)}",
+        )
+
+
+@router.post(
+    "/generate-from-form",
+    response_model=GenerateWorkflowResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_workflow_from_form(
+    request: GenerateWorkflowRequest,
+    db: Session = Depends(get_db_session),
+) -> GenerateWorkflowResponse:
+    """从表单生成工作流
+
+    V2新功能：AI辅助工作流初始化
+
+    业务场景：
+    用户提供工作流描述和目标，系统使用 LLM 自动生成工作流结构
+
+    参数：
+        request: GenerateWorkflowRequest 包含工作流描述和目标
+
+    返回：
+        GenerateWorkflowResponse 包含生成后的工作流信息
+
+    错误：
+        400: 输入数据无效或 LLM 生成失败
+        500: 服务器内部错误
+    """
+    try:
+        # 1. 创建 Repository
+        workflow_repository = SQLAlchemyWorkflowRepository(db)
+
+        # 2. 初始化 LLM 客户端
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise ValueError("OPENAI_API_KEY 环境变量未设置")
+
+        llm = ChatOpenAI(
+            api_key=openai_api_key,
+            model="gpt-4",
+            temperature=0.7,
+        )
+        llm_client = SimpleWorkflowLLMClient(llm)
+
+        # 3. 创建 Use Case
+        use_case = GenerateWorkflowFromFormUseCase(
+            workflow_repository=workflow_repository,
+            llm_client=llm_client,
+        )
+
+        # 4. 执行 Use Case
+        input_data = GenerateWorkflowInput(
+            description=request.description,
+            goal=request.goal,
+        )
+        workflow = await use_case.execute(input_data)
+
+        # 5. 提交事务
+        db.commit()
+
+        # 6. 返回结果
+        return GenerateWorkflowResponse(
+            workflow_id=workflow.id,
+            name=workflow.name,
+            description=workflow.description,
+            node_count=len(workflow.nodes),
+            edge_count=len(workflow.edges),
+        )
+
+    except DomainError as e:
+        # Domain层验证失败
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except ValueError as e:
+        # 值错误（如环境变量缺失）
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
