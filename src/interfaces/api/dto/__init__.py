@@ -47,6 +47,15 @@ from src.interfaces.api.dto.tool_dto import (
     ToolResponse,
     UpdateToolRequest,
 )
+from src.interfaces.api.dto.workflow_features_dto import (
+    ChatMessageRequest,
+    ChatMessageResponse,
+    EnhancedChatWorkflowResponse,
+    ExecuteConcurrentWorkflowsRequest,
+    ExecutionResultResponse,
+    ScheduleWorkflowRequest,
+    ScheduledWorkflowResponse,
+)
 
 __all__ = [
     "CreateAgentRequest",
@@ -69,4 +78,12 @@ __all__ = [
     "DisableLLMProviderRequest",
     "LLMProviderResponse",
     "LLMProviderListResponse",
+    # Workflow Features DTOs
+    "ScheduleWorkflowRequest",
+    "ScheduledWorkflowResponse",
+    "ExecuteConcurrentWorkflowsRequest",
+    "ExecutionResultResponse",
+    "ChatMessageRequest",
+    "ChatMessageResponse",
+    "EnhancedChatWorkflowResponse",
 ]

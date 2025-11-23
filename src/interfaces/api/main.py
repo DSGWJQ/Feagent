@@ -8,7 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
-from src.interfaces.api.routes import agents, llm_providers, runs, tools
+from src.interfaces.api.routes import (
+    agents,
+    chat_workflows,
+    concurrent_workflows,
+    llm_providers,
+    runs,
+    scheduled_workflows,
+    tools,
+)
 
 
 @asynccontextmanager
@@ -87,6 +95,11 @@ app.include_router(runs.router, prefix="/api/runs", tags=["Runs"])  # GET /{run_
 # V2 新增路由
 app.include_router(tools.router, prefix="/api", tags=["Tools"])
 app.include_router(llm_providers.router, prefix="/api", tags=["LLM Providers"])
+
+# V2 增强功能路由
+app.include_router(scheduled_workflows.router, prefix="/api", tags=["Scheduled Workflows"])
+app.include_router(concurrent_workflows.router, prefix="/api", tags=["Concurrent Workflows"])
+app.include_router(chat_workflows.router, prefix="/api", tags=["Chat Workflows"])
 
 
 if __name__ == "__main__":
