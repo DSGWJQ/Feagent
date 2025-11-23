@@ -645,3 +645,87 @@ class LLMProviderModel(Base):
 
     def __repr__(self) -> str:
         return f"<LLMProviderModel(id={self.id}, name={self.name}, enabled={self.enabled})>"
+
+
+class ScheduledWorkflowModel(Base):
+    """ScheduledWorkflow ORM 模型
+
+    表名：scheduled_workflows
+
+    字段说明：
+    - id: 主键（scheduled_workflow_ 前缀）
+    - workflow_id: 关联的工作流 ID（外键）
+    - cron_expression: Cron 表达式（255 字符）
+    - status: 定时任务状态（active/disabled/paused，20 字符）
+    - max_retries: 最大重试次数（整数）
+    - consecutive_failures: 连续失败次数（整数）
+    - next_execution_time: 下一次执行时间（可选）
+    - last_execution_time: 最后执行时间（可选）
+    - created_at: 创建时间（自动设置）
+    - updated_at: 更新时间（可选）
+
+    关系：
+    - workflow: 多对一关系（一个工作流有多个定时任务）
+
+    索引：
+    - idx_scheduled_workflows_workflow_id: workflow_id 字段索引（查询工作流的定时任务）
+    - idx_scheduled_workflows_status: status 字段索引（查询活跃的定时任务）
+    - idx_scheduled_workflows_created_at: created_at 字段索引（按时间排序）
+    """
+
+    __tablename__ = "scheduled_workflows"
+
+    # 主键
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, comment="ScheduledWorkflow ID"
+    )
+
+    # 外键和关系
+    workflow_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="关联的工作流 ID",
+    )
+
+    # 业务字段
+    cron_expression: Mapped[str] = mapped_column(
+        String(255), nullable=False, comment="Cron 表达式"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", comment="定时任务状态"
+    )
+    max_retries: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, comment="最大重试次数"
+    )
+    consecutive_failures: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, comment="连续失败次数"
+    )
+
+    # 执行时间
+    last_execution_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="最后执行时间"
+    )
+    last_execution_status: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, comment="最后执行状态"
+    )
+    last_error_message: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", comment="最后执行的错误消息"
+    )
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="更新时间"
+    )
+
+    # 索引
+    __table_args__ = (
+        Index("idx_scheduled_workflows_workflow_id", "workflow_id"),
+        Index("idx_scheduled_workflows_status", "status"),
+        Index("idx_scheduled_workflows_created_at", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ScheduledWorkflowModel(id={self.id}, workflow_id={self.workflow_id}, status={self.status})>"
