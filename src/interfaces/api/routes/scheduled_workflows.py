@@ -21,8 +21,8 @@ from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
 from src.interfaces.api.dto.workflow_features_dto import (
-    ScheduleWorkflowRequest,
     ScheduledWorkflowResponse,
+    ScheduleWorkflowRequest,
 )
 
 # 创建路由器
@@ -32,12 +32,32 @@ router = APIRouter(tags=["Scheduled Workflows"])
 def get_schedule_workflow_use_case(
     session: Session = Depends(get_db_session),
 ) -> ScheduleWorkflowUseCase:
-    """获取 ScheduleWorkflowUseCase - 依赖注入函数"""
+    """获取 ScheduleWorkflowUseCase - 依赖注入
+
+    注入真实的仓库和调度器服务
+    """
+    from src.domain.services.workflow_scheduler import ScheduleWorkflowService
+    from src.infrastructure.database.repositories.scheduled_workflow_repository import (
+        SQLAlchemyScheduledWorkflowRepository,
+    )
+
     workflow_repo = SQLAlchemyWorkflowRepository(session)
-    # TODO: 注入真实的 scheduled_workflow_repo 和 scheduler
-    from unittest.mock import Mock
-    scheduled_workflow_repo = Mock()
-    scheduler = Mock()
+    scheduled_workflow_repo = SQLAlchemyScheduledWorkflowRepository(session)
+
+    # 创建工作流执行器（暂时使用 dummy 实现）
+    # TODO: 替换为真实的工作流执行器
+    from src.interfaces.api.services.workflow_executor_adapter import (
+        WorkflowExecutorAdapter,
+    )
+
+    executor = WorkflowExecutorAdapter()
+
+    # 创建调度器服务
+    scheduler = ScheduleWorkflowService(
+        scheduled_workflow_repo=scheduled_workflow_repo,
+        workflow_executor=executor,
+    )
+
     return ScheduleWorkflowUseCase(
         workflow_repo=workflow_repo,
         scheduled_workflow_repo=scheduled_workflow_repo,
@@ -68,17 +88,17 @@ async def schedule_workflow(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from e
     except DomainError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
-        )
+        ) from e
 
 
 @router.get(
@@ -97,7 +117,7 @@ async def list_scheduled_workflows(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
-        )
+        ) from e
 
 
 @router.get(
@@ -117,12 +137,12 @@ async def get_scheduled_workflow_details(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
-        )
+        ) from e
 
 
 @router.delete(
@@ -135,17 +155,15 @@ async def unschedule_workflow(
 ) -> None:
     """删除定时任务"""
     try:
-        input_data = UnscheduleWorkflowInput(
-            scheduled_workflow_id=scheduled_workflow_id
-        )
+        input_data = UnscheduleWorkflowInput(scheduled_workflow_id=scheduled_workflow_id)
         use_case.unschedule(input_data)
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
-        )
+        ) from e

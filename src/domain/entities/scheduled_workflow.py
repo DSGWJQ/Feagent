@@ -112,7 +112,7 @@ class ScheduledWorkflow:
         参数：
             error_message: 错误信息
 
-        自动禁用：当连续失败次数超过 max_retries 时自动禁用
+        自动禁用：当连续失败次数达到或超过 max_retries 时自动禁用
         """
         self.last_execution_at = datetime.now(UTC)
         self.last_execution_status = "failure"
@@ -120,8 +120,8 @@ class ScheduledWorkflow:
         self.last_error_message = error_message
         self.updated_at = datetime.now(UTC)
 
-        # 如果超过最大重试次数，自动禁用
-        if self.consecutive_failures > self.max_retries:
+        # 如果达到或超过最大重试次数，自动禁用
+        if self.consecutive_failures >= self.max_retries:
             self.status = "disabled"
 
     def get_next_execution_time(self) -> datetime:
