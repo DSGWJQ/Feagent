@@ -1,0 +1,26 @@
+/* Tools Library Page Styles */
+
+.tools-library-page {
+  width: 100%;
+}
+
+.tools-library-page .ant-table {
+  font-size: 14px;
+}
+
+.tools-library-page .ant-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+}
+
+.tools-library-page .ant-tag {
+  font-size: 12px;
+}
+
+.tools-library-page .ant-modal-body {
+  padding: 20px;
+}
+
+.tools-library-page .ant-form-item {
+  margin-bottom: 16px;
+}

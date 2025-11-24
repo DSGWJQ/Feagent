@@ -20,6 +20,8 @@ import { AgentListTest, CreateAgentPage, AgentDetailPage } from '@/features/agen
 import { WorkflowEditorPage } from '@/features/workflows/pages';
 import { TaskClassificationPage } from '@/features/classification/pages';
 import { ScheduledWorkflowsPage, SchedulerMonitorPage } from '@/features/scheduler/pages';
+import { ToolsLibraryPage } from '@/features/tools/pages';
+import { LLMProvidersPage } from '@/features/llm/pages';
 
 /**
  * 路由配置
@@ -62,6 +64,14 @@ export const router = createBrowserRouter([
   {
     path: '/monitor',
     element: <SchedulerMonitorPage />,
+  },
+  {
+    path: '/tools',
+    element: <ToolsLibraryPage />,
+  },
+  {
+    path: '/providers',
+    element: <LLMProvidersPage />,
   },
 ]);
 
