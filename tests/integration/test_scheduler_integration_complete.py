@@ -11,9 +11,9 @@ TDD RED阶段：先编写测试用例，明确调度器与执行器的完整集�
 6. 调度监控API
 """
 
+from unittest.mock import patch
+
 import pytest
-import asyncio
-from unittest.mock import Mock, patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -22,7 +22,6 @@ from src.application.use_cases.schedule_workflow import (
     ScheduleWorkflowUseCase,
 )
 from src.domain.entities.scheduled_workflow import ScheduledWorkflow
-from src.domain.entities.workflow import Workflow
 from src.domain.services.workflow_scheduler import ScheduleWorkflowService
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.models import WorkflowModel
@@ -126,7 +125,7 @@ class TestSchedulerIntegrationComplete:
         scheduled_repo.save(scheduled)
 
         # Mock执行器以验证调用
-        with patch.object(executor, 'execute_workflow') as mock_execute:
+        with patch.object(executor, "execute_workflow") as mock_execute:
             mock_execute.return_value = {"status": "success"}
 
             scheduler.start()
@@ -165,13 +164,13 @@ class TestSchedulerIntegrationComplete:
         scheduled_repo.save(scheduled)
 
         # Mock执行器抛出异常
-        with patch.object(executor, 'execute_workflow') as mock_execute:
+        with patch.object(executor, "execute_workflow") as mock_execute:
             mock_execute.side_effect = Exception("工作流执行失败")
 
             scheduler.start()
 
             # Act - 执行3次（达到max_retries）
-            for i in range(3):
+            for _ in range(3):
                 try:
                     scheduler.trigger_execution(scheduled.id)
                 except Exception:

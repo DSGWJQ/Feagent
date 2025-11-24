@@ -14,12 +14,12 @@ TDD RED阶段：首先编写测试用例，明确LLM分类的需求和验收标�
 4. 工具推荐功能
 """
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
 
 from src.application.use_cases.classify_task import (
     ClassifyTaskInput,
-    ClassifyTaskOutput,
     ClassifyTaskUseCase,
 )
 from src.domain.value_objects.task_type import TaskType
@@ -54,10 +54,7 @@ class TestClassifyTaskUseCaseWithLLM:
 
         use_case = ClassifyTaskUseCase(llm_client=llm_client)
 
-        input_data = ClassifyTaskInput(
-            start="我有销售数据文件",
-            goal="分析数据趋势并生成月度报表"
-        )
+        input_data = ClassifyTaskInput(start="我有销售数据文件", goal="分析数据趋势并生成月度报表")
 
         # Act
         result = use_case.execute(input_data)
@@ -94,10 +91,7 @@ class TestClassifyTaskUseCaseWithLLM:
 
         use_case = ClassifyTaskUseCase(llm_client=llm_client)
 
-        input_data = ClassifyTaskInput(
-            start="需要发布新产品",
-            goal="写产品介绍文案和营销内容"
-        )
+        input_data = ClassifyTaskInput(start="需要发布新产品", goal="写产品介绍文案和营销内容")
 
         # Act
         result = use_case.execute(input_data)
@@ -132,10 +126,7 @@ class TestClassifyTaskUseCaseWithLLM:
 
         use_case = ClassifyTaskUseCase(llm_client=llm_client)
 
-        input_data = ClassifyTaskInput(
-            start="系统出现异常",
-            goal="调试并修复API错误"
-        )
+        input_data = ClassifyTaskInput(start="系统出现异常", goal="调试并修复API错误")
 
         # Act
         result = use_case.execute(input_data)
@@ -172,7 +163,7 @@ class TestClassifyTaskUseCaseWithLLM:
         input_data = ClassifyTaskInput(
             start="查看最新数据",
             goal="分析业务趋势",
-            context={"previous_tasks": ["数据分析", "报表生成"]}
+            context={"previous_tasks": ["数据分析", "报表生成"]},
         )
 
         # Act
@@ -199,10 +190,7 @@ class TestClassifyTaskUseCaseWithLLM:
 
         use_case = ClassifyTaskUseCase(llm_client=llm_client)
 
-        input_data = ClassifyTaskInput(
-            start="分析销售数据",
-            goal="生成报表"
-        )
+        input_data = ClassifyTaskInput(start="分析销售数据", goal="生成报表")
 
         # Act & Assert
         # 这里应该回退到关键词匹配，不会抛出异常
@@ -230,10 +218,7 @@ class TestClassifyTaskUseCaseWithLLM:
 
         use_case = ClassifyTaskUseCase(llm_client=llm_client)
 
-        input_data = ClassifyTaskInput(
-            start="测试任务",
-            goal="测试目标"
-        )
+        input_data = ClassifyTaskInput(start="测试任务", goal="测试目标")
 
         # Act
         result = use_case.execute(input_data)
@@ -266,12 +251,9 @@ class TestClassifyTaskUseCaseWithLLM:
         }
         """
 
-        use_case = ClassifyTaskUseCase(llm_client=llm_client)
+        _use_case = ClassifyTaskUseCase(llm_client=llm_client)
 
-        input_data = ClassifyTaskInput(
-            start="准备新产品开发",
-            goal="调研竞品功能和市场定位"
-        )
+        _input_data = ClassifyTaskInput(start="准备新产品开发", goal="调研竞品功能和市场定位")
 
         # Act - 注意：这里我们需要实现异步版本的execute方法
         # result = await use_case.execute_async(input_data)

@@ -9,7 +9,6 @@
 注意：此测试需要真实的OPENAI_API_KEY配置
 """
 
-import os
 import pytest
 
 from src.application.use_cases.classify_task import (
@@ -38,8 +37,7 @@ class TestLLMClassificationIntegration:
     def test_classify_data_analysis_task_with_real_llm(self, use_case):
         """测试：使用真实LLM分类数据分析任务"""
         input_data = ClassifyTaskInput(
-            start="我有销售数据CSV文件",
-            goal="分析销售趋势并生成月度报表"
+            start="我有销售数据CSV文件", goal="分析销售趋势并生成月度报表"
         )
 
         result = use_case.execute(input_data)
@@ -58,10 +56,7 @@ class TestLLMClassificationIntegration:
 
     def test_classify_content_creation_task_with_real_llm(self, use_case):
         """测试：使用真实LLM分类内容创建任务"""
-        input_data = ClassifyTaskInput(
-            start="需要发布新产品",
-            goal="写产品介绍文案和营销内容"
-        )
+        input_data = ClassifyTaskInput(start="需要发布新产品", goal="写产品介绍文案和营销内容")
 
         result = use_case.execute(input_data)
 
@@ -73,10 +68,7 @@ class TestLLMClassificationIntegration:
 
     def test_classify_research_task_with_real_llm(self, use_case):
         """测试：使用真实LLM分类研究任务"""
-        input_data = ClassifyTaskInput(
-            start="准备开发新功能",
-            goal="调研竞品功能和市场定位"
-        )
+        input_data = ClassifyTaskInput(start="准备开发新功能", goal="调研竞品功能和市场定位")
 
         result = use_case.execute(input_data)
 
@@ -87,10 +79,7 @@ class TestLLMClassificationIntegration:
 
     def test_classify_problem_solving_task_with_real_llm(self, use_case):
         """测试：使用真实LLM分类问题解决任务"""
-        input_data = ClassifyTaskInput(
-            start="API接口异常",
-            goal="调试并���复500错误问题"
-        )
+        input_data = ClassifyTaskInput(start="API接口异常", goal="调试并���复500错误问题")
 
         result = use_case.execute(input_data)
 
@@ -104,7 +93,7 @@ class TestLLMClassificationIntegration:
         input_data = ClassifyTaskInput(
             start="查看最新数据",
             goal="分析业务趋势",
-            context={"previous_tasks": ["数据分析", "报表生成"]}
+            context={"previous_tasks": ["数据分析", "报表生成"]},
         )
 
         result = use_case.execute(input_data)
@@ -117,10 +106,7 @@ class TestLLMClassificationIntegration:
 
     def test_unknown_task_classification(self, use_case):
         """测试：使用真实LLM分类模糊任务"""
-        input_data = ClassifyTaskInput(
-            start="做点什么",
-            goal="完成工作"
-        )
+        input_data = ClassifyTaskInput(start="做点什么", goal="完成工作")
 
         result = use_case.execute(input_data)
 
@@ -131,31 +117,21 @@ class TestLLMClassificationIntegration:
         # 关键是推理过程应该明确说明为什么是模糊的
         if result.task_type == TaskType.UNKNOWN:
             # 如果识别为UNKNOWN，推理应该包含模糊性说明
-            assert any(kw in result.reasoning.lower() for kw in ["模糊", "不明确", "不够具体", "无法判断"])
+            assert any(
+                kw in result.reasoning.lower() for kw in ["模糊", "不明确", "不够具体", "无法判断"]
+            )
         assert len(result.reasoning) > 5
 
-    @pytest.mark.parametrize("task_description,expected_type", [
-        (
-            ("有销售数据", "生成分析图表"),
-            TaskType.DATA_ANALYSIS
-        ),
-        (
-            ("新产品上线", "写推广文案"),
-            TaskType.CONTENT_CREATION
-        ),
-        (
-            ("系统报错", "排查问题原因"),
-            TaskType.PROBLEM_SOLVING
-        ),
-        (
-            ("每天早上", "自动发送邮件"),
-            TaskType.AUTOMATION
-        ),
-        (
-            ("学习新技术", "查找资料文档"),
-            TaskType.RESEARCH
-        ),
-    ])
+    @pytest.mark.parametrize(
+        "task_description,expected_type",
+        [
+            (("有销售数据", "生成分析图表"), TaskType.DATA_ANALYSIS),
+            (("新产品上线", "写推广文案"), TaskType.CONTENT_CREATION),
+            (("系统报错", "排查问题原因"), TaskType.PROBLEM_SOLVING),
+            (("每天早上", "自动发送邮件"), TaskType.AUTOMATION),
+            (("学习新技术", "查找资料文档"), TaskType.RESEARCH),
+        ],
+    )
     def test_various_task_types_accuracy(self, use_case, task_description, expected_type):
         """测试：验证各种任务类型的分类准确率"""
         start, goal = task_description
@@ -165,8 +141,7 @@ class TestLLMClassificationIntegration:
 
         # 主要验证类型是否正确
         assert result.task_type == expected_type, (
-            f"任务 {start} -> {goal} 分类错误: "
-            f"期望 {expected_type}, 实际 {result.task_type}"
+            f"任务 {start} -> {goal} 分类错误: " f"期望 {expected_type}, 实际 {result.task_type}"
         )
 
         # 置信度应该合理
@@ -175,10 +150,7 @@ class TestLLMClassificationIntegration:
 
     def test_classification_consistency(self, use_case):
         """测试：分类结果的一致性"""
-        input_data = ClassifyTaskInput(
-            start="分析用户数据",
-            goal="生成业务报表"
-        )
+        input_data = ClassifyTaskInput(start="分析用户数据", goal="生成业务报表")
 
         # 多次调用相同任务，结果应该一致
         results = []

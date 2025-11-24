@@ -12,7 +12,8 @@
 - GET /api/scheduler/jobs - 获取调度器中的任务列表
 """
 
-from typing import Any, Dict
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -178,12 +179,12 @@ async def unschedule_workflow(
 @router.post(
     "/scheduled-workflows/{scheduled_workflow_id}/trigger",
     status_code=status.HTTP_200_OK,
-    response_model=Dict[str, Any],
+    response_model=dict[str, Any],
 )
 async def trigger_scheduled_workflow(
     scheduled_workflow_id: str,
     use_case: ScheduleWorkflowUseCase = Depends(get_schedule_workflow_use_case),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """手动触发定时任务执行"""
     try:
         # 通过调度器触发执行
@@ -265,11 +266,11 @@ async def resume_scheduled_workflow(
 @router.get(
     "/scheduler/status",
     status_code=status.HTTP_200_OK,
-    response_model=Dict[str, Any],
+    response_model=dict[str, Any],
 )
 async def get_scheduler_status(
     use_case: ScheduleWorkflowUseCase = Depends(get_schedule_workflow_use_case),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """获取调度器状态"""
     try:
         scheduler = use_case.scheduler
@@ -301,11 +302,11 @@ async def get_scheduler_status(
 @router.get(
     "/scheduler/jobs",
     status_code=status.HTTP_200_OK,
-    response_model=Dict[str, Any],
+    response_model=dict[str, Any],
 )
 async def get_scheduler_jobs(
     use_case: ScheduleWorkflowUseCase = Depends(get_schedule_workflow_use_case),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """获取调度器中的任务列表"""
     try:
         scheduler = use_case.scheduler
@@ -341,10 +342,9 @@ async def get_scheduler_jobs(
             "summary": {
                 "total_jobs_in_scheduler": len(jobs),
                 "total_active_workflows": len(active_workflows),
-                "workflows_not_in_scheduler": len([
-                    wf for wf in active_workflows
-                    if scheduler.get_scheduled_job(wf.id) is None
-                ]),
+                "workflows_not_in_scheduler": len(
+                    [wf for wf in active_workflows if scheduler.get_scheduled_job(wf.id) is None]
+                ),
             },
             "message": "任务列表获取成功",
         }

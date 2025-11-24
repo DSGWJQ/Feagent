@@ -10,7 +10,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.models import WorkflowModel
@@ -64,9 +64,7 @@ class TestSchedulerAPIIntegration:
         scheduled_workflow_id = scheduled_workflow["id"]
 
         # Act - 手动触发执行
-        trigger_response = client.post(
-            f"/api/scheduled-workflows/{scheduled_workflow_id}/trigger"
-        )
+        trigger_response = client.post(f"/api/scheduled-workflows/{scheduled_workflow_id}/trigger")
 
         # Assert
         assert trigger_response.status_code == 200
@@ -90,17 +88,13 @@ class TestSchedulerAPIIntegration:
         scheduled_workflow_id = create_response.json()["id"]
 
         # Act & Assert - 暂停任务
-        pause_response = client.post(
-            f"/api/scheduled-workflows/{scheduled_workflow_id}/pause"
-        )
+        pause_response = client.post(f"/api/scheduled-workflows/{scheduled_workflow_id}/pause")
         assert pause_response.status_code == 200
         paused_workflow = pause_response.json()
         assert paused_workflow["status"] == "disabled"
 
         # Act & Assert - 恢复任务
-        resume_response = client.post(
-            f"/api/scheduled-workflows/{scheduled_workflow_id}/resume"
-        )
+        resume_response = client.post(f"/api/scheduled-workflows/{scheduled_workflow_id}/resume")
         assert resume_response.status_code == 200
         resumed_workflow = resume_response.json()
         assert resumed_workflow["status"] == "active"

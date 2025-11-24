@@ -190,7 +190,7 @@ def get_llm_for_classification(
     return get_llm(
         model=model,
         temperature=0.1,  # 很低的温度，确保分类的一致性
-        max_tokens=500,   # 分类输出较短，JSON格式
+        max_tokens=500,  # 分类输出较短，JSON格式
     )
 
 

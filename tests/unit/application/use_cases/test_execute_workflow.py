@@ -8,7 +8,7 @@ TDD 第一步：编写测试用例，明确需求和验收标准
 - 支持 SSE 流式返回（实时推送节点执行状态）
 """
 
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 
 import pytest
 

@@ -127,6 +127,7 @@ TASK_CLASSIFICATION_PROMPT = """
 ```
 """
 
+
 def get_classification_prompt(input_data: dict) -> str:
     """生成任务分类的完整prompt
 
@@ -137,9 +138,9 @@ def get_classification_prompt(input_data: dict) -> str:
         完整的分类prompt字符串
     """
 
-    start = input_data.get('start', '')
-    goal = input_data.get('goal', '')
-    context = input_data.get('context', {})
+    start = input_data.get("start", "")
+    goal = input_data.get("goal", "")
+    context = input_data.get("context", {})
 
     # 格式化上下文信息
     context_str = ""

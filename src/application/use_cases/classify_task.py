@@ -122,11 +122,13 @@ class ClassifyTaskUseCase:
 
         try:
             # 构造分类prompt
-            prompt = get_classification_prompt({
-                'start': input_data.start,
-                'goal': input_data.goal,
-                'context': input_data.context or {}
-            })
+            prompt = get_classification_prompt(
+                {
+                    "start": input_data.start,
+                    "goal": input_data.goal,
+                    "context": input_data.context or {},
+                }
+            )
 
             # 调用LLM
             response = self.llm_client.invoke(prompt)
@@ -135,20 +137,20 @@ class ClassifyTaskUseCase:
             llm_result = self._parse_llm_response(response.content)
 
             # 转换TaskType (LLM返回的是大写，需要转换为小写)
-            task_type_str = llm_result['task_type'].upper()
+            task_type_str = llm_result["task_type"].upper()
             task_type_map = {
-                'DATA_ANALYSIS': 'data_analysis',
-                'CONTENT_CREATION': 'content_creation',
-                'RESEARCH': 'research',
-                'PROBLEM_SOLVING': 'problem_solving',
-                'AUTOMATION': 'automation',
-                'UNKNOWN': 'unknown'
+                "DATA_ANALYSIS": "data_analysis",
+                "CONTENT_CREATION": "content_creation",
+                "RESEARCH": "research",
+                "PROBLEM_SOLVING": "problem_solving",
+                "AUTOMATION": "automation",
+                "UNKNOWN": "unknown",
             }
-            task_type_value = task_type_map.get(task_type_str, 'unknown')
+            task_type_value = task_type_map.get(task_type_str, "unknown")
             task_type = TaskType(task_type_value)
-            confidence = float(llm_result['confidence'])
-            reasoning = llm_result['reasoning']
-            suggested_tools = llm_result.get('suggested_tools', [])
+            confidence = float(llm_result["confidence"])
+            reasoning = llm_result["reasoning"]
+            suggested_tools = llm_result.get("suggested_tools", [])
 
             return ClassifyTaskOutput(
                 task_type=task_type,
@@ -199,17 +201,18 @@ class ClassifyTaskUseCase:
         """
         try:
             # 尝试直接解析JSON
-            if response_content.strip().startswith('{'):
+            if response_content.strip().startswith("{"):
                 return json.loads(response_content.strip())
 
             # 如果不是纯JSON，尝试提取JSON部分
             import re
-            json_match = re.search(r'```json\s*(.*?)\s*```', response_content, re.DOTALL)
+
+            json_match = re.search(r"```json\s*(.*?)\s*```", response_content, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group(1))
 
             # 尝试找到第一个{...}模式
-            brace_match = re.search(r'\{.*\}', response_content, re.DOTALL)
+            brace_match = re.search(r"\{.*\}", response_content, re.DOTALL)
             if brace_match:
                 return json.loads(brace_match.group(0))
 
@@ -218,10 +221,10 @@ class ClassifyTaskUseCase:
 
         # 解析失败，返回默认结果
         return {
-            'task_type': 'UNKNOWN',
-            'confidence': 0.5,
-            'reasoning': 'LLM响应格式错误，回退到默认分类',
-            'suggested_tools': []
+            "task_type": "UNKNOWN",
+            "confidence": 0.5,
+            "reasoning": "LLM响应格式错误，回退到默认分类",
+            "suggested_tools": [],
         }
 
     def _classify_by_keywords(self, start: str, goal: str) -> tuple[TaskType, float, str]:
