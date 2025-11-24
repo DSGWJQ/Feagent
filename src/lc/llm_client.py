@@ -166,6 +166,34 @@ def get_llm_for_execution(
     )
 
 
+def get_llm_for_classification(
+    model: str | None = None,
+) -> ChatOpenAI:
+    """创建用于任务分类的 LLM 客户端
+
+    为什么单独创建？
+    - 任务分类需要确定性输出（temperature 很低）
+    - 分类任务通常输出较短（JSON格式）
+    - 便于统一管理分类任务的 LLM 配置
+
+    参数：
+        model: 模型名称（默认从配置读取）
+
+    返回：
+        ChatOpenAI: LLM 客户端实例
+
+    示例：
+    >>> llm = get_llm_for_classification()
+    >>> response = llm.invoke("分析这个任务类型...")
+    >>> # 返回分类结果的JSON格式
+    """
+    return get_llm(
+        model=model,
+        temperature=0.1,  # 很低的温度，确保分类的一致性
+        max_tokens=500,   # 分类输出较短，JSON格式
+    )
+
+
 # 为什么不使用全局单例？
 # - 全局单例难以测试（无法 Mock）
 # - 全局单例难以切换配置（如不同的 temperature）

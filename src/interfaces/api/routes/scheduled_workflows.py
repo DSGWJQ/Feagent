@@ -5,8 +5,14 @@
 - GET /api/scheduled-workflows - 列出所有定时任务
 - GET /api/scheduled-workflows/{scheduled_workflow_id} - 获取定时任务详情
 - DELETE /api/scheduled-workflows/{scheduled_workflow_id} - 删除定时任务
+- POST /api/scheduled-workflows/{scheduled_workflow_id}/trigger - 手动触发执行
+- POST /api/scheduled-workflows/{scheduled_workflow_id}/pause - 暂停定时任务
+- POST /api/scheduled-workflows/{scheduled_workflow_id}/resume - 恢复定时任务
+- GET /api/scheduler/status - 获取调度器状态
+- GET /api/scheduler/jobs - 获取调度器中的任务列表
 """
 
+from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -162,6 +168,186 @@ async def unschedule_workflow(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}",
+        ) from e
+
+
+@router.post(
+    "/scheduled-workflows/{scheduled_workflow_id}/trigger",
+    status_code=status.HTTP_200_OK,
+    response_model=Dict[str, Any],
+)
+async def trigger_scheduled_workflow(
+    scheduled_workflow_id: str,
+    use_case: ScheduleWorkflowUseCase = Depends(get_schedule_workflow_use_case),
+) -> Dict[str, Any]:
+    """手动触发定时任务执行"""
+    try:
+        # 通过调度器触发执行
+        result = use_case.scheduler.trigger_execution(scheduled_workflow_id)
+        return {
+            "scheduled_workflow_id": scheduled_workflow_id,
+            "execution_status": result["status"],
+            "execution_timestamp": result["timestamp"],
+            "message": "任务执行已触发",
+        }
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}",
+        ) from e
+
+
+@router.post(
+    "/scheduled-workflows/{scheduled_workflow_id}/pause",
+    status_code=status.HTTP_200_OK,
+    response_model=ScheduledWorkflowResponse,
+)
+async def pause_scheduled_workflow(
+    scheduled_workflow_id: str,
+    use_case: ScheduleWorkflowUseCase = Depends(get_schedule_workflow_use_case),
+) -> ScheduledWorkflowResponse:
+    """暂停定时任务"""
+    try:
+        use_case.scheduler.pause_scheduled_workflow(scheduled_workflow_id)
+
+        # 获取更新后的任务状态
+        result = use_case.get_scheduled_workflow_details(scheduled_workflow_id)
+        return ScheduledWorkflowResponse.from_entity(result)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}",
+        ) from e
+
+
+@router.post(
+    "/scheduled-workflows/{scheduled_workflow_id}/resume",
+    status_code=status.HTTP_200_OK,
+    response_model=ScheduledWorkflowResponse,
+)
+async def resume_scheduled_workflow(
+    scheduled_workflow_id: str,
+    use_case: ScheduleWorkflowUseCase = Depends(get_schedule_workflow_use_case),
+) -> ScheduledWorkflowResponse:
+    """恢复定时任务"""
+    try:
+        use_case.scheduler.resume_scheduled_workflow(scheduled_workflow_id)
+
+        # 获取更新后的任务状态
+        result = use_case.get_scheduled_workflow_details(scheduled_workflow_id)
+        return ScheduledWorkflowResponse.from_entity(result)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}",
+        ) from e
+
+
+@router.get(
+    "/scheduler/status",
+    status_code=status.HTTP_200_OK,
+    response_model=Dict[str, Any],
+)
+async def get_scheduler_status(
+    use_case: ScheduleWorkflowUseCase = Depends(get_schedule_workflow_use_case),
+) -> Dict[str, Any]:
+    """获取调度器状态"""
+    try:
+        scheduler = use_case.scheduler
+
+        # 获取调度器中的所有任务
+        jobs = scheduler.scheduler.get_jobs()
+
+        return {
+            "scheduler_running": scheduler._is_running,
+            "total_jobs_in_scheduler": len(jobs),
+            "job_details": [
+                {
+                    "id": job.id,
+                    "name": job.name,
+                    "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+                    "trigger": str(job.trigger),
+                }
+                for job in jobs
+            ],
+            "message": "调度器状态获取成功",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}",
+        ) from e
+
+
+@router.get(
+    "/scheduler/jobs",
+    status_code=status.HTTP_200_OK,
+    response_model=Dict[str, Any],
+)
+async def get_scheduler_jobs(
+    use_case: ScheduleWorkflowUseCase = Depends(get_schedule_workflow_use_case),
+) -> Dict[str, Any]:
+    """获取调度器中的任务列表"""
+    try:
+        scheduler = use_case.scheduler
+        jobs = scheduler.scheduler.get_jobs()
+
+        # 获取数据库中所有活跃的定时任务
+        all_scheduled_workflows = use_case.list_scheduled_workflows()
+        active_workflows = [w for w in all_scheduled_workflows if w.status == "active"]
+
+        return {
+            "jobs_in_scheduler": [
+                {
+                    "id": job.id,
+                    "name": job.name,
+                    "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+                    "trigger": str(job.trigger),
+                }
+                for job in jobs
+            ],
+            "active_scheduled_workflows": [
+                {
+                    "id": wf.id,
+                    "workflow_id": wf.workflow_id,
+                    "cron_expression": wf.cron_expression,
+                    "status": wf.status,
+                    "last_execution_status": wf.last_execution_status,
+                    "consecutive_failures": wf.consecutive_failures,
+                    "max_retries": wf.max_retries,
+                    "is_in_scheduler": scheduler.get_scheduled_job(wf.id) is not None,
+                }
+                for wf in active_workflows
+            ],
+            "summary": {
+                "total_jobs_in_scheduler": len(jobs),
+                "total_active_workflows": len(active_workflows),
+                "workflows_not_in_scheduler": len([
+                    wf for wf in active_workflows
+                    if scheduler.get_scheduled_job(wf.id) is None
+                ]),
+            },
+            "message": "任务列表获取成功",
+        }
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

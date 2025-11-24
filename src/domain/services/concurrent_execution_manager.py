@@ -343,12 +343,6 @@ class ConcurrentExecutionManager:
         参数：
             task: 任务对象
         """
-        # 创建或获取事件循环
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
 
         # 创建后台任务
         async def run_and_cleanup():
@@ -365,10 +359,29 @@ class ConcurrentExecutionManager:
                 # 处理待执行队列
                 self._process_pending_queue()
 
-        # 在后台运行任务
-        if not loop.is_running():
-            # 如果事件循环没有运行，创建一个任务
+        # 尝试获取或创建事件循环
+        try:
+            loop = asyncio.get_running_loop()
+            # 如果有运行中的事件循环，创建任务
             asyncio.ensure_future(run_and_cleanup())
+        except RuntimeError:
+            # 没有运行中的事件循环，直接运行任务
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # 运行任务到完成，捕获任务内部的异常
+            try:
+                loop.run_until_complete(run_and_cleanup())
+            except Exception:
+                # 任务内的异常已经被捕获并存储在task.error中
+                # 这里只是防止异常传播到调用者
+                pass
 
     def _process_pending_queue(self) -> None:
         """处理待执行队列中的任务"""

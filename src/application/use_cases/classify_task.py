@@ -17,10 +17,13 @@ V2新功能：智能任务分类
 - 返回结果包含置信度，允许用户确认
 """
 
+import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from src.domain.value_objects.task_type import TaskType
+from src.lc.prompts.task_classification import get_classification_prompt
 
 
 @dataclass
@@ -94,11 +97,80 @@ class ClassifyTaskUseCase:
             ClassifyTaskOutput 分类结果
 
         说明：
-            V2阶段使用简化的规则引擎
-            未来可以替换为真正的 LLM 调用
+            V2阶段：优先使用LLM分类，失败时回退到关键词匹配
         """
-        # V2阶段：使用简化的关键词匹配规则
-        # TODO: 未来替换为 LLM 调用
+        try:
+            # 尝试使用LLM分类
+            return self._classify_by_llm_with_fallback(input_data)
+        except Exception as e:
+            # LLM调用失败，回退到关键词匹配
+            logging.warning(f"LLM分类失败，回退到关键词匹配: {e}")
+            return self._classify_by_keywords_fallback(input_data)
+
+    def _classify_by_llm_with_fallback(self, input_data: ClassifyTaskInput) -> ClassifyTaskOutput:
+        """使用LLM进行任务分类，失败时回退到关键词匹配
+
+        参数：
+            input_data: 分类输入数据
+
+        返回：
+            ClassifyTaskOutput 分类结果
+        """
+        if not self.llm_client:
+            # 没有LLM客户端，直接使用关键词匹配
+            return self._classify_by_keywords_fallback(input_data)
+
+        try:
+            # 构造分类prompt
+            prompt = get_classification_prompt({
+                'start': input_data.start,
+                'goal': input_data.goal,
+                'context': input_data.context or {}
+            })
+
+            # 调用LLM
+            response = self.llm_client.invoke(prompt)
+
+            # 解析LLM响应
+            llm_result = self._parse_llm_response(response.content)
+
+            # 转换TaskType (LLM返回的是大写，需要转换为小写)
+            task_type_str = llm_result['task_type'].upper()
+            task_type_map = {
+                'DATA_ANALYSIS': 'data_analysis',
+                'CONTENT_CREATION': 'content_creation',
+                'RESEARCH': 'research',
+                'PROBLEM_SOLVING': 'problem_solving',
+                'AUTOMATION': 'automation',
+                'UNKNOWN': 'unknown'
+            }
+            task_type_value = task_type_map.get(task_type_str, 'unknown')
+            task_type = TaskType(task_type_value)
+            confidence = float(llm_result['confidence'])
+            reasoning = llm_result['reasoning']
+            suggested_tools = llm_result.get('suggested_tools', [])
+
+            return ClassifyTaskOutput(
+                task_type=task_type,
+                confidence=confidence,
+                reasoning=reasoning,
+                suggested_tools=suggested_tools,
+            )
+
+        except Exception as e:
+            logging.error(f"LLM分类调用失败: {e}")
+            # 回退到关键词匹配
+            return self._classify_by_keywords_fallback(input_data)
+
+    def _classify_by_keywords_fallback(self, input_data: ClassifyTaskInput) -> ClassifyTaskOutput:
+        """关键词匹配回退方案
+
+        参数：
+            input_data: 分类输入数据
+
+        返回：
+            ClassifyTaskOutput 分类结果
+        """
         task_type, confidence, reasoning = self._classify_by_keywords(
             input_data.start, input_data.goal
         )
@@ -112,6 +184,45 @@ class ClassifyTaskUseCase:
             reasoning=reasoning,
             suggested_tools=suggested_tools,
         )
+
+    def _parse_llm_response(self, response_content: str) -> dict[str, Any]:
+        """解析LLM响应
+
+        参数：
+            response_content: LLM返回的原始内容
+
+        返回：
+            解析后的分类结果字典
+
+        异常：
+            ValueError: 响应格式错误时抛出
+        """
+        try:
+            # 尝试直接解析JSON
+            if response_content.strip().startswith('{'):
+                return json.loads(response_content.strip())
+
+            # 如果不是纯JSON，尝试提取JSON部分
+            import re
+            json_match = re.search(r'```json\s*(.*?)\s*```', response_content, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(1))
+
+            # 尝试找到第一个{...}模式
+            brace_match = re.search(r'\{.*\}', response_content, re.DOTALL)
+            if brace_match:
+                return json.loads(brace_match.group(0))
+
+        except json.JSONDecodeError as e:
+            logging.error(f"JSON解析失败: {e}, 响应内容: {response_content[:200]}...")
+
+        # 解析失败，返回默认结果
+        return {
+            'task_type': 'UNKNOWN',
+            'confidence': 0.5,
+            'reasoning': 'LLM响应格式错误，回退到默认分类',
+            'suggested_tools': []
+        }
 
     def _classify_by_keywords(self, start: str, goal: str) -> tuple[TaskType, float, str]:
         """基于关键词的简化分类（V2临时实现）
@@ -187,26 +298,3 @@ class ClassifyTaskUseCase:
         }
 
         return tool_suggestions.get(task_type, [])
-
-    # ========== 未来 LLM 集成的接口（预留） ==========
-
-    async def _classify_by_llm(self, start: str, goal: str) -> tuple[TaskType, float, str]:
-        """使用 LLM 进行任务分类（未来实现）
-
-        参数：
-            start: 任务起点
-            goal: 任务目标
-
-        返回：
-            (TaskType, confidence, reasoning) 元组
-
-        说明：
-            此方法为未来 LLM 集成预留
-            需要构造 Prompt 并调用 LLM API
-        """
-        # TODO: 实现 LLM 调用
-        # 1. 构造 Prompt
-        # 2. 调用 self.llm_client
-        # 3. 解析响应
-        # 4. 返回结果
-        raise NotImplementedError("LLM 分类功能尚未实现")
