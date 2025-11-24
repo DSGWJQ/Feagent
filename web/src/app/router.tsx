@@ -18,6 +18,8 @@ import { createBrowserRouter } from 'react-router-dom';
 import { HomePage } from '@/features/home/pages';
 import { AgentListTest, CreateAgentPage, AgentDetailPage } from '@/features/agents/pages';
 import { WorkflowEditorPage } from '@/features/workflows/pages';
+import { TaskClassificationPage } from '@/features/classification/pages';
+import { ScheduledWorkflowsPage, SchedulerMonitorPage } from '@/features/scheduler/pages';
 
 /**
  * 路由配置
@@ -48,6 +50,18 @@ export const router = createBrowserRouter([
   {
     path: '/workflows/:id/edit',
     element: <WorkflowEditorPage />,
+  },
+  {
+    path: '/classification',
+    element: <TaskClassificationPage />,
+  },
+  {
+    path: '/scheduled',
+    element: <ScheduledWorkflowsPage />,
+  },
+  {
+    path: '/monitor',
+    element: <SchedulerMonitorPage />,
   },
 ]);
 

@@ -331,3 +331,44 @@
   transform: translateY(-4px) scale(1.05) !important;
   box-shadow: 0 12px 50px rgba(255, 199, 0, 0.6) !important;
 }
+
+/* Dashboard Styles */
+.home-page-dashboard {
+  padding: 24px;
+}
+
+.home-page-dashboard h1 {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.home-page-dashboard h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+}
+
+.home-page-dashboard .ant-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.home-page-dashboard .ant-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.home-page-dashboard .ant-statistic-title {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.home-page-dashboard .ant-list-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.home-page-dashboard .ant-list-item:last-child {
+  border-bottom: none;
+}
