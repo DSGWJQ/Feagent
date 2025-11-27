@@ -41,7 +41,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as scheduledWorkflowsApi from '../api/scheduledWorkflowsApi';
 import * as workflowsApi from '../../workflows/api/workflowsApi';
-import { ScheduledWorkflow } from '../../../types/workflow';
+import type { ScheduledWorkflow } from '@/types/workflow';
 import './ScheduledWorkflowsPage.css';
 
 const statusColors: Record<string, string> = {

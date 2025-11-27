@@ -14,6 +14,10 @@ export { default as AudioNode } from './AudioNode';
 export { default as ToolNode } from './ToolNode';
 export { default as EmbeddingModelNode } from './EmbeddingModelNode';
 export { default as StructuredOutputNode } from './StructuredOutputNode';
+export { default as DatabaseNode } from './DatabaseNode';
+export { default as FileNode } from './FileNode';
+export { default as NotificationNode } from './NotificationNode';
+export { default as LoopNode } from './LoopNode';
 
 export type { StartNodeData } from './StartNode';
 export type { EndNodeData } from './EndNode';
@@ -27,4 +31,8 @@ export type { AudioNodeData } from './AudioNode';
 export type { ToolNodeData } from './ToolNode';
 export type { EmbeddingModelNodeData } from './EmbeddingModelNode';
 export type { StructuredOutputNodeData } from './StructuredOutputNode';
+export type { DatabaseNodeData } from './DatabaseNode';
+export type { FileNodeData } from './FileNode';
+export type { NotificationNodeData } from './NotificationNode';
+export type { LoopNodeData } from './LoopNode';
 

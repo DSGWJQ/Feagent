@@ -14,14 +14,11 @@
 import json
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_openai import ChatOpenAI
-
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError
+from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
 
@@ -41,14 +38,13 @@ class WorkflowChatService:
     - 不属于任何单一实体的职责
     """
 
-    def __init__(self, llm: ChatOpenAI):
+    def __init__(self, llm: WorkflowChatLLM):
         """初始化服务
 
         参数：
             llm: LangChain LLM 实例（用于解析用户意图）
         """
         self.llm = llm
-        self.parser = JsonOutputParser()
 
     def process_message(self, workflow: Workflow, user_message: str) -> tuple[Workflow, str]:
         """处理用户消息，修改工作流
@@ -73,14 +69,12 @@ class WorkflowChatService:
 
         # 2. 调用 LLM 解析用户意图
         try:
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt),
-            ]
-            response = self.llm.invoke(messages)
-            result = self.parser.parse(response.content)
+            result = self.llm.generate_modifications(system_prompt, user_prompt)
         except Exception as e:
-            raise DomainError(f"LLM 调用失败: {str(e)}")
+            raise DomainError(f"LLM 调用失败: {str(e)}") from e
+
+        if not isinstance(result, dict):
+            raise DomainError("LLM 响应格式无效")
 
         # 3. 应用修改到工作流
         modified_workflow = self._apply_modifications(workflow, result)

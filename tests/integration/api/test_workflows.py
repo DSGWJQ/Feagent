@@ -4,7 +4,6 @@
 """
 
 import json
-from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,6 +22,7 @@ from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
 from src.interfaces.api.main import app
+from src.interfaces.api.routes.workflows import get_workflow_chat_llm
 
 
 @pytest.fixture(scope="function")
@@ -373,10 +373,7 @@ class TestExecuteWorkflowAPI:
 class TestWorkflowChatAPI:
     """测试工作流对话接口 API"""
 
-    @patch("src.interfaces.api.routes.workflows.ChatOpenAI")
-    def test_chat_with_workflow_should_succeed(
-        self, mock_llm_class, test_db: Session, client: TestClient
-    ):
+    def test_chat_with_workflow_should_succeed(self, test_db: Session, client: TestClient):
         """测试：对话式修改工作流应该成功
 
         场景：
@@ -428,70 +425,68 @@ class TestWorkflowChatAPI:
             position=Position(x=100, y=0),
         )
 
-        mock_llm = Mock()
-        mock_response = Mock()
-        mock_response.content = json.dumps(
-            {
-                "action": "add_node",
-                "nodes_to_add": [
-                    {
-                        "type": "http",
-                        "name": "获取天气数据",
-                        "config": {"url": "https://api.weather.com", "method": "GET"},
-                        "position": {"x": 100, "y": 0},
-                    }
-                ],
-                "edges_to_add": [
-                    # 注意：这里的边会在添加节点后才能创建，因为新节点ID是动态生成的
-                    # 我们的验证逻辑会过滤掉不存在的节点，所以这里先不添加边
-                    # 让LLM在实际场景中处理边的创建
-                ],
-                "edges_to_delete": [edge1.id],
-                "ai_message": "我已经添加了一个HTTP节点用于获取天气数据",
-            }
-        )
-        mock_llm.invoke.return_value = mock_response
-        mock_llm_class.return_value = mock_llm
+        response_payload = {
+            "action": "add_node",
+            "nodes_to_add": [
+                {
+                    "type": "http",
+                    "name": "获取天气数据",
+                    "config": {"url": "https://api.weather.com", "method": "GET"},
+                    "position": {"x": 100, "y": 0},
+                }
+            ],
+            "edges_to_add": [],
+            "edges_to_delete": [edge1.id],
+            "ai_message": "我已经添加了一个HTTP节点用于获取天气数据",
+        }
 
-        # Act
-        response = client.post(
-            f"/api/workflows/{workflow.id}/chat",
-            json={"message": "在开始和结束之间添加一个HTTP请求节点，用于获取天气数据"},
-        )
+        class FakeWorkflowChatLLM:
+            def __init__(self, payload):
+                self.payload = payload
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
+            def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict:
+                return self.payload
 
-        # 验证返回数据结构
-        assert "workflow" in data
-        assert "ai_message" in data
+        app.dependency_overrides[get_workflow_chat_llm] = lambda: FakeWorkflowChatLLM(response_payload)
 
-        # 验证 workflow 结构
-        workflow_data = data["workflow"]
-        assert "id" in workflow_data
-        assert "name" in workflow_data
-        assert "nodes" in workflow_data
-        assert "edges" in workflow_data
+        try:
+            response = client.post(
+                f"/api/workflows/{workflow.id}/chat",
+                json={"message": "在开始和结束之间添加一个HTTP请求节点，用于获取天气数据"},
+            )
+            assert response.status_code == 200
+            data = response.json()
 
-        # 验证节点数量增加（原来2个，现在应该至少3个）
-        assert len(workflow_data["nodes"]) >= 3
+            # 验证返回数据结构
+            assert "workflow" in data
+            assert "ai_message" in data
 
-        # 验证边数量（原来1条被删除，新边由于节点ID问题可能没有添加，所以边数量可能为0）
-        # 这是正常的，因为我们的验证逻辑会过滤掉无效的边
-        assert len(workflow_data["edges"]) >= 0
+            # 验证 workflow 结构
+            workflow_data = data["workflow"]
+            assert "id" in workflow_data
+            assert "name" in workflow_data
+            assert "nodes" in workflow_data
+            assert "edges" in workflow_data
 
-        # 验证 AI 消息不为空
-        assert isinstance(data["ai_message"], str)
-        assert len(data["ai_message"]) > 0
+            # 验证节点数量增加（原来2个，现在应该至少3个）
+            assert len(workflow_data["nodes"]) >= 3
 
-        # 验证数据库中的 workflow 被更新
-        updated_workflow = repository.get_by_id(workflow.id)
-        assert updated_workflow is not None
-        assert len(updated_workflow.nodes) >= 3
+            # 验证边数量（原来1条被删除，新边由于节点ID问题可能没有添加，所以边数量可能为0）
+            # 这是正常的，因为我们的验证逻辑会过滤掉无效的边
+            assert len(workflow_data["edges"]) >= 0
 
-    @patch("src.interfaces.api.routes.workflows.ChatOpenAI")
-    def test_chat_with_nonexistent_workflow_should_fail(self, mock_llm_class, client: TestClient):
+            # 验证 AI 消息不为空
+            assert isinstance(data["ai_message"], str)
+            assert len(data["ai_message"]) > 0
+
+            # 验证数据库中的 workflow 被更新
+            updated_workflow = repository.get_by_id(workflow.id)
+            assert updated_workflow is not None
+            assert len(updated_workflow.nodes) >= 3
+        finally:
+            app.dependency_overrides.pop(get_workflow_chat_llm, None)
+
+    def test_chat_with_nonexistent_workflow_should_fail(self, client: TestClient):
         """测试：对不存在的工作流发送消息应该失败
 
         场景：
@@ -502,18 +497,21 @@ class TestWorkflowChatAPI:
         - 返回错误信息
         """
         # Mock LLM（虽然不会被调用，但需要mock以避免初始化错误）
-        mock_llm = Mock()
-        mock_llm_class.return_value = mock_llm
+        class FakeWorkflowChatLLM:
+            def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict:
+                return {}
 
-        # Act
-        response = client.post(
-            "/api/workflows/invalid_id/chat",
-            json={"message": "添加一个节点"},
-        )
+        app.dependency_overrides[get_workflow_chat_llm] = FakeWorkflowChatLLM
 
-        # Assert
-        assert response.status_code == 404
-        assert "detail" in response.json()
+        try:
+            response = client.post(
+                "/api/workflows/invalid_id/chat",
+                json={"message": "添加一个节点"},
+            )
+            assert response.status_code == 404
+            assert "detail" in response.json()
+        finally:
+            app.dependency_overrides.pop(get_workflow_chat_llm, None)
 
     def test_chat_with_empty_message_should_fail(self, test_db: Session, client: TestClient):
         """测试：发送空消息应该失败

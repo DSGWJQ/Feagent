@@ -5,7 +5,7 @@
  */
 
 import axios from 'axios';
-import { SchedulerStatus, SchedulerJobs } from '../../../types/workflow';
+import type { SchedulerStatus, SchedulerJobs } from '@/types/workflow';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 

@@ -15,6 +15,7 @@
 
 from src.domain.ports.agent_repository import AgentRepository
 from src.domain.ports.run_repository import RunRepository
+from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.ports.workflow_repository import WorkflowRepository
 
-__all__ = ["AgentRepository", "RunRepository", "WorkflowRepository"]
+__all__ = ["AgentRepository", "RunRepository", "WorkflowRepository", "WorkflowChatLLM"]

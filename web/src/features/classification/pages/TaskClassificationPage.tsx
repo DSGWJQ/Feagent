@@ -28,7 +28,7 @@ import {
 } from 'antd';
 import { CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { classifyTask } from '../api/classificationApi';
-import { ClassificationResult, TaskType } from '../../../types/workflow';
+import type { ClassificationResult, TaskType } from '@/types/workflow';
 import './TaskClassificationPage.css';
 
 const taskTypeColors: Record<TaskType, string> = {

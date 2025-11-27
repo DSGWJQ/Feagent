@@ -1,41 +1,85 @@
-"""FastAPI 应用入口"""
+﻿"""FastAPI 应用入口"""
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
+from src.domain.services.workflow_scheduler import ScheduleWorkflowService
+from src.infrastructure.database.engine import SessionLocal
+from src.infrastructure.executors import create_executor_registry
+from src.interfaces.api.dependencies.scheduler import (
+    clear_scheduler_service,
+    set_scheduler_service,
+)
 from src.interfaces.api.routes import (
     agents,
-    chat_workflows,
     concurrent_workflows,
     llm_providers,
     runs,
     scheduled_workflows,
     tools,
+    workflows,
 )
+from src.interfaces.api.services.workflow_executor_adapter import WorkflowExecutorAdapter
+
+SchedulerInstance = Optional[ScheduleWorkflowService]
+_scheduler_service: SchedulerInstance = None
+
+
+def _create_session():
+    return SessionLocal()
+
+
+def _init_scheduler() -> ScheduleWorkflowService:
+    executor_registry = create_executor_registry(
+        openai_api_key=settings.openai_api_key or None,
+        anthropic_api_key=getattr(settings, "anthropic_api_key", None),
+    )
+    workflow_executor = WorkflowExecutorAdapter(
+        session_factory=_create_session,
+        executor_registry=executor_registry,
+    )
+    return ScheduleWorkflowService(
+        session_factory=_create_session,
+        workflow_executor=workflow_executor,
+    )
+
+
+def _get_display_host() -> str:
+    """Return a host suitable for displaying in links."""
+    if settings.host in {"0.0.0.0", "::"}:
+        return "127.0.0.1"
+    return settings.host
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """应用生命周期管理"""
-    # Startup
-    print(f"🚀 {settings.app_name} v{settings.app_version} 启动中...")
-    print(f"📝 环境: {settings.env}")
-    print(f"🔗 数据库: {settings.database_url}")
-    print(f"🌐 服务地址: http://{settings.host}:{settings.port}")
-    print(f"📚 API 文档: http://{settings.host}:{settings.port}/docs")
+    global _scheduler_service
+    display_host = _get_display_host()
+    print(f"[*] {settings.app_name} v{settings.app_version} 启动中...")
+    print(f"[ENV] 环境: {settings.env}")
+    print(f"[DB] 数据库: {settings.database_url}")
+    print(f"[URL] 服务地址: http://{display_host}:{settings.port}")
+    print(f"[DOCS] API 文档: http://{display_host}:{settings.port}/docs")
 
-    yield
+    _scheduler_service = _init_scheduler()
+    _scheduler_service.start()
+    set_scheduler_service(_scheduler_service)
 
-    # Shutdown
-    print(f"👋 {settings.app_name} 关闭中...")
+    try:
+        yield
+    finally:
+        if _scheduler_service is not None:
+            _scheduler_service.stop()
+        clear_scheduler_service()
+        print(f"👋 {settings.app_name} 关闭中...")
 
 
-# 创建 FastAPI 应用
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
@@ -46,7 +90,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 配置 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -56,10 +99,8 @@ app.add_middleware(
 )
 
 
-# 健康检查端点
 @app.get("/health", tags=["Health"])
 async def health_check() -> JSONResponse:
-    """健康检查"""
     return JSONResponse(
         content={
             "status": "healthy",
@@ -70,36 +111,31 @@ async def health_check() -> JSONResponse:
     )
 
 
-# 根路径
 @app.get("/", tags=["Root"])
 async def root() -> JSONResponse:
-    """根路径"""
+    display_host = _get_display_host()
     return JSONResponse(
         content={
             "message": f"欢迎使用 {settings.app_name}",
             "version": settings.app_version,
-            "docs": f"http://{settings.host}:{settings.port}/docs",
+            "docs": f"http://{display_host}:{settings.port}/docs",
         }
     )
 
 
-# 注册路由
 app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
-# Runs 路由有两个端点：
-# 1. POST /api/agents/{agent_id}/runs - 触发 Run（需要 agent_id）
-# 2. GET /api/runs/{run_id} - 获取 Run 详情（独立资源）
-# 因此需要注册两次，使用不同的前缀
-app.include_router(runs.router, prefix="/api/agents", tags=["Runs"])  # POST /{agent_id}/runs
-app.include_router(runs.router, prefix="/api/runs", tags=["Runs"])  # GET /{run_id}
+app.include_router(runs.create_router, prefix="/api/agents", tags=["Runs"])
+app.include_router(runs.query_router, prefix="/api/runs", tags=["Runs"])
+app.include_router(workflows.router, prefix="/api", tags=["Workflows"])
 
-# V2 新增路由
+# Import and register chat_workflows router
+from src.interfaces.api.routes import chat_workflows
+app.include_router(chat_workflows.router, prefix="/api", tags=["Chat Workflows"])
+
 app.include_router(tools.router, prefix="/api", tags=["Tools"])
 app.include_router(llm_providers.router, prefix="/api", tags=["LLM Providers"])
-
-# V2 增强功能路由
 app.include_router(scheduled_workflows.router, prefix="/api", tags=["Scheduled Workflows"])
 app.include_router(concurrent_workflows.router, prefix="/api", tags=["Concurrent Workflows"])
-app.include_router(chat_workflows.router, prefix="/api", tags=["Chat Workflows"])
 
 
 if __name__ == "__main__":

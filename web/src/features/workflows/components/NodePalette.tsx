@@ -20,7 +20,7 @@ import {
   DatabaseOutlined,
   FileOutlined,
   BellOutlined,
-  RepeatOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import { nodeTypeConfigs } from '../utils/nodeUtils';
 
@@ -43,7 +43,7 @@ const iconMap: Record<string, React.ReactNode> = {
   Database: <DatabaseOutlined />,
   File: <FileOutlined />,
   Bell: <BellOutlined />,
-  Repeat: <RepeatOutlined />,
+  Repeat: <ReloadOutlined />,
 };
 
 export default function NodePalette({ onAddNode }: NodePaletteProps) {

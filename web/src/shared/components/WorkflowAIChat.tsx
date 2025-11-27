@@ -1,142 +1,102 @@
-/**
- * WorkflowAIChat - 工作流AI聊天组件
- *
- * 功能：
- * - 调用后端API进行工作流修改
- * - 实时更新工作流画布
- * - 显示AI回复和修改说明
- */
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { Input, Button, Card, Space, Alert, Typography, Badge } from 'antd';
+import { RobotOutlined, UserOutlined, LoadingOutlined, CheckCircleOutlined, EditOutlined } from '@ant-design/icons';
 
-import { useState, useRef, useEffect } from 'react';
-import { Input, Button, Card, Space, message as antMessage } from 'antd';
-import { SendOutlined, RobotOutlined, UserOutlined, LoadingOutlined } from '@ant-design/icons';
+import { useWorkflowAI } from '@/hooks/useWorkflowAI';
+import { useWorkflowInteraction } from '@/features/workflows/contexts/WorkflowInteractionContext';
 import type { ChatMessage } from '@/shared/types/chat';
-import './FakeAIChat.css'; // 复用样式
+import type { Workflow } from '@/types/workflow';
+import './FakeAIChat.css';
 
 const { TextArea } = Input;
+const { Text } = Typography;
 
 interface WorkflowAIChatProps {
   workflowId: string;
-  onWorkflowUpdate?: (workflow: any) => void;
+  onWorkflowUpdate?: (workflow: unknown) => void;
   showWelcome?: boolean;
-  apiBaseUrl?: string;
 }
 
-/**
- * WorkflowAIChat 组件
- */
 export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
   workflowId,
   onWorkflowUpdate,
   showWelcome = true,
-  apiBaseUrl = 'http://localhost:8000',
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { interactionMode, setInteractionMode, isCanvasMode } = useWorkflowInteraction();
 
-  // 初始化欢迎消息
-  useEffect(() => {
-    if (showWelcome) {
-      setMessages([
-        {
-          id: 'welcome',
-          role: 'assistant',
-          content: '你好！我是工作流AI助手。你可以告诉我如何修改工作流，例如：\n\n• "在HTTP节点之前添加一个条件判断"\n• "删除所有数据库节点"\n• "在开始和结束之间添加一个LLM节点"',
-          timestamp: new Date(),
-        },
-      ]);
+  const {
+    messages,
+    isProcessing,
+    pendingWorkflow,
+    streamingMessage,
+    sendMessage,
+    confirmPendingWorkflow,
+    startChatStream,
+    errorMessage,
+  } = useWorkflowAI({
+    workflowId,
+    onApplyWorkflow: onWorkflowUpdate,
+    onPreviewWorkflow: (workflow: Workflow, message: string) => {
+      console.log('Preview workflow:', workflow);
+      console.log('Message:', message);
     }
-  }, [showWelcome]);
+  });
 
-  // 自动滚动到底部
+  // 当开始处理时，切换到聊天模式
+  useEffect(() => {
+    if (isProcessing && interactionMode !== 'chat') {
+      setInteractionMode('chat');
+    }
+  }, [isProcessing, interactionMode, setInteractionMode]);
+
+  // 当输入框聚焦时，切换到聊天模式
+  const handleInputFocus = () => {
+    if (interactionMode !== 'chat') {
+      setInteractionMode('chat');
+    }
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, errorMessage, pendingWorkflow]);
 
-  /**
-   * 调用后端API修改工作流
-   */
-  const callWorkflowChatAPI = async (userMessage: string): Promise<{ workflow: any; ai_message: string }> => {
-    const response = await fetch(`${apiBaseUrl}/api/workflows/${workflowId}/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ message: userMessage }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || '请求失败');
-    }
-
-    return response.json();
-  };
-
-  /**
-   * 发送消息
-   */
-  const handleSend = async () => {
-    const trimmedInput = inputValue.trim();
-    if (!trimmedInput || isLoading) {
-      return;
-    }
-
-    // 添加用户消息
-    const userMessage: ChatMessage = {
-      id: `user_${Date.now()}`,
-      role: 'user',
-      content: trimmedInput,
-      timestamp: new Date(),
+  const welcomeMessage = useMemo<ChatMessage | null>(() => {
+    if (!showWelcome) return null;
+    return {
+      id: 'welcome',
+      role: 'assistant',
+      content:
+        '你好！我是工作流AI助手。告诉我你想如何修改工作流，比如“在HTTP节点前增加条件判断”或“删除所有数据库节点”。',
+      timestamp: Date.now(),
     };
+  }, [showWelcome]);
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue('');
-    setIsLoading(true);
-
-    try {
-      // 调用后端API
-      const { workflow, ai_message } = await callWorkflowChatAPI(trimmedInput);
-
-      // 添加AI回复
-      const aiMessage: ChatMessage = {
-        id: `ai_${Date.now()}`,
-        role: 'assistant',
-        content: ai_message,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, aiMessage]);
-
-      // 通知父组件更新工作流
-      if (onWorkflowUpdate) {
-        onWorkflowUpdate(workflow);
-      }
-
-      antMessage.success('工作流已更新');
-    } catch (error) {
-      console.error('发送消息失败:', error);
-
-      // 添加错误消息
-      const errorMessage: ChatMessage = {
+  const displayedMessages = useMemo(() => {
+    const list: ChatMessage[] = [];
+    if (welcomeMessage) {
+      list.push(welcomeMessage);
+    }
+    list.push(...messages);
+    if (errorMessage) {
+      list.push({
         id: `error_${Date.now()}`,
         role: 'assistant',
-        content: `抱歉，处理您的请求时出错了：${error instanceof Error ? error.message : '未知错误'}`,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, errorMessage]);
-      antMessage.error('处理失败，请重试');
-    } finally {
-      setIsLoading(false);
+        content: errorMessage,
+        timestamp: Date.now(),
+      });
     }
+    return list;
+  }, [messages, welcomeMessage, errorMessage]);
+
+  const handleSend = async () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
+    await startChatStream(trimmed);
+    setInputValue('');
   };
 
-  /**
-   * 处理键盘事件
-   */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -151,7 +111,31 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
         <Space>
           <RobotOutlined style={{ color: '#8b5cf6' }} />
           <span style={{ color: '#fafafa' }}>AI助手</span>
+          {interactionMode !== 'idle' && (
+            <Badge
+              status={interactionMode === 'chat' ? 'processing' : 'default'}
+              text={
+                <span style={{ color: interactionMode === 'chat' ? '#8b5cf6' : '#8c8c8c', fontSize: '12px' }}>
+                  {interactionMode === 'chat' ? '聊天模式' : '画布模式'}
+                </span>
+              }
+            />
+          )}
         </Space>
+      }
+      extra={
+        isCanvasMode && (
+          <Button
+            type="text"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => setInteractionMode('chat')}
+            style={{ color: '#8c8c8c' }}
+            title="切换到聊天模式"
+          >
+            编辑
+          </Button>
+        )
       }
       style={{
         height: '100%',
@@ -173,23 +157,39 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
         backgroundColor: '#141414',
       }}
     >
-      {/* 消息列表 */}
-      <div className="fake-ai-chat__messages" style={{
-        flex: 1,
-        overflowY: 'auto',
-        marginBottom: 16,
-        padding: '16px',
-      }}>
-        {messages.map((msg) => (
+      {pendingWorkflow && (
+        <Alert
+          style={{ marginBottom: 12 }}
+          type="info"
+          message="AI 已生成新的工作流"
+          description={
+            <Space direction="vertical">
+              <Text type="secondary">
+                节点数：{pendingWorkflow?.nodes?.length ?? 0} · 边数：{pendingWorkflow?.edges?.length ?? 0}
+              </Text>
+              <Button
+                size="small"
+                type="primary"
+                icon={<CheckCircleOutlined />}
+                onClick={confirmPendingWorkflow}
+              >
+                同步到画布
+              </Button>
+            </Space>
+          }
+          showIcon
+        />
+      )}
+
+      <div
+        className="fake-ai-chat__messages"
+        style={{ flex: 1, overflowY: 'auto', marginBottom: 16, padding: '16px' }}
+      >
+        {displayedMessages.map((msg) => (
           <div
             key={msg.id}
             className={`fake-ai-chat__message fake-ai-chat__message--${msg.role}`}
-            style={{
-              display: 'flex',
-              gap: '12px',
-              marginBottom: '16px',
-              animation: 'fadeIn 0.3s ease-in',
-            }}
+            style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}
           >
             <div
               className="fake-ai-chat__message-icon"
@@ -202,7 +202,6 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
                 justifyContent: 'center',
                 backgroundColor: msg.role === 'user' ? '#3b82f6' : '#8b5cf6',
                 color: '#fff',
-                flexShrink: 0,
               }}
             >
               {msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
@@ -223,27 +222,18 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
               </div>
               <div
                 className="fake-ai-chat__message-time"
-                style={{
-                  fontSize: '12px',
-                  color: '#8c8c8c',
-                  marginTop: '4px',
-                }}
+                style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '4px' }}
               >
-                {msg.timestamp.toLocaleTimeString('zh-CN')}
+                {new Date(msg.timestamp).toLocaleTimeString('zh-CN')}
               </div>
             </div>
           </div>
         ))}
 
-        {/* 加载状态 */}
-        {isLoading && (
+        {isProcessing && (
           <div
             className="fake-ai-chat__message fake-ai-chat__message--assistant"
-            style={{
-              display: 'flex',
-              gap: '12px',
-              marginBottom: '16px',
-            }}
+            style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}
           >
             <div
               className="fake-ai-chat__message-icon"
@@ -263,14 +253,9 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
             <div className="fake-ai-chat__message-content">
               <div
                 className="fake-ai-chat__message-text"
-                style={{
-                  backgroundColor: '#262626',
-                  color: '#fafafa',
-                  padding: '12px',
-                  borderRadius: '8px',
-                }}
+                style={{ backgroundColor: '#262626', color: '#fafafa', padding: '12px', borderRadius: '8px' }}
               >
-                AI正在思考中...
+                {streamingMessage || 'AI正在思考中...'}
               </div>
             </div>
           </div>
@@ -279,30 +264,22 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 输入区域 */}
       <Space.Compact style={{ width: '100%' }}>
         <TextArea
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入消息... (Enter发送, Shift+Enter换行)"
+          onFocus={handleInputFocus}
+          placeholder={isCanvasMode ? "输入消息... (点击后将切换到聊天模式)" : "输入消息... (Enter发送, Shift+Enter换行)"}
           autoSize={{ minRows: 1, maxRows: 4 }}
-          disabled={isLoading}
-          style={{
-            backgroundColor: '#1a1a1a',
-            borderColor: '#434343',
-            color: '#fafafa',
-          }}
+          disabled={isProcessing}
+          style={{ backgroundColor: '#1a1a1a', borderColor: '#434343', color: '#fafafa' }}
         />
         <Button
           type="primary"
-          icon={<SendOutlined />}
           onClick={handleSend}
-          disabled={isLoading || !inputValue.trim()}
-          style={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            borderColor: 'transparent',
-          }}
+          disabled={isProcessing || !inputValue.trim()}
+          style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderColor: 'transparent' }}
         >
           发送
         </Button>
@@ -310,4 +287,3 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
     </Card>
   );
 };
-

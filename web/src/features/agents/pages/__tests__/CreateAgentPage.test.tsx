@@ -1,4 +1,4 @@
-/**
+/*  *//**
  * CreateAgentPage 页面测试
  *
  * 测试策略：
@@ -52,7 +52,7 @@ const renderWithProviders = (ui: React.ReactElement) => {
 describe('CreateAgentPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-
+    
     // Mock createAgent API
     vi.spyOn(agentsApi, 'createAgent').mockResolvedValue({
       id: 'test-agent-id',
@@ -127,3 +127,4 @@ describe('CreateAgentPage', () => {
     expect(screen.getByText(/填写.*信息/i)).toBeInTheDocument();
   });
 });
+

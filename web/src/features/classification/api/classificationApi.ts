@@ -5,7 +5,7 @@
  */
 
 import axios from 'axios';
-import { ClassificationResult } from '../../../types/workflow';
+import type { ClassificationResult } from '@/types/workflow';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 

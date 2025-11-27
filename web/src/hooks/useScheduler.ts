@@ -5,7 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../services/api';
-import { ScheduledWorkflow } from '../types/workflow';
+import type { ScheduledWorkflow } from '../types/workflow';
 
 export const useScheduler = () => {
   const queryClient = useQueryClient();

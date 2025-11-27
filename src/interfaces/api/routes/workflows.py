@@ -1,9 +1,8 @@
-"""Workflow API 路由
+﻿"""Workflow API 璺敱
 
-定义 Workflow 相关的 API 端点
+瀹氫箟 Workflow 鐩稿叧鐨?API 绔偣
 """
 
-import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -34,15 +33,18 @@ from src.application.use_cases.update_workflow_by_drag import (
 )
 from src.config import settings
 from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.services.workflow_chat_service import WorkflowChatService
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
 from src.infrastructure.executors import create_executor_registry
+from src.infrastructure.llm import LangChainWorkflowChatLLM
 from src.interfaces.api.dto.workflow_dto import (
     ChatRequest,
     ChatResponse,
+    CreateWorkflowRequest,
     ImportWorkflowRequest,
     ImportWorkflowResponse,
     UpdateWorkflowRequest,
@@ -52,11 +54,133 @@ from src.interfaces.api.dto.workflow_dto import (
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 
-# 创建全局执行器注册表
+# 鍒涘缓鍏ㄥ眬鎵ц鍣ㄦ敞鍐岃〃
 _executor_registry = create_executor_registry(
-    openai_api_key=os.getenv("OPENAI_API_KEY"),
-    anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+    openai_api_key=settings.openai_api_key or None,
+    anthropic_api_key=getattr(settings, "anthropic_api_key", None),
 )
+
+
+def get_workflow_repository(
+    db: Session = Depends(get_db_session),
+) -> SQLAlchemyWorkflowRepository:
+    """Provide a workflow repository bound to the current request session."""
+
+    return SQLAlchemyWorkflowRepository(db)
+
+
+def get_workflow_chat_llm() -> WorkflowChatLLM:
+    """Resolve the LLM implementation for workflow chat features."""
+
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OpenAI API key is not configured for workflow chat.",
+        )
+
+    try:
+        return LangChainWorkflowChatLLM(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            base_url=settings.openai_base_url,
+            temperature=0,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+
+def get_workflow_chat_service(
+    llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
+) -> WorkflowChatService:
+    """Create the domain service that orchestrates chat-driven workflow edits."""
+
+    return WorkflowChatService(llm=llm)
+
+
+def get_update_workflow_by_chat_use_case(
+    workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
+    chat_service: WorkflowChatService = Depends(get_workflow_chat_service),
+) -> UpdateWorkflowByChatUseCase:
+    """Assemble the use case with its required dependencies."""
+
+    return UpdateWorkflowByChatUseCase(
+        workflow_repository=workflow_repository,
+        chat_service=chat_service,
+    )
+
+
+@router.post("", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
+def create_workflow(
+    request: CreateWorkflowRequest,
+    db: Session = Depends(get_db_session),
+) -> WorkflowResponse:
+    """创建新工作流
+
+    业务场景：
+    - 用户在前端创建新的工作流
+    - 可以提供初始节点和边
+
+    请求参数：
+    - request: 创建请求（包含name, description, nodes, edges）
+
+    返回：
+    - 创建后的工作流
+
+    错误：
+    - 422: 请求参数验证失败
+    - 400: 业务规则验证失败
+    - 500: 服务器内部错误
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"[POST] 开始创建工作流: name={request.name}")
+        logger.info(f"[POST] 请求数据: nodes={len(request.nodes)}, edges={len(request.edges)}")
+
+        # 1. 创建 Repository
+        workflow_repository = SQLAlchemyWorkflowRepository(db)
+
+        # 2. 转换 DTO 到 Domain 实体
+        from src.domain.entities.workflow import Workflow
+
+        nodes = [node_dto.to_entity() for node_dto in request.nodes]
+        edges = [edge_dto.to_entity() for edge_dto in request.edges]
+
+        workflow = Workflow.create(
+            name=request.name,
+            description=request.description,
+            nodes=nodes,
+            edges=edges,
+        )
+
+        # 3. 保存到数据库
+        workflow_repository.save(workflow)
+        db.commit()
+
+        logger.info(f"[POST] 工作流创建成功: workflow_id={workflow.id}")
+
+        # 4. 转换为 DTO 返回
+        return WorkflowResponse.from_entity(workflow)
+
+    except DomainError as e:
+        logger.error(f"[POST] 领域错误: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"[POST] 服务器内部错误: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"服务器内部错误: {str(e)}",
+        )
 
 
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
@@ -64,32 +188,35 @@ def get_workflow(
     workflow_id: str,
     db: Session = Depends(get_db_session),
 ) -> WorkflowResponse:
-    """获取工作流详情
+    """Get workflow details"""
+    import logging
+    logger = logging.getLogger(__name__)
 
-    参数：
-        workflow_id: 工作流 ID
+    logger.info(f"[GET] Fetching workflow: {workflow_id}")
 
-    返回：
-        工作流详情
-
-    错误：
-        404: Workflow 不存在
-    """
     try:
-        # 1. 创建 Repository
+        # 1. 鍒涘缓 Repository
         workflow_repository = SQLAlchemyWorkflowRepository(db)
+        logger.info("[GET] Repository created")
 
-        # 2. 获取工作流
+        # 2. 鑾峰彇宸ヤ綔娴?        logger.info("[GET] Calling get_by_id...")
         workflow = workflow_repository.get_by_id(workflow_id)
+        logger.info(f"[GET] get_by_id returned: {workflow is not None}")
 
         if not workflow:
+            logger.warning(f"[GET] Workflow {workflow_id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Workflow {workflow_id} not found",
             )
 
-        # 3. 转换为 DTO
-        return WorkflowResponse.from_entity(workflow)
+        logger.info(f"[GET] Workflow found: id={workflow.id}, name={workflow.name}")
+        logger.info(f"[GET] Converting to DTO...")
+
+        # 3. 杞崲涓?DTO
+        response = WorkflowResponse.from_entity(workflow)
+        logger.info(f"[GET] DTO created successfully")
+        return response
 
     except NotFoundError as e:
         raise HTTPException(
@@ -109,24 +236,16 @@ def update_workflow(
     request: UpdateWorkflowRequest,
     db: Session = Depends(get_db_session),
 ) -> WorkflowResponse:
-    """更新工作流（拖拽调整）
+    """鏇存柊宸ヤ綔娴侊紙鎷栨嫿璋冩暣锛?
+    涓氬姟鍦烘櫙锛?    - 鐢ㄦ埛鍦ㄥ墠绔嫋鎷界紪杈戝櫒涓皟鏁村伐浣滄祦
+    - 娣诲姞/鍒犻櫎/鏇存柊鑺傜偣
+    - 娣诲姞/鍒犻櫎杈?
+    璇锋眰鍙傛暟锛?    - workflow_id: 宸ヤ綔娴?ID锛堣矾寰勫弬鏁帮級
+    - request: 鏇存柊璇锋眰锛堝寘鍚妭鐐瑰拰杈瑰垪琛級
 
-    业务场景：
-    - 用户在前端拖拽编辑器中调整工作流
-    - 添加/删除/更新节点
-    - 添加/删除边
-
-    请求参数：
-    - workflow_id: 工作流 ID（路径参数）
-    - request: 更新请求（包含节点和边列表）
-
-    返回：
-    - 更新后的工作流
-
-    错误：
-    - 404: Workflow 不存在
-    - 422: 请求参数验证失败
-    - 400: 业务规则验证失败（如边引用的节点不存在）
+    杩斿洖锛?    - 鏇存柊鍚庣殑宸ヤ綔娴?
+    閿欒锛?    - 404: Workflow 涓嶅瓨鍦?    - 422: 璇锋眰鍙傛暟楠岃瘉澶辫触
+    - 400: 涓氬姟瑙勫垯楠岃瘉澶辫触锛堝杈瑰紩鐢ㄧ殑鑺傜偣涓嶅瓨鍦級
     """
     import logging
 
@@ -134,43 +253,43 @@ def update_workflow(
 
     try:
         logger.info(
-            f"[PATCH] 开始更新工作流: workflow_id={workflow_id!r} (type={type(workflow_id).__name__})"
+            f"[PATCH] 寮€濮嬫洿鏂板伐浣滄祦: workflow_id={workflow_id!r} (type={type(workflow_id).__name__})"
         )
-        logger.info(f"[PATCH] 请求数据: nodes={len(request.nodes)}, edges={len(request.edges)}")
+        logger.info(f"[PATCH] 璇锋眰鏁版嵁: nodes={len(request.nodes)}, edges={len(request.edges)}")
 
-        # 1. 创建 Repository
+        # 1. 鍒涘缓 Repository
         workflow_repository = SQLAlchemyWorkflowRepository(db)
-        logger.info("[PATCH] Repository 创建成功")
+        logger.info("[PATCH] Repository 鍒涘缓鎴愬姛")
 
-        # 2. 先测试能否找到工作流
+        # 2. 鍏堟祴璇曡兘鍚︽壘鍒板伐浣滄祦
         test_find = workflow_repository.find_by_id(workflow_id)
-        logger.info(f"[PATCH] find_by_id 结果: {test_find is not None}")
+        logger.info(f"[PATCH] find_by_id 缁撴灉: {test_find is not None}")
         if test_find:
-            logger.info(f"[PATCH] 找到工作流: id={test_find.id}, name={test_find.name}")
+            logger.info(f"[PATCH] 鎵惧埌宸ヤ綔娴? id={test_find.id}, name={test_find.name}")
 
-        # 3. 转换 DTO → Entity
+        # 3. 杞崲 DTO 鈫?Entity
         nodes = [node_dto.to_entity() for node_dto in request.nodes]
         edges = [edge_dto.to_entity() for edge_dto in request.edges]
-        logger.info(f"[PATCH] DTO 转换完成: nodes={len(nodes)}, edges={len(edges)}")
+        logger.info(f"[PATCH] DTO 杞崲瀹屾垚: nodes={len(nodes)}, edges={len(edges)}")
 
-        # 4. 创建 Use Case
+        # 4. 鍒涘缓 Use Case
         use_case = UpdateWorkflowByDragUseCase(workflow_repository=workflow_repository)
-        logger.info("[PATCH] Use Case 创建成功")
+        logger.info("[PATCH] Use Case 鍒涘缓鎴愬姛")
 
-        # 5. 执行 Use Case
+        # 5. 鎵ц Use Case
         input_data = UpdateWorkflowByDragInput(
             workflow_id=workflow_id,
             nodes=nodes,
             edges=edges,
         )
-        logger.info("[PATCH] 开始执行 Use Case...")
+        logger.info("[PATCH] 寮€濮嬫墽琛?Use Case...")
         workflow = use_case.execute(input_data)
-        logger.info(f"[PATCH] Use Case 执行成功: workflow_id={workflow.id}")
+        logger.info(f"[PATCH] Use Case 鎵ц鎴愬姛: workflow_id={workflow.id}")
 
-        # 5. 提交事务
+        # 5. 鎻愪氦浜嬪姟
         db.commit()
 
-        # 6. 转换 Entity → DTO
+        # 6. 杞崲 Entity 鈫?DTO
         return WorkflowResponse.from_entity(workflow)
 
     except NotFoundError as e:
@@ -193,21 +312,15 @@ def update_workflow(
 
 
 class ExecuteWorkflowRequest(BaseModel):
-    """执行工作流请求
-
-    字段：
-    - initial_input: 初始输入（传递给 Start 节点）
-    """
+    """鎵ц宸ヤ綔娴佽姹?
+    瀛楁锛?    - initial_input: 鍒濆杈撳叆锛堜紶閫掔粰 Start 鑺傜偣锛?    """
 
     initial_input: Any = None
 
 
 class ExecuteWorkflowResponse(BaseModel):
-    """执行工作流响应
-
-    字段：
-    - execution_log: 执行日志（每个节点的执行记录）
-    - final_result: 最终结果（End 节点的输出）
+    """鎵ц宸ヤ綔娴佸搷搴?
+    瀛楁锛?    - execution_log: 鎵ц鏃ュ織锛堟瘡涓妭鐐圭殑鎵ц璁板綍锛?    - final_result: 鏈€缁堢粨鏋滐紙End 鑺傜偣鐨勮緭鍑猴級
     """
 
     execution_log: list[dict[str, Any]]
@@ -220,42 +333,33 @@ async def execute_workflow(
     request: ExecuteWorkflowRequest,
     db: Session = Depends(get_db_session),
 ) -> ExecuteWorkflowResponse:
-    """执行工作流（非流式）
+    """鎵ц宸ヤ綔娴侊紙闈炴祦寮忥級
 
-    业务场景：
-    - 用户触发工作流执行
-    - 按拓扑顺序执行节点
-    - 返回执行结果
+    涓氬姟鍦烘櫙锛?    - 鐢ㄦ埛瑙﹀彂宸ヤ綔娴佹墽琛?    - 鎸夋嫇鎵戦『搴忔墽琛岃妭鐐?    - 杩斿洖鎵ц缁撴灉
 
-    请求参数：
-    - workflow_id: 工作流 ID（路径参数）
-    - request: 执行请求（包含初始输入）
+    璇锋眰鍙傛暟锛?    - workflow_id: 宸ヤ綔娴?ID锛堣矾寰勫弬鏁帮級
+    - request: 鎵ц璇锋眰锛堝寘鍚垵濮嬭緭鍏ワ級
 
-    返回：
-    - 执行日志和最终结果
-
-    错误：
-    - 404: Workflow 不存在
-    - 400: 工作流执行失败（如包含环）
-    """
+    杩斿洖锛?    - 鎵ц鏃ュ織鍜屾渶缁堢粨鏋?
+    閿欒锛?    - 404: Workflow 涓嶅瓨鍦?    - 400: 宸ヤ綔娴佹墽琛屽け璐ワ紙濡傚寘鍚幆锛?    """
     try:
-        # 1. 创建 Repository
+        # 1. 鍒涘缓 Repository
         workflow_repository = SQLAlchemyWorkflowRepository(db)
 
-        # 2. 创建 Use Case
+        # 2. 鍒涘缓 Use Case
         use_case = ExecuteWorkflowUseCase(
             workflow_repository=workflow_repository,
             executor_registry=_executor_registry,
         )
 
-        # 3. 执行 Use Case
+        # 3. 鎵ц Use Case
         input_data = ExecuteWorkflowInput(
             workflow_id=workflow_id,
             initial_input=request.initial_input,
         )
         result = await use_case.execute(input_data)
 
-        # 4. 返回结果
+        # 4. 杩斿洖缁撴灉
         return ExecuteWorkflowResponse(
             execution_log=result["execution_log"],
             final_result=result["final_result"],
@@ -284,67 +388,54 @@ async def execute_workflow_streaming(
     request: ExecuteWorkflowRequest,
     db: Session = Depends(get_db_session),
 ) -> StreamingResponse:
-    """执行工作流（流式返回 SSE）
+    """鎵ц宸ヤ綔娴侊紙娴佸紡杩斿洖 SSE锛?
+    涓氬姟鍦烘櫙锛?    - 鐢ㄦ埛瑙﹀彂宸ヤ綔娴佹墽琛?    - 瀹炴椂鎺ㄩ€佽妭鐐规墽琛岀姸鎬?    - 浣跨敤 Server-Sent Events (SSE) 鍗忚
 
-    业务场景：
-    - 用户触发工作流执行
-    - 实时推送节点执行状态
-    - 使用 Server-Sent Events (SSE) 协议
+    璇锋眰鍙傛暟锛?    - workflow_id: 宸ヤ綔娴?ID锛堣矾寰勫弬鏁帮級
+    - request: 鎵ц璇锋眰锛堝寘鍚垵濮嬭緭鍏ワ級
 
-    请求参数：
-    - workflow_id: 工作流 ID（路径参数）
-    - request: 执行请求（包含初始输入）
-
-    返回：
-    - SSE 事件流（text/event-stream）
-
-    事件类型：
-    - node_start: 节点开始执行
-    - node_complete: 节点执行完成
-    - node_error: 节点执行失败
-    - workflow_complete: 工作流执行完成
-    - workflow_error: 工作流执行失败
-
-    错误：
-    - 404: Workflow 不存在
-    """
+    杩斿洖锛?    - SSE 浜嬩欢娴侊紙text/event-stream锛?
+    浜嬩欢绫诲瀷锛?    - node_start: 鑺傜偣寮€濮嬫墽琛?    - node_complete: 鑺傜偣鎵ц瀹屾垚
+    - node_error: 鑺傜偣鎵ц澶辫触
+    - workflow_complete: 宸ヤ綔娴佹墽琛屽畬鎴?    - workflow_error: 宸ヤ綔娴佹墽琛屽け璐?
+    閿欒锛?    - 404: Workflow 涓嶅瓨鍦?    """
     import json
 
     async def event_generator():
-        """生成 SSE 事件"""
+        """鐢熸垚 SSE 浜嬩欢"""
         try:
-            # 1. 创建 Repository
+            # 1. 鍒涘缓 Repository
             workflow_repository = SQLAlchemyWorkflowRepository(db)
 
-            # 2. 创建 Use Case
+            # 2. 鍒涘缓 Use Case
             use_case = ExecuteWorkflowUseCase(
                 workflow_repository=workflow_repository,
                 executor_registry=_executor_registry,
             )
 
-            # 3. 执行 Use Case（流式）
+            # 3. 鎵ц Use Case锛堟祦寮忥級
             input_data = ExecuteWorkflowInput(
                 workflow_id=workflow_id,
                 initial_input=request.initial_input,
             )
 
-            # 4. 生成 SSE 事件
+            # 4. 鐢熸垚 SSE 浜嬩欢
             async for event in use_case.execute_streaming(input_data):
                 yield f"data: {json.dumps(event)}\n\n"
 
         except NotFoundError as e:
-            # 生成错误事件
+            # 鐢熸垚閿欒浜嬩欢
             error_event = {
                 "type": "workflow_error",
-                "error": f"{e.entity_type} 不存在: {e.entity_id}",
+                "error": f"{e.entity_type} 涓嶅瓨鍦? {e.entity_id}",
             }
             yield f"data: {json.dumps(error_event)}\n\n"
 
         except Exception as e:
-            # 生成错误事件
+            # 鐢熸垚閿欒浜嬩欢
             error_event = {
                 "type": "workflow_error",
-                "error": f"服务器内部错误: {str(e)}",
+                "error": f"鏈嶅姟鍣ㄥ唴閮ㄩ敊璇? {str(e)}",
             }
             yield f"data: {json.dumps(error_event)}\n\n"
 
@@ -363,53 +454,28 @@ def chat_with_workflow(
     workflow_id: str,
     request: ChatRequest,
     db: Session = Depends(get_db_session),
+    use_case: UpdateWorkflowByChatUseCase = Depends(get_update_workflow_by_chat_use_case),
 ) -> ChatResponse:
-    """对话式修改工作流
+    """瀵硅瘽寮忎慨鏀瑰伐浣滄祦
 
-    参数：
-        workflow_id: 工作流 ID
-        request: 对话请求（包含用户消息）
+    鍙傛暟锛?        workflow_id: 宸ヤ綔娴?ID
+        request: 瀵硅瘽璇锋眰锛堝寘鍚敤鎴锋秷鎭級
 
-    返回：
-        ChatResponse: 包含修改后的工作流和AI回复消息
+    杩斿洖锛?        ChatResponse: 鍖呭惈淇敼鍚庣殑宸ヤ綔娴佸拰AI鍥炲娑堟伅
 
-    错误：
-    - 404: Workflow 不存在
-    - 400: 消息为空或处理失败
-    - 500: 服务器内部错误
-    """
+    閿欒锛?    - 404: Workflow 涓嶅瓨鍦?    - 400: 娑堟伅涓虹┖鎴栧鐞嗗け璐?    - 500: 鏈嶅姟鍣ㄥ唴閮ㄩ敊璇?    """
     try:
-        # 1. 创建 Repository
-        workflow_repository = SQLAlchemyWorkflowRepository(db)
-
-        # 2. 创建 LLM 实例
-        llm = ChatOpenAI(
-            model=settings.openai_model,
-            temperature=0,
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-        )
-
-        # 3. 创建 Domain Service
-        chat_service = WorkflowChatService(llm=llm)
-
-        # 4. 创建 Use Case
-        use_case = UpdateWorkflowByChatUseCase(
-            workflow_repository=workflow_repository,
-            chat_service=chat_service,
-        )
-
-        # 5. 执行 Use Case
+        # 鎵ц Use Case
         input_data = UpdateWorkflowByChatInput(
             workflow_id=workflow_id,
             user_message=request.message,
         )
         modified_workflow, ai_message = use_case.execute(input_data)
 
-        # 6. 提交事务
+        # 鎻愪氦浜嬪姟
         db.commit()
 
-        # 7. 返回结果
+        # 杩斿洖缁撴灉
         return ChatResponse(
             workflow=WorkflowResponse.from_entity(modified_workflow),
             ai_message=ai_message,
@@ -435,14 +501,14 @@ def chat_with_workflow(
 
 
 class GenerateWorkflowRequest(BaseModel):
-    """生成工作流请求"""
+    """Generate workflow request DTO."""
 
     description: str
     goal: str
 
 
 class GenerateWorkflowResponse(BaseModel):
-    """生成工作流响应"""
+    """Generate workflow response DTO."""
 
     workflow_id: str
     name: str
@@ -452,38 +518,33 @@ class GenerateWorkflowResponse(BaseModel):
 
 
 class SimpleWorkflowLLMClient:
-    """简单的工作流生成 LLM 客户端"""
+    """Simple workflow generation LLM client."""
 
     def __init__(self, llm_model: ChatOpenAI):
         self.llm = llm_model
 
     async def generate_workflow(self, description: str, goal: str) -> dict[str, Any]:
-        """使用 LLM 生成工作流结构
-
-        参数：
-            description: 工作流描述
-            goal: 工作流目标
-
-        返回：
-            包含节点和边的工作流结构
+        """浣跨敤 LLM 鐢熸垚宸ヤ綔娴佺粨鏋?
+        鍙傛暟锛?            description: 宸ヤ綔娴佹弿杩?            goal: 宸ヤ綔娴佺洰鏍?
+        杩斿洖锛?            鍖呭惈鑺傜偣鍜岃竟鐨勫伐浣滄祦缁撴瀯
         """
-        # 构建 LLM 提示词
+        # 鏋勫缓 LLM 鎻愮ず璇?
         prompt = f"""
-你是一个工作流设计师。根据以下需求，生成一个 JSON 格式的工作流结构。
+You are a workflow designer. Based on the following requirements, create a JSON workflow specification.
 
-需求：
-- 描述：{description}
-- 目标：{goal}
+Requirements:
+- Description: {description}
+- Goal: {goal}
 
-生成的 JSON 必须包含以下字段：
+The JSON must include:
 {{
-  "name": "工作流名称",
-  "description": "工作流描述",
+  "name": "Workflow name",
+  "description": "Workflow description",
   "nodes": [
     {{
       "type": "start|end|httpRequest|textModel|database|conditional|loop|python|transform|file|notification",
-      "name": "节点名称",
-      "config": {{}},
+      "name": "Node name",
+      "config": {{}} ,
       "position": {{"x": 100, "y": 100}}
     }}
   ],
@@ -492,34 +553,32 @@ class SimpleWorkflowLLMClient:
   ]
 }}
 
-要求：
-1. 必须至少有一个开始节点（start）和一个结束节点（end）
-2. 节点类型必须从支持的类型中选择
-3. 边的source和target必须指向有效的节点
-4. 返回有效的 JSON，不要包含任何其他文本
+Rules:
+1. Include at least one start node and one end node.
+2. Node types must be selected from the supported list.
+3. Edge source/target must reference existing nodes.
+        4. Return valid JSON only, without extra commentary.
 
-根据这个需求生成工作流 JSON：
-"""
+        """
 
-        # 调用 LLM
+        # 璋冪敤 LLM
         response = await self.llm.ainvoke(prompt)
 
-        # 解析响应（假设 LLM 返回有效的 JSON）
-        import json
+        # 瑙ｆ瀽鍝嶅簲锛堝亣璁?LLM 杩斿洖鏈夋晥鐨?JSON锛?        import json
 
         try:
-            # 尝试提取 JSON（可能在响应的某个位置）
+            # 灏濊瘯鎻愬彇 JSON锛堝彲鑳藉湪鍝嶅簲鐨勬煇涓綅缃級
             text = response.content if hasattr(response, "content") else str(response)
-            # 查找 JSON 对象
+            # 鏌ユ壘 JSON 瀵硅薄
             json_start = text.find("{")
             json_end = text.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 json_str = text[json_start:json_end]
                 return json.loads(json_str)
             else:
-                raise ValueError("响应中未找到有效的 JSON")
+                raise ValueError("鍝嶅簲涓湭鎵惧埌鏈夋晥鐨?JSON")
         except json.JSONDecodeError as e:
-            raise ValueError(f"LLM 响应不是有效的 JSON: {str(e)}")
+            raise ValueError(f"LLM 鍝嶅簲涓嶆槸鏈夋晥鐨?JSON: {str(e)}")
 
 
 @router.post("/import", response_model=ImportWorkflowResponse, status_code=status.HTTP_201_CREATED)
@@ -527,38 +586,29 @@ def import_workflow(
     request: ImportWorkflowRequest,
     db: Session = Depends(get_db_session),
 ) -> ImportWorkflowResponse:
-    """导入 Coze 工作流
+    """瀵煎叆 Coze 宸ヤ綔娴?
+    V2鏂板姛鑳斤細鏀寔浠?Coze 骞冲彴瀵煎叆宸ヤ綔娴?
+    涓氬姟鍦烘櫙锛?    鐢ㄦ埛浠?Coze 骞冲彴瀵煎嚭宸ヤ綔娴?JSON锛岄€氳繃姝ゆ帴鍙ｅ鍏ュ埌 Feagent
 
-    V2新功能：支持从 Coze 平台导入工作流
+    鍙傛暟锛?        request: ImportWorkflowRequest 鍖呭惈 Coze JSON 鏁版嵁
 
-    业务场景：
-    用户从 Coze 平台导出工作流 JSON，通过此接口导入到 Feagent
-
-    参数：
-        request: ImportWorkflowRequest 包含 Coze JSON 数据
-
-    返回：
-        ImportWorkflowResponse 包含导入后的工作流基本信息
-
-    错误：
-        400: 输入数据无效（JSON 格式错误、缺少必需字段、不支持的节点类型等）
-        500: 服务器内部错误
-    """
+    杩斿洖锛?        ImportWorkflowResponse 鍖呭惈瀵煎叆鍚庣殑宸ヤ綔娴佸熀鏈俊鎭?
+    閿欒锛?        400: 杈撳叆鏁版嵁鏃犳晥锛圝SON 鏍煎紡閿欒銆佺己灏戝繀闇€瀛楁銆佷笉鏀寔鐨勮妭鐐圭被鍨嬬瓑锛?        500: 鏈嶅姟鍣ㄥ唴閮ㄩ敊璇?    """
     try:
-        # 1. 创建 Repository
+        # 1. 鍒涘缓 Repository
         workflow_repository = SQLAlchemyWorkflowRepository(db)
 
-        # 2. 创建 Use Case
+        # 2. 鍒涘缓 Use Case
         use_case = ImportWorkflowUseCase(workflow_repository=workflow_repository)
 
-        # 3. 执行 Use Case
+        # 3. 鎵ц Use Case
         input_data = ImportWorkflowInput(coze_json=request.coze_json)
         output = use_case.execute(input_data)
 
-        # 4. 提交事务
+        # 4. 鎻愪氦浜嬪姟
         db.commit()
 
-        # 5. 返回结果
+        # 5. 杩斿洖缁撴灉
         return ImportWorkflowResponse(
             workflow_id=output.workflow_id,
             name=output.name,
@@ -567,14 +617,14 @@ def import_workflow(
         )
 
     except DomainError as e:
-        # Domain层验证失败（空JSON、缺少节点、不支持的节点类型、边引用错误等）
+        # Domain灞傞獙璇佸け璐ワ紙绌篔SON銆佺己灏戣妭鐐广€佷笉鏀寔鐨勮妭鐐圭被鍨嬨€佽竟寮曠敤閿欒绛夛級
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
     except Exception as e:
-        # 其他未预期的错误
+        # 鍏朵粬鏈鏈熺殑閿欒
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -591,56 +641,49 @@ async def generate_workflow_from_form(
     request: GenerateWorkflowRequest,
     db: Session = Depends(get_db_session),
 ) -> GenerateWorkflowResponse:
-    """从表单生成工作流
+    """浠庤〃鍗曠敓鎴愬伐浣滄祦
 
-    V2新功能：AI辅助工作流初始化
+    V2鏂板姛鑳斤細AI杈呭姪宸ヤ綔娴佸垵濮嬪寲
 
-    业务场景：
-    用户提供工作流描述和目标，系统使用 LLM 自动生成工作流结构
+    涓氬姟鍦烘櫙锛?    鐢ㄦ埛鎻愪緵宸ヤ綔娴佹弿杩板拰鐩爣锛岀郴缁熶娇鐢?LLM 鑷姩鐢熸垚宸ヤ綔娴佺粨鏋?
+    鍙傛暟锛?        request: GenerateWorkflowRequest 鍖呭惈宸ヤ綔娴佹弿杩板拰鐩爣
 
-    参数：
-        request: GenerateWorkflowRequest 包含工作流描述和目标
-
-    返回：
-        GenerateWorkflowResponse 包含生成后的工作流信息
-
-    错误：
-        400: 输入数据无效或 LLM 生成失败
-        500: 服务器内部错误
-    """
+    杩斿洖锛?        GenerateWorkflowResponse 鍖呭惈鐢熸垚鍚庣殑宸ヤ綔娴佷俊鎭?
+    閿欒锛?        400: 杈撳叆鏁版嵁鏃犳晥鎴?LLM 鐢熸垚澶辫触
+        500: 鏈嶅姟鍣ㄥ唴閮ㄩ敊璇?    """
     try:
-        # 1. 创建 Repository
+        # 1. 鍒涘缓 Repository
         workflow_repository = SQLAlchemyWorkflowRepository(db)
 
         # 2. 初始化 LLM 客户端
-        openai_api_key = os.getenv("OPENAI_API_KEY")
+        openai_api_key = settings.openai_api_key
         if not openai_api_key:
-            raise ValueError("OPENAI_API_KEY 环境变量未设置")
+            raise ValueError("OPENAI_API_KEY environment variable is not set.")
 
         llm = ChatOpenAI(
             api_key=openai_api_key,
-            model="gpt-4",
+            model=settings.openai_model,
             temperature=0.7,
         )
         llm_client = SimpleWorkflowLLMClient(llm)
 
-        # 3. 创建 Use Case
+        # 3. 鍒涘缓 Use Case
         use_case = GenerateWorkflowFromFormUseCase(
             workflow_repository=workflow_repository,
             llm_client=llm_client,
         )
 
-        # 4. 执行 Use Case
+        # 4. 鎵ц Use Case
         input_data = GenerateWorkflowInput(
             description=request.description,
             goal=request.goal,
         )
         workflow = await use_case.execute(input_data)
 
-        # 5. 提交事务
+        # 5. 鎻愪氦浜嬪姟
         db.commit()
 
-        # 6. 返回结果
+        # 6. 杩斿洖缁撴灉
         return GenerateWorkflowResponse(
             workflow_id=workflow.id,
             name=workflow.name,
@@ -650,23 +693,23 @@ async def generate_workflow_from_form(
         )
 
     except DomainError as e:
-        # Domain层验证失败
-        db.rollback()
+        # Domain灞傞獙璇佸け璐?        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
     except ValueError as e:
-        # 值错误（如环境变量缺失）
+        # 鍊奸敊璇紙濡傜幆澧冨彉閲忕己澶憋級
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
     except Exception as e:
-        # 其他未预期的错误
+        # 鍏朵粬鏈鏈熺殑閿欒
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"服务器内部错误: {str(e)}",
         )
+

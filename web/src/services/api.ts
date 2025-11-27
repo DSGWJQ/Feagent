@@ -8,13 +8,14 @@
  * - Type-safe with TypeScript interfaces
  */
 
-import axios, {
+import axios from 'axios';
+import type {
   AxiosInstance,
   AxiosError,
   AxiosRequestConfig,
   InternalAxiosRequestConfig,
 } from 'axios';
-import {
+import type {
   Workflow,
   Task,
   Run,
@@ -24,8 +25,17 @@ import {
   LLMProvider,
   SchedulerStatus,
   SchedulerJobs,
-  TaskType,
-} from '../types/workflow';
+} from '@/types/workflow';
+
+export interface WorkflowChatResponse {
+  workflow: Workflow;
+  ai_message: string;
+}
+
+export interface WorkflowExecutionEvent {
+  type: string;
+  [key: string]: unknown;
+}
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -83,6 +93,65 @@ const workflows = {
     axiosInstance.delete(`/workflows/${id}`),
   publish: (id: string) =>
     axiosInstance.post<Workflow>(`/workflows/${id}/publish`, {}),
+  chat: (id: string, data: { message: string }) =>
+    axiosInstance.post<WorkflowChatResponse>(`/workflows/${id}/chat`, data),
+  streamExecution: async (
+    id: string,
+    payload: Record<string, unknown>,
+    onEvent: (event: WorkflowExecutionEvent) => void
+  ): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/workflows/${id}/execute/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to stream workflow execution');
+    }
+
+    if (!response.body) {
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary !== -1) {
+        const chunk = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf('\n\n');
+
+        if (!chunk.startsWith('data:')) {
+          continue;
+        }
+
+        const data = chunk.replace(/^data:\s*/, '');
+        if (!data) {
+          continue;
+        }
+
+        try {
+          const event = JSON.parse(data);
+          onEvent(event);
+        } catch (error) {
+          console.warn('Failed to parse workflow stream event', error);
+        }
+      }
+    }
+  },
 };
 
 // Task Classification
@@ -166,12 +235,46 @@ const llmProviders = {
 // Error handling utility
 const handleError = (error: unknown): string => {
   if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
     const message = error.response?.data?.detail || error.message;
-    console.error('API Error:', message);
+
+    console.error('API Error:', { status, message });
+
+    // Provide friendly messages for common errors
+    if (status === 404) {
+      if (message.includes('Workflow') && message.includes('不存在')) {
+        return '工作流不存在，系统将为您创建新的工作流';
+      }
+      if (message.includes('not found')) {
+        return '请求的资源不存在，请检查路径是否正确';
+      }
+      return '资源未找到，可能已被删除';
+    }
+
+    if (status === 403) {
+      return '没有权限访问该资源';
+    }
+
+    if (status === 401) {
+      return '请先登录后再访问';
+    }
+
+    if (status === 500) {
+      return '服务器内部错误，请稍后重试';
+    }
+
+    if (status >= 500) {
+      return '服务暂时不可用，请稍后重试';
+    }
+
+    if (status >= 400) {
+      return '请求失败，请检查输入信息';
+    }
+
     return message as string;
   }
   console.error('Unexpected error:', error);
-  return 'An unexpected error occurred';
+  return '发生未知错误，请联系技术支持';
 };
 
 // Export API client

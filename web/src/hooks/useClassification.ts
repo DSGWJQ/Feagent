@@ -5,7 +5,7 @@
 
 import { useMutation } from '@tanstack/react-query';
 import { apiClient } from '../services/api';
-import { ClassificationResult } from '../types/workflow';
+import type { ClassificationResult } from '@/types/workflow';
 
 export const useClassification = () => {
   // Classify task

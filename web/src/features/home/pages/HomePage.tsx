@@ -1,17 +1,24 @@
 /**
  * Home Page - 首页
  *
- * 参考 skal-ventures-template 设计
- * 包含：
+ * 设计：
+ * - 顶部横向主导航（Agent管理、工作流、调度器、LLM管理）
+ * - Hero 区域（主标题 + 开始构建工作流按钮）
  * - 粒子背景效果
- * - Hero 区域
- * - 工作流编辑器入口（突出显示）
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from 'antd';
-import { RocketOutlined, GithubOutlined } from '@ant-design/icons';
+import { Button, Dropdown } from 'antd';
+import type { MenuProps } from 'antd';
+import {
+  RocketOutlined,
+  RobotOutlined,
+  ApartmentOutlined,
+  ClockCircleOutlined,
+  ApiOutlined,
+  DownOutlined,
+} from '@ant-design/icons';
 import './HomePage.css';
 
 export const HomePage = () => {
@@ -19,14 +26,46 @@ export const HomePage = () => {
   const [hovering, setHovering] = useState(false);
 
   const handleWorkflowEditor = () => {
-    // 暂时导航到测试工作流
+    // 导航到工作流编辑器（全屏，无侧边栏）
     navigate('/workflows/test-workflow-id/edit');
   };
 
-  const handleGithubLogin = () => {
-    // TODO: 实现 GitHub OAuth 登录
-    console.log('GitHub Login');
-  };
+  // Agent 管理下拉菜单
+  const agentMenuItems: MenuProps['items'] = [
+    {
+      key: '/app/agents',
+      label: 'Agent 列表',
+      onClick: () => navigate('/app/agents'),
+    },
+    {
+      key: '/app/agents/create',
+      label: '创建 Agent',
+      onClick: () => navigate('/app/agents/create'),
+    },
+  ];
+
+  // 调度器下拉菜单
+  const schedulerMenuItems: MenuProps['items'] = [
+    {
+      key: '/app/scheduled',
+      label: '定时任务',
+      onClick: () => navigate('/app/scheduled'),
+    },
+    {
+      key: '/app/monitor',
+      label: '实时监控',
+      onClick: () => navigate('/app/monitor'),
+    },
+  ];
+
+  // LLM 管理下拉菜单
+  const llmMenuItems: MenuProps['items'] = [
+    {
+      key: '/app/providers',
+      label: '提供商管理',
+      onClick: () => navigate('/app/providers'),
+    },
+  ];
 
   return (
     <div className="home-page">
@@ -42,23 +81,45 @@ export const HomePage = () => {
             <span className="home-logo-text">AI Agent Platform</span>
           </div>
 
-          {/* 中间导航 */}
+          {/* 主导航菜单 */}
           <nav className="home-nav">
-            <a href="#features" className="home-nav-link">功能</a>
-            <a href="#workflow" className="home-nav-link home-nav-link-highlight">工作流编辑器</a>
-            <a href="#about" className="home-nav-link">关于</a>
-            <a href="#contact" className="home-nav-link">联系</a>
-          </nav>
+            {/* Agent 管理 */}
+            <Dropdown menu={{ items: agentMenuItems }} placement="bottom">
+              <Button type="text" className="home-nav-btn">
+                <RobotOutlined />
+                Agent 管理
+                <DownOutlined style={{ fontSize: '12px' }} />
+              </Button>
+            </Dropdown>
 
-          {/* GitHub 登录 */}
-          <Button
-            type="text"
-            icon={<GithubOutlined />}
-            onClick={handleGithubLogin}
-            className="github-login-btn"
-          >
-            登录
-          </Button>
+            {/* 工作流管理 */}
+            <Button
+              type="text"
+              className="home-nav-btn"
+              onClick={handleWorkflowEditor}
+            >
+              <ApartmentOutlined />
+              工作流
+            </Button>
+
+            {/* 调度器 */}
+            <Dropdown menu={{ items: schedulerMenuItems }} placement="bottom">
+              <Button type="text" className="home-nav-btn">
+                <ClockCircleOutlined />
+                调度器
+                <DownOutlined style={{ fontSize: '12px' }} />
+              </Button>
+            </Dropdown>
+
+            {/* LLM 管理 */}
+            <Dropdown menu={{ items: llmMenuItems }} placement="bottom">
+              <Button type="text" className="home-nav-btn">
+                <ApiOutlined />
+                LLM 管理
+                <DownOutlined style={{ fontSize: '12px' }} />
+              </Button>
+            </Dropdown>
+          </nav>
         </div>
       </header>
 
@@ -94,15 +155,6 @@ export const HomePage = () => {
             className={`home-cta-btn ${hovering ? 'hovering' : ''}`}
           >
             开始构建工作流
-          </Button>
-
-          {/* 次要 CTA */}
-          <Button
-            size="large"
-            onClick={handleWorkflowEditor}
-            className="home-secondary-btn"
-          >
-            查看示例
           </Button>
         </div>
       </div>

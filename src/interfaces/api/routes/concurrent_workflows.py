@@ -8,7 +8,6 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 
 from src.application.use_cases.execute_concurrent_workflows import (
     ExecuteConcurrentWorkflowsInput,
@@ -16,33 +15,20 @@ from src.application.use_cases.execute_concurrent_workflows import (
     ExecutionResult,
 )
 from src.domain.exceptions import DomainError, NotFoundError
-from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories.workflow_repository import (
-    SQLAlchemyWorkflowRepository,
-)
 from src.interfaces.api.dto.workflow_features_dto import (
     ExecuteConcurrentWorkflowsRequest,
     ExecutionResultResponse,
 )
-from src.interfaces.api.dto.run_dto import RunResponse
 
 # 创建路由器
 router = APIRouter(tags=["Concurrent Workflows"])
 
 
-def get_execute_concurrent_use_case(
-    session: Session = Depends(get_db_session),
-) -> ExecuteConcurrentWorkflowsUseCase:
-    """获取 ExecuteConcurrentWorkflowsUseCase - 依赖注入函数"""
-    workflow_repo = SQLAlchemyWorkflowRepository(session)
-    # TODO: 注入真实的 execution_manager 和 run_repo
-    from unittest.mock import Mock
-    execution_manager = Mock()
-    run_repo = Mock()
-    return ExecuteConcurrentWorkflowsUseCase(
-        workflow_repo=workflow_repo,
-        execution_manager=execution_manager,
-        run_repo=run_repo,
+def get_execute_concurrent_use_case() -> ExecuteConcurrentWorkflowsUseCase:
+    """当前并发执行尚未开放，直接 501。"""
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Concurrent workflow execution is temporarily unavailable.",
     )
 
 

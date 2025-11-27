@@ -87,39 +87,58 @@
 
 .home-nav {
   display: flex;
-  gap: 2.5rem;
+  gap: 1rem;
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  align-items: center;
 }
 
-.home-nav-link {
-  color: rgba(255, 255, 255, 0.6);
-  text-decoration: none;
-  font-family: 'Courier New', monospace;
-  text-transform: uppercase;
-  font-size: 14px;
-  transition: color 0.15s ease-out;
+/* 导航按钮样式 */
+.home-nav-btn {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-family: 'Courier New', monospace !important;
+  font-size: 14px !important;
+  padding: 8px 20px !important;
+  height: auto !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px !important;
+  transition: all 0.2s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
 }
 
-.home-nav-link:hover {
-  color: rgba(255, 255, 255, 1);
+.home-nav-btn:hover {
+  color: rgba(255, 255, 255, 1) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-.home-nav-link-highlight {
-  color: #FFC700;
-  font-weight: 600;
+.home-nav-btn:active {
+  background: rgba(255, 255, 255, 0.1) !important;
 }
 
-.github-login-btn {
-  color: #FFC700 !important;
-  font-family: 'Courier New', monospace;
-  text-transform: uppercase;
-  font-size: 14px;
+/* Dropdown 菜单样式（全局） */
+:global(.ant-dropdown) {
+  background: rgba(0, 0, 0, 0.9) !important;
+  backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
-.github-login-btn:hover {
-  color: rgba(255, 199, 0, 0.8) !important;
+:global(.ant-dropdown-menu) {
+  background: transparent !important;
+}
+
+:global(.ant-dropdown-menu-item) {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-family: 'Courier New', monospace !important;
+  font-size: 14px !important;
+}
+
+:global(.ant-dropdown-menu-item:hover) {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 1) !important;
 }
 
 /* Hero 区域 */

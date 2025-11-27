@@ -1,93 +1,39 @@
 /**
  * useWorkflow Hook
- * Manages workflow-related API calls and state
+ * 拉取单个工作流的详情，供编辑器使用
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../services/api';
-import { Workflow } from '../types/workflow';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { apiClient } from '@/services/api';
+import type { Workflow } from '@/types/workflow';
 
-export const useWorkflow = () => {
-  const queryClient = useQueryClient();
+interface UseWorkflowResult {
+  workflowData: Workflow | null;
+  isLoadingWorkflow: boolean;
+  workflowError: unknown;
+  refetchWorkflow: UseQueryResult<Workflow | null, unknown>['refetch'];
+}
 
-  // List all workflows
-  const {
-    data: workflows = [],
-    isLoading: isLoadingWorkflows,
-    error: workflowsError,
-  } = useQuery({
-    queryKey: ['workflows'],
+export const useWorkflow = (workflowId?: string | null): UseWorkflowResult => {
+  const query = useQuery<Workflow | null>({
+    queryKey: ['workflow', workflowId],
     queryFn: async () => {
-      const response = await apiClient.workflows.list();
+      if (!workflowId) {
+        return null;
+      }
+      const response = await apiClient.workflows.getById(workflowId);
       return response.data;
     },
-  });
-
-  // Get workflow details
-  const useGetWorkflowDetails = (workflowId: string | null) => {
-    return useQuery({
-      queryKey: ['workflow', workflowId],
-      queryFn: async () => {
-        if (!workflowId) return null;
-        const response = await apiClient.workflows.getById(workflowId);
-        return response.data;
-      },
-      enabled: !!workflowId,
-    });
-  };
-
-  // Create workflow
-  const createWorkflow = useMutation({
-    mutationFn: (data: Partial<Workflow>) =>
-      apiClient.workflows.create(data).then((res) => res.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflows'] });
-    },
-  });
-
-  // Update workflow
-  const updateWorkflow = useMutation({
-    mutationFn: ({
-      id,
-      data,
-    }: {
-      id: string;
-      data: Partial<Workflow>;
-    }) => apiClient.workflows.update(id, data).then((res) => res.data),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['workflows'] });
-      queryClient.setQueryData(['workflow', data.id], data);
-    },
-  });
-
-  // Publish workflow
-  const publishWorkflow = useMutation({
-    mutationFn: (id: string) =>
-      apiClient.workflows.publish(id).then((res) => res.data),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['workflows'] });
-      queryClient.setQueryData(['workflow', data.id], data);
-    },
-  });
-
-  // Delete workflow
-  const deleteWorkflow = useMutation({
-    mutationFn: (id: string) =>
-      apiClient.workflows.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflows'] });
-    },
+    enabled: Boolean(workflowId),
+    retry: 1,
+    staleTime: 30_000,
   });
 
   return {
-    workflows,
-    isLoadingWorkflows,
-    workflowsError,
-    useGetWorkflowDetails,
-    createWorkflow,
-    updateWorkflow,
-    publishWorkflow,
-    deleteWorkflow,
+    workflowData: query.data ?? null,
+    isLoadingWorkflow: query.isLoading,
+    workflowError: query.error ?? null,
+    refetchWorkflow: query.refetch,
   };
 };
 

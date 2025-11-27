@@ -194,6 +194,29 @@ class WorkflowResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CreateWorkflowRequest(BaseModel):
+    """创建 Workflow 请求 DTO
+
+    业务场景：用户创建新工作流
+
+    字段：
+    - name: 工作流名称
+    - description: 工作流描述（可选）
+    - nodes: 初始节点列表（可选）
+    - edges: 初始边列表（可选）
+
+    验证规则：
+    - name 不能为空
+    """
+
+    name: str = Field(..., min_length=1, description="工作流名称")
+    description: str = Field(default="", description="工作流描述")
+    nodes: list[NodeDTO] = Field(default_factory=list, description="节点列表")
+    edges: list[EdgeDTO] = Field(default_factory=list, description="边列表")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class UpdateWorkflowRequest(BaseModel):
     """更新 Workflow 请求 DTO
 

@@ -1,26 +1,31 @@
 /**
  * 应用路由配置
  *
- * 为什么需要单独的路由文件？
- * - 集中管理所有路由
- * - 方便添加新路由
- * - 支持代码分割（lazy loading）
- * - 便于测试
- *
  * 路由结构：
- * - / - Home 页面
- * - /agents - Agent 列表页
- * - /agents/create - 创建 Agent 页面
- * - /workflows/:id/edit - 工作流编辑器
+ * - / - 着陆页（Landing Page，无布局）
+ * - /workflows/:id/edit - 工作流编辑器（全屏，无布局）
+ * - /app/* - 应用页面（使用 MainLayout）
+ *   - /app/agents - Agent 列表页
+ *   - /app/agents/create - 创建 Agent 页面
+ *   - /app/agents/:id - Agent 详情页
+ *   - /app/scheduled - 定时任务
+ *   - /app/monitor - 调度器监控
+ *   - /app/providers - LLM 提供商
+ *
+ * 为什么分离不同类型的页面？
+ * - 着陆页：营销/介绍页面，无需导航菜单
+ * - 工作流编辑器：全屏编辑器，需要完整画布空间
+ * - 应用页面：管理页面，使用统一的侧边栏导航
  */
 
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { MainLayout } from '@/layouts';
 import { HomePage } from '@/features/home/pages';
 import { AgentListTest, CreateAgentPage, AgentDetailPage } from '@/features/agents/pages';
 import { WorkflowEditorPage } from '@/features/workflows/pages';
-import { TaskClassificationPage } from '@/features/classification/pages';
+// import { TaskClassificationPage } from '@/features/classification/pages';
 import { ScheduledWorkflowsPage, SchedulerMonitorPage } from '@/features/scheduler/pages';
-import { ToolsLibraryPage } from '@/features/tools/pages';
+// import { ToolsLibraryPage } from '@/features/tools/pages';
 import { LLMProvidersPage } from '@/features/llm/pages';
 
 /**
@@ -33,45 +38,71 @@ import { LLMProvidersPage } from '@/features/llm/pages';
  * - 更好的类型支持
  */
 export const router = createBrowserRouter([
+  // 着陆页（无布局）
   {
     path: '/',
     element: <HomePage />,
   },
-  {
-    path: '/agents',
-    element: <AgentListTest />,
-  },
-  {
-    path: '/agents/create',
-    element: <CreateAgentPage />,
-  },
-  {
-    path: '/agents/:id',
-    element: <AgentDetailPage />,
-  },
+
+  // 工作流编辑器（全屏，无布局）
   {
     path: '/workflows/:id/edit',
     element: <WorkflowEditorPage />,
   },
+
+  // 应用页面（使用 MainLayout）
   {
-    path: '/classification',
-    element: <TaskClassificationPage />,
-  },
-  {
-    path: '/scheduled',
-    element: <ScheduledWorkflowsPage />,
-  },
-  {
-    path: '/monitor',
-    element: <SchedulerMonitorPage />,
-  },
-  {
-    path: '/tools',
-    element: <ToolsLibraryPage />,
-  },
-  {
-    path: '/providers',
-    element: <LLMProvidersPage />,
+    path: '/app',
+    element: <MainLayout />,
+    children: [
+      // 默认重定向到 agents
+      {
+        index: true,
+        element: <Navigate to="/app/agents" replace />,
+      },
+
+      // Agent 管理
+      {
+        path: 'agents',
+        element: <AgentListTest />,
+      },
+      {
+        path: 'agents/create',
+        element: <CreateAgentPage />,
+      },
+      {
+        path: 'agents/:id',
+        element: <AgentDetailPage />,
+      },
+
+      // 智能分类（已禁用 - V2 实验性功能）
+      // {
+      //   path: 'classification',
+      //   element: <TaskClassificationPage />,
+      // },
+
+      // 调度器
+      {
+        path: 'scheduled',
+        element: <ScheduledWorkflowsPage />,
+      },
+      {
+        path: 'monitor',
+        element: <SchedulerMonitorPage />,
+      },
+
+      // 工具库（已禁用 - 底层管理功能）
+      // {
+      //   path: 'tools',
+      //   element: <ToolsLibraryPage />,
+      // },
+
+      // LLM 管理
+      {
+        path: 'providers',
+        element: <LLMProvidersPage />,
+      },
+    ],
   },
 ]);
 

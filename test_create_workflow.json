@@ -1,0 +1,17 @@
+{
+  "name": "测试工作流",
+  "description": "测试创建",
+  "nodes": [
+    {
+      "id": "1",
+      "type": "start",
+      "name": "开始",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {}
+    }
+  ],
+  "edges": []
+}

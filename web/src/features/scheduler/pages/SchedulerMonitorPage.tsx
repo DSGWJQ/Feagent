@@ -34,7 +34,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import * as schedulerApi from '../api/schedulerApi';
-import { SchedulerStatus, SchedulerJobs } from '../../../types/workflow';
+import type { SchedulerStatus, SchedulerJobs } from '../../../types/workflow';
 import './SchedulerMonitorPage.css';
 
 export default function SchedulerMonitorPage() {
