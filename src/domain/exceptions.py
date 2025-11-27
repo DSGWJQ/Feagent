@@ -62,3 +62,7 @@ class NotFoundError(DomainError):
         self.entity_type = entity_type
         self.entity_id = entity_id
         super().__init__(f"{entity_type} 不存在: {entity_id}")
+
+
+# EntityNotFoundError是NotFoundError的别名，用于Repository层
+EntityNotFoundError = NotFoundError

@@ -33,7 +33,15 @@
       "Bash(uvicorn:*)",
       "Bash(timeout 10 bash -c \"while ! curl -s http://localhost:8000/health > /dev/null; do sleep 1; done; echo ''Backend is ready''\")",
       "Bash(curl:*)",
-      "Bash(pnpm dev)"
+      "Bash(pnpm dev)",
+      "Bash(pip install:*)",
+      "Bash(alembic revision:*)",
+      "Bash(alembic upgrade:*)",
+      "Bash(alembic stamp head:*)",
+      "WebSearch",
+      "Bash(chcp:*)",
+      "Bash(iconv:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

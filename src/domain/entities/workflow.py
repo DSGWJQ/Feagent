@@ -59,6 +59,7 @@ class Workflow:
     status: WorkflowStatus = WorkflowStatus.DRAFT
     source: str = "feagent"  # V2新增：工作流来源（feagent/coze/user）
     source_id: str | None = None  # V2新增：原始来源的ID（如Coze workflow_id）
+    user_id: str | None = None  # 创建者ID（登录用户才有，非登录用户为None）
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 

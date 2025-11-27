@@ -27,6 +27,7 @@ from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.repositories.tool_repository import (
     SQLAlchemyToolRepository,
 )
+from src.interfaces.api.dependencies.current_user import get_current_user_optional
 from src.interfaces.api.dto import (
     CreateToolRequest,
     DeprecateToolRequest,
@@ -88,20 +89,39 @@ def create_tool(
     request: CreateToolRequest,
     tool_repository: SQLAlchemyToolRepository = Depends(get_tool_repository),
     session: Session = Depends(get_db_session),
+    current_user=Depends(get_current_user_optional),  # 可选认证
 ) -> ToolResponse:
     """创建工具
+
+    业务场景：
+    - 登录用户：创建工具并关联到用户账户（可长期保存）
+    - 非登录用户：创建工具但不关联用户（仅体验，刷新后丢失）
+
+    认证：
+    - 可选认证（Authorization: Bearer <token>）
+    - 登录用户的工具会关联user_id
+    - 非登录用户的工具user_id为None
 
     业务流程：
     1. 验证输入数据（Pydantic 自动验证）
     2. 创建 Tool 实体（验证业务规则）
-    3. 保存到数据库
-    4. 返回工具信息
+    3. 关联用户（如果已登录）
+    4. 保存到数据库
+    5. 返回工具信息
 
     异常处理：
     - 400: 业务规则违反（name 为空等）
     - 500: 数据库错误
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     try:
+        logger.info(
+            f"[POST] 开始创建工具: name={request.name}, user_id={current_user.id if current_user else 'anonymous'}"
+        )
+
         # 将请求转换为参数列表
         parameters = []
         if request.parameters:
@@ -131,9 +151,18 @@ def create_tool(
             icon=request.icon,
         )
 
+        # 关联用户（如果已登录）
+        if current_user:
+            tool.user_id = current_user.id
+            logger.info(f"[POST] 工具关联到用户: user_id={current_user.id}")
+        else:
+            logger.info("[POST] 非登录用户创建工具（体验模式）")
+
         # 保存到数据库
         tool_repository.save(tool)
         session.commit()
+
+        logger.info(f"[POST] 工具创建成功: tool_id={tool.id}")
 
         return _tool_to_response(tool)
 

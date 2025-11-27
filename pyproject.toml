@@ -49,6 +49,11 @@ dependencies = [
 
     # Utilities
     "python-dotenv>=1.0.1",
+
+    # Vector Storage & RAG
+    "sqlite-vec>=0.1.1",  # SQLite vector extension
+    "chromadb>=0.5.0",  # Alternative vector store
+    "tiktoken>=0.8.0",  # Token counting for text chunking
 ]
 
 [project.optional-dependencies]

@@ -98,6 +98,7 @@ class Tool:
     author: str = ""
     tags: list[str] = field(default_factory=list)
     icon: str | None = None
+    user_id: str | None = None  # 创建者ID（登录用户才有，非登录用户为None）
     usage_count: int = 0
     last_used_at: datetime | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))

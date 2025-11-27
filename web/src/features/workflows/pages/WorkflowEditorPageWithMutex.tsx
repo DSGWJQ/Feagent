@@ -35,7 +35,7 @@ import type { WorkflowNode, WorkflowEdge } from '../types/workflow';
 import NodePalette from '../components/NodePalette';
 import NodeConfigPanel from '../components/NodeConfigPanel';
 import CodeExportModal from '../components/CodeExportModal';
-import WorkflowAIChatWithExecution from '@/shared/components/WorkflowAIChatWithExecution';
+import WorkflowAIChatWithRAG from '@/shared/components/WorkflowAIChatWithRAG';
 import { useWorkflowInteraction } from '../contexts/WorkflowInteractionContext';
 import {
   StartNode,
@@ -640,7 +640,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
           {!chatPanelCollapsed && (
             <div style={{ flex: 1, overflow: 'hidden', backgroundColor: '#141414' }}>
               {workflowId ? (
-                <WorkflowAIChatWithExecution
+                <WorkflowAIChatWithRAG
                   workflowId={workflowId}
                   onWorkflowUpdate={handleWorkflowUpdate}
                   showWelcome={true}

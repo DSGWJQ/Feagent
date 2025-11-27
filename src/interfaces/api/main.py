@@ -1,4 +1,4 @@
-﻿"""FastAPI 应用入口"""
+"""FastAPI 应用入口"""
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -18,7 +18,9 @@ from src.interfaces.api.dependencies.scheduler import (
 )
 from src.interfaces.api.routes import (
     agents,
+    auth,
     concurrent_workflows,
+    health,
     llm_providers,
     runs,
     scheduled_workflows,
@@ -127,15 +129,23 @@ app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
 app.include_router(runs.create_router, prefix="/api/agents", tags=["Runs"])
 app.include_router(runs.query_router, prefix="/api/runs", tags=["Runs"])
 app.include_router(workflows.router, prefix="/api", tags=["Workflows"])
+app.include_router(auth.router, prefix="/api", tags=["Authentication"])
 
 # Import and register chat_workflows router
 from src.interfaces.api.routes import chat_workflows
+
 app.include_router(chat_workflows.router, prefix="/api", tags=["Chat Workflows"])
+
+# Import and register RAG router
+from src.interfaces.api.routes import workflows_rag
+
+app.include_router(workflows_rag.router, prefix="/api", tags=["Workflows RAG"])
 
 app.include_router(tools.router, prefix="/api", tags=["Tools"])
 app.include_router(llm_providers.router, prefix="/api", tags=["LLM Providers"])
 app.include_router(scheduled_workflows.router, prefix="/api", tags=["Scheduled Workflows"])
 app.include_router(concurrent_workflows.router, prefix="/api", tags=["Concurrent Workflows"])
+app.include_router(health.router, prefix="/api", tags=["Health"])
 
 
 if __name__ == "__main__":

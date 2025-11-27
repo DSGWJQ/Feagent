@@ -21,10 +21,104 @@ ORM 模型 vs 领域实体：
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.base import Base
+
+
+class UserModel(Base):
+    """User ORM 模型
+
+    表名：users
+
+    字段说明：
+    - id: 主键（UUID 字符串，36 字符）
+    - github_id: GitHub用户ID（唯一，整数）
+    - github_username: GitHub用户名（255 字符）
+    - email: 用户邮箱（唯一，255 字符）
+    - name: 用户姓名（255 字符，可选）
+    - github_avatar_url: GitHub头像URL（Text，可选）
+    - github_profile_url: GitHub个人主页URL（Text，可选）
+    - is_active: 是否激活（布尔值，默认True）
+    - role: 用户角色（20 字符，默认user）
+    - created_at: 创建时间（自动设置）
+    - updated_at: 更新时间（可选）
+    - last_login_at: 最后登录时间（可选）
+
+    关系：
+    - workflows: 一对多关系（一个User有多个Workflow）
+    - tools: 一对多关系（一个User有多个Tool）
+
+    索引：
+    - idx_users_github_id: github_id字段索引（唯一，快速查找）
+    - idx_users_email: email字段索引（唯一，快速查找）
+    - idx_users_created_at: created_at字段索引（按时间排序）
+    """
+
+    __tablename__ = "users"
+
+    # 主键
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="User ID（UUID）")
+
+    # GitHub OAuth信息
+    github_id: Mapped[int] = mapped_column(
+        Integer, nullable=False, unique=True, comment="GitHub用户ID"
+    )
+    github_username: Mapped[str] = mapped_column(
+        String(255), nullable=False, comment="GitHub用户名"
+    )
+    github_avatar_url: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="GitHub头像URL"
+    )
+    github_profile_url: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="GitHub个人主页"
+    )
+
+    # 用户基本信息
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, comment="用户邮箱")
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="用户姓名")
+
+    # 账户状态
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, comment="是否激活"
+    )
+    role: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="user", comment="用户角色（user/admin）"
+    )
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, onupdate=datetime.now, comment="更新时间"
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="最后登录时间"
+    )
+
+    # 关系（一对多：一个User有多个Workflow）
+    workflows: Mapped[list["WorkflowModel"]] = relationship(
+        "WorkflowModel", back_populates="user", cascade="all, delete-orphan"
+    )
+
+    # 关系（一对多：一个User有多个Tool）
+    tools: Mapped[list["ToolModel"]] = relationship(
+        "ToolModel", back_populates="user", cascade="all, delete-orphan"
+    )
+
+    # 索引
+    __table_args__ = (
+        Index("idx_users_github_id", "github_id", unique=True),  # 唯一索引
+        Index("idx_users_email", "email", unique=True),  # 唯一索引
+        Index("idx_users_created_at", "created_at"),  # 按时间排序
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<UserModel(id={self.id}, github_username={self.github_username}, email={self.email})>"
+        )
 
 
 class AgentModel(Base):
@@ -336,6 +430,14 @@ class WorkflowModel(Base):
     # 主键
     id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Workflow ID（wf_ 前缀）")
 
+    # 外键（用户关联）
+    user_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,  # 兼容现有数据和未登录用户
+        comment="创建者ID",
+    )
+
     # 业务字段
     name: Mapped[str] = mapped_column(String(255), nullable=False, comment="工作流名称")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="", comment="工作流描述")
@@ -357,6 +459,9 @@ class WorkflowModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, onupdate=datetime.now, comment="更新时间"
     )
+
+    # 关系（多对一：多个Workflow属于一个User）
+    user: Mapped["UserModel"] = relationship("UserModel", back_populates="workflows")
 
     # 关系（一对多：一个 Workflow 有多个 Node）
     # cascade="all, delete-orphan": 删除 Workflow 时级联删除所有 Node
@@ -525,6 +630,14 @@ class ToolModel(Base):
     # 主键
     id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Tool ID（tool_ 前缀）")
 
+    # 外键（用户关联）
+    user_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,  # 兼容现有数据和未登录用户
+        comment="创建者ID",
+    )
+
     # 业务字段
     name: Mapped[str] = mapped_column(String(255), nullable=False, comment="工具名称")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="", comment="工具描述")
@@ -575,6 +688,9 @@ class ToolModel(Base):
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True, comment="发布时间"
     )
+
+    # 关系（多对一：多个Tool属于一个User）
+    user: Mapped["UserModel"] = relationship("UserModel", back_populates="tools")
 
     # 索引
     __table_args__ = (
@@ -676,21 +792,18 @@ class ScheduledWorkflowModel(Base):
     __tablename__ = "scheduled_workflows"
 
     # 主键
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, comment="ScheduledWorkflow ID"
-    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="ScheduledWorkflow ID")
 
     # 外键和关系
     workflow_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("workflows.id", ondelete="CASCADE"),
+        String(36),
+        ForeignKey("workflows.id", ondelete="CASCADE"),
         nullable=False,
         comment="关联的工作流 ID",
     )
 
     # 业务字段
-    cron_expression: Mapped[str] = mapped_column(
-        String(255), nullable=False, comment="Cron 表达式"
-    )
+    cron_expression: Mapped[str] = mapped_column(String(255), nullable=False, comment="Cron 表达式")
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="active", comment="定时任务状态"
     )
@@ -716,9 +829,7 @@ class ScheduledWorkflowModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, comment="创建时间"
     )
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="更新时间"
-    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="更新时间")
 
     # 索引
     __table_args__ = (
