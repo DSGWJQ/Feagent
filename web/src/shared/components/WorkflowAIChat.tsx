@@ -144,17 +144,19 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
         backgroundColor: '#141414',
         borderColor: '#262626',
       }}
-      headStyle={{
-        backgroundColor: '#1a1a1a',
-        borderBottom: '1px solid #262626',
-        color: '#fafafa',
-      }}
-      bodyStyle={{
-        flex: 1,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#141414',
+      styles={{
+        header: {
+          backgroundColor: '#1a1a1a',
+          borderBottom: '1px solid #262626',
+          color: '#fafafa',
+        },
+        body: {
+          flex: 1,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#141414',
+        },
       }}
     >
       {pendingWorkflow && (

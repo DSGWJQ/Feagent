@@ -276,9 +276,9 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   }, [isCanvasMode, setInteractionMode]);
 
   /**
-   * 画布拖拽处理
+   * 视图移动开始时切换为画布模式
    */
-  const onPaneDrag = useCallback(() => {
+  const onMoveStart = useCallback(() => {
     if (!isCanvasMode) {
       setInteractionMode('canvas');
     }
@@ -543,7 +543,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             onNodeDragStart={onNodeDragStart}
-            onPaneDrag={onPaneDrag}
+            onMoveStart={onMoveStart}
             onInit={(instance) => {
               reactFlowInstance.current = instance;
             }}

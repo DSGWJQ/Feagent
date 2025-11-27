@@ -1,18 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
+import { fileURLToPath, URL } from 'node:url';
 
-// https://vite.dev/config/
+const resolvePath = (relativePath: string) =>
+  fileURLToPath(new URL(relativePath, import.meta.url));
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@/app': path.resolve(__dirname, './src/app'),
-      '@/layouts': path.resolve(__dirname, './src/layouts'),
-      '@/features': path.resolve(__dirname, './src/features'),
-      '@/shared': path.resolve(__dirname, './src/shared'),
-      '@/assets': path.resolve(__dirname, './src/assets'),
+      '@': resolvePath('./src'),
+      '@/app': resolvePath('./src/app'),
+      '@/layouts': resolvePath('./src/layouts'),
+      '@/features': resolvePath('./src/features'),
+      '@/shared': resolvePath('./src/shared'),
+      '@/assets': resolvePath('./src/assets'),
     },
   },
   server: {

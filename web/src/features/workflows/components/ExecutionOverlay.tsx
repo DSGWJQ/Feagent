@@ -13,9 +13,8 @@ import {
   ClockCircleOutlined,
   PlayCircleOutlined,
 } from '@ant-design/icons';
-import { useReactFlow } from '@xyflow/react';
 import type { Node } from '@xyflow/react';
-import { NodeStatusMap, NodeOutputMap } from '../hooks/useWorkflowExecution';
+import type { NodeStatusMap, NodeOutputMap } from '../hooks/useWorkflowExecution';
 
 const { Text } = Typography;
 
@@ -152,8 +151,6 @@ export const ExecutionOverlay: React.FC<ExecutionOverlayProps> = ({
   isExecuting,
   nodes,
 }) => {
-  const { getIntersectingNodes } = useReactFlow();
-
   // 计算节点执行顺序
   const executionOrder = useMemo<NodeExecutionOrder>(() => {
     const order: NodeExecutionOrder = {};

@@ -6,7 +6,7 @@
  * - 2024-01-15: 添加路由系统，支持多页面导航
  */
 
-import { ConfigProvider } from 'antd';
+import { App as AntdApp, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { RouterProvider } from 'react-router-dom';
 import QueryProvider from './providers/QueryProvider';
@@ -30,9 +30,11 @@ import '@/shared/styles/global.css';
 function App() {
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
-      <QueryProvider>
-        <RouterProvider router={router} />
-      </QueryProvider>
+      <AntdApp>
+        <QueryProvider>
+          <RouterProvider router={router} />
+        </QueryProvider>
+      </AntdApp>
     </ConfigProvider>
   );
 }
