@@ -53,7 +53,9 @@ async def chat_workflow_stream(
                 workflow_id=workflow_id,
                 user_message=request.message,
             )
-            modified_workflow, ai_message = use_case.execute(input_data)
+            output = use_case.execute(input_data)
+            modified_workflow = output.workflow
+            ai_message = output.ai_message
 
             preview_data = {
                 "type": "preview",

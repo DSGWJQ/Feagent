@@ -35,7 +35,7 @@ from src.application.use_cases.update_workflow_by_drag import (
 from src.config import settings
 from src.domain.exceptions import DomainError, NotFoundError
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
-from src.domain.services.workflow_chat_service import WorkflowChatService
+from src.domain.services.workflow_chat_service_enhanced import EnhancedWorkflowChatService
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
@@ -69,6 +69,29 @@ def get_workflow_repository(
     return SQLAlchemyWorkflowRepository(db)
 
 
+# 会话管理：每个工作流独立的对话服务实例（维护对话历史）
+_chat_sessions: dict[str, EnhancedWorkflowChatService] = {}
+
+
+def get_chat_openai():
+    """获取 ChatOpenAI 实例（用于增强服务）"""
+    from langchain_openai import ChatOpenAI
+    from pydantic import SecretStr
+
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OpenAI API key is not configured for workflow chat.",
+        )
+
+    return ChatOpenAI(
+        api_key=SecretStr(settings.openai_api_key),
+        model=settings.openai_model,
+        base_url=settings.openai_base_url,
+        temperature=0.0,
+    )
+
+
 def get_workflow_chat_llm() -> WorkflowChatLLM:
     """Resolve the LLM implementation used for workflow chat."""
 
@@ -93,18 +116,37 @@ def get_workflow_chat_llm() -> WorkflowChatLLM:
 
 
 def get_workflow_chat_service(
-    llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
-) -> WorkflowChatService:
-    """Construct the domain service that applies chat-driven updates."""
+    workflow_id: str = "",  # 从路径参数传入
+    llm=Depends(get_chat_openai),
+) -> EnhancedWorkflowChatService:
+    """构建增强版对话服务（带记忆）
 
-    return WorkflowChatService(llm=llm)
+    每个工作流独立的会话，维护对话历史
+    """
+    # 如果该工作流还没有会话，创建新的
+    if workflow_id and workflow_id not in _chat_sessions:
+        _chat_sessions[workflow_id] = EnhancedWorkflowChatService(llm=llm)
+
+    # 返回该工作流的会话（如果 workflow_id 为空，创建临时会话）
+    if workflow_id:
+        return _chat_sessions[workflow_id]
+    else:
+        # 临时会话（用于不需要记忆的场景）
+        return EnhancedWorkflowChatService(llm=llm)
 
 
 def get_update_workflow_by_chat_use_case(
+    workflow_id: str,  # 从路径参数注入
     workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
-    chat_service: WorkflowChatService = Depends(get_workflow_chat_service),
+    llm=Depends(get_chat_openai),
 ) -> UpdateWorkflowByChatUseCase:
     """Assemble the chat update use case with its dependencies."""
+
+    # 获取或创建该工作流的对话会话
+    if workflow_id not in _chat_sessions:
+        _chat_sessions[workflow_id] = EnhancedWorkflowChatService(llm=llm)
+
+    chat_service = _chat_sessions[workflow_id]
 
     return UpdateWorkflowByChatUseCase(
         workflow_repository=workflow_repository,
@@ -317,11 +359,14 @@ def chat_with_workflow(
             workflow_id=workflow_id,
             user_message=request.message,
         )
-        workflow, ai_message = use_case.execute(input_data)
+        output = use_case.execute(input_data)
         db.commit()
         return ChatResponse(
-            workflow=WorkflowResponse.from_entity(workflow),
-            ai_message=ai_message,
+            workflow=WorkflowResponse.from_entity(output.workflow),
+            ai_message=output.ai_message,
+            intent=output.intent,
+            confidence=output.confidence,
+            modifications_count=output.modifications_count,
         )
     except NotFoundError as exc:
         raise HTTPException(
