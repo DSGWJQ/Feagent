@@ -48,6 +48,7 @@ class UpdateWorkflowByChatOutput:
     - confidence: AI 的信心度（0-1）
     - modifications_count: 修改数量
     - rag_sources: RAG检索来源列表
+    - react_steps: ReAct推理步骤列表
     """
 
     workflow: Workflow
@@ -56,6 +57,7 @@ class UpdateWorkflowByChatOutput:
     confidence: float = 0.0
     modifications_count: int = 0
     rag_sources: list[dict] = field(default_factory=list)
+    react_steps: list[dict] = field(default_factory=list)
 
 
 class UpdateWorkflowByChatUseCase:
@@ -123,6 +125,7 @@ class UpdateWorkflowByChatUseCase:
             confidence = 0.0
             modifications_count = 0
             rag_sources = []
+            react_steps = []
         else:
             # 增强服务返回 ModificationResult
             if not result.success:
@@ -137,6 +140,7 @@ class UpdateWorkflowByChatUseCase:
             confidence = result.confidence
             modifications_count = result.modifications_count
             rag_sources = result.rag_sources
+            react_steps = result.react_steps
 
         # 5. 保存修改后的工作流
         self.workflow_repository.save(modified_workflow)
@@ -149,4 +153,5 @@ class UpdateWorkflowByChatUseCase:
             confidence=confidence,
             modifications_count=modifications_count,
             rag_sources=rag_sources,
+            react_steps=react_steps,
         )

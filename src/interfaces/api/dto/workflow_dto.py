@@ -265,12 +265,14 @@ class ChatResponse(BaseModel):
     - confidence: AI 的信心度（0-1）
     - modifications_count: 修改数量
     - rag_sources: RAG检索来源列表
+    - react_steps: ReAct推理步骤列表（思考→行动→观察）
 
     注意：
     - workflow 包含完整的 nodes 和 edges
     - ai_message 描述了做了什么修改
     - 增强字段由 EnhancedWorkflowChatService 提供
     - rag_sources 包含知识库检索来源（如果启用RAG）
+    - react_steps 包含ReAct推理循环的步骤（思考、行动、观察）
     """
 
     workflow: "WorkflowResponse"
@@ -279,6 +281,7 @@ class ChatResponse(BaseModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="AI 信心度")
     modifications_count: int = Field(default=0, ge=0, description="修改数量")
     rag_sources: list[dict] = Field(default_factory=list, description="RAG检索来源列表")
+    react_steps: list[dict] = Field(default_factory=list, description="ReAct推理步骤列表")
 
 
 class ImportWorkflowRequest(BaseModel):

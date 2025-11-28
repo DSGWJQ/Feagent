@@ -263,6 +263,7 @@ class ModificationResult:
     original_workflow: Workflow | None = None
     modified_workflow: Workflow | None = None
     rag_sources: list[dict] = field(default_factory=list)
+    react_steps: list[dict] = field(default_factory=list)
 
     def has_errors(self) -> bool:
         """是否有错误"""
@@ -418,6 +419,7 @@ class EnhancedWorkflowChatService:
             original_workflow=workflow,
             modified_workflow=modified_workflow,
             rag_sources=rag_sources,
+            react_steps=llm_result.get("react_steps", []),
         )
 
     def get_workflow_suggestions(self, workflow: Workflow) -> list[str]:
@@ -553,7 +555,23 @@ class EnhancedWorkflowChatService:
     }}
   ],
   "edges_to_delete": ["edge_id"],
-  "ai_message": "我已经添加了一个HTTP节点用于获取天气数据"
+  "ai_message": "我已经添加了一个HTTP节点用于获取天气数据",
+  "react_steps": [
+    {{
+      "step": 1,
+      "thought": "用户需要添加HTTP节点来处理HTTP请求",
+      "action": {{
+        "type": "add_node",
+        "node": {{
+          "type": "httpRequest",
+          "name": "节点名称",
+          "config": {{}},
+          "position": {{"x": 100, "y": 100}}
+        }}
+      }},
+      "observation": "HTTP请求节点已成功添加"
+    }}
+  ]
 }}
 
 要求：
@@ -563,7 +581,9 @@ class EnhancedWorkflowChatService:
 - 添加节点时通常需要同时添加边
 - 删除节点时需要同时删除相关的边
 - ai_message 应该简洁地描述做了什么修改
-- 如果无法理解用户意图，设置 intent 为 "ask_clarification"
+- react_steps 字段包含ReAct推理步骤（思考→行动→观察），用于展示AI的推理过程
+- 每个react_step应包含：step（步骤号）、thought（思考内容）、action（执行的操作）、observation（执行结果的观察）
+- 如果无法理解用户意图，设置 intent 为 "ask_clarification"，react_steps 可以为空
 """
 
         # 如果有RAG上下文，添加到提示词中

@@ -370,6 +370,7 @@ def chat_with_workflow(
             confidence=output.confidence,
             modifications_count=output.modifications_count,
             rag_sources=output.rag_sources,
+            react_steps=output.react_steps,
         )
     except NotFoundError as exc:
         raise HTTPException(
