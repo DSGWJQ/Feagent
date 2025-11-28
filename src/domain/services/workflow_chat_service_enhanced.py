@@ -262,6 +262,7 @@ class ModificationResult:
     error_details: list[str] = field(default_factory=list)
     original_workflow: Workflow | None = None
     modified_workflow: Workflow | None = None
+    rag_sources: list[dict] = field(default_factory=list)
 
     def has_errors(self) -> bool:
         """是否有错误"""
@@ -285,15 +286,17 @@ class EnhancedWorkflowChatService:
     - 工作流优化建议
     """
 
-    def __init__(self, llm: ChatOpenAI):
+    def __init__(self, llm: ChatOpenAI, rag_service=None):
         """初始化服务
 
         参数：
             llm: LangChain LLM 实例
+            rag_service: RAG服务实例（可选）
         """
         self.llm = llm
         self.parser = JsonOutputParser()
         self.history = ChatHistory()
+        self.rag_service = rag_service
 
     def add_message(self, content: str, is_user: bool) -> None:
         """添加消息到历史
@@ -330,8 +333,41 @@ class EnhancedWorkflowChatService:
         # 添加用户消息到历史
         self.add_message(user_message, is_user=True)
 
-        # 1. 构造提示词（包含历史上下文）
-        system_prompt = self._build_system_prompt(workflow)
+        # 0. 检索RAG上下文（如果RAG服务可用）
+        rag_context = ""
+        rag_sources = []
+        if self.rag_service:
+            try:
+                import asyncio
+
+                # 创建异步任务获取RAG上下文
+                from src.application.services.rag_service import QueryContext
+
+                query_context = QueryContext(
+                    query=user_message,
+                    workflow_id=workflow.id,
+                    max_context_length=2000,
+                    top_k=3,
+                )
+
+                # 运行异步检索
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    retrieved_context = loop.run_until_complete(
+                        self.rag_service.retrieve_context(query_context)
+                    )
+                    rag_context = retrieved_context.formatted_context
+                    rag_sources = retrieved_context.sources
+                finally:
+                    loop.close()
+
+            except Exception as e:
+                # RAG检索失败时不中断流程，仅记录
+                print(f"RAG检索失败: {str(e)}")
+
+        # 1. 构造提示词（包含历史上下文和RAG上下文）
+        system_prompt = self._build_system_prompt(workflow, rag_context)
         user_prompt = self._build_user_prompt_with_context(user_message)
 
         # 2. 调用 LLM 解析用户意图
@@ -381,6 +417,7 @@ class EnhancedWorkflowChatService:
             modifications_count=modifications_count,
             original_workflow=workflow,
             modified_workflow=modified_workflow,
+            rag_sources=rag_sources,
         )
 
     def get_workflow_suggestions(self, workflow: Workflow) -> list[str]:
@@ -433,11 +470,12 @@ class EnhancedWorkflowChatService:
 
         return suggestions
 
-    def _build_system_prompt(self, workflow: Workflow) -> str:
-        """构造系统提示词（包含历史上下文）
+    def _build_system_prompt(self, workflow: Workflow, rag_context: str = "") -> str:
+        """构造系统提示词（包含历史上下文和RAG上下文）
 
         参数：
             workflow: 当前工作流
+            rag_context: RAG检索到的上下文（可选）
 
         返回：
             系统提示词
@@ -467,7 +505,7 @@ class EnhancedWorkflowChatService:
             ],
         }
 
-        return f"""你是一个工作流编辑助手。用户会告诉你如何修改工作流，你需要：
+        base_prompt = f"""你是一个工作流编辑助手。用户会告诉你如何修改工作流，你需要：
 
 1. 理解用户意图
 2. 识别用户的主要意图（add_node, delete_node, add_edge, modify_node等）
@@ -527,6 +565,19 @@ class EnhancedWorkflowChatService:
 - ai_message 应该简洁地描述做了什么修改
 - 如果无法理解用户意图，设置 intent 为 "ask_clarification"
 """
+
+        # 如果有RAG上下文，添加到提示词中
+        if rag_context:
+            rag_prompt = f"""
+
+相关知识库内容：
+{rag_context}
+
+请结合以上知识库内容来回答用户的问题。如果知识库中有相关的工作流模板或最佳实践，请参考它们进行修改。
+"""
+            base_prompt += rag_prompt
+
+        return base_prompt
 
     def _build_user_prompt_with_context(self, user_message: str) -> str:
         """构造包含历史上下文的用户提示词

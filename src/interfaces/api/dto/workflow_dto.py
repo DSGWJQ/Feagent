@@ -256,7 +256,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     """对话响应 DTO（增强版）
 
-    业务场景：返回修改后的工作流和AI回复消息，包含增强字段
+    业务场景：返回修改后的工作流和AI回复消息，包含增强字段和RAG来源
 
     字段：
     - workflow: 更新后的工作流
@@ -264,11 +264,13 @@ class ChatResponse(BaseModel):
     - intent: 用户意图类型（add_node、delete_node、add_edge等）
     - confidence: AI 的信心度（0-1）
     - modifications_count: 修改数量
+    - rag_sources: RAG检索来源列表
 
     注意：
     - workflow 包含完整的 nodes 和 edges
     - ai_message 描述了做了什么修改
     - 增强字段由 EnhancedWorkflowChatService 提供
+    - rag_sources 包含知识库检索来源（如果启用RAG）
     """
 
     workflow: "WorkflowResponse"
@@ -276,6 +278,7 @@ class ChatResponse(BaseModel):
     intent: str = Field(default="", description="用户意图类型")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="AI 信心度")
     modifications_count: int = Field(default=0, ge=0, description="修改数量")
+    rag_sources: list[dict] = Field(default_factory=list, description="RAG检索来源列表")
 
 
 class ImportWorkflowRequest(BaseModel):

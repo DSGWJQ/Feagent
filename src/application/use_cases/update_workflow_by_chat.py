@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError, NotFoundError
@@ -47,6 +47,7 @@ class UpdateWorkflowByChatOutput:
     - intent: 用户意图类型（add_node、delete_node、add_edge等）
     - confidence: AI 的信心度（0-1）
     - modifications_count: 修改数量
+    - rag_sources: RAG检索来源列表
     """
 
     workflow: Workflow
@@ -54,6 +55,7 @@ class UpdateWorkflowByChatOutput:
     intent: str = ""
     confidence: float = 0.0
     modifications_count: int = 0
+    rag_sources: list[dict] = field(default_factory=list)
 
 
 class UpdateWorkflowByChatUseCase:
@@ -120,6 +122,7 @@ class UpdateWorkflowByChatUseCase:
             intent = ""
             confidence = 0.0
             modifications_count = 0
+            rag_sources = []
         else:
             # 增强服务返回 ModificationResult
             if not result.success:
@@ -133,6 +136,7 @@ class UpdateWorkflowByChatUseCase:
             intent = result.intent
             confidence = result.confidence
             modifications_count = result.modifications_count
+            rag_sources = result.rag_sources
 
         # 5. 保存修改后的工作流
         self.workflow_repository.save(modified_workflow)
@@ -144,4 +148,5 @@ class UpdateWorkflowByChatUseCase:
             intent=intent,
             confidence=confidence,
             modifications_count=modifications_count,
+            rag_sources=rag_sources,
         )

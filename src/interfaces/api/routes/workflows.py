@@ -43,6 +43,7 @@ from src.infrastructure.database.repositories.workflow_repository import (
 from src.infrastructure.executors import create_executor_registry
 from src.infrastructure.llm import LangChainWorkflowChatLLM
 from src.interfaces.api.dependencies.current_user import get_current_user_optional
+from src.interfaces.api.dependencies.rag import get_rag_service
 from src.interfaces.api.dto.workflow_dto import (
     ChatRequest,
     ChatResponse,
@@ -139,12 +140,13 @@ def get_update_workflow_by_chat_use_case(
     workflow_id: str,  # 从路径参数注入
     workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
     llm=Depends(get_chat_openai),
+    rag_service=Depends(get_rag_service),
 ) -> UpdateWorkflowByChatUseCase:
     """Assemble the chat update use case with its dependencies."""
 
-    # 获取或创建该工作流的对话会话
+    # 获取或创建该工作流的对话会话（包含RAG服务）
     if workflow_id not in _chat_sessions:
-        _chat_sessions[workflow_id] = EnhancedWorkflowChatService(llm=llm)
+        _chat_sessions[workflow_id] = EnhancedWorkflowChatService(llm=llm, rag_service=rag_service)
 
     chat_service = _chat_sessions[workflow_id]
 
@@ -367,6 +369,7 @@ def chat_with_workflow(
             intent=output.intent,
             confidence=output.confidence,
             modifications_count=output.modifications_count,
+            rag_sources=output.rag_sources,
         )
     except NotFoundError as exc:
         raise HTTPException(
