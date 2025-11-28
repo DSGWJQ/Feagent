@@ -91,4 +91,3 @@ function PromptNode({ data, selected }: NodeProps<PromptNodeData>) {
 }
 
 export default memo(PromptNode);
-

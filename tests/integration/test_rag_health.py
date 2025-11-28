@@ -140,7 +140,7 @@ class TestRAGHealthCheck:
         assert "components" in health
 
         # Even failed components should have status information
-        for component_name, component_info in health["components"].items():
+        for _component_name, component_info in health["components"].items():
             assert "status" in component_info
             # Status should be one of expected values
             assert component_info["status"] in [

@@ -47,7 +47,7 @@ class Node:
     @classmethod
     def create(
         cls,
-        type: NodeType,
+        type: NodeType | str,
         name: str,
         config: dict[str, Any],
         position: Position,
@@ -75,9 +75,11 @@ class Node:
         if not name or not name.strip():
             raise DomainError("name 不能为空")
 
+        node_type = NodeType(type) if isinstance(type, str) else type
+
         return cls(
             id=f"node_{uuid4().hex[:8]}",
-            type=type,
+            type=node_type,
             name=name.strip(),
             config=config,
             position=position,

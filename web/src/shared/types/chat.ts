@@ -28,4 +28,3 @@ export interface AIReplyRule {
   // 优先级（数字越大优先级越高）
   priority?: number;
 }
-

@@ -113,4 +113,3 @@ function EndNode({ data, selected }: NodeProps<EndNodeData>) {
 }
 
 export default memo(EndNode);
-

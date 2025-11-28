@@ -11,6 +11,8 @@
 2. 运行测试：python tests/manual/test_e2e_workflow.py
 """
 
+# ruff: noqa: E402
+
 import asyncio
 import sys
 from pathlib import Path
@@ -116,7 +118,7 @@ async def test_e2e_workflow():
                     id="e2e-test-workflow"
                 ).delete()
                 session.commit()
-        except:
+        except Exception:
             pass
 
         repository.save(workflow)
@@ -238,7 +240,7 @@ async def test_conditional_workflow():
                     id="conditional-test"
                 ).delete()
                 session.commit()
-        except:
+        except Exception:
             pass
 
         repository.save(workflow)

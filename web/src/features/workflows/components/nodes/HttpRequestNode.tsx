@@ -163,4 +163,3 @@ function HttpRequestNode({ data, selected }: NodeProps<HttpRequestNodeData>) {
 }
 
 export default memo(HttpRequestNode);
-

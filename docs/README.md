@@ -1,21 +1,21 @@
 # Feagent 文档导航
 
-> **项目**：Feagent – 企业级 AI 工作流编排平台  
-> **阶段**：V2（对话编辑 + Coze 集成）  
+> **项目**：Feagent – 企业级 AI 工作流编排平台
+> **阶段**：V2（对话编辑 + Coze 集成）
 > **最后更新**：2025-11-25
 
 ---
 
 ## 1. 如何快速上手
 ### 新成员 Checklist
-1. 阅读 `docs/需求分析.md`，了解业务背景。  
-2. 浏览 `docs/开发规范.md`（总览），熟悉四层 DDD 架构与流程。  
+1. 阅读 `docs/需求分析.md`，了解业务背景。
+2. 浏览 `docs/开发规范.md`（总览），熟悉四层 DDD 架构与流程。
 3. 使用 AI 助手前，先查看 `.augment/rules`。
 
 ### 开发新功能
-1. 在 `docs/prd/` 确认需求范围。  
-2. 参考 `docs/schema`、`docs/api`、`docs/security` 获取数据/接口/安全约束。  
-3. 研发遵循 `docs/开发规范.md` 与 `.augment/rules`。  
+1. 在 `docs/prd/` 确认需求范围。
+2. 参考 `docs/schema`、`docs/api`、`docs/security` 获取数据/接口/安全约束。
+3. 研发遵循 `docs/开发规范.md` 与 `.augment/rules`。
 4. 行为变化需同步更新对应文档。
 
 ---
@@ -57,9 +57,9 @@
 ---
 
 ## 5. 文档贡献流程
-- 按类别将新内容放入 `prd/schema/security/api/architecture` 等目录。  
-- 新增顶层文档时务必更新本 README。  
-- 文件名尽量清晰，可使用 UTF-8 中文。  
+- 按类别将新内容放入 `prd/schema/security/api/architecture` 等目录。
+- 新增顶层文档时务必更新本 README。
+- 文件名尽量清晰，可使用 UTF-8 中文。
 - 使用 Markdown 标题/表格/代码块以提升可读性。
 
 ---

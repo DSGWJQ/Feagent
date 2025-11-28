@@ -13,7 +13,7 @@ V2新功能：记录每次 LLM 调用的成本
 - 支持成本统计和预算控制
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import ClassVar
 
@@ -51,7 +51,7 @@ class LLMUsage:
     cost: float
     run_id: str
     task_id: str | None = None
-    created_at: datetime = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # 定价表（美元）
     PRICING: ClassVar[dict[str, dict[str, dict[str, float]]]] = {

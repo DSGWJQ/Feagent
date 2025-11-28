@@ -151,4 +151,3 @@ function TextModelNode({ data, selected }: NodeProps<TextModelNodeData>) {
 }
 
 export default memo(TextModelNode);
-

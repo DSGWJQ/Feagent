@@ -78,8 +78,8 @@ class TestDatabaseTool:
         """测试场景 3: 执行 JOIN 查询"""
         # Arrange
         sql = """
-        SELECT u.name, o.order_id 
-        FROM users u 
+        SELECT u.name, o.order_id
+        FROM users u
         JOIN orders o ON u.id = o.user_id
         """
 

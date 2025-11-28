@@ -234,7 +234,7 @@ curl -X POST "http://localhost:8000/api/workflows/wf_b8c85f1a/chat" \
 - 响应内容：
 
 ### 💡 改进建议
-- 
+-
 
 ---
 
@@ -305,4 +305,3 @@ Infrastructure 层（Repository）
 2. **前端集成** - 将假AI聊天框改为调用真实API
 3. **优化 LLM 提示词** - 根据实际效果调整提示词
 4. **添加更多节点类型** - 支持更多节点类型的添加和修改
-

@@ -33,7 +33,7 @@ class JavaScriptExecutor(NodeExecutor):
         # 准备执行环境
         # 将输入映射为 input1, input2, ...
         exec_context = {}
-        for i, (key, value) in enumerate(inputs.items(), 1):
+        for i, (_key, value) in enumerate(inputs.items(), 1):
             exec_context[f"input{i}"] = value
 
         # 添加上下文变量
@@ -54,7 +54,7 @@ class JavaScriptExecutor(NodeExecutor):
             return exec_context.get("result", inputs.get(next(iter(inputs))) if inputs else None)
 
         except Exception as e:
-            raise DomainError(f"JavaScript 代码执行失败: {str(e)}")
+            raise DomainError(f"JavaScript 代码执行失败: {str(e)}") from e
 
 
 class ConditionalExecutor(NodeExecutor):
@@ -73,7 +73,7 @@ class ConditionalExecutor(NodeExecutor):
 
         # 准备执行环境
         exec_context = {}
-        for i, (key, value) in enumerate(inputs.items(), 1):
+        for i, (_key, value) in enumerate(inputs.items(), 1):
             exec_context[f"input{i}"] = value
 
         exec_context["context"] = context
@@ -96,4 +96,4 @@ class ConditionalExecutor(NodeExecutor):
             result = eval(condition, {"__builtins__": safe_builtins}, exec_context)
             return {"result": bool(result), "branch": "true" if result else "false"}
         except Exception as e:
-            raise DomainError(f"条件表达式评估失败: {str(e)}")
+            raise DomainError(f"条件表达式评估失败: {str(e)}") from e

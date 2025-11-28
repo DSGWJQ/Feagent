@@ -117,4 +117,3 @@ function ConditionalNode({ data, selected }: NodeProps<ConditionalNodeData>) {
 }
 
 export default memo(ConditionalNode);
-

@@ -120,8 +120,8 @@ def get_current_user(
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":
             raise HTTPException(status_code=401, detail="Invalid authentication scheme")
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="Invalid authorization header") from exc
 
     # 验证并解码token
     try:
@@ -129,8 +129,8 @@ def get_current_user(
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     # 从数据库查询用户
     repository = SQLAlchemyUserRepository(db)

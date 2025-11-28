@@ -160,11 +160,6 @@ def execute_python(code: str, timeout: int = 5) -> str:
                 "zip": zip,
                 "map": map,
                 "filter": filter,
-                # 类型转换
-                "int": int,
-                "float": float,
-                "str": str,
-                "bool": bool,
                 # 其他
                 "isinstance": isinstance,
                 "type": type,

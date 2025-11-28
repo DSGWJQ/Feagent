@@ -15,3 +15,7 @@ class WorkflowChatLLM(Protocol):
     def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict:
         """根据系统提示词与用户输入生成结构化的工作流修改指令。"""
         ...
+
+    async def generate_modifications_async(self, system_prompt: str, user_prompt: str) -> dict:
+        """异步生成工作流修改指令。"""
+        ...

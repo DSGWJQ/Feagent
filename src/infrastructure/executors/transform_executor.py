@@ -128,7 +128,7 @@ class TransformExecutor(NodeExecutor):
                 else:
                     result[field] = value
             except (ValueError, TypeError) as e:
-                raise DomainError(f"类型转换失败: {field} -> {target_type}: {str(e)}")
+                raise DomainError(f"类型转换失败: {field} -> {target_type}: {str(e)}") from e
 
         return result
 
@@ -215,7 +215,7 @@ class TransformExecutor(NodeExecutor):
                 if eval(condition, {"__builtins__": safe_builtins}, context):
                     result.append(item)
             except Exception as e:
-                raise DomainError(f"条件评估失败: {str(e)}")
+                raise DomainError(f"条件评估失败: {str(e)}") from e
 
         return result
 
@@ -280,7 +280,6 @@ class TransformExecutor(NodeExecutor):
             field: 目标字段（可选，默认为 input1）
         """
         function_name = config.get("function", "")
-        field = config.get("field", "input1")
 
         if not function_name:
             raise DomainError("custom 转换缺少 function 配置")
@@ -301,15 +300,15 @@ class TransformExecutor(NodeExecutor):
                     else str(first_input).lower()
                 )
             elif function_name == "reverse":
-                return first_input[::-1] if isinstance(first_input, (str, list)) else first_input
+                return first_input[::-1] if isinstance(first_input, (str | list)) else first_input
             elif function_name == "len":
-                return len(first_input) if isinstance(first_input, (str, list, dict)) else 0
+                return len(first_input) if isinstance(first_input, (str | list | dict)) else 0
             elif function_name == "abs":
-                return abs(first_input) if isinstance(first_input, (int, float)) else first_input
+                return abs(first_input) if isinstance(first_input, (int | float)) else first_input
             else:
                 raise DomainError(f"不支持的自定义函数: {function_name}")
         except Exception as e:
-            raise DomainError(f"自定义转换失败: {str(e)}")
+            raise DomainError(f"自定义转换失败: {str(e)}") from e
 
     @staticmethod
     def _get_nested_value(data: Any, path: str) -> Any:

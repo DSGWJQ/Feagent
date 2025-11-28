@@ -108,6 +108,7 @@ class GitHubAuthUseCase:
 
         # Step 3: 如果GitHub用户信息中没有email，从邮箱API获取
         email = github_user_info.get("email")
+        fallback_login = github_user_info.get("login") or str(github_user_info.get("id"))
         if not email:
             # GitHub用户可能隐藏了公开邮箱，需要调用邮箱API
             emails = await self.github_service.get_user_emails(access_token)
@@ -119,6 +120,10 @@ class GitHubAuthUseCase:
                 # 如果没有主邮箱，使用第一个验证过的邮箱
                 verified_email = next((e for e in emails if e.get("verified")), None)
                 email = verified_email["email"] if verified_email else emails[0]["email"]
+
+        # GitHub 可能不返回任何邮箱，使用占位邮箱满足系统要求
+        if not email:
+            email = f"{fallback_login}@users.noreply.github.com"
 
         # Step 4: 检查用户是否已存在
         github_id = github_user_info["id"]

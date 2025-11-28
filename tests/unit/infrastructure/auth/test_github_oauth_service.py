@@ -10,6 +10,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from src.infrastructure.auth.github_oauth_service import GitHubOAuthService
@@ -65,7 +66,9 @@ class TestGitHubOAuthServiceTokenExchange:
         # Arrange - Mock GitHub API返回错误
         mock_response = MagicMock()
         mock_response.status_code = 400
-        mock_response.raise_for_status.side_effect = Exception("Bad request")
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Bad request", request=MagicMock(), response=mock_response
+        )
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.post = AsyncMock(
@@ -73,7 +76,7 @@ class TestGitHubOAuthServiceTokenExchange:
             )
 
             # Act & Assert
-            with pytest.raises(Exception):
+            with pytest.raises(httpx.HTTPStatusError):
                 await github_service.exchange_code_for_token("invalid-code")
 
 
@@ -129,7 +132,9 @@ class TestGitHubOAuthServiceUserInfo:
         # Arrange - Mock GitHub API返回401
         mock_response = MagicMock()
         mock_response.status_code = 401
-        mock_response.raise_for_status.side_effect = Exception("Unauthorized")
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Unauthorized", request=MagicMock(), response=mock_response
+        )
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
@@ -137,7 +142,7 @@ class TestGitHubOAuthServiceUserInfo:
             )
 
             # Act & Assert
-            with pytest.raises(Exception):
+            with pytest.raises(httpx.HTTPStatusError):
                 await github_service.get_user_info("invalid_token")
 
 
@@ -312,7 +317,9 @@ class TestGitHubOAuthServiceErrorHandling:
         # Arrange - Mock rate limit error
         mock_response = MagicMock()
         mock_response.status_code = 429
-        mock_response.raise_for_status.side_effect = Exception("Rate limit exceeded")
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Rate limit exceeded", request=MagicMock(), response=mock_response
+        )
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
@@ -320,5 +327,5 @@ class TestGitHubOAuthServiceErrorHandling:
             )
 
             # Act & Assert
-            with pytest.raises(Exception):
+            with pytest.raises(httpx.HTTPStatusError):
                 await github_service.get_user_info("token")

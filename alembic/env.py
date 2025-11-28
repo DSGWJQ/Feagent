@@ -1,4 +1,4 @@
-﻿"""Alembic 环境配置"""
+"""Alembic 环境配置"""
 
 from logging.config import fileConfig
 
@@ -6,7 +6,6 @@ from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import Connection
 
 from alembic import context
-
 from src.config import settings
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.models import AgentModel, RunModel  # noqa: F401

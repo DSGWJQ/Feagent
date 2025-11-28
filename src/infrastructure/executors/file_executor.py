@@ -79,7 +79,7 @@ class FileExecutor(NodeExecutor):
         except DomainError:
             raise
         except Exception as e:
-            raise DomainError(f"文件操作失败: {str(e)}")
+            raise DomainError(f"文件操作失败: {str(e)}") from e
 
     @staticmethod
     def _read_file(file_path: Path, encoding: str) -> dict:

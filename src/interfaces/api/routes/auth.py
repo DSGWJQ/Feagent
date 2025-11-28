@@ -80,6 +80,6 @@ async def github_callback(
     except Exception as e:
         # 处理GitHub API错误
         if "Invalid code" in str(e) or "Bad request" in str(e):
-            raise HTTPException(status_code=400, detail="Invalid authorization code")
+            raise HTTPException(status_code=400, detail="Invalid authorization code") from e
         # 其他错误
-        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}") from e

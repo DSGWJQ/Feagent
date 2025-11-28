@@ -12,7 +12,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from src.application.use_cases.execute_concurrent_workflows import (
     ExecuteConcurrentWorkflowsInput,
     ExecuteConcurrentWorkflowsUseCase,
-    ExecutionResult,
 )
 from src.domain.exceptions import DomainError, NotFoundError
 from src.interfaces.api.dto.workflow_features_dto import (
@@ -53,17 +52,17 @@ async def execute_concurrent_workflows(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from e
     except DomainError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
-        )
+        ) from e
 
 
 @router.get(
@@ -82,7 +81,7 @@ async def wait_for_concurrent_completion(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
-        )
+        ) from e
 
 
 @router.post(
@@ -100,4 +99,4 @@ async def cancel_all_concurrent_executions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}",
-        )
+        ) from e

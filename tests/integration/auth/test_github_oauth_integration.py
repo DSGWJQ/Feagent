@@ -192,8 +192,6 @@ class TestAuthenticatedWorkflowCreation:
         login_response = client.post("/api/auth/github/callback", json={"code": "test_code"})
         assert login_response.status_code == 200
         token = login_response.json()["access_token"]
-        user_id = login_response.json()["user"]["id"]
-
         # Act - 创建工作流（带token）
         workflow_data = {
             "name": "测试工作流",

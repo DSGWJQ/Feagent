@@ -22,6 +22,7 @@
 
 from typing import Any
 
+from src.domain.entities.run import Run
 from src.domain.entities.task import Task
 from src.domain.ports.run_repository import RunRepository
 from src.domain.ports.task_repository import TaskRepository
@@ -99,6 +100,8 @@ class ExecutionEngine:
         - Task 失败不会中断执行，会继续执行后续 Tasks
         - 只要有一个 Task 失败，Run 就会失败
         """
+        run: Run | None = None
+
         try:
             # 步骤 1: 加载 Run
             run = self.run_repository.get_by_id(run_id)
@@ -153,7 +156,7 @@ class ExecutionEngine:
             # 执行过程中发生异常（如 Run 不存在、数据库错误等）
             # 如果 Run 已加载，更新状态为 FAILED
             try:
-                if "run" in locals():
+                if run is not None:
                     run.fail(error=f"执行失败: {str(e)}")
                     self.run_repository.save(run)
             except Exception:

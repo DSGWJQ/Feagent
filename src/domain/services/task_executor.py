@@ -51,13 +51,15 @@ class TimeoutHandler:
 
     def __enter__(self):
         # 设置超时信号
-        signal.signal(signal.SIGALRM, self._timeout_handler)
-        signal.alarm(self.seconds)
+        if HAS_SIGNAL_ALARM and SIGALRM is not None and SIGNAL_ALARM is not None:
+            signal.signal(SIGALRM, self._timeout_handler)
+            SIGNAL_ALARM(self.seconds)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # 取消超时信号
-        signal.alarm(0)
+        if HAS_SIGNAL_ALARM and SIGNAL_ALARM is not None:
+            SIGNAL_ALARM(0)
 
     def _timeout_handler(self, signum, frame):
         raise TaskExecutionTimeout(f"Task 执行超时（{self.seconds} 秒）")
@@ -235,3 +237,8 @@ class TaskExecutor:
 
         # 记录到日志
         logger.info(f"Task {task.id} 工具调用: {tool_name}, " f"耗时: {duration:.2f}秒")
+
+
+SIGALRM = getattr(signal, "SIGALRM", None)
+SIGNAL_ALARM = getattr(signal, "alarm", None)
+HAS_SIGNAL_ALARM = SIGALRM is not None and SIGNAL_ALARM is not None

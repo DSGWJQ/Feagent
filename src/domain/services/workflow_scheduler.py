@@ -1,8 +1,9 @@
 """工作流调度服务"""
 
 import asyncio
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, Callable
+from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from src.infrastructure.database.repositories.scheduled_workflow_repository import (
     SQLAlchemyScheduledWorkflowRepository,
 )
+
 
 class ScheduleWorkflowService:
     """使用 APScheduler 管理定时工作流执行。"""
@@ -26,7 +28,7 @@ class ScheduleWorkflowService:
         self._is_running = False
 
     @contextmanager
-    def _repo(self) -> SQLAlchemyScheduledWorkflowRepository:
+    def _repo(self) -> Iterator[SQLAlchemyScheduledWorkflowRepository]:
         session = self._session_factory()
         repo = SQLAlchemyScheduledWorkflowRepository(session)
         try:
@@ -97,8 +99,7 @@ class ScheduleWorkflowService:
             }
         except Exception as e:
             if scheduled is None:
-                session.close()
-                return
+                return {"status": "FAILED", "error": str(e)}
 
             scheduled.record_execution_failure(str(e))
             repo.save(scheduled)

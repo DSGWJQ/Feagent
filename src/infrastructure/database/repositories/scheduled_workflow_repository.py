@@ -6,7 +6,8 @@ Repository 职责：
 3. 异常转换（Exception Translation）：数据库异常 → 领域异常
 """
 
-from sqlalchemy import select
+from datetime import UTC, datetime
+
 from sqlalchemy.orm import Session
 
 from src.domain.entities.scheduled_workflow import ScheduledWorkflow
@@ -41,6 +42,8 @@ class SQLAlchemyScheduledWorkflowRepository:
         返回：
             ScheduledWorkflow 领域实体
         """
+        updated_at = model.updated_at or datetime.now(UTC)
+
         return ScheduledWorkflow(
             id=model.id,
             workflow_id=model.workflow_id,
@@ -52,7 +55,7 @@ class SQLAlchemyScheduledWorkflowRepository:
             last_execution_status=model.last_execution_status,
             last_error_message=model.last_error_message,
             created_at=model.created_at,
-            updated_at=model.updated_at,
+            updated_at=updated_at,
         )
 
     def _to_model(self, entity: ScheduledWorkflow) -> ScheduledWorkflowModel:
@@ -87,9 +90,11 @@ class SQLAlchemyScheduledWorkflowRepository:
             entity: ScheduledWorkflow 领域实体
         """
         # 检查是否已存在
-        existing = self.session.query(ScheduledWorkflowModel).filter(
-            ScheduledWorkflowModel.id == entity.id
-        ).first()
+        existing = (
+            self.session.query(ScheduledWorkflowModel)
+            .filter(ScheduledWorkflowModel.id == entity.id)
+            .first()
+        )
 
         if existing:
             # 更新现有记录
@@ -120,9 +125,11 @@ class SQLAlchemyScheduledWorkflowRepository:
         抛出：
             NotFoundError: 定时工作流不存在
         """
-        model = self.session.query(ScheduledWorkflowModel).filter(
-            ScheduledWorkflowModel.id == scheduled_workflow_id
-        ).first()
+        model = (
+            self.session.query(ScheduledWorkflowModel)
+            .filter(ScheduledWorkflowModel.id == scheduled_workflow_id)
+            .first()
+        )
 
         if not model:
             raise NotFoundError("ScheduledWorkflow", scheduled_workflow_id)
@@ -138,9 +145,11 @@ class SQLAlchemyScheduledWorkflowRepository:
         返回：
             ScheduledWorkflow 列表
         """
-        models = self.session.query(ScheduledWorkflowModel).filter(
-            ScheduledWorkflowModel.workflow_id == workflow_id
-        ).all()
+        models = (
+            self.session.query(ScheduledWorkflowModel)
+            .filter(ScheduledWorkflowModel.workflow_id == workflow_id)
+            .all()
+        )
 
         return [self._to_entity(model) for model in models]
 
@@ -159,9 +168,11 @@ class SQLAlchemyScheduledWorkflowRepository:
         返回：
             活跃 ScheduledWorkflow 列表
         """
-        models = self.session.query(ScheduledWorkflowModel).filter(
-            ScheduledWorkflowModel.status == "active"
-        ).all()
+        models = (
+            self.session.query(ScheduledWorkflowModel)
+            .filter(ScheduledWorkflowModel.status == "active")
+            .all()
+        )
 
         return [self._to_entity(model) for model in models]
 
@@ -174,9 +185,11 @@ class SQLAlchemyScheduledWorkflowRepository:
         抛出：
             NotFoundError: 定时工作流不存在
         """
-        model = self.session.query(ScheduledWorkflowModel).filter(
-            ScheduledWorkflowModel.id == scheduled_workflow_id
-        ).first()
+        model = (
+            self.session.query(ScheduledWorkflowModel)
+            .filter(ScheduledWorkflowModel.id == scheduled_workflow_id)
+            .first()
+        )
 
         if not model:
             raise NotFoundError("ScheduledWorkflow", scheduled_workflow_id)

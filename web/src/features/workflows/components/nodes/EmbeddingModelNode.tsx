@@ -134,4 +134,3 @@ function EmbeddingModelNode({
 }
 
 export default memo(EmbeddingModelNode);
-

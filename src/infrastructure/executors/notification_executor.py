@@ -94,11 +94,11 @@ class NotificationExecutor(NodeExecutor):
         # 解析 headers
         try:
             headers = json.loads(headers_str) if headers_str else {}
-        except json.JSONDecodeError:
-            raise DomainError(f"Webhook headers 格式错误: {headers_str}")
+        except json.JSONDecodeError as e:
+            raise DomainError(f"Webhook headers 格式错误: {headers_str}") from e
 
         # 构建 payload
-        payload = {"message": message}
+        payload: dict[str, Any] = {"message": message}
         if include_input and inputs:
             # 取第一个输入的值作为 data
             first_input = next(iter(inputs.values()), {})
@@ -117,9 +117,9 @@ class NotificationExecutor(NodeExecutor):
                 }
 
         except httpx.HTTPStatusError as e:
-            raise DomainError(f"Webhook 发送失败: {e.response.status_code}")
+            raise DomainError(f"Webhook 发送失败: {e.response.status_code}") from e
         except httpx.RequestError as e:
-            raise DomainError(f"Webhook 请求错误: {str(e)}")
+            raise DomainError(f"Webhook 请求错误: {str(e)}") from e
 
     @staticmethod
     def _send_email(config: dict, subject: str, message: str) -> dict:
@@ -147,8 +147,8 @@ class NotificationExecutor(NodeExecutor):
             recipients = json.loads(recipients_str)
             if isinstance(recipients, str):
                 recipients = [recipients]
-        except json.JSONDecodeError:
-            raise DomainError(f"邮件收件人格式错误: {recipients_str}")
+        except json.JSONDecodeError as e:
+            raise DomainError(f"邮件收件人格式错误: {recipients_str}") from e
 
         if not recipients:
             raise DomainError("邮件通知缺少收件人配置")
@@ -176,9 +176,9 @@ class NotificationExecutor(NodeExecutor):
             }
 
         except smtplib.SMTPException as e:
-            raise DomainError(f"邮件发送失败: {str(e)}")
+            raise DomainError(f"邮件发送失败: {str(e)}") from e
         except Exception as e:
-            raise DomainError(f"邮件操作错误: {str(e)}")
+            raise DomainError(f"邮件操作错误: {str(e)}") from e
 
     @staticmethod
     async def _send_slack(config: dict, subject: str, message: str) -> dict:
@@ -223,6 +223,6 @@ class NotificationExecutor(NodeExecutor):
                 }
 
         except httpx.HTTPStatusError as e:
-            raise DomainError(f"Slack 消息发送失败: {e.response.status_code}")
+            raise DomainError(f"Slack 消息发送失败: {e.response.status_code}") from e
         except httpx.RequestError as e:
-            raise DomainError(f"Slack 请求错误: {str(e)}")
+            raise DomainError(f"Slack 请求错误: {str(e)}") from e

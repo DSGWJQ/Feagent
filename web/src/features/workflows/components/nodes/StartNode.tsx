@@ -92,4 +92,3 @@ function StartNode({ data, selected }: NodeProps<StartNodeData>) {
 }
 
 export default memo(StartNode);
-

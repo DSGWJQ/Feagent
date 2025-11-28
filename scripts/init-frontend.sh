@@ -371,4 +371,3 @@ echo -e "${YELLOW}详细文档请查看:${NC}"
 echo -e "${NC}  - docs/frontend_setup_guide.md${NC}"
 echo -e "${NC}  - .augment/rules/frontend_structure.md${NC}"
 echo ""
-

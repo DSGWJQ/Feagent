@@ -129,8 +129,8 @@ class GenerateWorkflowFromFormUseCase:
             node_type_str = node_data.get("type", "")
             try:
                 node_type = NodeType(node_type_str)
-            except ValueError:
-                raise DomainError(f"不支持的节点类型: {node_type_str}")
+            except ValueError as exc:
+                raise DomainError(f"不支持的节点类型: {node_type_str}") from exc
 
             # 提取位置
             position_data = node_data.get("position", {"x": 0, "y": 0})

@@ -193,6 +193,7 @@ class TestTaskExecutor:
             result = executor.execute(task, context)
 
             # Assert
+            assert result["result"] == "任务完成"
             # 验证记录了完整的执行事件
             assert len(task.events) >= 2  # 至少有开始和结束事件
 
@@ -226,6 +227,7 @@ class TestTaskExecutor:
             result = executor.execute(task, context)
 
             # Assert
+            assert result == "分析完成"
             # 验证上下文被传递给 LangChain Agent
             call_args = mock_execute.call_args
             task_description = call_args.kwargs.get("task_description", "")

@@ -22,6 +22,7 @@ repos:
       - id: pyright
         name: pyright
         additional_dependencies: []
+        files: ^src/
 
   # Basic file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -52,4 +53,3 @@ repos:
   #       pass_filenames: false
   #       always_run: true
   #       args: ["-v", "--tb=short"]
-

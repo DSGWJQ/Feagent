@@ -112,7 +112,7 @@ class RAGConfigManager:
             if config["type"] == "sqlite":
                 # 初始化SQLite向量存储
                 db_path = config["db_path"]
-                repo = SQLiteKnowledgeRepository(db_path)
+                SQLiteKnowledgeRepository(db_path)
 
                 # 创建必要的表（如果不存在）
                 # 注意：实际的表创建应该通过alembic迁移完成
@@ -133,10 +133,12 @@ class RAGConfigManager:
                 # 创建测试集合来验证连接
                 import chromadb
 
-                client = chromadb.PersistentClient(path=config["path"], settings=chroma_settings)
+                chromadb.PersistentClient(path=config["path"], settings=chroma_settings)
 
                 logger.info(f"ChromaDB初始化成功: {config['path']}")
                 return True
+
+            return False
 
         except Exception as e:
             logger.error(f"向量存储初始化失败: {str(e)}")

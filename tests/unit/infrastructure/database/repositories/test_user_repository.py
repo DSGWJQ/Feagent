@@ -19,6 +19,7 @@
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.domain.entities.user import User
@@ -129,7 +130,7 @@ class TestUserRepositorySave:
         )
 
         # Act & Assert
-        with pytest.raises(Exception):  # SQLAlchemy IntegrityError
+        with pytest.raises(IntegrityError):
             user_repository.save(duplicate_user)
 
 

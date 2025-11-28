@@ -1,6 +1,6 @@
 /**
  * WorkflowEditorPage 集成测试
- * 
+ *
  * 测试工作流编辑器页面的布局和假AI聊天框集成
  */
 
@@ -248,7 +248,7 @@ describe('WorkflowEditorPage - 布局和聊天框集成', () => {
 
       const canvas = document.querySelector('.react-flow');
       const canvasWrapper = canvas?.parentElement;
-      
+
       expect(canvasWrapper).toHaveStyle({ flex: '1' });
     });
   });
@@ -269,4 +269,3 @@ describe('WorkflowEditorPage - 布局和聊天框集成', () => {
     });
   });
 });
-

@@ -176,17 +176,17 @@ web/
   - 使用 ProTable 展示 Agent 列表
   - 支持搜索、筛选、排序
   - 快速创建入口
-  
+
 - **AgentCreate.tsx**: 创建 Agent 页
   - 核心输入：起点（start）+ 目的（goal）
   - 使用 ProForm 简化表单处理
   - 一句话创建 Agent（符合核心需求）
-  
+
 - **AgentDetail.tsx**: Agent 详情页
   - 使用 ProDescriptions 展示 Agent 信息
   - 展示 start、goal、config
   - 触发运行入口
-  
+
 - **AgentEdit.tsx**: 编辑 Agent 配置页
   - 使用 ProForm 编辑 Agent 参数
   - 支持调整行为与配置
@@ -196,12 +196,12 @@ web/
   - 使用 ProTable 展示运行记录
   - 状态筛选（PENDING/RUNNING/SUCCEEDED/FAILED/CANCELLED）
   - 跳转到运行详情
-  
+
 - **RunDetail.tsx**: 运行详情页
   - 实时日志查看（SSE）
   - 任务时间线（ProSteps）
   - 运行状态与结果展示
-  
+
 - **RunMonitor.tsx**: 运行监控页（可选）
   - 实时监控所有运行状态
   - 统计图表展示
@@ -402,7 +402,7 @@ export function useSSE(url: string, enabled: boolean = true) {
     const eventSource = new EventSource(url);
 
     eventSource.onopen = () => setIsConnected(true);
-    
+
     eventSource.onmessage = (e) => {
       if (e.data === '[DONE]') {
         eventSource.close();
@@ -476,4 +476,3 @@ VITE_APP_TITLE=Agent 中台系统
 - 任何违反本规范的目录结构、命名、技术选型变更，必须走变更申请流程
 - 本文件为前端开发的单一事实来源
 - 与其他文档冲突时，以本文件为准
-

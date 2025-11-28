@@ -4,9 +4,8 @@
 """
 
 import pytest
-from datetime import datetime, UTC
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from src.domain.entities.scheduled_workflow import ScheduledWorkflow
 from src.domain.exceptions import NotFoundError

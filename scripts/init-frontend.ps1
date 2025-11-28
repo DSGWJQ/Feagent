@@ -366,4 +366,3 @@ Write-Host "详细文档请查看:" -ForegroundColor Yellow
 Write-Host "  - docs/frontend_setup_guide.md" -ForegroundColor White
 Write-Host "  - .augment/rules/frontend_structure.md" -ForegroundColor White
 Write-Host ""
-

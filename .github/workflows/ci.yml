@@ -169,4 +169,3 @@ jobs:
           source .venv/bin/activate
           pip install safety
           safety check --json || true
-

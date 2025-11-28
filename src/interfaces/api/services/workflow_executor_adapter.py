@@ -1,8 +1,9 @@
 """工作流执行器适配器"""
 
 import asyncio
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -27,7 +28,7 @@ class WorkflowExecutorAdapter:
         self.executor_registry = executor_registry
 
     @contextmanager
-    def _workflow_repo(self) -> SQLAlchemyWorkflowRepository:
+    def _workflow_repo(self) -> Iterator[SQLAlchemyWorkflowRepository]:
         session = self._session_factory()
         repo = SQLAlchemyWorkflowRepository(session)
         try:

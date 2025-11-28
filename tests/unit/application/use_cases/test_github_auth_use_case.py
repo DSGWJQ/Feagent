@@ -247,11 +247,11 @@ class TestGitHubAuthUseCaseErrorHandling:
         Then: 应该抛出异常
         """
         # Arrange - Mock GitHub API返回错误
-        mock_github_service.exchange_code_for_token.side_effect = Exception("Invalid code")
+        mock_github_service.exchange_code_for_token.side_effect = RuntimeError("Invalid code")
 
         # Act & Assert
         input_data = GitHubAuthInput(code="invalid-code")
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError, match="Invalid code"):
             await github_auth_use_case.execute(input_data)
 
 

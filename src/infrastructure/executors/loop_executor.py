@@ -136,7 +136,7 @@ class LoopExecutor(NodeExecutor):
                 results.append(result)
 
             except Exception as e:
-                raise DomainError(f"循环执行失败（索引 {index}）: {str(e)}")
+                raise DomainError(f"循环执行失败（索引 {index}）: {str(e)}") from e
 
         return results
 
@@ -178,7 +178,7 @@ class LoopExecutor(NodeExecutor):
                 results.append(result)
 
             except Exception as e:
-                raise DomainError(f"循环执行失败（i={i}）: {str(e)}")
+                raise DomainError(f"循环执行失败（i={i}）: {str(e)}") from e
 
         return results
 
@@ -232,7 +232,7 @@ class LoopExecutor(NodeExecutor):
                 iteration_count += 1
 
             except Exception as e:
-                raise DomainError(f"循环执行失败（迭代 {iteration_count}）: {str(e)}")
+                raise DomainError(f"循环执行失败（迭代 {iteration_count}）: {str(e)}") from e
 
         return results
 

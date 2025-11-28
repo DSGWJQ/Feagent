@@ -67,7 +67,7 @@ class LlmExecutor(NodeExecutor):
             else:
                 raise DomainError(f"不支持的 LLM 提供商: {provider}")
         except Exception as e:
-            raise DomainError(f"LLM 调用失败: {str(e)}")
+            raise DomainError(f"LLM 调用失败: {str(e)}") from e
 
     async def _call_openai(
         self,
@@ -81,8 +81,8 @@ class LlmExecutor(NodeExecutor):
         """调用 OpenAI API"""
         try:
             from openai import AsyncOpenAI
-        except ImportError:
-            raise DomainError("未安装 openai 库，请运行: pip install openai")
+        except ImportError as e:
+            raise DomainError("未安装 openai 库，请运行: pip install openai") from e
 
         client = AsyncOpenAI(api_key=self.api_key)
 
@@ -99,8 +99,8 @@ class LlmExecutor(NodeExecutor):
             try:
                 schema = json.loads(schema_str)
                 kwargs["response_format"] = {"type": "json_schema", "json_schema": schema}
-            except json.JSONDecodeError:
-                raise DomainError(f"LLM 节点 schema 格式错误: {schema_str}")
+            except json.JSONDecodeError as e:
+                raise DomainError(f"LLM 节点 schema 格式错误: {schema_str}") from e
 
         response = await client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content
@@ -120,8 +120,8 @@ class LlmExecutor(NodeExecutor):
         """调用 Anthropic API"""
         try:
             from anthropic import AsyncAnthropic
-        except ImportError:
-            raise DomainError("未安装 anthropic 库，请运行: pip install anthropic")
+        except ImportError as e:
+            raise DomainError("未安装 anthropic 库，请运行: pip install anthropic") from e
 
         client = AsyncAnthropic(api_key=self.api_key)
 

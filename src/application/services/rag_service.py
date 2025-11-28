@@ -7,7 +7,7 @@
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.domain.knowledge_base.entities.document import Document
 from src.domain.knowledge_base.entities.document_chunk import DocumentChunk
@@ -36,7 +36,7 @@ class RetrievedContext:
     chunks: list[tuple[DocumentChunk, float]]
     formatted_context: str
     total_tokens: int
-    sources: list[str]
+    sources: list[dict[str, str | float]]
 
 
 @dataclass
@@ -46,7 +46,7 @@ class RAGResult:
     query: str
     context: RetrievedContext
     response: str | None = None
-    sources: list[dict[str, str]] = None
+    sources: list[dict[str, str | float]] = field(default_factory=list)
 
 
 class RAGService:
@@ -160,7 +160,7 @@ class RAGService:
         # 获取去重后的文档
         document_ids = set()
         documents = []
-        for chunk, score in similar_chunks:
+        for chunk, _score in similar_chunks:
             if chunk.document_id not in document_ids:
                 doc = await self.repository.find_document_by_id(chunk.document_id)
                 if doc:
@@ -209,8 +209,6 @@ class RAGService:
         # 切分文档
         chunk_texts = await self.retriever.chunk_document(content)
 
-        # 生成嵌入
-        embeddings = await self.retriever.generate_embedding(content)
         # 为每个块生成嵌入
         chunk_embeddings = []
         for chunk_text in chunk_texts:

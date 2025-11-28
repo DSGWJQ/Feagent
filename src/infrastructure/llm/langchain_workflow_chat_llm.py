@@ -34,13 +34,25 @@ class LangChainWorkflowChatLLM(WorkflowChatLLM):
         )
         self._parser = JsonOutputParser()
 
-    def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
-        """Return structured modifications suggested by the LLM."""
-
-        messages = [
+    @staticmethod
+    def _build_messages(system_prompt: str, user_prompt: str) -> list[SystemMessage | HumanMessage]:
+        return [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ]
-        response = self._llm.invoke(messages)
+
+    def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        """Return structured modifications suggested by the LLM."""
+
+        response = self._llm.invoke(self._build_messages(system_prompt, user_prompt))
+        content = getattr(response, "content", str(response))
+        return self._parser.parse(content)
+
+    async def generate_modifications_async(
+        self, system_prompt: str, user_prompt: str
+    ) -> dict[str, Any]:
+        """Async variant for callers that prefer awaitable workflows."""
+
+        response = await self._llm.ainvoke(self._build_messages(system_prompt, user_prompt))
         content = getattr(response, "content", str(response))
         return self._parser.parse(content)

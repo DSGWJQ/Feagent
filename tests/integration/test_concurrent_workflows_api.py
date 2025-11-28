@@ -3,9 +3,10 @@
 定义并发工作流执行 API 的期望行为
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
 
 
 class TestConcurrentWorkflowsAPI:
@@ -63,9 +64,7 @@ class TestConcurrentWorkflowsAPI:
             mock_use_case_class.return_value = mock_use_case
             mock_use_case.wait_all_completion.return_value = True
 
-            response = client.get(
-                "/api/workflows/concurrent-runs/wait?timeout=60"
-            )
+            response = client.get("/api/workflows/concurrent-runs/wait?timeout=60")
 
             assert response.status_code == 200
             data = response.json()
@@ -119,7 +118,9 @@ class TestConcurrentWorkflowsAPI:
             mock_use_case_class.return_value = mock_use_case
 
             # Create mock results
-            results = [Mock(workflow_id=f"wf_{i}", run_id=f"run_{i}", status="submitted") for i in range(3)]
+            results = [
+                Mock(workflow_id=f"wf_{i}", run_id=f"run_{i}", status="submitted") for i in range(3)
+            ]
             mock_use_case.execute.return_value = results
 
             response = client.post(
@@ -144,6 +145,7 @@ class TestConcurrentWorkflowsAPI:
             mock_use_case_class.return_value = mock_use_case
 
             from src.domain.exceptions import NotFoundError
+
             mock_use_case.execute.side_effect = NotFoundError("Workflow", "wf_invalid")
 
             response = client.post(

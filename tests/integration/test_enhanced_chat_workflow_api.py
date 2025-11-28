@@ -3,9 +3,10 @@
 定义增强对话工作流 API 的期望行为
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
 
 
 class TestEnhancedChatWorkflowAPI:
@@ -82,9 +83,7 @@ class TestEnhancedChatWorkflowAPI:
             ]
             mock_use_case.search_conversation_history.return_value = mock_results
 
-            response = client.get(
-                "/api/workflows/wf_123/chat-search?keyword=HTTP&threshold=0.5"
-            )
+            response = client.get("/api/workflows/wf_123/chat-search?keyword=HTTP&threshold=0.5")
 
             assert response.status_code == 200
             data = response.json()
@@ -142,9 +141,7 @@ class TestEnhancedChatWorkflowAPI:
             ]
             mock_use_case.get_compressed_context.return_value = mock_context
 
-            response = client.get(
-                "/api/workflows/wf_123/chat-context?max_tokens=2000"
-            )
+            response = client.get("/api/workflows/wf_123/chat-context?max_tokens=2000")
 
             assert response.status_code == 200
             data = response.json()
@@ -182,6 +179,7 @@ class TestEnhancedChatWorkflowAPI:
             mock_use_case_class.return_value = mock_use_case
 
             from src.domain.exceptions import NotFoundError
+
             mock_use_case.execute.side_effect = NotFoundError("Workflow", "wf_invalid")
 
             response = client.post(

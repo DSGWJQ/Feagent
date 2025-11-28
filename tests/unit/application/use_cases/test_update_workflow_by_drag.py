@@ -185,7 +185,6 @@ class TestUpdateWorkflowByDragUseCase:
             nodes=[node],
             edges=[],
         )
-        original_updated_at = workflow.updated_at
 
         # Mock Repository
         mock_repo = Mock()
@@ -212,6 +211,5 @@ class TestUpdateWorkflowByDragUseCase:
         result = use_case.execute(input_data)
 
         # Assert
-        # 注意：由于我们直接替换了 nodes，updated_at 可能不会自动更新
-        # 这取决于 Workflow 实体的实现
+        assert result.nodes[0].position == updated_node.position
         mock_repo.save.assert_called_once()

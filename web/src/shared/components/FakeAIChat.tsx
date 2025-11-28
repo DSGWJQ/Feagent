@@ -335,4 +335,3 @@ export function FakeAIChat({
     </Card>
   );
 }
-

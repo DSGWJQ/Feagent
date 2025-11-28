@@ -244,9 +244,7 @@ class SQLAlchemyAgentRepository:
         返回：
             Agent 列表（可能为空）
         """
-        result = self.session.execute(
-            select(AgentModel).order_by(AgentModel.created_at.desc())
-        )
+        result = self.session.execute(select(AgentModel).order_by(AgentModel.created_at.desc()))
         models = result.scalars().all()
 
         # 转换为领域实体列表

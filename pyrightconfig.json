@@ -1,0 +1,9 @@
+{
+  "include": ["src"],
+  "pythonVersion": "3.11",
+  "stubPath": "typings",
+  "extraPaths": [
+    "C:/Users/23225/AppData/Roaming/Python/Python313/site-packages",
+    "C:/Python313/Lib/site-packages"
+  ]
+}

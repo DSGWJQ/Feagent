@@ -8,6 +8,8 @@ from collections.abc import AsyncGenerator
 
 from src.application.services.rag_service import RAGService
 from src.config import settings
+from src.domain.knowledge_base.entities.document_chunk import DocumentChunk
+from src.domain.knowledge_base.ports.retriever_service import RetrieverService
 from src.infrastructure.knowledge_base.chroma_retriever_service import ChromaRetrieverService
 from src.infrastructure.knowledge_base.rag_config_manager import RAGConfigManager
 from src.infrastructure.knowledge_base.sqlite_knowledge_repository import SQLiteKnowledgeRepository
@@ -53,7 +55,7 @@ async def get_rag_service() -> AsyncGenerator[RAGService, None]:
             # 创建检索服务
             embedding_config = RAGConfigManager.get_embedding_config()
             if vector_config["type"] == "chroma":
-                retriever_service = ChromaRetrieverService(
+                retriever_service: RetrieverService = ChromaRetrieverService(
                     knowledge_repository=knowledge_repository,
                     openai_api_key=embedding_config.get("api_key"),
                     chroma_path=vector_config["path"],
@@ -61,7 +63,7 @@ async def get_rag_service() -> AsyncGenerator[RAGService, None]:
             else:
                 # 对于SQLite向量存储，使用SQLite仓储的自定义检索方法
                 # 这里可以实现SQLiteVectorRetrieverService
-                retriever_service = None  # 暂时设为None，后面再实现
+                retriever_service = NoOpRetrieverService()
 
             # 创建RAG服务
             _rag_service = RAGService(
@@ -78,8 +80,12 @@ async def get_rag_service() -> AsyncGenerator[RAGService, None]:
         if not _rag_service:
             raise RuntimeError("RAG服务未能正确初始化")
 
+    service = _rag_service
+    if service is None:
+        raise RuntimeError("RAG服务未能正确初始化")
+
     try:
-        yield _rag_service
+        yield service
     finally:
         # 清理资源（如果需要）
         pass
@@ -118,3 +124,43 @@ def get_rag_config() -> dict:
             "metrics": settings.rag_metrics_enabled,
         },
     }
+
+
+class NoOpRetrieverService(RetrieverService):
+    """占位检索服务，用于暂不支持的向量存储类型。"""
+
+    async def generate_embedding(self, text: str) -> list[float]:
+        return []
+
+    async def chunk_document(
+        self,
+        content: str,
+        chunk_size: int = 1000,
+        chunk_overlap: int = 200,
+    ) -> list[str]:
+        return [content]
+
+    async def retrieve_relevant_chunks(
+        self,
+        query: str,
+        workflow_id: str | None = None,
+        top_k: int = 5,
+        filters: dict[str, object] | None = None,
+    ) -> list[tuple[DocumentChunk, float]]:
+        return []
+
+    async def rerank_chunks(
+        self,
+        query: str,
+        chunks: list[DocumentChunk],
+        top_k: int = 5,
+    ) -> list[tuple[DocumentChunk, float]]:
+        return []
+
+    async def get_context_for_query(
+        self,
+        query: str,
+        workflow_id: str | None = None,
+        max_tokens: int = 4000,
+    ) -> str:
+        return ""

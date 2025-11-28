@@ -1,6 +1,6 @@
 /**
  * 代码生成器
- * 
+ *
  * 将工作流转换为可执行的 Python 或 TypeScript 代码
  */
 
@@ -33,7 +33,7 @@ export function generatePythonCode(nodes: Node[], edges: Edge[]): string {
     """HTTP Request node"""
     url = "${node.data.url || 'https://api.example.com'}"
     method = "${node.data.method || 'GET'}"
-    
+
     async with httpx.AsyncClient() as client:
         response = await client.request(method, url)
         return response.json()
@@ -45,7 +45,7 @@ export function generatePythonCode(nodes: Node[], edges: Edge[]): string {
         code += `\nasync def node_${node.id}_text_model(context: Dict[str, Any]) -> Any:
     """Text Model node"""
     client = AsyncOpenAI()
-    
+
     response = await client.chat.completions.create(
         model="${node.data.model || 'gpt-4'}",
         messages=[
@@ -54,7 +54,7 @@ export function generatePythonCode(nodes: Node[], edges: Edge[]): string {
         temperature=${node.data.temperature || 0.7},
         max_tokens=${node.data.maxTokens || 2000}
     )
-    
+
     return response.choices[0].message.content
 `;
         break;
@@ -72,7 +72,7 @@ export function generatePythonCode(nodes: Node[], edges: Edge[]): string {
     """JavaScript node (Python equivalent)"""
     # Original JS code:
     # ${node.data.code?.replace(/\n/g, '\n    # ') || '// Your code here'}
-    
+
     # TODO: Implement Python equivalent
     return context.get("input1")
 `;
@@ -106,7 +106,7 @@ export function generatePythonCode(nodes: Node[], edges: Edge[]): string {
   code += `\n\nasync def execute_workflow(initial_input: Dict[str, Any]) -> Any:
     """Execute the workflow"""
     context = {"initial_input": initial_input}
-    
+
 `;
 
   // 按照边的顺序执行节点
@@ -144,7 +144,7 @@ export function generatePythonCode(nodes: Node[], edges: Edge[]): string {
 export function generateTypeScriptCode(nodes: Node[], edges: Edge[]): string {
   let code = `/**
  * Generated Workflow Code
- * 
+ *
  * This code was automatically generated from a workflow.
  */
 
@@ -168,7 +168,7 @@ type Context = Record<string, any>;
         code += `async function node_${node.id}_httpRequest(context: Context): Promise<any> {
   const url = "${node.data.url || 'https://api.example.com'}";
   const method = "${node.data.method || 'GET'}";
-  
+
   const response = await fetch(url, { method });
   return await response.json();
 }
@@ -193,7 +193,7 @@ type Context = Record<string, any>;
       max_tokens: ${node.data.maxTokens || 2000}
     })
   });
-  
+
   const data = await response.json();
   return data.choices[0].message.content;
 }
@@ -248,7 +248,7 @@ type Context = Record<string, any>;
   // 生成主执行函数
   code += `async function executeWorkflow(initialInput: any): Promise<any> {
   const context: Context = { initial_input: initialInput };
-  
+
 `;
 
   // 按照边的顺序执行节点
@@ -282,4 +282,3 @@ executeWorkflow({ message: "test" })
 
   return code;
 }
-

@@ -32,6 +32,7 @@
 """
 
 import sqlite3
+from typing import Any, cast
 
 from langchain_core.tools import tool
 
@@ -75,7 +76,7 @@ def is_safe_sql(sql: str) -> tuple[bool, str]:
     return True, ""
 
 
-def get_database_connection():
+def get_database_connection() -> Any:
     """获取数据库连接
 
     返回：
@@ -88,7 +89,7 @@ def get_database_connection():
     # 注意：这里使用 SQLAlchemy 的 raw_connection()
     connection = engine.raw_connection()
 
-    return connection
+    return cast(Any, connection)
 
 
 @tool

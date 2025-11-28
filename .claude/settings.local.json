@@ -41,7 +41,9 @@
       "WebSearch",
       "Bash(chcp:*)",
       "Bash(iconv:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash($env:PRE_COMMIT_HOME=\"D:\\My_Project\\agent_data\\.pre-commit-cache\")",
+      "Bash(pre-commit run:*)"
     ],
     "deny": [],
     "ask": []

@@ -5,11 +5,12 @@ Revises: f8c9d4a1b2e3
 Create Date: 2025-11-25 16:24:58.173043
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "f74c741be529"
@@ -65,4 +66,3 @@ def downgrade() -> None:
     op.drop_index("idx_scheduled_workflows_status", table_name="scheduled_workflows")
     op.drop_index("idx_scheduled_workflows_workflow_id", table_name="scheduled_workflows")
     op.drop_table("scheduled_workflows")
-

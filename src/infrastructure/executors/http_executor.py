@@ -40,13 +40,13 @@ class HttpExecutor(NodeExecutor):
         # 解析 headers 和 body
         try:
             headers = json.loads(headers_str) if headers_str else {}
-        except json.JSONDecodeError:
-            raise DomainError(f"HTTP 节点 headers 格式错误: {headers_str}")
+        except json.JSONDecodeError as e:
+            raise DomainError(f"HTTP 节点 headers 格式错误: {headers_str}") from e
 
         try:
             body = json.loads(body_str) if body_str and method in ["POST", "PUT", "PATCH"] else None
-        except json.JSONDecodeError:
-            raise DomainError(f"HTTP 节点 body 格式错误: {body_str}")
+        except json.JSONDecodeError as e:
+            raise DomainError(f"HTTP 节点 body 格式错误: {body_str}") from e
 
         # 发送请求
         try:
@@ -66,6 +66,6 @@ class HttpExecutor(NodeExecutor):
                     return response.text
 
         except httpx.HTTPStatusError as e:
-            raise DomainError(f"HTTP 请求失败: {e.response.status_code} {e.response.text}")
+            raise DomainError(f"HTTP 请求失败: {e.response.status_code} {e.response.text}") from e
         except httpx.RequestError as e:
-            raise DomainError(f"HTTP 请求错误: {str(e)}")
+            raise DomainError(f"HTTP 请求错误: {str(e)}") from e

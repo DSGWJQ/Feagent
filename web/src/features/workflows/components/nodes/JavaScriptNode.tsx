@@ -142,4 +142,3 @@ function JavaScriptNode({ data, selected }: NodeProps<JavaScriptNodeData>) {
 }
 
 export default memo(JavaScriptNode);
-

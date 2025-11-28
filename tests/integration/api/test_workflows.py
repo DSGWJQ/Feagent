@@ -416,15 +416,6 @@ class TestWorkflowChatAPI:
         repository.save(workflow)
         test_db.commit()
 
-        # Mock LLM 响应
-        # 注意：我们需要先创建一个临时节点来获取其ID，然后在mock中使用
-        temp_http_node = Node.create(
-            type=NodeType.HTTP,
-            name="获取天气数据",
-            config={"url": "https://api.weather.com", "method": "GET"},
-            position=Position(x=100, y=0),
-        )
-
         response_payload = {
             "action": "add_node",
             "nodes_to_add": [
@@ -447,7 +438,9 @@ class TestWorkflowChatAPI:
             def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict:
                 return self.payload
 
-        app.dependency_overrides[get_workflow_chat_llm] = lambda: FakeWorkflowChatLLM(response_payload)
+        app.dependency_overrides[get_workflow_chat_llm] = lambda: FakeWorkflowChatLLM(
+            response_payload
+        )
 
         try:
             response = client.post(
@@ -496,6 +489,7 @@ class TestWorkflowChatAPI:
         - 返回 404 状态码
         - 返回错误信息
         """
+
         # Mock LLM（虽然不会被调用，但需要mock以避免初始化错误）
         class FakeWorkflowChatLLM:
             def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict:

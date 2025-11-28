@@ -341,7 +341,12 @@ class EnhancedWorkflowChatService:
                 HumanMessage(content=user_prompt),
             ]
             response = self.llm.invoke(messages)
-            llm_result = self.parser.parse(response.content)
+            raw_content = response.content
+            if isinstance(raw_content, list):
+                content_str = json.dumps(raw_content, ensure_ascii=False)
+            else:
+                content_str = str(raw_content)
+            llm_result = self.parser.parse(content_str)
         except Exception as e:
             error_msg = f"LLM 调用失败: {str(e)}"
             return ModificationResult(

@@ -66,8 +66,6 @@ class PythonExecutor(NodeExecutor):
         "sum": sum,
         "tuple": tuple,
         "zip": zip,
-        # 字符串方法
-        "len": len,
     }
 
     async def execute(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
@@ -98,7 +96,7 @@ class PythonExecutor(NodeExecutor):
         }
 
         # 将输入映射为 input1, input2, ...
-        for i, (key, value) in enumerate(inputs.items(), 1):
+        for i, (_key, value) in enumerate(inputs.items(), 1):
             exec_context[f"input{i}"] = value
 
         # 添加上下文变量
@@ -112,6 +110,6 @@ class PythonExecutor(NodeExecutor):
             return exec_context.get("result")
 
         except SyntaxError as e:
-            raise DomainError(f"Python 代码执行失败: 语法错误 - {str(e)}")
+            raise DomainError(f"Python 代码执行失败: 语法错误 - {str(e)}") from e
         except Exception as e:
-            raise DomainError(f"Python 代码执行失败: {str(e)}")
+            raise DomainError(f"Python 代码执行失败: {str(e)}") from e

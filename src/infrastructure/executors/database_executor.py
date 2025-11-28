@@ -80,9 +80,9 @@ class DatabaseExecutor(NodeExecutor):
             return result
 
         except sqlite3.Error as e:
-            raise DomainError(f"数据库查询失败: {str(e)}")
+            raise DomainError(f"数据库查询失败: {str(e)}") from e
         except Exception as e:
-            raise DomainError(f"数据库操作错误: {str(e)}")
+            raise DomainError(f"数据库操作错误: {str(e)}") from e
 
     @staticmethod
     def _prepare_params(params_config: Any, inputs: dict[str, Any]) -> tuple:

@@ -58,10 +58,13 @@ class NotFoundError(DomainError):
         entity_id: 实体 ID
     """
 
-    def __init__(self, entity_type: str, entity_id: str):
+    def __init__(self, entity_type: str, entity_id: str | None = None):
         self.entity_type = entity_type
         self.entity_id = entity_id
-        super().__init__(f"{entity_type} 不存在: {entity_id}")
+        detail = f"{entity_type} 不存在"
+        if entity_id is not None:
+            detail = f"{detail}: {entity_id}"
+        super().__init__(detail)
 
 
 # EntityNotFoundError是NotFoundError的别名，用于Repository层

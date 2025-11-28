@@ -217,10 +217,10 @@ class SQLiteKnowledgeRepository(KnowledgeRepository):
         """更新文档"""
         await self.save_document(document)
 
-    async def delete_document(self, document_id: str) -> None:
+    async def delete_document(self, id: str) -> None:
         """删除文档"""
         conn = await self._get_connection()
-        await conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+        await conn.execute("DELETE FROM documents WHERE id = ?", (id,))
         await conn.commit()
         await conn.close()
 

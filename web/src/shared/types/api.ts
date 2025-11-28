@@ -27,4 +27,3 @@ export interface PageParams {
   page_size?: number;
   [key: string]: any;
 }
-

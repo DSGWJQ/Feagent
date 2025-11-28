@@ -1,12 +1,10 @@
 """Scheduler service dependency registry."""
 
-from typing import Optional
-
 from fastapi import Depends, HTTPException, status
 
 from src.domain.services.workflow_scheduler import ScheduleWorkflowService
 
-_scheduler_service: Optional[ScheduleWorkflowService] = None
+_scheduler_service: ScheduleWorkflowService | None = None
 
 
 def set_scheduler_service(service: ScheduleWorkflowService) -> None:

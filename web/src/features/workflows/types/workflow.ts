@@ -131,4 +131,3 @@ export interface SSEEvent {
  * 节点执行状态
  */
 export type NodeExecutionStatus = 'idle' | 'running' | 'completed' | 'error';
-

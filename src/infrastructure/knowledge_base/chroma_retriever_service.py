@@ -4,12 +4,14 @@
 """
 
 import os
+from typing import Any
 
 import chromadb
 import numpy as np
 from chromadb.config import Settings
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pydantic import SecretStr
 from tiktoken import encoding_for_model
 
 from src.domain.knowledge_base.entities.document_chunk import DocumentChunk
@@ -45,9 +47,9 @@ class ChromaRetrieverService(RetrieverService):
         self.chunk_overlap = chunk_overlap
 
         # 初始化嵌入模型
-        self.embeddings = OpenAIEmbeddings(
-            model=model_name, openai_api_key=openai_api_key or os.getenv("OPENAI_API_KEY")
-        )
+        api_key_value = openai_api_key or os.getenv("OPENAI_API_KEY")
+        api_key_secret = SecretStr(api_key_value) if api_key_value else None
+        self.embeddings = OpenAIEmbeddings(model=model_name, api_key=api_key_secret)
 
         # 初始化文本切分器
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -65,7 +67,7 @@ class ChromaRetrieverService(RetrieverService):
         )
 
         # 获取或创建集合
-        self.collection = self.chroma_client.get_or_create_collection(
+        self.collection: Any = self.chroma_client.get_or_create_collection(
             name="document_chunks", metadata={"hnsw:space": "cosine"}
         )
 
@@ -126,24 +128,40 @@ class ChromaRetrieverService(RetrieverService):
         )
 
         # 转换结果
-        chunks_with_scores = []
-        if results["ids"] and results["ids"][0]:
-            for i, chunk_id in enumerate(results["ids"][0]):
+        chunks_with_scores: list[tuple[DocumentChunk, float]] = []
+        ids = results.get("ids") or []
+        documents = results.get("documents") or []
+        metadatas = results.get("metadatas") or []
+        distances = results.get("distances") or []
+
+        if ids and ids[0]:
+            for i, _chunk_id in enumerate(ids[0]):
                 # 获取文档内容
-                content = results["documents"][0][i]
-                metadata = results["metadatas"][0][i]
-                distance = results["distances"][0][i]
+                content = documents[0][i]
+                metadata = metadatas[0][i] or {}
+                distance = distances[0][i]
 
                 # 转换距离为相似度分数（余弦距离）
                 similarity = 1 - distance
 
+                document_id = str(metadata.get("document_id", ""))
+                chunk_index_value = metadata.get("chunk_index", 0)
+                chunk_index = (
+                    int(chunk_index_value) if isinstance(chunk_index_value, int | float) else 0
+                )
+                safe_metadata = {
+                    str(key): value
+                    for key, value in metadata.items()
+                    if isinstance(value, str | int | float | bool) or value is None
+                }
+
                 # 创建DocumentChunk对象
                 chunk = DocumentChunk.create(
-                    document_id=metadata.get("document_id", ""),
+                    document_id=document_id,
                     content=content,
                     embedding=[],  # 不需要返回嵌入向量
-                    chunk_index=metadata.get("chunk_index", 0),
-                    metadata=metadata,
+                    chunk_index=chunk_index,
+                    metadata=safe_metadata,
                 )
 
                 chunks_with_scores.append((chunk, similarity))
@@ -196,11 +214,10 @@ class ChromaRetrieverService(RetrieverService):
         )
 
         # 构建上下文
-        context_parts = []
+        context_parts: list[str] = []
         current_tokens = 0
-        max_chunk_tokens = max_tokens // 4  # 预留空间给分隔符等
 
-        for chunk, score in chunks_with_scores:
+        for chunk, _score in chunks_with_scores:
             chunk_tokens = self._count_tokens(chunk.content)
 
             # 如果添加这个块会超过限制，跳过

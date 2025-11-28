@@ -27,9 +27,9 @@ Agent 迭代文档
 │ AgentMessageHandler│─────▶│  事件总线(AgentEventBus) │
 3
 └─────────────────┘       └──────────┬────────┘
-4                                    
+4
 │
-5                                    
+5
 ▼
 6
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -37,15 +37,15 @@ Agent 迭代文档
 │ TaskSplitHandler │◀───┤ 工作流状态转换  ├───▶│TaskExecutionHandler│
 8
 └─────────────────┘    └─────────────────┘    └─────────┬───────┘
-9                                                        
+9
 │
-10                                                        
+10
 ▼
-11                                              
+11
 ┌─────────────────┐
-12                                              
+12
 │ SummarizeHandler │
-13                                              
+13
 └─────────────────┘
 §3.2 核心组件
 AbstractAgentHandler：处理器抽象基类，提取公共能力
@@ -55,66 +55,66 @@ AgentWorkflowState：工作流状态枚举，定义明确的状态转换
 §3.3 工作流状态定义
 1
 INITIALIZED ──▶ TASK_SPLITTING ──▶ TASK_SPLIT_COMPLETED ──▶ TASK_EXECUTING
-2                                                                 
+2
 │
-3                                                                 
+3
 ▼
-4                   
+4
 COMPLETED ◀── SUMMARIZING ◀── TASK_EXECUTED
 §4. 详细设计
 §4.1 AbstractAgentHandler抽象基类设计
 1
 public abstract class AbstractAgentHandler implements AgentEventHandler {
-2    
-3    
+2
+3
 // 共享依赖
-4    
+4
 protected final LLMServiceFactory llmServiceFactory;
-5    
+5
 protected final TaskManager taskManager;
-6    
+6
 protected final ConversationDomainService conversationDomainService;
-7    
+7
 protected final ContextDomainService contextDomainService;
-8    
-9    
+8
+9
 // 模板方法模式
-10    
+10
 @Override
-11    
+11
 public final void handle(AgentWorkflowEvent event) {
-12        
+12
 if (!shouldHandle(event)) {
-13            
+13
 return;
-14        
+14
 }
-15        
-16        
+15
+16
 AgentWorkflowContext<?> context = event.getContext();
-17        
+17
 transitionToNextState(context);
-18        
+18
 processEvent(context);
-19    
+19
 }
-20    
-21    
+20
+21
 // 抽象方法，子类实现
-22    
+22
 protected abstract boolean shouldHandle(AgentWorkflowEvent event);
-23    
+23
 protected abstract void transitionToNextState(AgentWorkflowContext<?> context);
-24    
+24
 protected abstract <T> void processEvent(AgentWorkflowContext<?> context);
-25    
-26    
+25
+26
 // 公共工具方法
-27    
+27
 protected <T> MessageEntity createMessageEntity(...) { ... }
-28    
+28
 protected <T> StreamingChatLanguageModel getStreamingClient(...) { ... }
-29    
+29
 protected <T> ChatRequest buildChatRequest(...) { ... }
 30
 }
@@ -125,33 +125,33 @@ protected <T> ChatRequest buildChatRequest(...) { ... }
 @Component
 2
 public class TaskSplitHandler extends AbstractAgentHandler {
-3    
+3
 // 特有依赖
-4    
+4
 private final PromptTemplates promptTemplates;
-5    
-6    
+5
+6
 @Override
-7    
+7
 protected boolean shouldHandle(AgentWorkflowEvent event) {
-8        
+8
 return event.getToState() == AgentWorkflowState.TASK_SPLITTING;
-9    
+9
 }
-10    
-11    
+10
+11
 @Override
-12    
+12
 protected void processEvent(AgentWorkflowContext<?> context) {
-13        
+13
 // 执行任务拆分
-14        
+14
 // 创建子任务
-15        
+15
 // 保存消息到上下文
-16        
+16
 // 状态转换
-17    
+17
 }
 18
 }
@@ -162,31 +162,31 @@ protected void processEvent(AgentWorkflowContext<?> context) {
 @Component
 2
 public class TaskExecutionHandler extends AbstractAgentHandler {
-3    
+3
 // 特有依赖
-4    
+4
 private final AgentToolManager toolManager;
-5    
-6    
+5
+6
 @Override
-7    
+7
 protected boolean shouldHandle(AgentWorkflowEvent event) {
-8        
+8
 return event.getToState() == AgentWorkflowState.TASK_SPLIT_COMPLETED;
-9    
+9
 }
-10    
-11    
+10
+11
 @Override
-12    
+12
 protected void processEvent(AgentWorkflowContext<?> context) {
-13        
+13
 // 循环执行子任务
-14        
+14
 // 处理工具调用
-15        
+15
 // 状态转换
-16    
+16
 }
 17
 }
@@ -197,31 +197,31 @@ protected void processEvent(AgentWorkflowContext<?> context) {
 @Component
 2
 public class SummarizeHandler extends AbstractAgentHandler {
-3    
+3
 // 特有依赖
-4    
+4
 private final PromptTemplates promptTemplates;
-5    
-6    
+5
+6
 @Override
-7    
+7
 protected boolean shouldHandle(AgentWorkflowEvent event) {
-8        
+8
 return event.getToState() == AgentWorkflowState.TASK_EXECUTED;
-9    
+9
 }
-10    
-11    
+10
+11
 @Override
-12    
+12
 protected void processEvent(AgentWorkflowContext<?> context) {
-13        
+13
 // 汇总子任务结果
-14        
+14
 // 生成总结
-15        
+15
 // 状态转换
-16    
+16
 }
 17
 }
@@ -231,41 +231,41 @@ protected void processEvent(AgentWorkflowContext<?> context) {
 @Component(value = "agentMessageHandler")
 2
 public class AgentMessageHandler extends AbstractMessageHandler {
-3    
+3
 // 构造函数注入依赖
-4    
+4
 public AgentMessageHandler(
-5            
+5
 // 注入依赖项
-6            
+6
 TaskSplitHandler taskSplitHandler,
-7            
+7
 TaskExecutionHandler taskExecutionHandler,
-8            
+8
 SummarizeHandler summarizeHandler) {
-9        
-10        
+9
+10
 // 构造函数中直接注册事件处理器
-11        
+11
 AgentEventBus.register(AgentWorkflowState.TASK_SPLITTING, taskSplitHandler);
-12        
+12
 AgentEventBus.register(AgentWorkflowState.TASK_SPLIT_COMPLETED, taskExecutionHandler);
-13        
+13
 AgentEventBus.register(AgentWorkflowState.TASK_EXECUTED, summarizeHandler);
-14    
+14
 }
-15    
-16    
+15
+16
 @Override
-17    
+17
 public <T> T chat(ChatContext chatContext, MessageTransport<T> messageTransport) {
-18        
+18
 // 创建工作流上下文
-19        
+19
 // 触发初始状态转换
-20        
+20
 // 立即返回连接
-21    
+21
 }
 22
 }
@@ -458,103 +458,103 @@ AgentWorkflowContext复杂上下文
 构建历史消息
 1
 protected void buildHistoryMessage(ChatContext chatContext, MessageWindowChatMemory memory) {
-2     
+2
 String summary = chatContext.getContextEntity().getSummary();
-3     
+3
 if (StringUtils.isNotEmpty(summary)) {
-4         
+4
 // 添加为AI消息，但明确标识这是摘要
-5         
+5
 memory.add(new AiMessage(AgentPromptTemplates.getSummaryPrefix() + summary));
-6     
+6
 }
-7    
+7
 // 这里只能设置一条，否则会覆盖，因此需要拼接
-8     
+8
 memory.add(new SystemMessage(chatContext.getAgent().getSystemPrompt()+"\n"+AgentPromptTemplates.getIgnoreSensitiveInfoPrompt()));
-9     
+9
 List<MessageEntity> messageHistory = chatContext.getMessageHistory();
-10     
+10
 for (MessageEntity messageEntity : messageHistory) {
-11         
+11
 if(messageEntity.isUserMessage()){
-12             
+12
 memory.add(new UserMessage(messageEntity.getContent()));
-13         
+13
 }else if(messageEntity.isAIMessage()){
-14             
+14
 memory.add(new AiMessage(messageEntity.getContent()));
-15         
+15
 }else if(messageEntity.isSystemMessage()){
-16             
+16
 memory.add(new SystemMessage(messageEntity.getContent()));
-17         
+17
 }
-18     
+18
 }
-19 
+19
 }
 
 1
 protected <T> void processChat(
-2        
+2
 Agent agent, T connection, MessageTransport<T> transport,
-3        
+3
 ChatContext chatContext, MessageEntity userEntity, MessageEntity llmEntity){
-4        
+4
 AtomicReference<StringBuilder> messageBuilder = new AtomicReference<>(new StringBuilder());
-5        
+5
 TokenStream tokenStream = agent.chat(chatContext.getUserMessage());
-6        
+6
 tokenStream.ignoreErrors();
-7        
+7
 // 部分响应处理
-8        
+8
 tokenStream.onPartialResponse(reply -> {
-9            
+9
 messageBuilder.get().append(reply);
-10            
+10
 transport.sendMessage(connection,
-11                    
+11
 AgentChatResponse.build(reply, MessageType.TEXT));
-12        
+12
 });
 13
-14        
+14
 // 完整响应处理
-15        
+15
 tokenStream.onCompleteResponse(chatResponse -> {
-16            
+16
 // 更新token信息
-17            
+17
 llmEntity.setTokenCount(chatResponse.tokenUsage().outputTokenCount());
-18            
+18
 llmEntity.setContent(chatResponse.aiMessage().text());
 19
-20            
+20
 userEntity.setTokenCount(chatResponse.tokenUsage().inputTokenCount());
-21            
+21
 messageDomainService.updateMessage(userEntity);
 22
-23            
+23
 // 保存AI消息
-24            
+24
 messageDomainService.saveMessageAndUpdateContext(
-25                    
+25
 Collections.singletonList(llmEntity),
-26                    
+26
 chatContext.getContextEntity());
 27
-28            
+28
 // 发送结束消息
-29            
+29
 transport.sendEndMessage(connection,
-30                    
+30
 AgentChatResponse.buildEndMessage(MessageType.TEXT));
-31        
+31
 });
 32
-33        
+33
 // 错误处理
 34
 //        tokenStream.onError(throwable -> handleError(
@@ -563,55 +563,55 @@ AgentChatResponse.buildEndMessage(MessageType.TEXT));
 36
 //                messageBuilder.toString(), llmEntity, throwable));
 37
-38        
+38
 // 工具执行处理
-39        
+39
 tokenStream.onToolExecuted(toolExecution -> {
-40            
+40
 if (!messageBuilder.get().isEmpty()){
-41                
+41
 transport.sendMessage(connection,
-42                        
+42
 AgentChatResponse.buildEndMessage(MessageType.TEXT));
-43                
+43
 llmEntity.setContent(messageBuilder.toString());
-44                
+44
 messageDomainService.saveMessageAndUpdateContext(
-45                        
+45
 Collections.singletonList(llmEntity),
-46                        
+46
 chatContext.getContextEntity());
-47                
+47
 messageBuilder.set(new StringBuilder());
-48            
+48
 }
-49            
+49
 String message = "执行工具：" + toolExecution.request().name();
-50            
+50
 MessageEntity toolMessage = createLlmMessage(chatContext);
-51            
+51
 toolMessage.setMessageType(MessageType.TOOL_CALL);
-52            
+52
 toolMessage.setContent(message);
-53            
+53
 messageDomainService.saveMessageAndUpdateContext(
-54                    
+54
 Collections.singletonList(toolMessage),
-55                    
+55
 chatContext.getContextEntity());
 56
-57            
+57
 transport.sendMessage(connection,
-58                    
+58
 AgentChatResponse.buildEndMessage(message, MessageType.TOOL_CALL));
-59        
+59
 });
 60
-61        
+61
 // 启动流处理
-62        
+62
 tokenStream.start();
-63    
+63
 }
 
 §Agent交互设计对比分析：显式过程 vs 黑盒过程

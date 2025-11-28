@@ -5,4 +5,3 @@
 export { FakeAIChat } from './FakeAIChat';
 export { WorkflowAIChat } from './WorkflowAIChat';
 export type { FakeAIChatProps } from './FakeAIChat';
-

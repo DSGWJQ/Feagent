@@ -101,14 +101,14 @@ class JWTService:
             payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
             return payload
 
-        except jwt.ExpiredSignatureError:
+        except jwt.ExpiredSignatureError as err:
             # Token已过期
-            raise ValueError("Token已过期")
+            raise ValueError("Token已过期") from err
 
-        except jwt.PyJWTError:
+        except jwt.PyJWTError as err:
             # Token无效（签名验证失败、格式错误等）
-            raise ValueError("Token无效")
+            raise ValueError("Token无效") from err
 
-        except Exception:
+        except Exception as err:
             # 其他异常（如空字符串、格式错误等）
-            raise ValueError("Token无效")
+            raise ValueError("Token无效") from err

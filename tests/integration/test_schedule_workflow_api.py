@@ -3,9 +3,10 @@
 定义工作流调度 API 的期望行为
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
 
 
 class TestScheduleWorkflowAPI:
@@ -20,7 +21,9 @@ class TestScheduleWorkflowAPI:
 
     def test_schedule_workflow_post_creates_scheduled_workflow(self, client):
         """测试：POST /api/workflows/{workflow_id}/schedule 应该创建定时任务"""
-        with patch("src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase") as mock_use_case_class:
+        with patch(
+            "src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase"
+        ) as mock_use_case_class:
             # Mock the use case
             mock_use_case = Mock()
             mock_use_case_class.return_value = mock_use_case
@@ -49,7 +52,9 @@ class TestScheduleWorkflowAPI:
 
     def test_schedule_workflow_unschedule_removes_scheduled_task(self, client):
         """测试：DELETE /api/scheduled-workflows/{scheduled_workflow_id} 应该移除定时任务"""
-        with patch("src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase") as mock_use_case_class:
+        with patch(
+            "src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase"
+        ) as mock_use_case_class:
             mock_use_case = Mock()
             mock_use_case_class.return_value = mock_use_case
 
@@ -59,7 +64,9 @@ class TestScheduleWorkflowAPI:
 
     def test_schedule_workflow_list_returns_all_scheduled_workflows(self, client):
         """测试：GET /api/scheduled-workflows 应该返回所有定时任务"""
-        with patch("src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase") as mock_use_case_class:
+        with patch(
+            "src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase"
+        ) as mock_use_case_class:
             mock_use_case = Mock()
             mock_use_case_class.return_value = mock_use_case
 
@@ -76,7 +83,10 @@ class TestScheduleWorkflowAPI:
             mock_scheduled_2.cron_expression = "0 18 * * MON-FRI"
             mock_scheduled_2.status = "active"
 
-            mock_use_case.list_scheduled_workflows.return_value = [mock_scheduled_1, mock_scheduled_2]
+            mock_use_case.list_scheduled_workflows.return_value = [
+                mock_scheduled_1,
+                mock_scheduled_2,
+            ]
 
             response = client.get("/api/scheduled-workflows")
 
@@ -89,7 +99,9 @@ class TestScheduleWorkflowAPI:
 
     def test_schedule_workflow_get_returns_scheduled_workflow_details(self, client):
         """测试：GET /api/scheduled-workflows/{scheduled_workflow_id} 应该返回定时任务详情"""
-        with patch("src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase") as mock_use_case_class:
+        with patch(
+            "src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase"
+        ) as mock_use_case_class:
             mock_use_case = Mock()
             mock_use_case_class.return_value = mock_use_case
 
@@ -112,11 +124,14 @@ class TestScheduleWorkflowAPI:
 
     def test_schedule_workflow_handles_invalid_cron_expression(self, client):
         """测试：无效的 cron 表达式应该返回 400"""
-        with patch("src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase") as mock_use_case_class:
+        with patch(
+            "src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase"
+        ) as mock_use_case_class:
             mock_use_case = Mock()
             mock_use_case_class.return_value = mock_use_case
 
             from src.domain.exceptions import DomainError
+
             mock_use_case.execute.side_effect = DomainError("Invalid cron expression")
 
             response = client.post(
@@ -131,11 +146,14 @@ class TestScheduleWorkflowAPI:
 
     def test_schedule_workflow_handles_workflow_not_found(self, client):
         """测试：工作流不存在应该返回 404"""
-        with patch("src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase") as mock_use_case_class:
+        with patch(
+            "src.application.use_cases.schedule_workflow.ScheduleWorkflowUseCase"
+        ) as mock_use_case_class:
             mock_use_case = Mock()
             mock_use_case_class.return_value = mock_use_case
 
             from src.domain.exceptions import NotFoundError
+
             mock_use_case.execute.side_effect = NotFoundError("Workflow", "wf_invalid")
 
             response = client.post(

@@ -56,7 +56,7 @@ async def version_info() -> dict[str, str]:
 
 
 @router.get("/env")
-async def environment_info() -> dict[str, str]:
+async def environment_info() -> dict[str, str | bool]:
     """���境信息（仅开发环境）"""
     from src.config import settings
 
