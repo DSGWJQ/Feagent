@@ -385,6 +385,77 @@ def chat_with_workflow(
         ) from exc
 
 
+@router.post("/{workflow_id}/chat-stream-react")
+async def chat_stream_react_with_workflow(
+    workflow_id: str,
+    request: ChatRequest,
+    db: Session = Depends(get_db_session),
+    use_case: UpdateWorkflowByChatUseCase = Depends(get_update_workflow_by_chat_use_case),
+):
+    """Modify a workflow through conversational input with streaming ReAct steps (SSE).
+
+    Returns: Server-Sent Events stream of ReAct reasoning steps
+    """
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        """Generate SSE events for streaming workflow chat with ReAct steps."""
+        try:
+            input_data = UpdateWorkflowByChatInput(
+                workflow_id=workflow_id,
+                user_message=request.message,
+            )
+
+            # Stream events from the use case
+            async for event in use_case.execute_streaming(input_data):
+                # Convert event to SSE format
+                event_json = json.dumps(event, ensure_ascii=False)
+                yield f"data: {event_json}\n\n"
+
+            # Signal end of stream
+            yield "data: [DONE]\n\n"
+
+            # Commit to database after streaming completes
+            db.commit()
+
+        except NotFoundError as exc:
+            # Send error event
+            error_event = {
+                "type": "error",
+                "error": "workflow_not_found",
+                "detail": f"{exc.entity_type} not found: {exc.entity_id}",
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+            db.rollback()
+        except DomainError as exc:
+            # Send error event
+            error_event = {
+                "type": "error",
+                "error": "domain_error",
+                "detail": str(exc),
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+            db.rollback()
+        except Exception as exc:
+            # Send generic error event
+            error_event = {
+                "type": "error",
+                "error": "internal_error",
+                "detail": str(exc),
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+            db.rollback()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 class GenerateWorkflowRequest(BaseModel):
     """Generate-workflow request payload."""
 

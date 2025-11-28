@@ -13,7 +13,10 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError, NotFoundError
@@ -155,3 +158,128 @@ class UpdateWorkflowByChatUseCase:
             rag_sources=rag_sources,
             react_steps=react_steps,
         )
+
+    async def execute_streaming(
+        self, input_data: UpdateWorkflowByChatInput
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """执行流式对话（异步生成器）
+
+        异步生成器，按以下顺序产生事件：
+        1. processing_started - 开始处理
+        2. react_step - 每个 ReAct 推理步骤（可能有多个）
+        3. modifications_preview - 修改预览
+        4. workflow_updated - 工作流更新完成
+
+        参数：
+            input_data: 输入数据
+
+        异步生成：
+            dict[str, Any]: 各种类型的事件
+
+        抛出：
+            NotFoundError: 当工作流不存在时
+            DomainError: 当消息为空或处理失败时
+        """
+        # 1. 验证输入
+        if not input_data.user_message or not input_data.user_message.strip():
+            raise DomainError("消息不能为空")
+
+        # 2. 获取工作流
+        workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
+        if not workflow:
+            raise NotFoundError(entity_type="Workflow", entity_id=input_data.workflow_id)
+
+        # 3. 产生开始事件
+        yield {
+            "type": "processing_started",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "workflow_id": input_data.workflow_id,
+        }
+
+        # 4. 调用 Domain Service 处理消息
+        result = self.chat_service.process_message(
+            workflow=workflow,
+            user_message=input_data.user_message,
+        )
+
+        # 5. 处理返回结果（兼容基础服务和增强服务）
+        if isinstance(result, tuple):
+            # 基础服务返回 tuple[Workflow, str]
+            modified_workflow, ai_message = result
+            intent = ""
+            confidence = 0.0
+            modifications_count = 0
+            rag_sources = []
+            react_steps = []
+        else:
+            # 增强服务返回 ModificationResult
+            if not result.success:
+                raise DomainError(result.error_message or "修改工作流失败")
+
+            modified_workflow = result.modified_workflow
+            if modified_workflow is None:
+                raise DomainError("修改工作流失败：返回的工作流为空")
+
+            ai_message = result.ai_message
+            intent = result.intent
+            confidence = result.confidence
+            modifications_count = result.modifications_count
+            rag_sources = result.rag_sources
+            react_steps = result.react_steps
+
+        # 6. 流式产生 react_step 事件
+        for react_step in react_steps:
+            yield {
+                "type": "react_step",
+                "step_number": react_step.get("step", 0),
+                "thought": react_step.get("thought", ""),
+                "action": react_step.get("action", {}),
+                "observation": react_step.get("observation", ""),
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+
+        # 7. 产生修改预览事件
+        yield {
+            "type": "modifications_preview",
+            "modifications_count": modifications_count,
+            "intent": intent,
+            "confidence": confidence,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+
+        # 8. 保存修改后的工作流
+        self.workflow_repository.save(modified_workflow)
+
+        # 9. 产生工作流更新完成事件
+        workflow_dict = {
+            "id": modified_workflow.id,
+            "name": modified_workflow.name,
+            "description": modified_workflow.description,
+            "nodes": [
+                {
+                    "id": node.id,
+                    "type": node.type.value,
+                    "name": node.name,
+                    "config": node.config,
+                    "position": {"x": node.position.x, "y": node.position.y},
+                }
+                for node in modified_workflow.nodes
+            ],
+            "edges": [
+                {
+                    "id": edge.id,
+                    "source_node_id": edge.source_node_id,
+                    "target_node_id": edge.target_node_id,
+                    "condition": edge.condition,
+                }
+                for edge in modified_workflow.edges
+            ],
+        }
+
+        yield {
+            "type": "workflow_updated",
+            "workflow": workflow_dict,
+            "ai_message": ai_message,
+            "rag_sources": rag_sources,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
