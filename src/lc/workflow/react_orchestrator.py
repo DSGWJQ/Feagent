@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from src.application.services.workflow_action_parser import WorkflowActionParser
@@ -37,6 +38,7 @@ from src.domain.value_objects.workflow_action import (
     WorkflowAction,
     WorkflowExecutionContext,
 )
+from src.lc.llm_client import get_llm_for_execution
 from src.lc.prompts.workflow_chat_system_prompt import WorkflowChatSystemPrompt
 
 
@@ -101,13 +103,19 @@ class ReActOrchestrator:
     - 决策（确定下一步）
     """
 
-    def __init__(self, max_iterations: int = 50):
+    def __init__(
+        self,
+        max_iterations: int = 50,
+        llm: BaseChatModel | None = None,
+    ):
         """初始化 ReAct 编排器
 
         参数：
             max_iterations: 最大迭代次数（防止无限循环）
+            llm: LLM 实例（可选，为 None 时使用默认配置创建）
         """
         self.max_iterations = max_iterations
+        self.llm = llm or get_llm_for_execution()
         self.system_prompt_generator = WorkflowChatSystemPrompt()
         self.action_parser = WorkflowActionParser()
         self.event_callbacks: list[Callable[[ReActEvent], None]] = []
@@ -263,6 +271,13 @@ class ReActOrchestrator:
     def _do_reasoning(self, state: ReActLoopState) -> WorkflowAction | None:
         """执行推理阶段
 
+        完整的推理流程：
+        1. 生成执行上下文
+        2. 获取系统提示
+        3. 构建消息历史（之前的推理步骤）
+        4. 调用 LLM 获取决策
+        5. 解析 LLM 输出为 WorkflowAction
+
         参数：
             state: 当前状态
 
@@ -270,9 +285,7 @@ class ReActOrchestrator:
             LLM 决定的动作，或 None 如果推理失败
         """
         try:
-            # 生成系统提示（使用 WorkflowExecutionContext 兼容的方式）
-            from src.domain.value_objects.workflow_action import WorkflowExecutionContext
-
+            # 第一步：生成执行上下文
             context = WorkflowExecutionContext(
                 workflow_id=state.workflow_id,
                 workflow_name=state.workflow_name,
@@ -280,21 +293,80 @@ class ReActOrchestrator:
                 executed_nodes=state.executed_nodes,
                 current_step=state.current_step,
             )
-            self.system_prompt_generator.get_system_prompt(context)
 
-            # 这里应该调用真实的 LLM，但在这个阶段我们先返回 None
-            # 真实实现会在 Phase 3.4 中集成 LLM
+            # 第二步：获取系统提示（包含工作流信息和格式约束）
+            system_prompt = self.system_prompt_generator.get_system_prompt(context)
+
+            # 第三步：构建消息历史
+            # 将之前保存的消息加入，形成完整的对话上下文
+            messages = list(state.messages)  # 已有的消息历史
+            # 如果还没有系统消息，添加系统提示
+            if not any(msg.type == "system" for msg in messages):
+                from langchain_core.messages import SystemMessage
+
+                messages.insert(0, SystemMessage(content=system_prompt))
+
+            # 第四步：调用 LLM 进行推理
+            # LLM 会根据系统提示和消息历史，做出下一步决策
+            try:
+                llm_response = self.llm.invoke(
+                    messages,
+                    temperature=0.3,  # 较低温度确保确定性
+                )
+                # 确保 content 是字符串类型
+                raw_content = str(llm_response.content)
+            except Exception as e:
+                self.emit_event_simple(
+                    "reasoning_failed",
+                    {
+                        "iteration": state.iteration_count,
+                        "error": f"LLM 调用失败：{str(e)}",
+                    },
+                )
+                return None
+
+            # 第五步：解析 LLM 输出
+            # 使用 ActionParser 进行三级验证：JSON → Pydantic → 业务规则
+            parse_result = self.action_parser.parse_and_validate(
+                raw_content=raw_content,
+                context=context,
+                parse_attempt=1,
+            )
+
+            if not parse_result.is_valid:
+                # 解析失败，记录错误
+                self.emit_event_simple(
+                    "reasoning_failed",
+                    {
+                        "iteration": state.iteration_count,
+                        "error": parse_result.error_message,
+                    },
+                )
+                return None
+
+            # 解析成功，返回 WorkflowAction
+            action = parse_result.action
+            state.add_message(HumanMessage(content=raw_content))
+
             self.emit_event_simple(
                 "reasoning_completed",
                 {
                     "iteration": state.iteration_count,
-                    "message": "推理阶段完成",
+                    "action_type": action.type if action else "none",
+                    "message": raw_content,
                 },
             )
 
-            return None
+            return action
 
-        except Exception:
+        except Exception as e:
+            self.emit_event_simple(
+                "reasoning_failed",
+                {
+                    "iteration": state.iteration_count,
+                    "error": f"推理阶段异常：{str(e)}",
+                },
+            )
             return None
 
     def _do_action(
