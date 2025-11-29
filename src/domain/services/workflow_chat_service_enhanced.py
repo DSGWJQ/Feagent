@@ -3,7 +3,7 @@
 Domain 层：增强的工作流对话服务
 
 功能增强：
-1. 对话历史管理 - 维护多轮对话上下文
+1. 对话历史管理 - 维护多轮对话上下文（数据库持久化）
 2. 意图识别 - 明确识别用户意图和信心度
 3. 修改验证 - 更详细的验证和错误反馈
 4. 工作流建议 - 根据工作流结构提供建议
@@ -12,61 +12,48 @@ Domain 层：增强的工作流对话服务
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_openai import ChatOpenAI
 
+from src.domain.entities.chat_message import ChatMessage
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError
+from src.domain.ports.chat_message_repository import ChatMessageRepository
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
 
 
 @dataclass
-class ChatMessage:
-    """单条对话消息"""
-
-    content: str
-    is_user: bool
-    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
-
-    def to_dict(self) -> dict[str, Any]:
-        """转换为字典"""
-        return {
-            "content": self.content,
-            "is_user": self.is_user,
-            "timestamp": self.timestamp.isoformat(),
-        }
-
-
-@dataclass
 class ChatHistory:
-    """对话历史管理"""
+    """对话历史管理（数据库持久化）
 
-    messages: list[ChatMessage] = field(default_factory=list)
-    max_messages: int = 100  # 最多保留100条消息
+    职责：
+    - 使用 ChatMessageRepository 管理对话历史
+    - 提供对话上下文的查询和压缩功能
+    - 支持跨会话的历史记录持久化
+    """
+
+    workflow_id: str
+    repository: ChatMessageRepository
+    max_messages: int = 1000  # 最多保留1000条消息
 
     def add_message(self, content: str, is_user: bool) -> None:
-        """添加消息
+        """添加消息并保存到数据库
 
         参数：
             content: 消息内容
             is_user: 是否来自用户
         """
-        message = ChatMessage(content=content, is_user=is_user)
-        self.messages.append(message)
-
-        # 如果超过最大数量，删除最旧的消息
-        if len(self.messages) > self.max_messages:
-            self.messages = self.messages[-self.max_messages :]
+        message = ChatMessage.create(workflow_id=self.workflow_id, content=content, is_user=is_user)
+        self.repository.save(message)
 
     def get_context(self, last_n: int = 10) -> str:
-        """获取最近的对话上下文
+        """获取最近的对话上下文（从数据库加载）
 
         参数：
             last_n: 获取最近 n 条消息
@@ -74,27 +61,29 @@ class ChatHistory:
         返回：
             格式化的对话上下文字符串
         """
-        recent_messages = self.messages[-last_n:]
+        messages = self.repository.find_by_workflow_id(self.workflow_id, limit=last_n)
         context = []
-        for msg in recent_messages:
+        for msg in messages:
             role = "用户" if msg.is_user else "助手"
             context.append(f"{role}：{msg.content}")
 
         return "\n".join(context)
 
     def clear(self) -> None:
-        """清空所有消息"""
-        self.messages.clear()
+        """清空所有消息（从数据库删除）"""
+        self.repository.delete_by_workflow_id(self.workflow_id)
 
     def export(self) -> list[dict[str, Any]]:
-        """导出消息列表"""
-        return [msg.to_dict() for msg in self.messages]
+        """导出消息列表（从数据库加载）"""
+        messages = self.repository.find_by_workflow_id(self.workflow_id, limit=self.max_messages)
+        return [msg.to_dict() for msg in messages]
 
-    def search(self, query: str) -> list[tuple[ChatMessage, float]]:
-        """在消息历史中进行语义搜索
+    def search(self, query: str, threshold: float = 0.5) -> list[tuple[ChatMessage, float]]:
+        """在消息历史中进行语义搜索（使用 repository）
 
         参数：
             query: 搜索查询词
+            threshold: 相关性阈值（0-1）
 
         返回：
             [(ChatMessage, relevance_score), ...] 按相关性降序排列
@@ -102,31 +91,13 @@ class ChatHistory:
         if not query or not query.strip():
             return []
 
-        query_words = set(self._tokenize(query.lower()))
-        results: list[tuple[ChatMessage, float]] = []
-
-        for msg in self.messages:
-            msg_words = set(self._tokenize(msg.content.lower()))
-
-            # 计算相关性分数：使用 Jaccard 相似度
-            if not msg_words:
-                continue
-
-            intersection = len(query_words & msg_words)
-            union = len(query_words | msg_words)
-            relevance = intersection / union if union > 0 else 0.0
-
-            if relevance > 0:
-                results.append((msg, relevance))
-
-        # 按相关性分数降序排列
-        results.sort(key=lambda x: x[1], reverse=True)
-        return results
+        # 直接使用 repository 的搜索功能
+        return self.repository.search(self.workflow_id, query, threshold=threshold)
 
     def filter_by_relevance(
         self, keyword: str, threshold: float = 0.5, max_results: int | None = None
     ) -> list[ChatMessage]:
-        """根据关键词过滤相关的消息
+        """根据关键词过滤相关的消息（使用 repository）
 
         参数：
             keyword: 关键词
@@ -136,10 +107,10 @@ class ChatHistory:
         返回：
             符合条件的消息列表
         """
-        search_results = self.search(keyword)
+        search_results = self.search(keyword, threshold=threshold)
 
-        # 过滤掉低于阈值的结果
-        filtered = [msg for msg, score in search_results if score >= threshold]
+        # 提取消息（忽略分数）
+        filtered = [msg for msg, score in search_results]
 
         # 应用最大结果数限制
         if max_results is not None:
@@ -148,7 +119,7 @@ class ChatHistory:
         return filtered
 
     def compress_history(self, max_tokens: int, min_messages: int = 2) -> list[ChatMessage]:
-        """压缩历史消息以控制 token 数量
+        """压缩历史消息以控制 token 数量（从数据库加载）
 
         参数：
             max_tokens: 最大允许的 token 数
@@ -157,24 +128,27 @@ class ChatHistory:
         返回：
             压缩后的消息列表
         """
-        if not self.messages:
+        # 从数据库加载所有消息
+        messages = self.repository.find_by_workflow_id(self.workflow_id, limit=self.max_messages)
+
+        if not messages:
             return []
 
         # 估计当前 token 数
-        current_tokens = self.estimate_tokens(self.messages)
+        current_tokens = self.estimate_tokens(messages)
 
         # 如果在限制内，返回所有消息
         if current_tokens <= max_tokens:
-            return self.messages.copy()
+            return messages.copy()
 
         # 从后往前（从最新到最旧）构建消息列表，确保保留最近的消息
         compressed = []
         token_count = 0
 
-        for msg in reversed(self.messages):
+        for msg in reversed(messages):
             msg_tokens = self._estimate_message_tokens(msg)
 
-            if len(compressed) >= len(self.messages) - min_messages:
+            if len(compressed) >= len(messages) - min_messages:
                 # 已经删除足够的旧消息，保留最少数量
                 if token_count + msg_tokens <= max_tokens or len(compressed) < min_messages:
                     compressed.append(msg)
@@ -202,22 +176,6 @@ class ChatHistory:
         for msg in messages:
             total += self._estimate_message_tokens(msg)
         return total
-
-    @staticmethod
-    def _tokenize(text: str) -> list[str]:
-        """简单的分词器（将文本分为单词）
-
-        参数：
-            text: 要分词的文本
-
-        返回：
-            分词后的单词列表
-        """
-        # 简单的实现：按空格和标点符号分割
-        import re
-
-        words = re.findall(r"\w+", text)
-        return words
 
     @staticmethod
     def _estimate_message_tokens(msg: ChatMessage) -> int:
@@ -271,32 +229,41 @@ class ModificationResult:
 
 
 class EnhancedWorkflowChatService:
-    """增强版工作流对话服务
+    """增强版工作流对话服务（数据库持久化）
 
     职责：
-    1. 维护对话历史和上下文
+    1. 维护对话历史和上下文（数据库持久化）
     2. 识别用户意图和信心度
     3. 应用修改到工作流
     4. 提供工作流建议
     5. 支持修改回滚
 
     增强点：
-    - 多轮对话上下文支持
+    - 多轮对话上下文支持（跨会话持久化）
     - 更详细的意图识别
     - 更好的错误反馈
     - 工作流优化建议
     """
 
-    def __init__(self, llm: ChatOpenAI, rag_service=None):
+    def __init__(
+        self,
+        workflow_id: str,
+        llm: ChatOpenAI,
+        chat_message_repository: ChatMessageRepository,
+        rag_service=None,
+    ):
         """初始化服务
 
         参数：
+            workflow_id: 工作流 ID（用于关联对话历史）
             llm: LangChain LLM 实例
+            chat_message_repository: 对话消息仓储
             rag_service: RAG服务实例（可选）
         """
+        self.workflow_id = workflow_id
         self.llm = llm
         self.parser = JsonOutputParser()
-        self.history = ChatHistory()
+        self.history = ChatHistory(workflow_id=workflow_id, repository=chat_message_repository)
         self.rag_service = rag_service
 
     def add_message(self, content: str, is_user: bool) -> None:

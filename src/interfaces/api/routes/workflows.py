@@ -37,6 +37,9 @@ from src.domain.exceptions import DomainError, NotFoundError
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.services.workflow_chat_service_enhanced import EnhancedWorkflowChatService
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.repositories.chat_message_repository import (
+    SQLAlchemyChatMessageRepository,
+)
 from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
@@ -70,8 +73,12 @@ def get_workflow_repository(
     return SQLAlchemyWorkflowRepository(db)
 
 
-# 会话管理：每个工作流独立的对话服务实例（维护对话历史）
-_chat_sessions: dict[str, EnhancedWorkflowChatService] = {}
+def get_chat_message_repository(
+    db: Session = Depends(get_db_session),
+) -> SQLAlchemyChatMessageRepository:
+    """Return a chat message repository bound to the current DB session."""
+
+    return SQLAlchemyChatMessageRepository(db)
 
 
 def get_chat_openai():
@@ -119,36 +126,41 @@ def get_workflow_chat_llm() -> WorkflowChatLLM:
 def get_workflow_chat_service(
     workflow_id: str = "",  # 从路径参数传入
     llm=Depends(get_chat_openai),
+    chat_message_repository: SQLAlchemyChatMessageRepository | None = Depends(
+        get_chat_message_repository
+    ),
 ) -> EnhancedWorkflowChatService:
-    """构建增强版对话服务（带记忆）
+    """构建增强版对话服务（数据库持久化）
 
-    每个工作流独立的会话，维护对话历史
+    每个工作流的对话历史存储在数据库中，支持跨会话持久化
     """
-    # 如果该工作流还没有会话，创建新的
-    if workflow_id and workflow_id not in _chat_sessions:
-        _chat_sessions[workflow_id] = EnhancedWorkflowChatService(llm=llm)
-
-    # 返回该工作流的会话（如果 workflow_id 为空，创建临时会话）
-    if workflow_id:
-        return _chat_sessions[workflow_id]
+    if workflow_id and chat_message_repository:
+        # 为有 workflow_id 的请求创建数据库支持的服务
+        return EnhancedWorkflowChatService(
+            workflow_id=workflow_id, llm=llm, chat_message_repository=chat_message_repository
+        )
     else:
-        # 临时会话（用于不需要记忆的场景）
-        return EnhancedWorkflowChatService(llm=llm)
+        # 临时会话（向后兼容，但需要 workflow_id）
+        # 注意：这种情况下服务无法初始化，因为需要 workflow_id
+        raise ValueError("workflow_id is required for EnhancedWorkflowChatService")
 
 
 def get_update_workflow_by_chat_use_case(
     workflow_id: str,  # 从路径参数注入
     workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
+    chat_message_repository: SQLAlchemyChatMessageRepository = Depends(get_chat_message_repository),
     llm=Depends(get_chat_openai),
     rag_service=Depends(get_rag_service),
 ) -> UpdateWorkflowByChatUseCase:
-    """Assemble the chat update use case with its dependencies."""
+    """Assemble the chat update use case with its dependencies (with database-backed chat history)."""
 
-    # 获取或创建该工作流的对话会话（包含RAG服务）
-    if workflow_id not in _chat_sessions:
-        _chat_sessions[workflow_id] = EnhancedWorkflowChatService(llm=llm, rag_service=rag_service)
-
-    chat_service = _chat_sessions[workflow_id]
+    # 为每个请求创建新的对话服务实例（对话历史在数据库中持久化）
+    chat_service = EnhancedWorkflowChatService(
+        workflow_id=workflow_id,
+        llm=llm,
+        chat_message_repository=chat_message_repository,
+        rag_service=rag_service,
+    )
 
     return UpdateWorkflowByChatUseCase(
         workflow_repository=workflow_repository,

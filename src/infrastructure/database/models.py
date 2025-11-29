@@ -477,6 +477,13 @@ class WorkflowModel(Base):
         "EdgeModel", back_populates="workflow", cascade="all, delete-orphan", lazy="selectin"
     )
 
+    # 关系（一对多：一个 Workflow 有多个 ChatMessage）
+    # cascade="all, delete-orphan": 删除 Workflow 时级联删除所有聊天消息
+    # back_populates: 双向关系（ChatMessageModel.workflow）
+    chat_messages: Mapped[list["ChatMessageModel"]] = relationship(
+        "ChatMessageModel", back_populates="workflow", cascade="all, delete-orphan", lazy="selectin"
+    )
+
     # 索引
     __table_args__ = (
         Index("idx_workflows_status", "status"),  # 查询特定状态的工作流
@@ -840,3 +847,66 @@ class ScheduledWorkflowModel(Base):
 
     def __repr__(self) -> str:
         return f"<ScheduledWorkflowModel(id={self.id}, workflow_id={self.workflow_id}, status={self.status})>"
+
+
+class ChatMessageModel(Base):
+    """ChatMessage ORM 模型
+
+    表名：chat_messages
+
+    字段说明：
+    - id: 主键（msg_ 前缀，36 字符）
+    - workflow_id: 关联的工作流 ID（外键）
+    - content: 消息内容（Text，支持长文本）
+    - is_user: 是否为用户消息（布尔值）
+    - timestamp: 消息时间戳（UTC时间）
+
+    关系：
+    - workflow: 多对一关系（多条消息属于一个工作流）
+
+    索引：
+    - idx_chat_messages_workflow_timestamp: 复合索引（workflow_id + timestamp）
+      用于查询历史记录（按工作流 + 时间排序）
+
+    使用场景：
+    1. 保存对话消息（用户消息 + AI 回复）
+    2. 查询工作流的历史记录（按时间排序）
+    3. 搜索历史消息（全文搜索）
+    4. 清空历史记录（按 workflow_id 删除）
+    """
+
+    __tablename__ = "chat_messages"
+
+    # 主键
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Message ID（msg_ 前缀）")
+
+    # 外键：关联工作流
+    workflow_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="关联的工作流 ID",
+    )
+
+    # 消息内容
+    content: Mapped[str] = mapped_column(Text, nullable=False, comment="消息内容")
+
+    # 消息类型（用户消息 vs AI 回复）
+    is_user: Mapped[bool] = mapped_column(Boolean, nullable=False, comment="是否为用户消息")
+
+    # 时间戳（UTC）
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="消息时间戳（UTC）"
+    )
+
+    # 关系：多对一（多条消息属于一个工作流）
+    workflow = relationship("WorkflowModel", back_populates="chat_messages")
+
+    # 索引：复合索引（workflow_id + timestamp）
+    # 用于查询某个工作流的历史记录，并按时间排序
+    __table_args__ = (Index("idx_chat_messages_workflow_timestamp", "workflow_id", "timestamp"),)
+
+    def __repr__(self) -> str:
+        role = "User" if self.is_user else "AI"
+        preview = self.content[:50] + "..." if len(self.content) > 50 else self.content
+        return f"<ChatMessageModel(id={self.id}, workflow_id={self.workflow_id}, role={role}, content='{preview}')>"
