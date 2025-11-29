@@ -44,7 +44,10 @@
       "Bash(cat:*)",
       "Bash($env:PRE_COMMIT_HOME=\"D:\\My_Project\\agent_data\\.pre-commit-cache\")",
       "Bash(pre-commit run:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format:*)",
+      "Bash(pyright:*)"
     ],
     "deny": [],
     "ask": []
