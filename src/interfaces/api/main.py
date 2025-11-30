@@ -21,6 +21,7 @@ from src.interfaces.api.routes import (
     concurrent_workflows,
     health,
     llm_providers,
+    memory_metrics,
     runs,
     scheduled_workflows,
     tools,
@@ -139,6 +140,7 @@ app.include_router(llm_providers.router, prefix="/api", tags=["LLM Providers"])
 app.include_router(scheduled_workflows.router, prefix="/api", tags=["Scheduled Workflows"])
 app.include_router(concurrent_workflows.router, prefix="/api", tags=["Concurrent Workflows"])
 app.include_router(health.router, prefix="/api", tags=["Health"])
+app.include_router(memory_metrics.router, tags=["Memory"])
 
 
 if __name__ == "__main__":

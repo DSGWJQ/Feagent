@@ -130,14 +130,23 @@ def get_workflow_chat_service(
         get_chat_message_repository
     ),
 ) -> EnhancedWorkflowChatService:
-    """构建增强版对话服务（数据库持久化）
+    """构建增强版对话服务（使用新的 CompositeMemoryService）
 
-    每个工作流的对话历史存储在数据库中，支持跨会话持久化
+    每个工作流的对话历史使用高性能内存系统（缓存 + 压缩 + 性能监控）
     """
     if workflow_id and chat_message_repository:
-        # 为有 workflow_id 的请求创建数据库支持的服务
+        # 导入 CompositeMemoryService 依赖
+        from src.interfaces.api.dependencies.memory import get_composite_memory_service
+
+        # 获取新的内存服务
+        memory_service = get_composite_memory_service(session=chat_message_repository._session)
+
+        # 使用新的内存系统创建服务
         return EnhancedWorkflowChatService(
-            workflow_id=workflow_id, llm=llm, chat_message_repository=chat_message_repository
+            workflow_id=workflow_id,
+            llm=llm,
+            chat_message_repository=chat_message_repository,
+            memory_service=memory_service,
         )
     else:
         # 临时会话（向后兼容，但需要 workflow_id）
@@ -152,14 +161,21 @@ def get_update_workflow_by_chat_use_case(
     llm=Depends(get_chat_openai),
     rag_service=Depends(get_rag_service),
 ) -> UpdateWorkflowByChatUseCase:
-    """Assemble the chat update use case with its dependencies (with database-backed chat history)."""
+    """Assemble the chat update use case with its dependencies (using CompositeMemoryService)."""
 
-    # 为每个请求创建新的对话服务实例（对话历史在数据库中持久化）
+    # 导入 CompositeMemoryService 依赖
+    from src.interfaces.api.dependencies.memory import get_composite_memory_service
+
+    # 获取新的内存服务
+    memory_service = get_composite_memory_service(session=chat_message_repository._session)
+
+    # 为每个请求创建新的对话服务实例（使用高性能内存系统）
     chat_service = EnhancedWorkflowChatService(
         workflow_id=workflow_id,
         llm=llm,
         chat_message_repository=chat_message_repository,
         rag_service=rag_service,
+        memory_service=memory_service,
     )
 
     return UpdateWorkflowByChatUseCase(

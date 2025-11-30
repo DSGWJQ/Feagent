@@ -251,6 +251,7 @@ class EnhancedWorkflowChatService:
         llm: ChatOpenAI,
         chat_message_repository: ChatMessageRepository,
         rag_service=None,
+        memory_service=None,
     ):
         """初始化服务
 
@@ -259,11 +260,21 @@ class EnhancedWorkflowChatService:
             llm: LangChain LLM 实例
             chat_message_repository: 对话消息仓储
             rag_service: RAG服务实例（可选）
+            memory_service: CompositeMemoryService 实例（可选，优先使用）
         """
         self.workflow_id = workflow_id
         self.llm = llm
         self.parser = JsonOutputParser()
-        self.history = ChatHistory(workflow_id=workflow_id, repository=chat_message_repository)
+
+        # 使用新的 CompositeMemoryService（如果提供）
+        if memory_service is not None:
+            from src.application.services.memory_service_adapter import MemoryServiceAdapter
+
+            self.history = MemoryServiceAdapter(workflow_id=workflow_id, service=memory_service)
+        else:
+            # 向后兼容：使用旧的 ChatHistory
+            self.history = ChatHistory(workflow_id=workflow_id, repository=chat_message_repository)
+
         self.rag_service = rag_service
 
     def add_message(self, content: str, is_user: bool) -> None:
