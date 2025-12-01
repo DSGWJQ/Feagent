@@ -6,7 +6,6 @@
  * - /workflows/:id/edit - 工作流编辑器（全屏，无布局）
  * - /app/* - 应用页面（使用 MainLayout）
  *   - /app/agents - Agent 列表页
- *   - /app/agents/create - 创建 Agent 页面
  *   - /app/agents/:id - Agent 详情页
  *   - /app/scheduled - 定时任务
  *   - /app/monitor - 调度器监控
@@ -23,6 +22,7 @@ import { MainLayout } from '@/layouts';
 import { HomePage } from '@/features/home/pages';
 import { AgentListTest, CreateAgentPage, AgentDetailPage } from '@/features/agents/pages';
 import { WorkflowEditorPage } from '@/features/workflows/pages';
+import { KnowledgeUploadPage } from '@/features/knowledge/pages';
 // import { TaskClassificationPage } from '@/features/classification/pages';
 import { ScheduledWorkflowsPage, SchedulerMonitorPage } from '@/features/scheduler/pages';
 // import { ToolsLibraryPage } from '@/features/tools/pages';
@@ -50,6 +50,16 @@ export const router = createBrowserRouter([
     element: <WorkflowEditorPage />,
   },
 
+  // 独立的 Agent 创建页（无侧边栏）
+  {
+    path: '/agents/create',
+    element: <CreateAgentPage />,
+  },
+  {
+    path: '/knowledge/upload',
+    element: <KnowledgeUploadPage />,
+  },
+
   // 应用页面（使用 MainLayout）
   {
     path: '/app',
@@ -65,10 +75,6 @@ export const router = createBrowserRouter([
       {
         path: 'agents',
         element: <AgentListTest />,
-      },
-      {
-        path: 'agents/create',
-        element: <CreateAgentPage />,
       },
       {
         path: 'agents/:id',

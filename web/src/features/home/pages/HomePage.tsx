@@ -14,10 +14,10 @@ import type { MenuProps } from 'antd';
 import {
   RocketOutlined,
   RobotOutlined,
-  ApartmentOutlined,
   ClockCircleOutlined,
   ApiOutlined,
   DownOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 import './HomePage.css';
 
@@ -25,9 +25,12 @@ export const HomePage = () => {
   const navigate = useNavigate();
   const [hovering, setHovering] = useState(false);
 
-  const handleWorkflowEditor = () => {
-    // 导航到工作流编辑器（全屏，无侧边栏）
-    navigate('/workflows/test-workflow-id/edit');
+  const handleCreateAgent = () => {
+    navigate('/agents/create');
+  };
+
+  const handleKnowledgeUpload = () => {
+    navigate('/knowledge/upload');
   };
 
   // Agent 管理下拉菜单
@@ -36,11 +39,6 @@ export const HomePage = () => {
       key: '/app/agents',
       label: 'Agent 列表',
       onClick: () => navigate('/app/agents'),
-    },
-    {
-      key: '/app/agents/create',
-      label: '创建 Agent',
-      onClick: () => navigate('/app/agents/create'),
     },
   ];
 
@@ -92,16 +90,6 @@ export const HomePage = () => {
               </Button>
             </Dropdown>
 
-            {/* 工作流管理 */}
-            <Button
-              type="text"
-              className="home-nav-btn"
-              onClick={handleWorkflowEditor}
-            >
-              <ApartmentOutlined />
-              工作流
-            </Button>
-
             {/* 调度器 */}
             <Dropdown menu={{ items: schedulerMenuItems }} placement="bottom">
               <Button type="text" className="home-nav-btn">
@@ -119,6 +107,11 @@ export const HomePage = () => {
                 <DownOutlined style={{ fontSize: '12px' }} />
               </Button>
             </Dropdown>
+
+            <Button type="text" className="home-nav-btn" onClick={handleKnowledgeUpload}>
+              <BookOutlined />
+              上传知识库
+            </Button>
           </nav>
         </div>
       </header>
@@ -149,7 +142,7 @@ export const HomePage = () => {
             type="primary"
             size="large"
             icon={<RocketOutlined />}
-            onClick={handleWorkflowEditor}
+            onClick={handleCreateAgent}
             onMouseEnter={() => setHovering(true)}
             onMouseLeave={() => setHovering(false)}
             className={`home-cta-btn ${hovering ? 'hovering' : ''}`}
@@ -189,7 +182,7 @@ export const HomePage = () => {
             type="primary"
             size="large"
             icon={<RocketOutlined />}
-            onClick={handleWorkflowEditor}
+            onClick={handleCreateAgent}
             className="workflow-cta-btn"
           >
             进入工作流编辑器

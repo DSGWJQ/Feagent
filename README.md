@@ -79,8 +79,13 @@ cp .env.example .env
 alembic upgrade head
 
 # 4. 启动开发服务器
-uvicorn src.interfaces.api.main:app --reload --port 8000
+python -m uvicorn src.interfaces.api.main:app --reload --port 8000
 ```
+
+> 注意（Windows）：
+> - 请使用 `python -m uvicorn ...`（而不是直接运行 `uvicorn ...`），这样可以确保仓库根目录加入 `PYTHONPATH` 并加载项目提供的 `watchfiles` shim。
+> - 该 shim 会强制 Uvicorn 回退到更稳定的 `StatReload`，避免 `watchfiles` 在部分 Windows 终端向子进程发送异常的 Ctrl+C 信号，导致刚启动就退出或报 `KeyboardInterrupt`。
+> - 如需恢复原生 `watchfiles`，可在启动命令前设置 `AGENT_ENABLE_WATCHFILES=1`。
 
 ### 前端初始化
 

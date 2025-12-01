@@ -173,3 +173,90 @@ export interface ApiError {
   detail: string;
   statusCode?: number;
 }
+
+// ==================== Knowledge Base Types ====================
+
+// Document source type
+export type DocumentSource = 'upload' | 'import' | 'crawl';
+
+// Document status type
+export type DocumentStatus = 'pending' | 'processing' | 'processed' | 'failed';
+
+// Knowledge Document entity
+export interface KnowledgeDocument {
+  id: string;
+  title: string;
+  workflowId?: string;
+  source: DocumentSource;
+  status: DocumentStatus;
+  chunkCount: number;
+  totalTokens: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Knowledge upload request
+export interface KnowledgeUploadRequest {
+  title: string;
+  content: string;
+  workflowId?: string;
+  source?: DocumentSource;
+  metadata?: Record<string, unknown>;
+  filePath?: string;
+}
+
+// Knowledge upload response
+export interface KnowledgeUploadResponse {
+  documentId: string;
+  title: string;
+  chunkCount: number;
+  totalTokens: number;
+  message: string;
+}
+
+// Knowledge list response
+export interface KnowledgeListResponse {
+  documents: KnowledgeDocument[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Knowledge stats response
+export interface KnowledgeStatsResponse {
+  totalDocuments: number;
+  totalChunks: number;
+  totalTokens: number;
+  byWorkflow: Record<string, number>;
+  bySource: Record<string, number>;
+}
+
+// ==================== Memory System Types ====================
+
+// Memory metrics response
+export interface MemoryMetrics {
+  cacheHitRate: number;
+  fallbackCount: number;
+  compressionRatio: number;
+  avgFallbackTimeMs: number;
+  lastUpdated: string;
+}
+
+// ==================== Enhanced Chat Types ====================
+
+// RAG source information
+export interface RAGSource {
+  documentId: string;
+  title: string;
+  source: string;
+  relevanceScore: number;
+  preview: string;
+}
+
+// ReAct reasoning step
+export interface ReActStep {
+  step: string;
+  thought?: string;
+  action?: string;
+  observation?: string;
+}

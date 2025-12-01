@@ -12,7 +12,7 @@ import {
   Space,
   Alert,
   Typography,
-  Badge,
+  Tag,
   Switch,
   Tabs,
   message
@@ -25,7 +25,8 @@ import {
   PlayCircleOutlined,
   BookOutlined,
   FileTextOutlined,
-  SearchOutlined
+  SearchOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import type { TabsProps } from 'antd';
 
@@ -81,6 +82,7 @@ export const WorkflowAIChatWithRAG: React.FC<WorkflowAIChatWithRAGProps> = ({
   const [ragContext, setRagContext] = useState<string>('');
   const [ragSources, setRagSources] = useState<any[]>([]);
   const { interactionMode, setInteractionMode, isCanvasMode } = useWorkflowInteraction();
+  const wasProcessingRef = useRef(false);
 
   const {
     messages,
@@ -105,6 +107,13 @@ export const WorkflowAIChatWithRAG: React.FC<WorkflowAIChatWithRAGProps> = ({
     if (isProcessing && interactionMode !== 'chat') {
       setInteractionMode('chat');
     }
+  }, [isProcessing, interactionMode, setInteractionMode]);
+
+  useEffect(() => {
+    if (wasProcessingRef.current && !isProcessing && interactionMode === 'chat') {
+      setInteractionMode('canvas');
+    }
+    wasProcessingRef.current = isProcessing;
   }, [isProcessing, interactionMode, setInteractionMode]);
 
   // 当输入框聚焦时，切换到聊天模式
@@ -158,7 +167,7 @@ export const WorkflowAIChatWithRAG: React.FC<WorkflowAIChatWithRAGProps> = ({
     let welcomeText = '你好！我是工作流AI助手。告诉我你想如何修改工作流，比如"在HTTP节点前增加条件判断"或"删除所有数据库节点"。';
 
     if (ragEnabled) {
-      welcomeText += '\n\n🔍 当前已启用RAG知识库检索功能，我可以基于上传的文档回答问题。';
+      welcomeText += '\n\n🔍 当前已启用知识库检索功能，我可以基于上传的文档回答问题。';
     }
 
     return {
@@ -379,7 +388,7 @@ export const WorkflowAIChatWithRAG: React.FC<WorkflowAIChatWithRAGProps> = ({
               onFocus={handleInputFocus}
               placeholder={
                 ragEnabled
-                  ? (isCanvasMode ? "输入消息... (点击后将切换到聊天模式，已启用RAG检索)" : "输入消息... (Enter发送, Shift+Enter换行, 已启用RAG检索)")
+                  ? (isCanvasMode ? "输入消息... (点击后将切换到聊天模式，已启用知识库检索)" : "输入消息... (Enter发送, Shift+Enter换行, 已启用知识库检索)")
                   : (isCanvasMode ? "输入消息... (点击后将切换到聊天模式)" : "输入消息... (Enter发送, Shift+Enter换行)")
               }
               autoSize={{ minRows: 1, maxRows: 4 }}
@@ -435,30 +444,28 @@ export const WorkflowAIChatWithRAG: React.FC<WorkflowAIChatWithRAGProps> = ({
     <Card
       className="fake-ai-chat"
       title={
-        <Space>
+        <Space size={6} wrap>
           <RobotOutlined style={{ color: '#8b5cf6' }} />
           <span style={{ color: '#fafafa' }}>AI助手</span>
           {ragEnabled && (
-            <Badge
-              status="processing"
-              text={<span style={{ color: '#8b5cf6', fontSize: '12px' }}>RAG</span>}
-            />
+            <Tag color="purple" bordered={false} style={{ marginInlineEnd: 0 }}>
+              知识库
+            </Tag>
           )}
           {interactionMode !== 'idle' && (
-            <Badge
-              status={interactionMode === 'chat' ? 'processing' : 'default'}
-              text={
-                <span style={{ color: interactionMode === 'chat' ? '#8b5cf6' : '#8c8c8c', fontSize: '12px' }}>
-                  {interactionMode === 'chat' ? '聊天模式' : '画布模式'}
-                </span>
-              }
-            />
+            <Tag
+              color={interactionMode === 'chat' ? 'magenta' : 'blue'}
+              bordered={false}
+              style={{ marginInlineEnd: 0 }}
+            >
+              {interactionMode === 'chat' ? '聊天模式' : '画布模式'}
+            </Tag>
           )}
         </Space>
       }
       extra={
-        <Space>
-          <span style={{ color: '#8c8c8c', fontSize: '12px' }}>RAG</span>
+        <Space size={4} wrap align="center">
+          <span style={{ color: '#8c8c8c', fontSize: '12px' }}>知识库</span>
           <Switch
             size="small"
             checked={ragEnabled}
@@ -478,6 +485,19 @@ export const WorkflowAIChatWithRAG: React.FC<WorkflowAIChatWithRAGProps> = ({
               对话
             </Button>
           )}
+          {!isCanvasMode && (
+            <Button
+              type="text"
+              size="small"
+              icon={<AppstoreOutlined />}
+              onClick={() => setInteractionMode('canvas')}
+              style={{ color: '#8c8c8c' }}
+              title={isProcessing ? 'AI 正在处理，请稍后' : '恢复画布编辑'}
+              disabled={isProcessing}
+            >
+              画布
+            </Button>
+          )}
         </Space>
       }
       style={{
@@ -487,18 +507,20 @@ export const WorkflowAIChatWithRAG: React.FC<WorkflowAIChatWithRAGProps> = ({
         backgroundColor: '#141414',
         borderColor: '#262626',
       }}
-      headStyle={{
-        backgroundColor: '#1a1a1a',
-        borderBottom: '1px solid #262626',
-        color: '#fafafa',
-      }}
-      bodyStyle={{
-        flex: 1,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#141414',
-        padding: 0,
+      styles={{
+        header: {
+          backgroundColor: '#1a1a1a',
+          borderBottom: '1px solid #262626',
+          color: '#fafafa',
+        },
+        body: {
+          flex: 1,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#141414',
+          padding: 0,
+        },
       }}
     >
       <Tabs

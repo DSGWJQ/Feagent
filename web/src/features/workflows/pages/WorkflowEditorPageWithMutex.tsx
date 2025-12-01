@@ -8,7 +8,7 @@
  * - 聊天/拖拽互斥锁
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, type DragEvent } from 'react';
 import {
   ReactFlow,
   applyNodeChanges,
@@ -26,7 +26,7 @@ import {
   type NodeDragHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Button, message, Empty, Spin, Alert } from 'antd';
+import { Button, message, Empty, Spin } from 'antd';
 import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
@@ -324,6 +324,66 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   }, []);
 
   /**
+   * 处理拖拽经过画布
+   */
+  const handleDragOver = useCallback(
+    (event: DragEvent) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      if (!isCanvasMode) {
+        setInteractionMode('canvas');
+      }
+    },
+    [isCanvasMode, setInteractionMode]
+  );
+
+  /**
+   * 处理将节点拖拽到画布
+   */
+  const handleDrop = useCallback(
+    (event: DragEvent) => {
+      event.preventDefault();
+
+      const reactFlowBounds = reactFlowWrapper.current?.getBoundingClientRect();
+      const instance = reactFlowInstance.current;
+      const type = event.dataTransfer.getData('application/reactflow');
+
+      if (!reactFlowBounds || !instance || !type) {
+        return;
+      }
+
+      const instanceAny = instance as {
+        screenToFlowPosition?: (pos: { x: number; y: number }) => { x: number; y: number };
+        project?: (pos: { x: number; y: number }) => { x: number; y: number };
+      };
+
+      const position =
+        typeof instanceAny.screenToFlowPosition === 'function'
+          ? instanceAny.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+          : typeof instanceAny.project === 'function'
+            ? instanceAny.project({
+                x: event.clientX - reactFlowBounds.left,
+                y: event.clientY - reactFlowBounds.top,
+              })
+            : {
+                x: event.clientX - reactFlowBounds.left,
+                y: event.clientY - reactFlowBounds.top,
+              };
+
+      const newNode: Node = {
+        id: `node-${nodeIdCounterRef.current++}`,
+        type,
+        position,
+        data: getDefaultNodeData(type),
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+      setInteractionMode('canvas');
+    },
+    [setInteractionMode]
+  );
+
+  /**
    * 保存工作流
    */
   const handleSave = useCallback(async () => {
@@ -433,7 +493,9 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         backgroundColor: '#0a0a0a',
         color: '#fafafa',
       }}>
-        <Spin size="large" tip="加载工作流中..." />
+        <Spin size="large" tip="加载工作流中...">
+          <div style={{ width: 0, height: 0 }} />
+        </Spin>
       </div>
     );
   }
@@ -517,17 +579,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         </div>
       </div>
 
-      {/* 互斥锁提示 */}
-      {isChatMode && (
-        <Alert
-          message="当前处于聊天编辑模式"
-          description="AI 正在为您修改工作流，画布交互已暂时禁用"
-          type="info"
-          showIcon
-          style={{ margin: '8px 24px' }}
-        />
-      )}
-
       {/* 主内容区域 */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* 左侧节点调色板 */}
@@ -544,6 +595,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             onNodeClick={onNodeClick}
             onNodeDragStart={onNodeDragStart}
             onMoveStart={onMoveStart}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
             onInit={(instance) => {
               reactFlowInstance.current = instance;
             }}

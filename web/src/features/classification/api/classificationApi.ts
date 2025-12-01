@@ -4,10 +4,8 @@
  * Handles communication with backend task classification endpoints
  */
 
-import axios from 'axios';
 import type { ClassificationResult } from '@/types/workflow';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+import { axiosInstance } from '@/services/api';
 
 export interface ClassifyTaskRequest {
   start: string;
@@ -21,8 +19,8 @@ export interface ClassifyTaskRequest {
 export const classifyTask = async (
   data: ClassifyTaskRequest
 ): Promise<{ data: ClassificationResult }> => {
-  const response = await axios.post<ClassificationResult>(
-    `${API_BASE_URL}/classification`,
+  const response = await axiosInstance.post<ClassificationResult>(
+    '/classification',
     data
   );
   return { data: response.data };

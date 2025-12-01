@@ -30,6 +30,8 @@ from src.domain.entities.agent import Agent
 from src.domain.entities.task import Task
 from src.domain.ports.agent_repository import AgentRepository
 from src.domain.ports.task_repository import TaskRepository
+from src.domain.ports.workflow_repository import WorkflowRepository
+from src.domain.services.agent_to_workflow_converter import AgentToWorkflowConverter
 from src.lc.chains.plan_generator import create_plan_generator_chain
 
 
@@ -89,27 +91,34 @@ class CreateAgentUseCase:
         self,
         agent_repository: AgentRepository,
         task_repository: TaskRepository | None = None,
+        workflow_repository: WorkflowRepository | None = None,
+        workflow_converter: AgentToWorkflowConverter | None = None,
     ):
         """初始化用例
 
         参数：
-            agent_repository: Agent 仓储接口
+            agent_repository: Agent 仓储接口（必需）
             task_repository: Task 仓储接口（可选，用于生成执行计划）
+            workflow_repository: Workflow 仓储接口（可选，用于保存生成的 Workflow）
+            workflow_converter: Agent→Workflow 转换器（可选，用于转换 Tasks 为 Workflow）
 
         为什么通过构造函数注入？
         - 依赖注入：由外部管理依赖
         - 可测试性：测试时可以注入 Mock
         - 明确依赖：构造函数清晰表达依赖关系
 
-        为什么 task_repository 是可选的？
-        - 向后兼容：旧代码不需要传入 task_repository
-        - 渐进式迁移：可以先不生成 Tasks，后续再添加
+        为什么 task_repository/workflow_repository/workflow_converter 是可选的？
+        - 向后兼容：旧代码不需要传入这些依赖
+        - 渐进式迁移：可以逐步启用新功能
+        - 功能解耦：生成 Workflow 是可选功能，不影响核心的 Agent 创建
         """
         self.agent_repository = agent_repository
         self.task_repository = task_repository
+        self.workflow_repository = workflow_repository
+        self.workflow_converter = workflow_converter or AgentToWorkflowConverter()
 
-    def execute(self, input_data: CreateAgentInput) -> Agent:
-        """执行用例：创建 Agent 并生成执行计划
+    def execute(self, input_data: CreateAgentInput) -> tuple[Agent, str | None]:
+        """执行用例：创建 Agent 并生成执行计划和 Workflow
 
         业务流程：
         1. 调用 Agent.create() 创建领域实体
@@ -123,13 +132,17 @@ class CreateAgentUseCase:
            - 使用 PlanGeneratorChain 生成任务列表
            - 创建 Task 实体
            - 保存 Tasks 到数据库
-        4. 返回创建的 Agent
+        4. 生成 Workflow（如果提供了 workflow_repository）
+           - 使用 AgentToWorkflowConverter 转换 Tasks 为 Workflow
+           - 保存 Workflow 到数据库
+           - 返回 workflow_id
+        5. 返回创建的 Agent 和 workflow_id
 
         参数：
             input_data: 创建 Agent 的输入参数
 
         返回：
-            创建的 Agent 实体
+            tuple[Agent, str | None]: (创建的 Agent 实体, Workflow ID 或 None)
 
         异常：
             DomainError: 当输入不符合业务规则时（由 Agent.create() 抛出）
@@ -141,21 +154,28 @@ class CreateAgentUseCase:
         - 用例不应该关心如何处理异常（关注点分离）
         - 保持用例简单，只负责业务逻辑编排
 
+        为什么返回 tuple？
+        - 返回 Agent 实体：调用者可能需要 Agent 信息
+        - 返回 workflow_id：前端需要跳转到 Workflow 编辑器
+        - tuple 比定义新类型更简单（Python 惯用法）
+
         示例：
         >>> agent_repo = SQLAlchemyAgentRepository(session)
         >>> task_repo = SQLAlchemyTaskRepository(session)
+        >>> workflow_repo = SQLAlchemyWorkflowRepository(session)
         >>> use_case = CreateAgentUseCase(
         ...     agent_repository=agent_repo,
-        ...     task_repository=task_repo
+        ...     task_repository=task_repo,
+        ...     workflow_repository=workflow_repo,
         ... )
         >>> input_data = CreateAgentInput(
         ...     start="我有一个 CSV 文件",
         ...     goal="分析销售数据",
         ...     name="销售分析 Agent"
         ... )
-        >>> agent = use_case.execute(input_data)
+        >>> agent, workflow_id = use_case.execute(input_data)
         >>> print(agent.id)  # UUID
-        >>> print(agent.status)  # "active"
+        >>> print(workflow_id)  # "wf_abc123" 或 None
         """
         # 步骤 1: 创建领域实体
         # 为什么调用 Agent.create() 而不是 Agent()?
@@ -180,6 +200,7 @@ class CreateAgentUseCase:
         # - MVP 功能：用户填写表单，AI 生成最小可行工作流
         # - 提前生成计划，用户可以查看和调整
         # - 执行时可以直接使用这些 Tasks
+        tasks: list[Task] = []
         if self.task_repository is not None:
             # 3.1: 调用 LLM 生成执行计划
             # 为什么使用 PlanGeneratorChain？
@@ -207,10 +228,33 @@ class CreateAgentUseCase:
                     run_id=None,  # 还没执行，所以 run_id 为 None
                 )
                 self.task_repository.save(task)
+                tasks.append(task)  # 收集 Task，用于生成 Workflow
 
-        # 步骤 4: 返回创建的 Agent
-        # 为什么返回 Agent 而不是 ID？
-        # - 调用者可能需要 Agent 的其他信息（如 created_at）
-        # - 避免调用者再次查询数据库
-        # - 符合 CQRS 模式（Command 返回结果）
-        return agent
+        # 步骤 4: 生成 Workflow（如果提供了 workflow_repository 且有 Tasks）
+        # 为什么要生成 Workflow？
+        # - 自动化：用户创建 Agent 后立即可以看到可视化的工作流
+        # - 用户体验：直接跳转到编辑器，可以调整节点和边
+        # - 降低门槛：不需要手动创建 Workflow
+        workflow_id = None
+        if self.workflow_repository is not None and tasks:
+            # 4.1: 使用转换器将 Agent 和 Tasks 转换为 Workflow
+            # 为什么使用 AgentToWorkflowConverter？
+            # - 封装转换逻辑：节点类型推断、配置生成、位置计算
+            # - Domain 服务：纯业务逻辑，可复用
+            # - 易于测试：可以单独测试转换逻辑
+            workflow = self.workflow_converter.convert(agent, tasks)
+
+            # 4.2: 保存 Workflow 到数据库
+            # 为什么要保存？
+            # - 持久化：用户可以随时访问 Workflow
+            # - 关联：Workflow 和 Agent 通过 source_id 关联
+            # - 追溯：可以知道 Workflow 是从哪个 Agent 生成的
+            self.workflow_repository.save(workflow)
+            workflow_id = workflow.id
+
+        # 步骤 5: 返回创建的 Agent 和 workflow_id
+        # 为什么返回 tuple？
+        # - Agent: 调用者需要 Agent 信息（如 ID、created_at）
+        # - workflow_id: 前端需要跳转到 Workflow 编辑器
+        # - 简单高效：tuple 比定义新类型更简单
+        return agent, workflow_id

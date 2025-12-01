@@ -13,7 +13,7 @@
  * - 创建成功后自动跳转到列表页
  */
 
-import { Card, Button, Space, Typography } from 'antd';
+import { Card, Button, Space, Typography, App } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { CreateAgentForm } from '@/features/agents/components';
@@ -23,6 +23,7 @@ const { Title, Paragraph } = Typography;
 
 export const CreateAgentPage: React.FC = () => {
   const navigate = useNavigate();
+  const { message } = App.useApp();
 
   /**
    * 处理创建成功
@@ -37,7 +38,8 @@ export const CreateAgentPage: React.FC = () => {
    * - 提供更好的用户体验
    */
   const handleSuccess = (agent: Agent) => {
-    navigate(`/agents/${agent.id}`);
+    message.success('Agent 创建成功，即将跳转到详情页');
+    navigate(`/app/agents/${agent.id}`);
   };
 
   /**
@@ -49,7 +51,7 @@ export const CreateAgentPage: React.FC = () => {
    * - 提升用户体验
    */
   const handleBack = () => {
-    navigate('/agents');
+    navigate('/');
   };
 
   return (
@@ -57,12 +59,8 @@ export const CreateAgentPage: React.FC = () => {
       {/* 页面头部 */}
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* 返回按钮 */}
-        <Button
-          icon={<ArrowLeftOutlined />}
-          onClick={handleBack}
-          type="text"
-        >
-          返回列表
+        <Button icon={<ArrowLeftOutlined />} onClick={handleBack} type="text">
+          返回
         </Button>
 
         {/* 页面标题和描述 */}

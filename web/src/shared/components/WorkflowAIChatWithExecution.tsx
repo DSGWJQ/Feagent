@@ -56,6 +56,7 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [executionSummary, setExecutionSummary] = useState<ExecutionSummaryMessage | null>(null);
   const { interactionMode, setInteractionMode, isCanvasMode } = useWorkflowInteraction();
+  const wasProcessingRef = useRef(false);
 
   const {
     messages,
@@ -80,6 +81,13 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
     if (isProcessing && interactionMode !== 'chat') {
       setInteractionMode('chat');
     }
+  }, [isProcessing, interactionMode, setInteractionMode]);
+
+  useEffect(() => {
+    if (wasProcessingRef.current && !isProcessing && interactionMode === 'chat') {
+      setInteractionMode('canvas');
+    }
+    wasProcessingRef.current = isProcessing;
   }, [isProcessing, interactionMode, setInteractionMode]);
 
   // 当输入框聚焦时，切换到聊天模式
@@ -232,17 +240,19 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
         backgroundColor: '#141414',
         borderColor: '#262626',
       }}
-      headStyle={{
-        backgroundColor: '#1a1a1a',
-        borderBottom: '1px solid #262626',
-        color: '#fafafa',
-      }}
-      bodyStyle={{
-        flex: 1,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#141414',
+      styles={{
+        header: {
+          backgroundColor: '#1a1a1a',
+          borderBottom: '1px solid #262626',
+          color: '#fafafa',
+        },
+        body: {
+          flex: 1,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#141414',
+        },
       }}
     >
       {pendingWorkflow && (

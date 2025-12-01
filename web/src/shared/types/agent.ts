@@ -35,6 +35,9 @@ export interface Agent {
 
   /** 关联的任务列表（可选，创建 Agent 时返回） */
   tasks?: AgentTask[];
+
+  /** 关联的 Workflow ID（可选，创建 Agent 时自动生成） */
+  workflow_id?: string;
 }
 
 /**

@@ -35,6 +35,7 @@ from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.repositories import (
     SQLAlchemyAgentRepository,
     SQLAlchemyTaskRepository,
+    SQLAlchemyWorkflowRepository,
 )
 from src.interfaces.api.dto import AgentResponse, CreateAgentRequest
 
@@ -86,11 +87,37 @@ def get_task_repository(session: Session = Depends(get_db_session)) -> SQLAlchem
     return SQLAlchemyTaskRepository(session)
 
 
+def get_workflow_repository(
+    session: Session = Depends(get_db_session),
+) -> SQLAlchemyWorkflowRepository:
+    """获取 Workflow Repository
+
+    这是依赖注入函数：
+    - FastAPI 会自动调用这个函数
+    - 为每个请求创建新的 Repository
+    - 使用数据库会话（Session）
+
+    为什么需要这个函数？
+    1. 依赖注入：解耦路由和 Repository
+    2. 生命周期管理：每个请求有独立的 Repository
+    3. 可测试性：测试时可以 Mock 这个函数
+
+    参数：
+        session: 数据库会话（由 get_db_session 提供）
+
+    返回：
+        SQLAlchemyWorkflowRepository 实例
+    """
+    return SQLAlchemyWorkflowRepository(session)
+
+
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
 def create_agent(
     request: CreateAgentRequest,
     agent_repository: SQLAlchemyAgentRepository = Depends(get_agent_repository),
     task_repository: SQLAlchemyTaskRepository = Depends(get_task_repository),
+    workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
+    session: Session = Depends(get_db_session),
 ) -> AgentResponse:
     """创建 Agent
 
@@ -149,13 +176,15 @@ def create_agent(
     ... }
     """
     try:
-        # 步骤 1: 创建 Use Case（注入 TaskRepository）
-        # 为什么注入 TaskRepository？
-        # - MVP 功能：创建 Agent 时自动生成 Tasks
+        # 步骤 1: 创建 Use Case（注入所有 Repository）
+        # 为什么注入 TaskRepository 和 WorkflowRepository？
+        # - MVP 功能：创建 Agent 时自动生成 Tasks 和 Workflow
         # - Use Case 需要 TaskRepository 来保存 Tasks
+        # - Use Case 需要 WorkflowRepository 来保存 Workflow
         use_case = CreateAgentUseCase(
             agent_repository=agent_repository,
-            task_repository=task_repository,  # 新增：注入 TaskRepository
+            task_repository=task_repository,
+            workflow_repository=workflow_repository,  # 新增：注入 WorkflowRepository
         )
 
         # 步骤 2: 转换 DTO → Use Case Input
@@ -165,19 +194,29 @@ def create_agent(
             name=request.name,
         )
 
-        # 步骤 3: 执行 Use Case（自动生成 Tasks）
-        agent = use_case.execute(input_data)
+        # 步骤 3: 执行 Use Case（自动生成 Tasks 和 Workflow）
+        # Use Case 现在返回 (Agent, workflow_id)
+        agent, workflow_id = use_case.execute(input_data)
 
-        # 步骤 4: 查询生成的 Tasks
+        # 步骤 4: 提交事务
+        # 为什么需要 commit？
+        # - Repository 的 save() 方法不会自动提交
+        # - 需要手动提交事务才能持久化到数据库
+        # - 包括 Agent、Tasks 和 Workflow 的保存
+        session.commit()
+
+        # 步骤 5: 查询生成的 Tasks
         # 为什么需要查询？
-        # - Use Case 只返回 Agent，不返回 Tasks
-        # - 需要查询数据库获取生成的 Tasks
+        # - Use Case 返回 workflow_id，但不返回 Tasks
+        # - 需要查询数据库获取生成的 Tasks（用于响应）
         tasks = task_repository.find_by_agent_id(agent.id)
 
-        # 步骤 5: 转换 Domain Entity → DTO（包含 Tasks）
-        return AgentResponse.from_entity(agent, tasks=tasks)
+        # 步骤 6: 转换 Domain Entity → DTO（包含 Tasks 和 workflow_id）
+        return AgentResponse.from_entity(agent, tasks=tasks, workflow_id=workflow_id)
 
     except DomainError as e:
+        # 业务规则违反：回滚事务
+        session.rollback()
         # 业务规则违反：返回 400 Bad Request
         # 例如：start 或 goal 为空
         raise HTTPException(
@@ -185,8 +224,9 @@ def create_agent(
             detail=str(e),
         ) from e
     except Exception as e:
-        # 其他异常：返回 500 Internal Server Error
+        # 其他异常：回滚事务并返回 500 Internal Server Error
         # 例如：数据库连接失败、LLM 调用失败
+        session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"创建 Agent 失败: {str(e)}",

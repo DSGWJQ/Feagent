@@ -141,7 +141,9 @@ export const WorkflowEditorPage: React.FC = () => {
         backgroundColor: '#0a0a0a',
         color: '#fafafa',
       }}>
-        <Spin size="large" tip={isCreating ? "创建工作流中..." : "加载工作流中..."} />
+        <Spin size="large" tip={isCreating ? "创建工作流中..." : "加载工作流中..."}>
+          <div style={{ width: 0, height: 0 }} />
+        </Spin>
       </div>
     );
   }
@@ -158,7 +160,9 @@ export const WorkflowEditorPage: React.FC = () => {
         backgroundColor: '#0a0a0a',
         color: '#fafafa',
       }}>
-        <Spin size="large" tip="准备工作流编辑器..." />
+        <Spin size="large" tip="准备工作流编辑器...">
+          <div style={{ width: 0, height: 0 }} />
+        </Spin>
       </div>
     );
   }

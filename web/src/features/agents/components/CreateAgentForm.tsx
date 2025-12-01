@@ -15,7 +15,7 @@
  * ```
  */
 
-import { Form, Input, Button, message } from 'antd';
+import { Form, Input, Button, App } from 'antd';
 import { useCreateAgent } from '@/shared/hooks';
 import type { CreateAgentDto, Agent } from '@/shared/types';
 
@@ -48,27 +48,77 @@ export const CreateAgentForm: React.FC<CreateAgentFormProps> = ({
 }) => {
   const [form] = Form.useForm<FormValues>();
   const createAgent = useCreateAgent();
+  const { message } = App.useApp();
 
   /**
    * 表单提交处理
    *
    * 流程：
    * 1. 表单验证通过
-   * 2. 调用 API 创建 Agent
-   * 3. 成功：调用 onSuccess 回调，重置表单
-   * 4. 失败：调用 onError 回调（如果提供）
+   * 2. 显示 Loading 提示（AI 生成工作流中...）
+   * 3. 调用 API 创建 Agent
+   * 4. 成功：
+   *    - 检查是否有 workflow_id
+   *    - 如果有：显示成功提示，跳转到 Workflow 编辑器
+   *    - 如果没有：显示警告，降级处理
+   *    - 调用 onSuccess 回调，重置表单
+   * 5. 失败：显示详细错误信息，支持重试
    */
   const handleSubmit = async (values: FormValues) => {
+    // 显示 Loading 提示
+    const loadingMessage = message.loading({
+      content: 'AI 正在为您生成智能工作流，请稍候...',
+      duration: 0, // 不自动关闭
+    });
+
     try {
-      // 调用 API 创建 Agent
+      // 调用 API 创建 Agent（后端自动生成 Workflow）
       const agent = await createAgent.mutateAsync(values);
+
+      // 关闭 Loading 提示
+      loadingMessage();
 
       // 重置表单
       form.resetFields();
 
+      // 检查是否有 workflow_id（Agent 创建时自动生成）
+      if (agent.workflow_id) {
+        // 成功生成 Workflow：显示成功提示并跳转
+        message.success({
+          content: `Agent 创建成功！已自动生成 ${agent.tasks?.length || 0} 个任务节点，正在跳转到编辑器...`,
+          duration: 2,
+        });
+
+        // 延迟跳转，让用户看到成功提示
+        setTimeout(() => {
+          window.location.href = `/workflows/${agent.workflow_id}/edit`;
+        }, 500);
+      } else {
+        // 降级：Workflow 生成失败，但 Agent 创建成功
+        message.warning({
+          content: 'Agent 已创建，但工作流生成失败。您可以稍后手动创建工作流。',
+          duration: 5,
+        });
+      }
+
       // 调用成功回调
       onSuccess?.(agent);
     } catch (error) {
+      // 关闭 Loading 提示
+      loadingMessage();
+
+      // 解析错误信息
+      const errorMessage =
+        (error as any)?.response?.data?.detail ||
+        (error as Error).message ||
+        '创建失败，请检查网络连接后重试';
+
+      // 显示错误提示（支持重试）
+      message.error({
+        content: `创建失败：${errorMessage}`,
+        duration: 5,
+      });
+
       // 调用失败回调
       onError?.(error);
     }

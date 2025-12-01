@@ -23,7 +23,6 @@ import {
   ClockCircleOutlined,
   ApiOutlined,
   UnorderedListOutlined,
-  PlusOutlined,
   EditOutlined,
   CalendarOutlined,
   DashboardOutlined,
@@ -61,7 +60,6 @@ function getItem(
 const menuItems: MenuItem[] = [
   getItem('Agent 管理', 'agents-group', <RobotOutlined />, [
     getItem('Agent 列表', '/app/agents', <UnorderedListOutlined />),
-    getItem('创建 Agent', '/app/agents/create', <PlusOutlined />),
   ]),
 
   getItem('工作流管理', 'workflows-group', <ApartmentOutlined />, [

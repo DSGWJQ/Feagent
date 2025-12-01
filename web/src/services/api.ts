@@ -30,6 +30,23 @@ import type {
 export interface WorkflowChatResponse {
   workflow: Workflow;
   ai_message: string;
+  intent?: string;
+  confidence?: number;
+  modifications_count?: number;
+  rag_sources?: Array<{
+    document_id: string;
+    title: string;
+    source: string;
+    relevance_score: number;
+    preview: string;
+  }>;
+  react_steps?: Array<{
+    step: string;
+    thought?: string;
+    action?: string;
+    observation?: string;
+  }>;
+  memory_hits?: number;
 }
 
 export interface WorkflowExecutionEvent {
@@ -37,10 +54,18 @@ export interface WorkflowExecutionEvent {
   [key: string]: unknown;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const DEFAULT_API_BASE_URL = '/api';
+const rawApiBase = (import.meta.env.VITE_API_URL ?? '').trim();
+
+/**
+ * Normalized API base URL. Falls back to the dev proxy (`/api`) so the browser
+ * talks to Vite, which then forwards requests to FastAPI without hitting CORS.
+ */
+export const API_BASE_URL =
+  rawApiBase.length > 0 ? rawApiBase.replace(/\/$/, '') : DEFAULT_API_BASE_URL;
 
 // ==================== Axios Instance ====================
-const axiosInstance: AxiosInstance = axios.create({
+export const axiosInstance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
   headers: {
@@ -214,6 +239,91 @@ const tools = {
     axiosInstance.post<Tool>(`/tools/${id}/deprecate`, {}),
 };
 
+// Knowledge Base Management
+const knowledge = {
+  upload: (data: {
+    title: string;
+    content: string;
+    workflow_id?: string;
+    source?: string;
+    metadata?: Record<string, unknown>;
+    file_path?: string;
+  }) =>
+    axiosInstance.post<{
+      document_id: string;
+      title: string;
+      chunk_count: number;
+      total_tokens: number;
+      message: string;
+    }>('/knowledge/upload', data),
+  list: (params?: {
+    workflow_id?: string;
+    user_id?: string;
+    source?: string;
+    limit?: number;
+    offset?: number;
+  }) =>
+    axiosInstance.get<{
+      documents: Array<{
+        id: string;
+        title: string;
+        workflow_id?: string;
+        source: string;
+        status: string;
+        chunk_count: number;
+        total_tokens: number;
+        created_at: string;
+        updated_at: string;
+      }>;
+      total: number;
+      limit: number;
+      offset: number;
+    }>('/knowledge', { params }),
+  getById: (docId: string) =>
+    axiosInstance.get<{
+      id: string;
+      title: string;
+      workflow_id?: string;
+      source: string;
+      status: string;
+      chunk_count: number;
+      total_tokens: number;
+      created_at: string;
+      updated_at: string;
+    }>(`/knowledge/${docId}`),
+  delete: (docId: string) =>
+    axiosInstance.delete<{
+      document_id: string;
+      status: string;
+      message: string;
+    }>(`/knowledge/${docId}`),
+  getStats: (params?: { workflow_id?: string }) =>
+    axiosInstance.get<{
+      total_documents: number;
+      total_chunks: number;
+      total_tokens: number;
+      by_workflow: Record<string, number>;
+      by_source: Record<string, number>;
+    }>('/knowledge/stats/summary', { params }),
+};
+
+// Memory Metrics
+const memory = {
+  getMetrics: () =>
+    axiosInstance.get<{
+      cache_hit_rate: number;
+      fallback_count: number;
+      compression_ratio: number;
+      avg_fallback_time_ms: number;
+      last_updated: string;
+    }>('/memory/metrics'),
+  invalidateCache: (workflowId: string) =>
+    axiosInstance.post<{
+      status: string;
+      workflow_id: string;
+    }>(`/memory/cache/invalidate/${workflowId}`, {}),
+};
+
 // LLM Provider Management
 const llmProviders = {
   register: (data: Partial<LLMProvider>) =>
@@ -285,6 +395,8 @@ export const apiClient = {
   scheduler,
   tools,
   llmProviders,
+  knowledge,
+  memory,
   handleError,
   instance: axiosInstance,
 };

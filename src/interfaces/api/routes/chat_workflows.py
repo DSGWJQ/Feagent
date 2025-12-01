@@ -21,18 +21,6 @@ from src.interfaces.api.routes import workflows as workflows_routes
 router = APIRouter(tags=["Chat Workflows"])
 
 
-def _chat_use_case_dependency(
-    workflow_repository=Depends(workflows_routes.get_workflow_repository),
-    chat_service=Depends(workflows_routes.get_workflow_chat_service),
-) -> UpdateWorkflowByChatUseCase:
-    """Reuse the workflow module dependency wiring."""
-
-    return UpdateWorkflowByChatUseCase(
-        workflow_repository=workflow_repository,
-        chat_service=chat_service,
-    )
-
-
 @router.post(
     "/workflows/{workflow_id}/chat-stream",
     status_code=status.HTTP_200_OK,
@@ -40,14 +28,21 @@ def _chat_use_case_dependency(
 async def chat_workflow_stream(
     workflow_id: str,
     request: ChatRequest,
-    use_case: UpdateWorkflowByChatUseCase = Depends(_chat_use_case_dependency),
+    use_case: UpdateWorkflowByChatUseCase = Depends(
+        workflows_routes.get_update_workflow_by_chat_use_case
+    ),
     db: Session = Depends(get_db_session),
 ) -> StreamingResponse:
     """Stream workflow updates produced by the chat use case."""
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
-            yield f"event: llm_thinking\ndata: {json.dumps({'message': 'AI is analyzing the request.'})}\n\n"
+            thinking_payload = {
+                "event": "llm_thinking",
+                "type": "llm_thinking",
+                "message": "AI is analyzing the request.",
+            }
+            yield f"event: llm_thinking\ndata: {json.dumps(thinking_payload)}\n\n"
 
             input_data = UpdateWorkflowByChatInput(
                 workflow_id=workflow_id,
@@ -58,7 +53,8 @@ async def chat_workflow_stream(
             ai_message = output.ai_message
 
             preview_data = {
-                "type": "preview",
+                "event": "preview_changes",
+                "type": "preview_changes",
                 "message": ai_message,
                 "nodes": [
                     {
@@ -85,6 +81,7 @@ async def chat_workflow_stream(
             db.commit()
 
             final_data = {
+                "event": "workflow_updated",
                 "type": "workflow_updated",
                 "message": "Workflow updated successfully.",
                 "workflow": {
@@ -98,13 +95,21 @@ async def chat_workflow_stream(
             yield "event: done\ndata: {}\n\n"
 
         except NotFoundError:
-            error_data = {"type": "error", "message": f"Workflow not found: {workflow_id}"}
+            error_data = {
+                "event": "error",
+                "type": "error",
+                "message": f"Workflow not found: {workflow_id}",
+            }
             yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
         except DomainError as exc:
-            error_data = {"type": "error", "message": str(exc)}
+            error_data = {"event": "error", "type": "error", "message": str(exc)}
             yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
         except Exception as exc:  # pragma: no cover - best-effort fallback
-            error_data = {"type": "error", "message": f"Server error: {exc}"}
+            error_data = {
+                "event": "error",
+                "type": "error",
+                "message": f"Server error: {exc}",
+            }
             yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
 
     return StreamingResponse(

@@ -228,9 +228,18 @@ class AgentResponse(BaseModel):
     status: str
     created_at: datetime
     tasks: list[TaskResponse] = Field(default_factory=list)
+    workflow_id: str | None = Field(
+        default=None,
+        description="关联的 Workflow ID（Agent 创建时自动生成）",
+    )
 
     @classmethod
-    def from_entity(cls, agent, tasks: list | None = None) -> "AgentResponse":
+    def from_entity(
+        cls,
+        agent,
+        tasks: list | None = None,
+        workflow_id: str | None = None,
+    ) -> "AgentResponse":
         """从 Domain 实体创建响应 DTO
 
         这是 Assembler 模式的实现：
@@ -246,6 +255,7 @@ class AgentResponse(BaseModel):
         参数：
             agent: Agent 实体
             tasks: Task 实体列表（可选）
+            workflow_id: 关联的 Workflow ID（可选，用于前端跳转）
 
         返回：
             AgentResponse DTO
@@ -255,6 +265,8 @@ class AgentResponse(BaseModel):
         >>> response = AgentResponse.from_entity(agent)
         >>> # 或者包含 tasks
         >>> response = AgentResponse.from_entity(agent, tasks=[task1, task2])
+        >>> # 或者包含 workflow_id
+        >>> response = AgentResponse.from_entity(agent, tasks=[task1, task2], workflow_id="wf_abc123")
         """
         task_responses = []
         if tasks:
@@ -268,6 +280,7 @@ class AgentResponse(BaseModel):
             status=agent.status,
             created_at=agent.created_at,
             tasks=task_responses,
+            workflow_id=workflow_id,
         )
 
     # Pydantic v2 配置

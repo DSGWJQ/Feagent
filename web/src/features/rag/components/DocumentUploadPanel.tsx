@@ -200,14 +200,16 @@ export const DocumentUploadPanel: React.FC<DocumentUploadPanelProps> = ({
           backgroundColor: '#141414',
           borderColor: '#262626',
         }}
-        headStyle={{
-          backgroundColor: '#1a1a1a',
-          borderBottom: '1px solid #262626',
-          color: '#fafafa',
-        }}
-        bodyStyle={{
-          backgroundColor: '#141414',
-          padding: '12px',
+        styles={{
+          header: {
+            backgroundColor: '#1a1a1a',
+            borderBottom: '1px solid #262626',
+            color: '#fafafa',
+          },
+          body: {
+            backgroundColor: '#141414',
+            padding: '12px',
+          },
         }}
         extra={
           <Space>
@@ -249,16 +251,18 @@ export const DocumentUploadPanel: React.FC<DocumentUploadPanelProps> = ({
           borderColor: '#262626',
           overflow: 'hidden',
         }}
-        headStyle={{
-          backgroundColor: '#1a1a1a',
-          borderBottom: '1px solid #262626',
-          color: '#fafafa',
-        }}
-        bodyStyle={{
-          backgroundColor: '#141414',
-          padding: '12px',
-          height: 'calc(100% - 48px)',
-          overflow: 'auto',
+        styles={{
+          header: {
+            backgroundColor: '#1a1a1a',
+            borderBottom: '1px solid #262626',
+            color: '#fafafa',
+          },
+          body: {
+            backgroundColor: '#141414',
+            padding: '12px',
+            height: 'calc(100% - 48px)',
+            overflow: 'auto',
+          },
         }}
       >
         {isLoading ? (

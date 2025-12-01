@@ -4,10 +4,8 @@
  * Handles communication with backend scheduled workflow endpoints
  */
 
-import axios from 'axios';
 import type { ScheduledWorkflow } from '@/types/workflow';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+import { axiosInstance } from '@/services/api';
 
 export interface CreateScheduledWorkflowRequest {
   cronExpression: string;
@@ -25,9 +23,7 @@ export interface ScheduledWorkflowResponse {
  * List all scheduled workflows
  */
 export const listScheduledWorkflows = async (): Promise<{ data: ScheduledWorkflow[] }> => {
-  const response = await axios.get<ScheduledWorkflow[]>(
-    `${API_BASE_URL}/scheduled-workflows`
-  );
+  const response = await axiosInstance.get<ScheduledWorkflow[]>('/scheduled-workflows');
   return { data: response.data };
 };
 
@@ -37,8 +33,8 @@ export const listScheduledWorkflows = async (): Promise<{ data: ScheduledWorkflo
 export const getScheduledWorkflowDetails = async (
   id: string
 ): Promise<{ data: ScheduledWorkflow }> => {
-  const response = await axios.get<ScheduledWorkflow>(
-    `${API_BASE_URL}/scheduled-workflows/${id}`
+  const response = await axiosInstance.get<ScheduledWorkflow>(
+    `/scheduled-workflows/${id}`
   );
   return { data: response.data };
 };
@@ -50,8 +46,8 @@ export const createScheduledWorkflow = async (
   workflowId: string,
   data: CreateScheduledWorkflowRequest
 ): Promise<{ data: ScheduledWorkflow }> => {
-  const response = await axios.post<ScheduledWorkflow>(
-    `${API_BASE_URL}/workflows/${workflowId}/schedule`,
+  const response = await axiosInstance.post<ScheduledWorkflow>(
+    `/workflows/${workflowId}/schedule`,
     data
   );
   return { data: response.data };
@@ -64,8 +60,8 @@ export const updateScheduledWorkflow = async (
   id: string,
   data: Partial<ScheduledWorkflow>
 ): Promise<{ data: ScheduledWorkflow }> => {
-  const response = await axios.put<ScheduledWorkflow>(
-    `${API_BASE_URL}/scheduled-workflows/${id}`,
+  const response = await axiosInstance.put<ScheduledWorkflow>(
+    `/scheduled-workflows/${id}`,
     data
   );
   return { data: response.data };
@@ -75,7 +71,7 @@ export const updateScheduledWorkflow = async (
  * Delete scheduled workflow
  */
 export const deleteScheduledWorkflow = async (id: string): Promise<{ data: null }> => {
-  await axios.delete(`${API_BASE_URL}/scheduled-workflows/${id}`);
+  await axiosInstance.delete(`/scheduled-workflows/${id}`);
   return { data: null };
 };
 
@@ -85,8 +81,8 @@ export const deleteScheduledWorkflow = async (id: string): Promise<{ data: null 
 export const triggerExecution = async (
   id: string
 ): Promise<{ data: ScheduledWorkflowResponse }> => {
-  const response = await axios.post<ScheduledWorkflowResponse>(
-    `${API_BASE_URL}/scheduled-workflows/${id}/trigger`,
+  const response = await axiosInstance.post<ScheduledWorkflowResponse>(
+    `/scheduled-workflows/${id}/trigger`,
     {}
   );
   return { data: response.data };
@@ -96,8 +92,8 @@ export const triggerExecution = async (
  * Pause scheduled workflow
  */
 export const pauseScheduledWorkflow = async (id: string): Promise<{ data: ScheduledWorkflow }> => {
-  const response = await axios.post<ScheduledWorkflow>(
-    `${API_BASE_URL}/scheduled-workflows/${id}/pause`,
+  const response = await axiosInstance.post<ScheduledWorkflow>(
+    `/scheduled-workflows/${id}/pause`,
     {}
   );
   return { data: response.data };
@@ -109,8 +105,8 @@ export const pauseScheduledWorkflow = async (id: string): Promise<{ data: Schedu
 export const resumeScheduledWorkflow = async (
   id: string
 ): Promise<{ data: ScheduledWorkflow }> => {
-  const response = await axios.post<ScheduledWorkflow>(
-    `${API_BASE_URL}/scheduled-workflows/${id}/resume`,
+  const response = await axiosInstance.post<ScheduledWorkflow>(
+    `/scheduled-workflows/${id}/resume`,
     {}
   );
   return { data: response.data };

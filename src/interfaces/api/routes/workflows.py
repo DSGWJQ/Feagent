@@ -139,7 +139,7 @@ def get_workflow_chat_service(
         from src.interfaces.api.dependencies.memory import get_composite_memory_service
 
         # 获取新的内存服务
-        memory_service = get_composite_memory_service(session=chat_message_repository._session)
+        memory_service = get_composite_memory_service(session=chat_message_repository.session)
 
         # 使用新的内存系统创建服务
         return EnhancedWorkflowChatService(
@@ -167,7 +167,7 @@ def get_update_workflow_by_chat_use_case(
     from src.interfaces.api.dependencies.memory import get_composite_memory_service
 
     # 获取新的内存服务
-    memory_service = get_composite_memory_service(session=chat_message_repository._session)
+    memory_service = get_composite_memory_service(session=chat_message_repository.session)
 
     # 为每个请求创建新的对话服务实例（使用高性能内存系统）
     chat_service = EnhancedWorkflowChatService(

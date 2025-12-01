@@ -89,11 +89,13 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
                 backgroundColor: '#1a1a1a', // 深色卡片背景
                 borderColor: '#262626',
               }}
-              bodyStyle={{
-                padding: '8px 12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
+              styles={{
+                body: {
+                  padding: '8px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                },
               }}
             >
               <div

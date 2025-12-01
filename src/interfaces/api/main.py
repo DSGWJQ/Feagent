@@ -20,6 +20,7 @@ from src.interfaces.api.routes import (
     auth,
     concurrent_workflows,
     health,
+    knowledge,
     llm_providers,
     memory_metrics,
     runs,
@@ -81,7 +82,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if _scheduler_service is not None:
             _scheduler_service.stop()
         clear_scheduler_service()
-        print(f"👋 {settings.app_name} 关闭中...")
+        # Avoid emojis so Windows consoles (GBK codepage) don't raise UnicodeEncodeError.
+        print(f"[SHUTDOWN] {settings.app_name} 关闭中...")
 
 
 app = FastAPI(
@@ -141,6 +143,7 @@ app.include_router(scheduled_workflows.router, prefix="/api", tags=["Scheduled W
 app.include_router(concurrent_workflows.router, prefix="/api", tags=["Concurrent Workflows"])
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(memory_metrics.router, tags=["Memory"])
+app.include_router(knowledge.router, tags=["Knowledge"])
 
 
 if __name__ == "__main__":

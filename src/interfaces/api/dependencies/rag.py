@@ -43,26 +43,38 @@ async def get_rag_service() -> AsyncGenerator[RAGService, None]:
                 logger.error("向量存储初始化失败")
                 raise RuntimeError("向量存储初始化失败")
 
-            # 创建知识库仓储
             vector_config = RAGConfigManager.get_vector_store_config()
-            if vector_config["type"] == "sqlite":
-                knowledge_repository = SQLiteKnowledgeRepository(db_path=vector_config["db_path"])
+            vector_type = vector_config["type"]
+
+            # 创建知识库仓储（目前统一使用SQLite存储元数据）
+            if vector_type in {"sqlite", "chroma"}:
+                db_path = (
+                    vector_config.get("db_path", settings.sqlite_vector_db_path)
+                    if vector_type == "sqlite"
+                    else settings.sqlite_vector_db_path
+                )
+                knowledge_repository = SQLiteKnowledgeRepository(db_path=db_path)
             else:
                 # 对于其他向量存储类型，创建相应的仓储
                 # 这里可以扩展为QdrantRepository, FAISSRepository等
-                raise NotImplementedError(f"暂不支持向量存储类型: {vector_config['type']}")
+                raise NotImplementedError(f"暂不支持向量存储类型: {vector_type}")
 
             # 创建检索服务
             embedding_config = RAGConfigManager.get_embedding_config()
-            if vector_config["type"] == "chroma":
+            if vector_type == "chroma":
                 retriever_service: RetrieverService = ChromaRetrieverService(
                     knowledge_repository=knowledge_repository,
                     openai_api_key=embedding_config.get("api_key"),
+                    model_name=embedding_config.get("model", "text-embedding-3-small"),
                     chroma_path=vector_config["path"],
+                    chunk_size=settings.rag_chunk_size,
+                    chunk_overlap=settings.rag_chunk_overlap,
                 )
-            else:
+            elif vector_type == "sqlite":
                 # 对于SQLite向量存储，使用SQLite仓储的自定义检索方法
                 # 这里可以实现SQLiteVectorRetrieverService
+                retriever_service = NoOpRetrieverService()
+            else:
                 retriever_service = NoOpRetrieverService()
 
             # 创建RAG服务

@@ -51,7 +51,7 @@ function DatabaseNode({ data, selected, id }: NodeProps<DatabaseNodeData>) {
             ? '0 4px 12px rgba(24, 144, 255, 0.3)'
             : '0 2px 8px rgba(0, 0, 0, 0.1)',
         }}
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
       >
         {/* 节点头部 */}
         <div

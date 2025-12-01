@@ -25,6 +25,7 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { interactionMode, setInteractionMode, isCanvasMode } = useWorkflowInteraction();
+  const wasProcessingRef = useRef(false);
 
   const {
     messages,
@@ -49,6 +50,13 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
     if (isProcessing && interactionMode !== 'chat') {
       setInteractionMode('chat');
     }
+  }, [isProcessing, interactionMode, setInteractionMode]);
+
+  useEffect(() => {
+    if (wasProcessingRef.current && !isProcessing && interactionMode === 'chat') {
+      setInteractionMode('canvas');
+    }
+    wasProcessingRef.current = isProcessing;
   }, [isProcessing, interactionMode, setInteractionMode]);
 
   // 当输入框聚焦时，切换到聊天模式

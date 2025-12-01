@@ -1,0 +1,1 @@
+export { KnowledgeUploadPage } from './KnowledgeUploadPage';

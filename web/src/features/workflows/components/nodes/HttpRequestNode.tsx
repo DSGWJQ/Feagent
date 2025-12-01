@@ -46,7 +46,7 @@ function HttpRequestNode({ data, selected }: NodeProps<HttpRequestNodeData>) {
         border: '2px solid',
         transition: 'all 0.3s',
       }}
-      bodyStyle={{ padding: 0 }}
+      styles={{ body: { padding: 0 } }}
     >
       <div
         style={{
