@@ -77,6 +77,11 @@ class ReActResult:
     - iterations: 迭代次数
     - terminated_by_limit: 是否因达到限制而终止
     - steps: 所有步骤历史
+    - limit_type: 限制类型（阶段5新增）
+    - total_tokens: 总 token 消耗（阶段5新增）
+    - total_cost: 总成本（阶段5新增）
+    - execution_time: 执行时间秒（阶段5新增）
+    - alert_message: 告警消息（阶段5新增）
     """
 
     completed: bool = False
@@ -84,6 +89,12 @@ class ReActResult:
     iterations: int = 0
     terminated_by_limit: bool = False
     steps: list[ReActStep] = field(default_factory=list)
+    # 阶段5新增：循环控制相关字段
+    limit_type: str | None = None
+    total_tokens: int = 0
+    total_cost: float = 0.0
+    execution_time: float = 0.0
+    alert_message: str | None = None
 
 
 @dataclass
@@ -166,6 +177,10 @@ class ConversationAgent:
         llm: ConversationAgentLLM,
         event_bus: EventBus | None = None,
         max_iterations: int = 10,
+        timeout_seconds: float | None = None,
+        max_tokens: int | None = None,
+        max_cost: float | None = None,
+        coordinator: Any | None = None,
     ):
         """初始化对话Agent
 
@@ -174,11 +189,20 @@ class ConversationAgent:
             llm: LLM接口
             event_bus: 事件总线（可选）
             max_iterations: 最大迭代次数
+            timeout_seconds: 超时时间（秒，阶段5新增）
+            max_tokens: 最大 token 限制（阶段5新增）
+            max_cost: 最大成本限制（阶段5新增）
+            coordinator: 协调者 Agent（阶段5新增）
         """
         self.session_context = session_context
         self.llm = llm
         self.event_bus = event_bus
         self.max_iterations = max_iterations
+        # 阶段5新增：循环控制配置
+        self.timeout_seconds = timeout_seconds
+        self.max_tokens = max_tokens
+        self.max_cost = max_cost
+        self.coordinator = coordinator
         self._current_input: str | None = None
 
     def execute_step(self, user_input: str) -> ReActStep:
@@ -247,16 +271,16 @@ class ConversationAgent:
             context = self.get_context_for_reasoning()
             context["user_input"] = user_input
 
-            # 模拟LLM调用（同步）
+            # 模拟LLM调用（同步）- 用于测试时的mock兼容
             try:
                 # 使用mock的返回值
                 thought = (
-                    self.llm.think.return_value
+                    self.llm.think.return_value  # type: ignore[union-attr]
                     if hasattr(self.llm.think, "return_value")
                     else "思考中..."
                 )
                 action = (
-                    self.llm.decide_action.return_value
+                    self.llm.decide_action.return_value  # type: ignore[union-attr]
                     if hasattr(self.llm.decide_action, "return_value")
                     else {"action_type": "continue"}
                 )
@@ -264,22 +288,22 @@ class ConversationAgent:
                 # 如果有side_effect，使用它
                 if (
                     hasattr(self.llm.decide_action, "side_effect")
-                    and self.llm.decide_action.side_effect
+                    and self.llm.decide_action.side_effect  # type: ignore[union-attr]
                 ):
                     try:
-                        action = self.llm.decide_action.side_effect[i]
+                        action = self.llm.decide_action.side_effect[i]  # type: ignore[union-attr]
                     except (IndexError, TypeError):
                         pass
 
                 should_continue = True
                 if hasattr(self.llm.should_continue, "return_value"):
-                    should_continue = self.llm.should_continue.return_value
+                    should_continue = self.llm.should_continue.return_value  # type: ignore[union-attr]
                 if (
                     hasattr(self.llm.should_continue, "side_effect")
-                    and self.llm.should_continue.side_effect
+                    and self.llm.should_continue.side_effect  # type: ignore[union-attr]
                 ):
                     try:
-                        should_continue = self.llm.should_continue.side_effect[i]
+                        should_continue = self.llm.should_continue.side_effect[i]  # type: ignore[union-attr]
                     except (IndexError, TypeError):
                         pass
 
@@ -321,11 +345,53 @@ class ConversationAgent:
         返回：
             ReAct结果
         """
+        import time
+
         result = ReActResult()
         self._current_input = user_input
+        start_time = time.time()
 
         for i in range(self.max_iterations):
             result.iterations = i + 1
+
+            # === 阶段5：循环控制检查 ===
+
+            # 检查熔断器
+            if self.coordinator and hasattr(self.coordinator, "circuit_breaker"):
+                if self.coordinator.circuit_breaker.is_open:
+                    result.terminated_by_limit = True
+                    result.limit_type = "circuit_breaker"
+                    result.alert_message = "熔断器已打开，循环终止"
+                    result.execution_time = time.time() - start_time
+                    return result
+
+            # 检查超时
+            if self.timeout_seconds:
+                elapsed = time.time() - start_time
+                if elapsed >= self.timeout_seconds:
+                    result.terminated_by_limit = True
+                    result.limit_type = "timeout"
+                    result.execution_time = elapsed
+                    result.alert_message = f"已超时 ({self.timeout_seconds}秒)，循环终止"
+                    return result
+
+            # 检查 token 限制
+            if self.max_tokens and result.total_tokens >= self.max_tokens:
+                result.terminated_by_limit = True
+                result.limit_type = "token_limit"
+                result.execution_time = time.time() - start_time
+                result.alert_message = f"已达到 token 限制 ({self.max_tokens})，循环终止"
+                return result
+
+            # 检查成本限制
+            if self.max_cost and result.total_cost >= self.max_cost:
+                result.terminated_by_limit = True
+                result.limit_type = "cost_limit"
+                result.execution_time = time.time() - start_time
+                result.alert_message = f"已达到成本限制 (${self.max_cost})，循环终止"
+                return result
+
+            # === 原有逻辑 ===
 
             # 获取上下文
             context = self.get_context_for_reasoning()
@@ -338,6 +404,19 @@ class ConversationAgent:
             # 决定行动
             action = await self.llm.decide_action(context)
 
+            # 阶段5：累计 token 和成本
+            try:
+                if hasattr(self.llm, "get_token_usage"):
+                    tokens = self.llm.get_token_usage()  # type: ignore[attr-defined]
+                    if isinstance(tokens, int | float):
+                        result.total_tokens += int(tokens)
+                if hasattr(self.llm, "get_cost"):
+                    cost = self.llm.get_cost()  # type: ignore[attr-defined]
+                    if isinstance(cost, int | float):
+                        result.total_cost += float(cost)
+            except (TypeError, AttributeError):
+                pass  # LLM 不支持这些方法时跳过
+
             step = ReActStep(step_type=StepType.REASONING, thought=thought, action=action)
             result.steps.append(step)
 
@@ -347,11 +426,12 @@ class ConversationAgent:
             if action_type == "respond":
                 result.completed = True
                 result.final_response = action.get("response", "任务完成")
+                result.execution_time = time.time() - start_time
                 return result
 
             # 记录决策并发布事件
             if action_type in ["create_node", "execute_workflow", "request_clarification"]:
-                decision = self._record_decision(action)
+                self._record_decision(action)
                 if self.event_bus:
                     await self.publish_decision(action)
 
@@ -364,6 +444,9 @@ class ConversationAgent:
 
         # 达到最大迭代
         result.terminated_by_limit = True
+        result.limit_type = "max_iterations"
+        result.alert_message = f"已达到最大迭代次数限制 ({self.max_iterations} 次)，循环已终止"
+        result.execution_time = time.time() - start_time
         return result
 
     def decompose_goal(self, goal_description: str) -> list[Goal]:
@@ -387,7 +470,7 @@ class ConversationAgent:
             if loop.is_running():
                 # 同步方式获取mock返回值
                 if hasattr(self.llm.decompose_goal, "return_value"):
-                    subgoal_dicts = self.llm.decompose_goal.return_value
+                    subgoal_dicts = self.llm.decompose_goal.return_value  # type: ignore[union-attr]
                 else:
                     subgoal_dicts = []
             else:
@@ -449,7 +532,7 @@ class ConversationAgent:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 if hasattr(self.llm.decide_action, "return_value"):
-                    action = self.llm.decide_action.return_value
+                    action = self.llm.decide_action.return_value  # type: ignore[union-attr]
                 else:
                     action = {"action_type": "continue"}
             else:

@@ -777,3 +777,552 @@ class TestRealWorldScenario:
         stats = protocol.get_statistics()
         assert stats["decisions_forwarded"] == 5
         assert stats["results_synced"] == 1
+
+
+# ==================== 阶段 3：画布→对话同步测试 ====================
+
+
+class TestCanvasChangeEvent:
+    """CanvasChangeEvent 事件测试
+
+    阶段 3 新增：画布变更事件，用于前端到后端的反向同步
+    """
+
+    def test_create_canvas_change_event_with_required_fields(self):
+        """测试：创建 CanvasChangeEvent 需要必填字段"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_added",
+            change_data={
+                "node_id": "node_1",
+                "node_type": "HTTP",
+                "position": {"x": 100, "y": 200},
+            },
+            client_id="client_1",
+        )
+
+        assert event.workflow_id == "wf_123"
+        assert event.change_type == "node_added"
+        assert event.change_data["node_id"] == "node_1"
+        assert event.client_id == "client_1"
+        assert event.version == 0  # 默认版本号
+
+    def test_canvas_change_event_supports_all_change_types(self):
+        """测试：CanvasChangeEvent 支持所有变更类型"""
+        from src.domain.services.bidirectional_sync import CanvasChangeType
+
+        # 验证所有变更类型枚举
+        assert CanvasChangeType.NODE_ADDED.value == "node_added"
+        assert CanvasChangeType.NODE_UPDATED.value == "node_updated"
+        assert CanvasChangeType.NODE_DELETED.value == "node_deleted"
+        assert CanvasChangeType.NODE_MOVED.value == "node_moved"
+        assert CanvasChangeType.EDGE_ADDED.value == "edge_added"
+        assert CanvasChangeType.EDGE_DELETED.value == "edge_deleted"
+
+    def test_canvas_change_event_has_version_for_conflict_detection(self):
+        """测试：CanvasChangeEvent 有版本号用于冲突检测"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_updated",
+            change_data={"node_id": "node_1", "changes": {"config": {"url": "new"}}},
+            client_id="client_1",
+            version=5,
+        )
+
+        assert event.version == 5
+
+
+class TestCanvasState:
+    """CanvasState 画布状态测试"""
+
+    def test_create_empty_canvas_state(self):
+        """测试：创建空画布状态"""
+        from src.domain.services.bidirectional_sync import CanvasState
+
+        state = CanvasState(workflow_id="wf_123")
+
+        assert state.workflow_id == "wf_123"
+        assert state.nodes == {}
+        assert state.edges == {}
+        assert state.version == 0
+
+    def test_canvas_state_add_node(self):
+        """测试：向画布状态添加节点"""
+        from src.domain.services.bidirectional_sync import CanvasState
+
+        state = CanvasState(workflow_id="wf_123")
+        state.add_node(
+            node_id="node_1",
+            node_type="HTTP",
+            position={"x": 100, "y": 200},
+            config={"url": "https://api.example.com"},
+        )
+
+        assert "node_1" in state.nodes
+        assert state.nodes["node_1"]["node_type"] == "HTTP"
+        assert state.nodes["node_1"]["position"] == {"x": 100, "y": 200}
+
+    def test_canvas_state_update_node(self):
+        """测试：更新画布状态中的节点"""
+        from src.domain.services.bidirectional_sync import CanvasState
+
+        state = CanvasState(workflow_id="wf_123")
+        state.add_node(node_id="node_1", node_type="HTTP", config={"url": "old"})
+        state.update_node(node_id="node_1", changes={"config": {"url": "new"}})
+
+        assert state.nodes["node_1"]["config"]["url"] == "new"
+
+    def test_canvas_state_delete_node(self):
+        """测试：从画布状态删除节点"""
+        from src.domain.services.bidirectional_sync import CanvasState
+
+        state = CanvasState(workflow_id="wf_123")
+        state.add_node(node_id="node_1", node_type="HTTP")
+        state.delete_node(node_id="node_1")
+
+        assert "node_1" not in state.nodes
+
+    def test_canvas_state_add_edge(self):
+        """测试：向画布状态添加边"""
+        from src.domain.services.bidirectional_sync import CanvasState
+
+        state = CanvasState(workflow_id="wf_123")
+        state.add_edge(edge_id="edge_1", source_id="node_1", target_id="node_2")
+
+        assert "edge_1" in state.edges
+        assert state.edges["edge_1"]["source_id"] == "node_1"
+        assert state.edges["edge_1"]["target_id"] == "node_2"
+
+
+class TestCanvasToConversationSync:
+    """画布→对话同步测试
+
+    核心测试：验证画布变更能够同步到 ConversationAgent 上下文
+    """
+
+    @pytest.fixture
+    def event_bus(self):
+        """创建 EventBus"""
+        from src.domain.services.event_bus import EventBus
+
+        return EventBus()
+
+    @pytest.fixture
+    def sync_service(self, event_bus):
+        """创建 BidirectionalSyncService"""
+        from src.domain.services.bidirectional_sync import BidirectionalSyncService
+
+        return BidirectionalSyncService(event_bus=event_bus)
+
+    def test_sync_service_subscribes_to_canvas_change_event(self, sync_service, event_bus):
+        """测试：同步服务订阅 CanvasChangeEvent"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        # 验证已订阅
+        assert CanvasChangeEvent in event_bus._subscribers
+        assert len(event_bus._subscribers[CanvasChangeEvent]) > 0
+
+    @pytest.mark.asyncio
+    async def test_handle_node_added_updates_canvas_state(self, sync_service, event_bus):
+        """测试：处理 node_added 更新画布状态"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        # 发布节点添加事件
+        event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_added",
+            change_data={
+                "node_id": "node_1",
+                "node_type": "HTTP",
+                "position": {"x": 100, "y": 200},
+                "config": {"url": "https://api.example.com"},
+            },
+            client_id="client_1",
+        )
+
+        await event_bus.publish(event)
+
+        # 验证画布状态已更新
+        state = sync_service.get_canvas_state("wf_123")
+        assert "node_1" in state.nodes
+        assert state.nodes["node_1"]["node_type"] == "HTTP"
+
+    @pytest.mark.asyncio
+    async def test_handle_node_updated_updates_canvas_state(self, sync_service, event_bus):
+        """测试：处理 node_updated 更新画布状态"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        # 先添加节点
+        add_event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_added",
+            change_data={
+                "node_id": "node_1",
+                "node_type": "HTTP",
+                "position": {"x": 100, "y": 200},
+                "config": {"url": "https://old.com"},
+            },
+            client_id="client_1",
+        )
+        await event_bus.publish(add_event)
+
+        # 更新节点
+        update_event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_updated",
+            change_data={
+                "node_id": "node_1",
+                "changes": {"config": {"url": "https://new.com"}},
+            },
+            client_id="client_1",
+            version=1,
+        )
+        await event_bus.publish(update_event)
+
+        # 验证节点已更新
+        state = sync_service.get_canvas_state("wf_123")
+        assert state.nodes["node_1"]["config"]["url"] == "https://new.com"
+
+    @pytest.mark.asyncio
+    async def test_handle_node_deleted_removes_from_canvas_state(self, sync_service, event_bus):
+        """测试：处理 node_deleted 从画布状态移除节点"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        # 先添加节点
+        add_event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_added",
+            change_data={"node_id": "node_1", "node_type": "HTTP"},
+            client_id="client_1",
+        )
+        await event_bus.publish(add_event)
+
+        # 删除节点
+        delete_event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_deleted",
+            change_data={"node_id": "node_1"},
+            client_id="client_1",
+            version=1,
+        )
+        await event_bus.publish(delete_event)
+
+        # 验证节点已删除
+        state = sync_service.get_canvas_state("wf_123")
+        assert "node_1" not in state.nodes
+
+    @pytest.mark.asyncio
+    async def test_handle_edge_added_updates_canvas_state(self, sync_service, event_bus):
+        """测试：处理 edge_added 更新画布状态"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="edge_added",
+            change_data={
+                "edge_id": "edge_1",
+                "source_id": "node_1",
+                "target_id": "node_2",
+            },
+            client_id="client_1",
+        )
+        await event_bus.publish(event)
+
+        # 验证边已添加
+        state = sync_service.get_canvas_state("wf_123")
+        assert "edge_1" in state.edges
+        assert state.edges["edge_1"]["source_id"] == "node_1"
+
+
+class TestConversationAgentContextUpdatePhase3:
+    """ConversationAgent 上下文更新测试 - 阶段 3
+
+    核心测试：验证画布变更能够更新到 ConversationAgent.SessionContext
+    """
+
+    @pytest.fixture
+    def event_bus(self):
+        from src.domain.services.event_bus import EventBus
+
+        return EventBus()
+
+    @pytest.fixture
+    def mock_conversation_agent(self):
+        """创建 Mock ConversationAgent"""
+        agent = MagicMock()
+        agent.session_context = MagicMock()
+        agent.session_context.canvas_state = {}
+        return agent
+
+    @pytest.fixture
+    def sync_service_with_agent(self, event_bus, mock_conversation_agent):
+        """创建带 ConversationAgent 的同步服务"""
+        from src.domain.services.bidirectional_sync import BidirectionalSyncService
+
+        service = BidirectionalSyncService(event_bus=event_bus)
+        service.register_conversation_agent("wf_123", mock_conversation_agent)
+        return service, mock_conversation_agent
+
+    @pytest.mark.asyncio
+    async def test_canvas_change_updates_conversation_context(
+        self, event_bus, sync_service_with_agent
+    ):
+        """测试：画布变更更新对话上下文
+
+        这是阶段 3 的核心验收测试！
+        用户在画布新增节点后，对话 Agent 上下文能获取该节点
+        """
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        service, agent = sync_service_with_agent
+
+        # 发布画布变更
+        event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_added",
+            change_data={
+                "node_id": "node_1",
+                "node_type": "LLM",
+                "position": {"x": 50, "y": 100},
+                "config": {"model": "gpt-4"},
+            },
+            client_id="client_1",
+        )
+        await event_bus.publish(event)
+
+        # 验证 ConversationAgent 上下文已更新
+        assert "nodes" in agent.session_context.canvas_state
+        assert "node_1" in agent.session_context.canvas_state["nodes"]
+
+    @pytest.mark.asyncio
+    async def test_conversation_agent_can_access_canvas_state_in_reasoning(
+        self, event_bus, sync_service_with_agent
+    ):
+        """测试：ConversationAgent 推理时可以访问画布状态"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        service, agent = sync_service_with_agent
+
+        # 添加多个节点
+        for i in range(3):
+            event = CanvasChangeEvent(
+                source="canvas",
+                workflow_id="wf_123",
+                change_type="node_added",
+                change_data={
+                    "node_id": f"node_{i}",
+                    "node_type": "HTTP",
+                },
+                client_id="client_1",
+            )
+            await event_bus.publish(event)
+
+        # 验证上下文包含所有节点
+        canvas_state = agent.session_context.canvas_state
+        assert len(canvas_state.get("nodes", {})) == 3
+
+
+class TestConflictDetectionPhase3:
+    """冲突检测测试 - 阶段 3"""
+
+    @pytest.fixture
+    def event_bus(self):
+        from src.domain.services.event_bus import EventBus
+
+        return EventBus()
+
+    @pytest.fixture
+    def sync_service(self, event_bus):
+        from src.domain.services.bidirectional_sync import BidirectionalSyncService
+
+        return BidirectionalSyncService(event_bus=event_bus)
+
+    @pytest.mark.asyncio
+    async def test_version_conflict_detected(self, sync_service, event_bus):
+        """测试：检测版本冲突"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        # 添加节点（版本 0）
+        add_event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_added",
+            change_data={"node_id": "node_1", "node_type": "HTTP"},
+            client_id="client_1",
+            version=0,
+        )
+        await event_bus.publish(add_event)
+
+        # 更新节点（版本 1）
+        update_event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_updated",
+            change_data={"node_id": "node_1", "changes": {"config": {"url": "a"}}},
+            client_id="client_2",
+            version=1,
+        )
+        await event_bus.publish(update_event)
+
+        # 另一个客户端尝试用旧版本更新（版本 0，冲突）
+        conflict_event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_updated",
+            change_data={"node_id": "node_1", "changes": {"config": {"url": "b"}}},
+            client_id="client_3",
+            version=0,  # 旧版本
+        )
+
+        # 验证冲突
+        result = await sync_service.handle_change(conflict_event)
+        assert result.conflict is True
+        assert result.current_version > 0
+
+    @pytest.mark.asyncio
+    async def test_no_conflict_with_correct_version(self, sync_service, event_bus):
+        """测试：正确版本号不产生冲突"""
+        from src.domain.services.bidirectional_sync import CanvasChangeEvent
+
+        # 添加节点
+        add_event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_added",
+            change_data={"node_id": "node_1", "node_type": "HTTP"},
+            client_id="client_1",
+            version=0,
+        )
+        await event_bus.publish(add_event)
+
+        # 获取当前版本
+        state = sync_service.get_canvas_state("wf_123")
+        current_version = state.version
+
+        # 用正确版本更新
+        update_event = CanvasChangeEvent(
+            source="canvas",
+            workflow_id="wf_123",
+            change_type="node_updated",
+            change_data={"node_id": "node_1", "changes": {"config": {"url": "new"}}},
+            client_id="client_1",
+            version=current_version,
+        )
+
+        result = await sync_service.handle_change(update_event)
+        assert result.success is True
+        assert result.conflict is False
+
+
+class TestRealWorldCanvasToConversationScenario:
+    """真实场景测试：画布→对话同步"""
+
+    @pytest.fixture
+    def event_bus(self):
+        from src.domain.services.event_bus import EventBus
+
+        return EventBus()
+
+    @pytest.mark.asyncio
+    async def test_user_manual_edit_syncs_to_conversation(self, event_bus):
+        """测试：用户手动编辑画布同步到对话上下文
+
+        真实场景：
+        1. 用户在画布上拖拽创建节点
+        2. 前端发送 CanvasChangeEvent
+        3. BidirectionalSyncService 处理变更
+        4. ConversationAgent.SessionContext 更新
+        5. 下次推理时 ConversationAgent 能访问新节点
+
+        这是阶段 3 的完整验收场景！
+        """
+        from src.domain.services.bidirectional_sync import (
+            BidirectionalSyncService,
+            CanvasChangeEvent,
+        )
+
+        # 1. 创建服务和模拟的 ConversationAgent
+        sync_service = BidirectionalSyncService(event_bus=event_bus)
+
+        mock_agent = MagicMock()
+        mock_agent.session_context = MagicMock()
+        mock_agent.session_context.canvas_state = {}
+        sync_service.register_conversation_agent("wf_123", mock_agent)
+
+        # 2. 模拟用户在画布上创建 3 个节点
+        nodes_to_create = [
+            {"node_id": "start_node", "node_type": "START", "position": {"x": 100, "y": 50}},
+            {
+                "node_id": "llm_node",
+                "node_type": "LLM",
+                "position": {"x": 100, "y": 150},
+                "config": {"model": "gpt-4", "user_prompt": "分析数据"},
+            },
+            {"node_id": "end_node", "node_type": "END", "position": {"x": 100, "y": 250}},
+        ]
+
+        for node_data in nodes_to_create:
+            event = CanvasChangeEvent(
+                source="canvas",
+                workflow_id="wf_123",
+                change_type="node_added",
+                change_data=node_data,
+                client_id="frontend_client",
+            )
+            await event_bus.publish(event)
+
+        # 3. 模拟用户连接节点
+        edges_to_create = [
+            {"edge_id": "edge_1", "source_id": "start_node", "target_id": "llm_node"},
+            {"edge_id": "edge_2", "source_id": "llm_node", "target_id": "end_node"},
+        ]
+
+        for edge_data in edges_to_create:
+            event = CanvasChangeEvent(
+                source="canvas",
+                workflow_id="wf_123",
+                change_type="edge_added",
+                change_data=edge_data,
+                client_id="frontend_client",
+            )
+            await event_bus.publish(event)
+
+        # 4. 验证画布状态
+        state = sync_service.get_canvas_state("wf_123")
+        assert len(state.nodes) == 3
+        assert len(state.edges) == 2
+        assert "llm_node" in state.nodes
+        assert state.nodes["llm_node"]["config"]["model"] == "gpt-4"
+
+        # 5. 验证 ConversationAgent 上下文已更新
+        canvas_state = mock_agent.session_context.canvas_state
+        assert "nodes" in canvas_state
+        assert len(canvas_state["nodes"]) == 3
+        assert "edges" in canvas_state
+        assert len(canvas_state["edges"]) == 2
+
+        # 6. 模拟 ConversationAgent 推理时访问画布状态
+        # （在真实实现中，这会通过 get_context_for_reasoning() 返回）
+        reasoning_context = {
+            "canvas_state": canvas_state,
+            "message": "用户请求执行工作流",
+        }
+
+        # ConversationAgent 应该能看到所有节点
+        assert "llm_node" in reasoning_context["canvas_state"]["nodes"]
+        assert reasoning_context["canvas_state"]["nodes"]["llm_node"]["node_type"] == "LLM"
+
+        print("✅ 验收通过：用户在画布新增节点后，对话 Agent 上下文能获取该节点")

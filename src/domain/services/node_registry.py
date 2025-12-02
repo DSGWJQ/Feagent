@@ -87,6 +87,37 @@ VALID_LIFECYCLE_TRANSITIONS = {
 }
 
 
+# ==================== 阶段 4：节点生命周期与模板复用 ====================
+
+
+class NodeScope(str, Enum):
+    """节点作用域（阶段4新增）
+
+    定义节点的可见性和复用范围：
+    - WORKFLOW: 仅在当前工作流可用
+    - TEMPLATE: 可被其他工作流复用（模板）
+    - GLOBAL: 系统级全局可用
+    """
+
+    WORKFLOW = "workflow"
+    TEMPLATE = "template"
+    GLOBAL = "global"
+
+
+class PromotionStatus(str, Enum):
+    """升级状态（阶段4新增）
+
+    表示节点的升级状态：
+    - DRAFT: 草稿状态
+    - PROMOTED: 已升级为模板
+    - PUBLISHED: 已发布为全局
+    """
+
+    DRAFT = "draft"
+    PROMOTED = "promoted"
+    PUBLISHED = "published"
+
+
 class NodeConfigError(Exception):
     """节点配置错误异常
 
@@ -107,6 +138,11 @@ class Node:
     - lifecycle: 生命周期
     - children: 子节点列表（仅GENERIC类型）
     - collapsed: 是否折叠（仅GENERIC类型）
+    - scope: 作用域（阶段4新增）
+    - version: 版本号（阶段4新增）
+    - promotion_status: 升级状态（阶段4新增）
+    - template_name: 模板名称（阶段4新增）
+    - source_template_id: 来源模板ID（阶段4新增）
 
     使用示例：
         node = Node(
@@ -122,6 +158,13 @@ class Node:
     lifecycle: NodeLifecycle = NodeLifecycle.TEMPORARY
     children: list["Node"] = field(default_factory=list)
     collapsed: bool = True  # GENERIC节点默认折叠
+
+    # 阶段4新增字段
+    scope: NodeScope = NodeScope.WORKFLOW
+    version: int = 1
+    promotion_status: PromotionStatus = PromotionStatus.DRAFT
+    template_name: str | None = None
+    source_template_id: str | None = None
 
     def promote(self, target_lifecycle: NodeLifecycle) -> None:
         """提升节点生命周期
@@ -147,6 +190,44 @@ class Node:
             )
 
         self.lifecycle = target_lifecycle
+
+    def promote_to_template(self, template_name: str) -> None:
+        """升级为模板（阶段4新增）
+
+        将工作流节点升级为可复用的模板。
+
+        参数：
+            template_name: 模板名称
+
+        异常：
+            ValueError: 如果当前状态不允许升级
+        """
+        if self.scope == NodeScope.GLOBAL:
+            raise ValueError("全局节点不能再升级")
+
+        if self.scope == NodeScope.TEMPLATE:
+            raise ValueError("已经是模板节点")
+
+        self.scope = NodeScope.TEMPLATE
+        self.promotion_status = PromotionStatus.PROMOTED
+        self.template_name = template_name
+
+    def promote_to_global(self) -> None:
+        """升级为全局节点（阶段4新增）
+
+        将模板升级为系统级全局可用。
+
+        异常：
+            ValueError: 如果当前不是模板状态
+        """
+        if self.scope == NodeScope.WORKFLOW:
+            raise ValueError("必须先升级为模板，才能升级为全局")
+
+        if self.scope == NodeScope.GLOBAL:
+            raise ValueError("已经是全局节点")
+
+        self.scope = NodeScope.GLOBAL
+        self.promotion_status = PromotionStatus.PUBLISHED
 
     def add_child(self, child: "Node") -> None:
         """添加子节点（仅GENERIC类型）
@@ -503,4 +584,7 @@ __all__ = [
     "NodeFactory",
     "PREDEFINED_SCHEMAS",
     "VALID_LIFECYCLE_TRANSITIONS",
+    # 阶段4新增
+    "NodeScope",
+    "PromotionStatus",
 ]
