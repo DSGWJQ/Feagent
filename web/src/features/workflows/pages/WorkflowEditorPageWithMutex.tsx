@@ -24,13 +24,16 @@ import {
   type OnConnect,
   type ReactFlowInstance,
   type NodeDragHandler,
+  type NodeChange,
+  type EdgeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Button, message, Empty, Spin } from 'antd';
-import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { Button, message, Empty, Spin, Badge, Tooltip } from 'antd';
+import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined, WifiOutlined, DisconnectOutlined } from '@ant-design/icons';
 import { updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
 import { useWorkflow } from '@/hooks/useWorkflow';
+import { useCanvasSync } from '../hooks/useCanvasSync';
 import type { WorkflowNode, WorkflowEdge } from '../types/workflow';
 import NodePalette from '../components/NodePalette';
 import NodeConfigPanel from '../components/NodeConfigPanel';
@@ -190,6 +193,64 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   });
 
   const { workflowData, isLoadingWorkflow, workflowError } = useWorkflow(workflowId);
+
+  /**
+   * WebSocket 画布同步
+   */
+  const handleRemoteNodesChange = useCallback((changes: NodeChange[]) => {
+    setNodes((nds) => applyNodeChanges(changes, nds));
+  }, []);
+
+  const handleRemoteEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setEdges((eds) => applyEdgeChanges(changes, eds));
+  }, []);
+
+  const handleExecutionStatus = useCallback((status: {
+    nodeId: string;
+    status: 'running' | 'completed' | 'error';
+    outputs: Record<string, any>;
+    error: string | null;
+  }) => {
+    // 执行状态由 WebSocket 实时同步
+    console.log('Execution status from WebSocket:', status);
+  }, []);
+
+  const handleWorkflowStarted = useCallback(() => {
+    console.log('Workflow started (WebSocket)');
+    setExecutionStartTime(Date.now());
+  }, []);
+
+  const handleWorkflowCompletedWS = useCallback((status: {
+    status: string;
+    outputs: Record<string, any>;
+  }) => {
+    console.log('Workflow completed (WebSocket):', status);
+  }, []);
+
+  const handleWSError = useCallback((error: string) => {
+    console.error('WebSocket error:', error);
+  }, []);
+
+  const {
+    isConnected: wsConnected,
+    error: wsError,
+    createNode: wsCreateNode,
+    updateNode: wsUpdateNode,
+    deleteNode: wsDeleteNode,
+    moveNode: wsMoveNode,
+    createEdge: wsCreateEdge,
+    deleteEdge: wsDeleteEdge,
+    startExecution: wsStartExecution,
+  } = useCanvasSync({
+    workflowId,
+    enabled: !!workflowId && isInitialized,
+    onNodesChange: handleRemoteNodesChange,
+    onEdgesChange: handleRemoteEdgesChange,
+    onExecutionStatus: handleExecutionStatus,
+    onWorkflowStarted: handleWorkflowStarted,
+    onWorkflowCompleted: handleWorkflowCompletedWS,
+    onError: handleWSError,
+  });
 
   /**
    * 处理工作流更新（从AI聊天返回）
@@ -548,6 +609,30 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
                 </span>
               )}
             </p>
+            {/* WebSocket 连接状态指示器 */}
+            <Tooltip title={wsConnected ? '已连接' : wsError || '未连接'}>
+              <div
+                data-testid="ws-connection-status"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  marginTop: 4,
+                  fontSize: '11px',
+                  color: wsConnected ? '#52c41a' : '#faad14',
+                }}
+              >
+                {wsConnected ? (
+                  <>
+                    <WifiOutlined /> 实时同步
+                  </>
+                ) : (
+                  <>
+                    <DisconnectOutlined /> 离线
+                  </>
+                )}
+              </div>
+            </Tooltip>
           </div>
         </div>
 

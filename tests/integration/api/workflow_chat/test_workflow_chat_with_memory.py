@@ -297,9 +297,9 @@ class TestWorkflowChatWithMemory:
 
             # 这是一个期望失败的断言（RED 阶段）
             # 因为当前基础服务不传递历史
-            assert (
-                "对话历史" in prompt_text or "上下文" in prompt_text
-            ), "LLM prompt 中应包含对话历史，但未找到"
+            assert "对话历史" in prompt_text or "上下文" in prompt_text, (
+                "LLM prompt 中应包含对话历史，但未找到"
+            )
 
 
 class TestWorkflowChatEnhancedFeatures:

@@ -236,7 +236,7 @@ class TaskExecutor:
         task.add_event(event_message)
 
         # 记录到日志
-        logger.info(f"Task {task.id} 工具调用: {tool_name}, " f"耗时: {duration:.2f}秒")
+        logger.info(f"Task {task.id} 工具调用: {tool_name}, 耗时: {duration:.2f}秒")
 
 
 SIGALRM = getattr(signal, "SIGALRM", None)

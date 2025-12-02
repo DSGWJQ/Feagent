@@ -63,7 +63,8 @@ class TestCreateAgent:
         )
 
         mock_use_case = Mock()
-        mock_use_case.execute.return_value = mock_agent
+        # execute() 返回 tuple[Agent, str | None]
+        mock_use_case.execute.return_value = (mock_agent, None)
         mock_use_case_class.return_value = mock_use_case
 
         # 发送请求

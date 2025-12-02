@@ -54,7 +54,7 @@ class TestDocument:
     def test_create_document_with_whitespace_only_title_should_raise_error(self):
         """测试：创建文档时标题只有空格应该抛出异常"""
         # Arrange & Act & Assert
-        with pytest.raises(DomainError, match="文档标���不能为空"):
+        with pytest.raises(DomainError, match="文档标题不能为空"):
             Document.create(title="   ", content="内容", source=DocumentSource.UPLOAD)
 
     def test_mark_processed_should_update_status_and_timestamp(self):

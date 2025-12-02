@@ -1,4 +1,8 @@
-"""DatabaseExecutor 单元测试"""
+"""DatabaseExecutor 单元测试
+
+【遗留问题】此测试文件在并行运行时会出现数据库锁定问题（sqlite3.OperationalError: database is locked）。
+这是测试隔离问题，需要使用独立的数据库实例或添加适当的测试隔离机制。
+"""
 
 import os
 import sqlite3

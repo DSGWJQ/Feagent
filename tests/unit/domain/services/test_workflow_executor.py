@@ -6,6 +6,8 @@ Domain 层服务：负责执行工作流
 - 测试拓扑排序（按依赖顺序执行节点）
 - 测试节点执行（HTTP、Transform、Conditional 等）
 - 测试错误处理
+
+注意：execute 方法是异步的，需要使用 pytest-asyncio
 """
 
 import pytest
@@ -22,7 +24,8 @@ from src.domain.value_objects.position import Position
 class TestWorkflowExecutor:
     """测试工作流执行器"""
 
-    def test_execute_simple_workflow_should_succeed(self):
+    @pytest.mark.asyncio
+    async def test_execute_simple_workflow_should_succeed(self):
         """测试：执行简单工作流应该成功
 
         场景：
@@ -66,7 +69,7 @@ class TestWorkflowExecutor:
         executor = WorkflowExecutor()
 
         # Act
-        result = executor.execute(workflow, initial_input="test")
+        result = await executor.execute(workflow, initial_input="test")
 
         # Assert
         assert result is not None
@@ -76,7 +79,8 @@ class TestWorkflowExecutor:
         assert executor.execution_log[1]["node_id"] == node2.id
         assert executor.execution_log[2]["node_id"] == node3.id
 
-    def test_execute_workflow_with_conditional_should_succeed(self):
+    @pytest.mark.asyncio
+    async def test_execute_workflow_with_conditional_should_succeed(self):
         """测试：执行带条件分支的工作流应该成功
 
         场景：
@@ -143,14 +147,15 @@ class TestWorkflowExecutor:
         executor = WorkflowExecutor()
 
         # Act
-        result = executor.execute(workflow, initial_input="test")
+        result = await executor.execute(workflow, initial_input="test")
 
         # Assert
         assert result is not None
         # 暂时验证所有节点都被执行（未来实现条件分支后，只执行满足条件的分支）
         assert len(executor.execution_log) == 5
 
-    def test_execute_workflow_with_cycle_should_raise_error(self):
+    @pytest.mark.asyncio
+    async def test_execute_workflow_with_cycle_should_raise_error(self):
         """测试：执行有环的工作流应该抛出错误
 
         场景：
@@ -187,7 +192,7 @@ class TestWorkflowExecutor:
 
         # Act & Assert
         with pytest.raises(DomainError, match="工作流包含环"):
-            executor.execute(workflow, initial_input="test")
+            await executor.execute(workflow, initial_input="test")
 
     def test_topological_sort_should_return_correct_order(self):
         """测试：拓扑排序应该返回正确的执行顺序

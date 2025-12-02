@@ -513,7 +513,7 @@ class TestRealWorldScenarios:
 
         # 执行多次调用
         for i in range(5):
-            await mock_llm_call(f"这是第{i+1}个测试提示词")
+            await mock_llm_call(f"这是第{i + 1}个测试提示词")
 
         # 验证指标
         all_metrics = metrics.get_metrics()

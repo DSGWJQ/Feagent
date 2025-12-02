@@ -273,8 +273,8 @@ def test_count_messages(test_db: Session):
 
     # 添加 5 轮对话（10 条消息）
     for i in range(5):
-        repo.save(ChatMessage.create("wf_test_006", f"用户消息 {i+1}", True))
-        repo.save(ChatMessage.create("wf_test_006", f"AI回复 {i+1}", False))
+        repo.save(ChatMessage.create("wf_test_006", f"用户消息 {i + 1}", True))
+        repo.save(ChatMessage.create("wf_test_006", f"AI回复 {i + 1}", False))
     test_db.commit()
 
     # 统计消息数量

@@ -26,6 +26,7 @@ from src.interfaces.api.routes import (
     runs,
     scheduled_workflows,
     tools,
+    websocket,
 )
 from src.interfaces.api.routes import chat_workflows as chat_workflows_routes
 from src.interfaces.api.routes import workflows as workflows_routes
@@ -144,6 +145,7 @@ app.include_router(concurrent_workflows.router, prefix="/api", tags=["Concurrent
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(memory_metrics.router, tags=["Memory"])
 app.include_router(knowledge.router, tags=["Knowledge"])
+app.include_router(websocket.router, tags=["WebSocket"])
 
 
 if __name__ == "__main__":

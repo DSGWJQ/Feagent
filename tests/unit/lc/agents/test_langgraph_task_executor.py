@@ -33,9 +33,9 @@ class TestLangGraphTaskExecutorBasics:
         # 验证必需的字段
         required_fields = {"messages", "next"}
         actual_fields = set(AgentState.__annotations__.keys())
-        assert required_fields.issubset(
-            actual_fields
-        ), f"AgentState 应该包含字段: {required_fields}"
+        assert required_fields.issubset(actual_fields), (
+            f"AgentState 应该包含字段: {required_fields}"
+        )
 
     def test_create_langgraph_task_executor_returns_compiled_graph(self):
         """测试：create_langgraph_task_executor() 返回编译的图
@@ -174,9 +174,9 @@ class TestLangGraphTaskExecutorBasics:
         assert "messages" in annotations, "应该有 messages 字段"
         messages_type = annotations["messages"]
         # 类型应该与列表相关（可能是 list, Annotated[list, ...] 等）
-        assert (
-            "list" in str(messages_type).lower() or "sequence" in str(messages_type).lower()
-        ), f"messages 字段类型应该是列表类型，实际: {messages_type}"
+        assert "list" in str(messages_type).lower() or "sequence" in str(messages_type).lower(), (
+            f"messages 字段类型应该是列表类型，实际: {messages_type}"
+        )
 
         # 检查 next 字段
         assert "next" in annotations, "应该有 next 字段"

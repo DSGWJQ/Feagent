@@ -154,9 +154,9 @@ class TestChatStreamReactAPI:
             assert response.status_code == 200, "应该返回 200"
 
             # 验证响应头
-            assert "text/event-stream" in response.headers.get(
-                "content-type", ""
-            ), "Content-Type 应该是 text/event-stream"
+            assert "text/event-stream" in response.headers.get("content-type", ""), (
+                "Content-Type 应该是 text/event-stream"
+            )
 
             # 验证响应内容包含 data: 开头的行
             content = response.text
@@ -348,9 +348,9 @@ class TestChatStreamReactAPI:
             # 流式端点会返回 200 然后在流中发送错误事件
             assert response.status_code == 200, "流式端点应该返回 200"
             # 验证响应包含错误信息
-            assert (
-                "error" in response.text or "workflow_not_found" in response.text
-            ), "应该包含错误信息"
+            assert "error" in response.text or "workflow_not_found" in response.text, (
+                "应该包含错误信息"
+            )
 
     def test_empty_message_validation(self, client: TestClient, sample_workflow: Workflow):
         """测试：空消息的验证
@@ -427,6 +427,6 @@ class TestChatStreamReactAPI:
                             pass
 
             # 应该有 3 个 react_step 事件
-            assert (
-                react_step_count == 3
-            ), f"应该有 3 个 react_step 事件，但实际有 {react_step_count} 个"
+            assert react_step_count == 3, (
+                f"应该有 3 个 react_step 事件，但实际有 {react_step_count} 个"
+            )

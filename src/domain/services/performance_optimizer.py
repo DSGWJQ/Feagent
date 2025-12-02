@@ -129,7 +129,7 @@ class ParallelOptimizer:
             node_ids = nodes
 
         # 构建入度表和邻接表
-        in_degree = {node: 0 for node in node_ids}
+        in_degree = dict.fromkeys(node_ids, 0)
         adjacency = {node: [] for node in node_ids}
 
         for edge in edges:

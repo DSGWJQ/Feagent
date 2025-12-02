@@ -285,9 +285,9 @@ class TestExecuteRunUseCase:
 
         # Assert
         assert result1.id != result2.id, "每次执行应该创建不同的 Run"
-        assert (
-            result1.agent_id == result2.agent_id == mock_agent.id
-        ), "所有 Run 应该关联到同一个 Agent"
+        assert result1.agent_id == result2.agent_id == mock_agent.id, (
+            "所有 Run 应该关联到同一个 Agent"
+        )
         assert mock_run_repo.save.call_count >= 2, "应该至少调用两次 Repository.save()"
 
     @patch("src.application.use_cases.execute_run.create_plan_generator_chain")
@@ -425,9 +425,9 @@ class TestExecuteRunUseCaseWithLangChain:
         )
 
         # 验证 Task 被创建和保存（3 个任务）
-        assert (
-            mock_task_repo.save.call_count == 9
-        ), "应该保存 9 次 Task（每个 Task 保存 3 次：创建时 + 启动时 + 完成时）"
+        assert mock_task_repo.save.call_count == 9, (
+            "应该保存 9 次 Task（每个 Task 保存 3 次：创建时 + 启动时 + 完成时）"
+        )
 
         # 验证 TaskExecutorAgent 被调用（3 次）
         assert mock_execute_task.call_count == 3, "应该执行 3 个任务"
@@ -599,6 +599,6 @@ class TestExecuteRunUseCaseWithLangChain:
         assert first_task.run_id == result.id, "Task.run_id 应该关联到 Run"
         assert first_task.name == "读取文件", "Task.name 应该来自计划"
         assert first_task.input_data is not None
-        assert (
-            first_task.input_data["description"] == "读取 CSV 文件"
-        ), "Task.input_data 应该包含 description"
+        assert first_task.input_data["description"] == "读取 CSV 文件", (
+            "Task.input_data 应该包含 description"
+        )

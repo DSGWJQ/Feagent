@@ -127,6 +127,9 @@ class NodeConfigError(Exception):
     pass
 
 
+MAX_NODE_DEPTH = 5  # 最大嵌套深度限制
+
+
 @dataclass
 class Node:
     """节点实例
@@ -138,6 +141,7 @@ class Node:
     - lifecycle: 生命周期
     - children: 子节点列表（仅GENERIC类型）
     - collapsed: 是否折叠（仅GENERIC类型）
+    - parent_id: 父节点ID（Phase 9 新增）
     - scope: 作用域（阶段4新增）
     - version: 版本号（阶段4新增）
     - promotion_status: 升级状态（阶段4新增）
@@ -158,6 +162,7 @@ class Node:
     lifecycle: NodeLifecycle = NodeLifecycle.TEMPORARY
     children: list["Node"] = field(default_factory=list)
     collapsed: bool = True  # GENERIC节点默认折叠
+    parent_id: str | None = None  # Phase 9: 父节点引用
 
     # 阶段4新增字段
     scope: NodeScope = NodeScope.WORKFLOW
@@ -165,6 +170,9 @@ class Node:
     promotion_status: PromotionStatus = PromotionStatus.DRAFT
     template_name: str | None = None
     source_template_id: str | None = None
+
+    # 内部引用，用于层级遍历（不序列化）
+    _parent: "Node | None" = field(default=None, repr=False, compare=False)
 
     def promote(self, target_lifecycle: NodeLifecycle) -> None:
         """提升节点生命周期
@@ -234,8 +242,58 @@ class Node:
 
         参数：
             child: 子节点
+
+        异常：
+            ValueError: 如果不是 GENERIC 类型，或创建循环，或超过深度限制
         """
+        # 验证：只有 GENERIC 节点可以有子节点
+        if self.type != NodeType.GENERIC:
+            raise ValueError(
+                f"Only GENERIC nodes can have children. Current type: {self.type.value}"
+            )
+
+        # 验证：不能添加自己为子节点
+        if child.id == self.id:
+            raise ValueError("Cannot add node as its own child")
+
+        # 验证：不能创建循环层级
+        if self._would_create_cycle(child):
+            raise ValueError("Circular hierarchy detected: child is an ancestor of parent")
+
+        # 验证：深度限制
+        current_depth = self.get_depth()
+        if current_depth >= MAX_NODE_DEPTH:
+            raise ValueError(
+                f"Max depth ({MAX_NODE_DEPTH}) exceeded. Current depth: {current_depth}"
+            )
+
+        # 设置父子关系
+        child.parent_id = self.id
+        child._parent = self
         self.children.append(child)
+
+    def _would_create_cycle(self, potential_child: "Node") -> bool:
+        """检查添加子节点是否会创建循环"""
+        # 检查 potential_child 是否是当前节点的祖先
+        current = self._parent
+        while current is not None:
+            if current.id == potential_child.id:
+                return True
+            current = current._parent
+        return False
+
+    def remove_child(self, child_id: str) -> None:
+        """移除子节点
+
+        参数：
+            child_id: 子节点ID
+        """
+        for i, child in enumerate(self.children):
+            if child.id == child_id:
+                child.parent_id = None
+                child._parent = None
+                self.children.pop(i)
+                return
 
     def expand(self) -> None:
         """展开节点（仅GENERIC类型）"""
@@ -244,6 +302,131 @@ class Node:
     def collapse(self) -> None:
         """折叠节点（仅GENERIC类型）"""
         self.collapsed = True
+
+    def get_visible_children(self) -> list["Node"]:
+        """获取可见子节点
+
+        如果节点折叠，返回空列表；否则返回所有子节点。
+
+        返回：
+            可见子节点列表
+        """
+        if self.collapsed:
+            return []
+        return list(self.children)
+
+    def get_depth(self) -> int:
+        """获取当前节点深度
+
+        根节点深度为 0，每层子节点深度 +1。
+
+        返回：
+            节点深度
+        """
+        depth = 0
+        current = self._parent
+        while current is not None:
+            depth += 1
+            current = current._parent
+        return depth
+
+    def get_root(self) -> "Node":
+        """获取根节点
+
+        返回：
+            根节点（如果自己就是根，返回自己）
+        """
+        current = self
+        while current._parent is not None:
+            current = current._parent
+        return current
+
+    def get_ancestors(self) -> list["Node"]:
+        """获取所有祖先节点
+
+        返回：
+            祖先列表，从直接父节点到根节点
+        """
+        ancestors = []
+        current = self._parent
+        while current is not None:
+            ancestors.append(current)
+            current = current._parent
+        return ancestors
+
+    def get_all_descendants(self) -> list["Node"]:
+        """获取所有后代节点
+
+        返回：
+            后代列表（深度优先遍历）
+        """
+        descendants = []
+        for child in self.children:
+            descendants.append(child)
+            descendants.extend(child.get_all_descendants())
+        return descendants
+
+    def to_dict(self) -> dict[str, Any]:
+        """序列化为字典
+
+        返回：
+            包含节点所有信息的字典
+        """
+        return {
+            "id": self.id,
+            "type": self.type.value,
+            "config": self.config,
+            "lifecycle": self.lifecycle.value,
+            "collapsed": self.collapsed,
+            "parent_id": self.parent_id,
+            "scope": self.scope.value,
+            "version": self.version,
+            "promotion_status": self.promotion_status.value,
+            "template_name": self.template_name,
+            "source_template_id": self.source_template_id,
+            "children": [child.to_dict() for child in self.children],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Node":
+        """从字典反序列化
+
+        参数：
+            data: 节点数据字典
+
+        返回：
+            Node 实例
+        """
+        # 解析枚举类型
+        node_type = NodeType(data.get("type", "generic"))
+        lifecycle = NodeLifecycle(data.get("lifecycle", "temporary"))
+        scope = NodeScope(data.get("scope", "workflow"))
+        promotion_status = PromotionStatus(data.get("promotion_status", "draft"))
+
+        # 创建节点
+        node = cls(
+            id=data.get("id", ""),
+            type=node_type,
+            config=data.get("config", {}),
+            lifecycle=lifecycle,
+            collapsed=data.get("collapsed", True),
+            parent_id=data.get("parent_id"),
+            scope=scope,
+            version=data.get("version", 1),
+            promotion_status=promotion_status,
+            template_name=data.get("template_name"),
+            source_template_id=data.get("source_template_id"),
+        )
+
+        # 递归解析子节点
+        children_data = data.get("children", [])
+        for child_data in children_data:
+            child = cls.from_dict(child_data)
+            child.parent_id = node.id
+            child._parent = node
+            node.children.append(child)
+
+        return node
 
 
 # 预定义节点的默认Schema

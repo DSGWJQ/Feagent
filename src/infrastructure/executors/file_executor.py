@@ -53,8 +53,7 @@ class FileExecutor(NodeExecutor):
 
         if operation not in self.ALLOWED_OPERATIONS:
             raise DomainError(
-                f"不支持的文件操作: {operation}，"
-                f"支持的操作: {', '.join(self.ALLOWED_OPERATIONS)}"
+                f"不支持的文件操作: {operation}，支持的操作: {', '.join(self.ALLOWED_OPERATIONS)}"
             )
 
         if not path:

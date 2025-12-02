@@ -124,9 +124,9 @@ class GoalAlignmentChecker:
 目标: {goal.description}
 
 决策:
-- 类型: {decision.get('type', 'unknown')}
-- 节点类型: {decision.get('node_type', 'unknown')}
-- 推理: {decision.get('reasoning', 'N/A')}
+- 类型: {decision.get("type", "unknown")}
+- 节点类型: {decision.get("node_type", "unknown")}
+- 推理: {decision.get("reasoning", "N/A")}
 {history_text}
 
 请给出对齐程度评分(0-1)和简要分析。

@@ -35,7 +35,9 @@ class TestCreateAgentUseCase:
         验证点：
         - 输入有效时，能够成功创建 Agent
         - 调用 Repository.save() 保存 Agent
-        - 返回创建的 Agent
+        - 返回创建的 Agent（及可选的 workflow_id）
+
+        注意：execute() 返回 tuple[Agent, str | None]
         """
         # Arrange: 准备测试数据和 Mock
         mock_repo = Mock()
@@ -48,7 +50,7 @@ class TestCreateAgentUseCase:
         )
 
         # Act: 执行用例
-        result = use_case.execute(input_data)
+        result, workflow_id = use_case.execute(input_data)
 
         # Assert: 验证结果
         assert result is not None, "应该返回创建的 Agent"
@@ -83,7 +85,7 @@ class TestCreateAgentUseCase:
         )
 
         # Act
-        result = use_case.execute(input_data)
+        result, _ = use_case.execute(input_data)
 
         # Assert
         assert result.name is not None, "应该自动生成 name"
@@ -203,7 +205,7 @@ class TestCreateAgentUseCase:
         )
 
         # Act
-        result = use_case.execute(input_data)
+        result, _ = use_case.execute(input_data)
 
         # Assert
         assert result.start == "我有一个 CSV 文件", "start 应该去除首尾空格"
@@ -252,8 +254,8 @@ class TestCreateAgentUseCase:
         )
 
         # Act
-        result1 = use_case.execute(input_data)
-        result2 = use_case.execute(input_data)
+        result1, _ = use_case.execute(input_data)
+        result2, _ = use_case.execute(input_data)
 
         # Assert
         assert result1.id != result2.id, "每次创建的 Agent 应该有不同的 ID"
@@ -330,7 +332,7 @@ class TestCreateAgentWithTaskGeneration:
         )
 
         # Act: 执行用例
-        agent = use_case.execute(input_data)
+        agent, _ = use_case.execute(input_data)
 
         # Assert: 验证结果
         # 1. 验证调用了 PlanGeneratorChain

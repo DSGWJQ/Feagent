@@ -3,21 +3,23 @@
 TDD 第一步：先写测试，定义期望的行为
 
 增强功能：
-1. 对话历史管理 - 维护多轮对话上下文
+1. 对话历史管理 - 维护多轮对话上下文（数据库持久化）
 2. 意图识别 - 明确识别用户意图
 3. 修改验证 - 更详细的验证和错误反馈
 4. 建议生成 - 根据工作流提出修改建议
+
+注意：当前实现使用数据库持久化，测试需要 mock ChatMessageRepository
 """
 
 from unittest.mock import Mock
 
 import pytest
 
+from src.domain.entities.chat_message import ChatMessage
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.services.workflow_chat_service_enhanced import (
-    ChatMessage,
     EnhancedWorkflowChatService,
     ModificationResult,
 )
@@ -25,10 +27,59 @@ from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
 
 
+class MockChatMessageRepository:
+    """Mock 的聊天消息仓储，用于测试"""
+
+    def __init__(self):
+        self._messages: list[ChatMessage] = []
+
+    def save(self, message: ChatMessage) -> None:
+        self._messages.append(message)
+
+    def find_by_workflow_id(self, workflow_id: str, limit: int = 100) -> list[ChatMessage]:
+        return [m for m in self._messages if m.workflow_id == workflow_id][:limit]
+
+    def delete_by_workflow_id(self, workflow_id: str) -> None:
+        self._messages = [m for m in self._messages if m.workflow_id != workflow_id]
+
+    def search(
+        self, workflow_id: str, query: str, threshold: float = 0.5
+    ) -> list[tuple[ChatMessage, float]]:
+        """简单的关键词匹配搜索"""
+        if not query or not query.strip():
+            return []
+
+        results = []
+        query_lower = query.lower()
+        keywords = query_lower.split()
+
+        for msg in self._messages:
+            if msg.workflow_id != workflow_id:
+                continue
+
+            content_lower = msg.content.lower()
+            # 计算匹配度
+            match_count = sum(1 for kw in keywords if kw in content_lower)
+            if match_count > 0:
+                score = match_count / len(keywords)
+                if score >= threshold:
+                    results.append((msg, score))
+
+        # 按分数降序排序
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results
+
+
 @pytest.fixture
 def mock_llm():
     """Mock LLM 客户端"""
     return Mock()
+
+
+@pytest.fixture
+def mock_repository():
+    """Mock 聊天消息仓储"""
+    return MockChatMessageRepository()
 
 
 @pytest.fixture
@@ -72,9 +123,11 @@ def sample_workflow():
     )
 
 
-def test_chat_service_maintains_history(mock_llm, sample_workflow):
+def test_chat_service_maintains_history(mock_llm, mock_repository, sample_workflow):
     """测试：对话服务应该维护对话历史"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     # 模拟 LLM 返回值
     mock_llm.invoke.return_value = Mock(
@@ -85,15 +138,18 @@ def test_chat_service_maintains_history(mock_llm, sample_workflow):
     message1 = "添加一个节点"
     service.add_message(message1, is_user=True)
 
-    # 验证历史
-    assert len(service.history.messages) == 1
-    assert service.history.messages[0].content == message1
-    assert service.history.messages[0].is_user is True
+    # 验证历史（通过 repository 查询）
+    messages = mock_repository.find_by_workflow_id("wf_test")
+    assert len(messages) == 1
+    assert messages[0].content == message1
+    assert messages[0].is_user is True
 
 
-def test_chat_service_maintains_conversation_context(mock_llm, sample_workflow):
+def test_chat_service_maintains_conversation_context(mock_llm, mock_repository, sample_workflow):
     """测试：多轮对话应该保持上下文"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     # 添加多条消息
     service.add_message("添加一个 HTTP 节点", is_user=True)
@@ -101,17 +157,20 @@ def test_chat_service_maintains_conversation_context(mock_llm, sample_workflow):
     service.add_message("连接到前面的节点", is_user=True)
 
     # 验证历史维护
-    assert len(service.history.messages) == 3
+    messages = mock_repository.find_by_workflow_id("wf_test")
+    assert len(messages) == 3
     assert service.history.get_context()  # 应该能获取上下文
 
 
-def test_modification_result_contains_detailed_info(mock_llm, sample_workflow):
+def test_modification_result_contains_detailed_info(mock_llm, mock_repository, sample_workflow):
     """测试：修改结果应该包含详细的修改信息"""
     mock_llm.invoke.return_value = Mock(
         content='{"action": "add_node", "nodes_to_add": [{"type": "python", "name": "处理数据", "config": {"code": "result = input1"}, "position": {"x": 350, "y": 100}}], "ai_message": "已添加 Python 节点", "intent": "add_node", "confidence": 0.95}'
     )
 
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
     result = service.process_message(sample_workflow, "添加一个 Python 节点处理数据")
 
     # 验证结果包含所有必要信息
@@ -121,23 +180,27 @@ def test_modification_result_contains_detailed_info(mock_llm, sample_workflow):
     assert result.modifications_count > 0
 
 
-def test_chat_service_identifies_intent_correctly(mock_llm, sample_workflow):
+def test_chat_service_identifies_intent_correctly(mock_llm, mock_repository, sample_workflow):
     """测试：服务应该正确识别用户意图"""
     # 模拟 LLM 识别意图
     mock_llm.invoke.return_value = Mock(
         content='{"action": "add_node", "intent": "add_node", "confidence": 0.98, "nodes_to_add": [], "ai_message": "我会添加节点"}'
     )
 
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
     result = service.process_message(sample_workflow, "添加一个新节点")
 
     assert result.intent == "add_node"
     assert result.confidence >= 0.9
 
 
-def test_chat_service_provides_suggestions(mock_llm, sample_workflow):
+def test_chat_service_provides_suggestions(mock_llm, mock_repository, sample_workflow):
     """测试：服务应该根据工作流提供建议"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     # 获取建议
     suggestions = service.get_workflow_suggestions(sample_workflow)
@@ -147,14 +210,16 @@ def test_chat_service_provides_suggestions(mock_llm, sample_workflow):
     # 对于这个简单的工作流，应该有一些基本的建议
 
 
-def test_chat_service_provides_error_details(mock_llm, sample_workflow):
+def test_chat_service_provides_error_details(mock_llm, mock_repository, sample_workflow):
     """测试：当修改失败时应该提供详细的错误信息"""
     # 模拟 LLM 返回无效的修改
     mock_llm.invoke.return_value = Mock(
         content='{"action": "add_edge", "edges_to_add": [{"source": "invalid_node", "target": "node_1"}], "ai_message": "已添加边", "intent": "add_edge"}'
     )
 
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
     result = service.process_message(sample_workflow, "连接两个节点")
 
     # 应该捕获并报告错误
@@ -163,9 +228,11 @@ def test_chat_service_provides_error_details(mock_llm, sample_workflow):
         assert len(result.error_details) > 0
 
 
-def test_chat_history_export(mock_llm):
+def test_chat_history_export(mock_llm, mock_repository):
     """测试：应该能导出对话历史"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     # 添加一些消息
     service.add_message("Hello", is_user=True)
@@ -179,42 +246,50 @@ def test_chat_history_export(mock_llm):
     assert history_data[1]["content"] == "Hi there"
 
 
-def test_chat_service_clears_history(mock_llm):
+def test_chat_service_clears_history(mock_llm, mock_repository):
     """测试：应该能清空对话历史"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("Message 1", is_user=True)
     service.add_message("Message 2", is_user=False)
 
-    assert len(service.history.messages) == 2
+    messages = mock_repository.find_by_workflow_id("wf_test")
+    assert len(messages) == 2
 
     # 清空历史
     service.clear_history()
 
-    assert len(service.history.messages) == 0
+    messages = mock_repository.find_by_workflow_id("wf_test")
+    assert len(messages) == 0
 
 
-def test_modification_validation_detailed(mock_llm, sample_workflow):
+def test_modification_validation_detailed(mock_llm, mock_repository, sample_workflow):
     """测试：修改验证应该检查所有约束"""
     # 模拟 LLM 返回包含多个修改的请求
     mock_llm.invoke.return_value = Mock(
         content='{"action": "modify_multiple", "nodes_to_add": [{"type": "database", "name": "查询数据库", "config": {}, "position": {"x": 400, "y": 200}}], "edges_to_add": [], "ai_message": "已完成修改"}'
     )
 
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
     result = service.process_message(sample_workflow, "添加数据库节点")
 
     # 应该验证所有修改的有效性
     assert result is not None
 
 
-def test_chat_service_with_context_awareness(mock_llm, sample_workflow):
+def test_chat_service_with_context_awareness(mock_llm, mock_repository, sample_workflow):
     """测试：服务应该根据对话历史调整行为"""
     mock_llm.invoke.return_value = Mock(
         content='{"action": "modify_node", "intent": "context_aware", "ai_message": "基于之前的请求进行修改"}'
     )
 
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     # 第一轮对话
     service.add_message("我想处理 API 数据", is_user=True)
@@ -227,13 +302,15 @@ def test_chat_service_with_context_awareness(mock_llm, sample_workflow):
     # LLM 应该在构建提示词时包含历史信息
 
 
-def test_modification_result_with_rollback_info(mock_llm, sample_workflow):
+def test_modification_result_with_rollback_info(mock_llm, mock_repository, sample_workflow):
     """测试：修改结果应该包含回滚信息"""
     mock_llm.invoke.return_value = Mock(
         content='{"action": "add_node", "nodes_to_add": [], "ai_message": "已修改"}'
     )
 
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
     result = service.process_message(sample_workflow, "修改工作流")
 
     # 结果应该包含可以用于回滚的信息
@@ -246,9 +323,11 @@ def test_modification_result_with_rollback_info(mock_llm, sample_workflow):
 # ============================================================================
 
 
-def test_chat_history_semantic_search_basic(mock_llm):
+def test_chat_history_semantic_search_basic(mock_llm, mock_repository):
     """测试：应该能通过关键词在对话历史中进行语义搜索"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     # 添加包含不同关键词的消息
     service.add_message("我想添加一个 HTTP 节点来获取天气数据", is_user=True)
@@ -264,9 +343,11 @@ def test_chat_history_semantic_search_basic(mock_llm):
     assert any("HTTP" in msg.content for msg, _ in results)
 
 
-def test_chat_history_semantic_search_with_relevance_score(mock_llm):
+def test_chat_history_semantic_search_with_relevance_score(mock_llm, mock_repository):
     """测试：搜索结果应该包含相关性评分"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("添加 HTTP 请求节点", is_user=True)
     service.add_message("配置 API 端点", is_user=False)
@@ -284,9 +365,11 @@ def test_chat_history_semantic_search_with_relevance_score(mock_llm):
         assert 0 <= score <= 1.0
 
 
-def test_chat_history_search_returns_sorted_by_relevance(mock_llm):
+def test_chat_history_search_returns_sorted_by_relevance(mock_llm, mock_repository):
     """测试：搜索结果应该按相关性从高到低排序"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("HTTP 节点", is_user=True)
     service.add_message("HTTP 请求配置", is_user=False)
@@ -301,9 +384,11 @@ def test_chat_history_search_returns_sorted_by_relevance(mock_llm):
         assert scores == sorted(scores, reverse=True)
 
 
-def test_chat_history_search_empty_query_returns_empty(mock_llm):
+def test_chat_history_search_empty_query_returns_empty(mock_llm, mock_repository):
     """测试：空查询应该返回空结果"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
     service.add_message("添加节点", is_user=True)
 
     results = service.history.search("")
@@ -311,9 +396,11 @@ def test_chat_history_search_empty_query_returns_empty(mock_llm):
     assert results == []
 
 
-def test_chat_history_search_no_matches_returns_empty(mock_llm):
+def test_chat_history_search_no_matches_returns_empty(mock_llm, mock_repository):
     """测试：无匹配结果应该返回空列表"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
     service.add_message("HTTP 节点", is_user=True)
 
     results = service.history.search("XYZ_NOT_EXIST")
@@ -326,9 +413,11 @@ def test_chat_history_search_no_matches_returns_empty(mock_llm):
 # ============================================================================
 
 
-def test_chat_history_filter_by_relevance_to_keyword(mock_llm):
+def test_chat_history_filter_by_relevance_to_keyword(mock_llm, mock_repository):
     """测试：应该能根据关键词过滤历史消息"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("添加 HTTP 节点获取 API 数据", is_user=True)
     service.add_message("已添加节点", is_user=False)
@@ -343,9 +432,11 @@ def test_chat_history_filter_by_relevance_to_keyword(mock_llm):
     assert all(isinstance(msg, ChatMessage) for msg in filtered)
 
 
-def test_chat_history_filter_respects_threshold(mock_llm):
+def test_chat_history_filter_respects_threshold(mock_llm, mock_repository):
     """测试：相关性过滤应该遵守阈值"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("HTTP 请求", is_user=True)
     service.add_message("关键词在这里", is_user=False)
@@ -361,9 +452,11 @@ def test_chat_history_filter_respects_threshold(mock_llm):
     assert len(high_threshold_results) <= len(low_threshold_results)
 
 
-def test_chat_history_filter_for_context_building(mock_llm):
+def test_chat_history_filter_for_context_building(mock_llm, mock_repository):
     """测试：过滤出最相关的消息用于构建上下文"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     # 添加多条消息，混合相关和不相关的
     messages = [
@@ -385,9 +478,11 @@ def test_chat_history_filter_for_context_building(mock_llm):
     assert all(isinstance(msg, ChatMessage) for msg in relevant_msgs)
 
 
-def test_chat_history_filter_returns_empty_when_no_match(mock_llm):
+def test_chat_history_filter_returns_empty_when_no_match(mock_llm, mock_repository):
     """测试：没有匹配时应该返回空列表"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
     service.add_message("不相关的内容", is_user=True)
 
     filtered = service.history.filter_by_relevance("节点配置", threshold=0.9)
@@ -401,10 +496,12 @@ def test_chat_history_filter_returns_empty_when_no_match(mock_llm):
 
 
 def test_chat_history_compression_removes_old_messages_when_exceeds_max_tokens(
-    mock_llm,
+    mock_llm, mock_repository
 ):
     """测试：当消息超过 token 限制时应该压缩历史"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     # 添加足够多的消息以超过 token 限制
     for i in range(50):
@@ -416,13 +513,16 @@ def test_chat_history_compression_removes_old_messages_when_exceeds_max_tokens(
     compressed = service.history.compress_history(max_tokens=1000)
 
     # 压缩后应该保留较少的消息，但不会为空
+    messages = mock_repository.find_by_workflow_id("wf_test")
     assert len(compressed) > 0
-    assert len(compressed) < len(service.history.messages)
+    assert len(compressed) < len(messages)
 
 
-def test_chat_history_compression_preserves_recent_messages(mock_llm):
+def test_chat_history_compression_preserves_recent_messages(mock_llm, mock_repository):
     """测试：压缩应该保留最近的消息"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("很久以前的消息" * 20, is_user=True)
     service.add_message("中间的消息", is_user=False)
@@ -435,23 +535,28 @@ def test_chat_history_compression_preserves_recent_messages(mock_llm):
         assert "最近的消息" in compressed[-1].content or len(compressed) > 0
 
 
-def test_chat_history_compression_returns_history_if_within_limit(mock_llm):
+def test_chat_history_compression_returns_history_if_within_limit(mock_llm, mock_repository):
     """测试：如果未超过限制，压缩应该返回原始历史"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("短消息1", is_user=True)
     service.add_message("短消息2", is_user=False)
 
-    original_count = len(service.history.messages)
+    messages = mock_repository.find_by_workflow_id("wf_test")
+    original_count = len(messages)
     compressed = service.history.compress_history(max_tokens=10000)
 
     # 如果在限制内，应该返回所有消息
     assert len(compressed) == original_count
 
 
-def test_chat_history_compression_respects_min_messages(mock_llm):
+def test_chat_history_compression_respects_min_messages(mock_llm, mock_repository):
     """测试：压缩不应该删除少于最小消息数的历史"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("消息1" * 50, is_user=True)
     service.add_message("消息2" * 50, is_user=False)
@@ -464,9 +569,11 @@ def test_chat_history_compression_respects_min_messages(mock_llm):
     assert len(compressed) >= 2
 
 
-def test_chat_history_compression_estimates_token_count(mock_llm):
+def test_chat_history_compression_estimates_token_count(mock_llm, mock_repository):
     """测试：压缩应该能准确估计 token 数量"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("测试消息", is_user=True)
     service.add_message("回复消息", is_user=False)
@@ -482,30 +589,35 @@ def test_chat_history_compression_estimates_token_count(mock_llm):
     assert token_count <= 500
 
 
-def test_chat_history_compression_maintains_message_order(mock_llm):
+def test_chat_history_compression_maintains_message_order(mock_llm, mock_repository):
     """测试：压缩应该维护消息顺序"""
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     service.add_message("第一条", is_user=True)
     service.add_message("第二条", is_user=False)
     service.add_message("第三条", is_user=True)
 
     compressed = service.history.compress_history(max_tokens=10000)
+    messages = mock_repository.find_by_workflow_id("wf_test")
 
     # 压缩后的消息顺序应该不变
     for i, msg in enumerate(compressed):
-        original_msg = service.history.messages[i]
+        original_msg = messages[i]
         assert msg.content == original_msg.content
         assert msg.is_user == original_msg.is_user
 
 
-def test_chat_service_uses_compressed_history_in_prompt(mock_llm, sample_workflow):
+def test_chat_service_uses_compressed_history_in_prompt(mock_llm, mock_repository, sample_workflow):
     """测试：服务应该在构建提示词时使用压缩后的历史"""
     mock_llm.invoke.return_value = Mock(
         content='{"action": "add_node", "nodes_to_add": [], "ai_message": "已处理"}'
     )
 
-    service = EnhancedWorkflowChatService(llm=mock_llm)
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
 
     # 添加大量消息
     for i in range(30):

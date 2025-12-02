@@ -137,8 +137,7 @@ class PluginManager:
             existing = self._plugins[plugin.id]
             if existing.version != plugin.version:
                 raise PluginVersionConflictError(
-                    f"插件 {plugin.id} 已存在版本 {existing.version}，"
-                    f"无法注册版本 {plugin.version}"
+                    f"插件 {plugin.id} 已存在版本 {existing.version}，无法注册版本 {plugin.version}"
                 )
 
         self._plugins[plugin.id] = plugin

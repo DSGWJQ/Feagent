@@ -232,8 +232,8 @@ class TestRAGServiceIntegration:
         # 导入几个文档
         for i in range(3):
             await rag_service.ingest_document(
-                title=f"文档 {i+1}",
-                content=f"这是第 {i+1} 个测试文档。",
+                title=f"文档 {i + 1}",
+                content=f"这是第 {i + 1} 个测试文档。",
                 source=DocumentSource.UPLOAD,
                 workflow_id=workflow_id,
             )

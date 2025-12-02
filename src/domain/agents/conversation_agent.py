@@ -22,11 +22,15 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
 from src.domain.services.context_manager import Goal, SessionContext
 from src.domain.services.event_bus import Event, EventBus
+
+if TYPE_CHECKING:
+    from src.domain.agents.node_definition import NodeDefinition
+    from src.domain.agents.workflow_plan import WorkflowPlan
 
 
 class StepType(str, Enum):
@@ -42,7 +46,9 @@ class DecisionType(str, Enum):
     """决策类型"""
 
     CREATE_NODE = "create_node"  # 创建节点
+    CREATE_WORKFLOW_PLAN = "create_workflow_plan"  # 创建完整工作流规划（Phase 8）
     EXECUTE_WORKFLOW = "execute_workflow"  # 执行工作流
+    MODIFY_NODE = "modify_node"  # 修改节点定义（Phase 8）
     REQUEST_CLARIFICATION = "request_clarification"  # 请求澄清
     RESPOND = "respond"  # 直接回复
     CONTINUE = "continue"  # 继续推理
@@ -150,6 +156,29 @@ class ConversationAgentLLM(Protocol):
 
     async def decompose_goal(self, goal: str) -> list[dict[str, Any]]:
         """分解目标为子目标"""
+        ...
+
+    async def plan_workflow(self, goal: str, context: dict[str, Any]) -> dict[str, Any]:
+        """规划工作流结构（Phase 8 新增）
+
+        参数：
+            goal: 用户目标
+            context: 上下文信息
+
+        返回：
+            工作流规划字典，包含 nodes 和 edges
+        """
+        ...
+
+    async def decompose_to_nodes(self, goal: str) -> list[dict[str, Any]]:
+        """将目标分解为节点定义列表（Phase 8 新增）
+
+        参数：
+            goal: 用户目标
+
+        返回：
+            节点定义字典列表
+        """
         ...
 
 
@@ -545,7 +574,9 @@ class ConversationAgent:
 
         decision_type_mapping = {
             "create_node": DecisionType.CREATE_NODE,
+            "create_workflow_plan": DecisionType.CREATE_WORKFLOW_PLAN,
             "execute_workflow": DecisionType.EXECUTE_WORKFLOW,
+            "modify_node": DecisionType.MODIFY_NODE,
             "request_clarification": DecisionType.REQUEST_CLARIFICATION,
             "respond": DecisionType.RESPOND,
             "continue": DecisionType.CONTINUE,
@@ -625,6 +656,157 @@ class ConversationAgent:
         }
 
         return context
+
+    # === Phase 8: 工作流规划能力 ===
+
+    async def create_workflow_plan(self, goal: str) -> "WorkflowPlan":
+        """根据目标创建工作流规划（Phase 8 新增）
+
+        参数：
+            goal: 用户目标
+
+        返回：
+            WorkflowPlan 实例
+
+        抛出：
+            ValueError: 如果规划验证失败或存在循环依赖
+        """
+        from src.domain.agents.node_definition import NodeDefinition, NodeType
+        from src.domain.agents.workflow_plan import EdgeDefinition, WorkflowPlan
+
+        # 获取上下文
+        context = self.get_context_for_reasoning()
+        context["goal"] = goal
+
+        # 调用 LLM 规划工作流
+        plan_data = await self.llm.plan_workflow(goal, context)
+
+        # 转换节点
+        nodes = []
+        for node_data in plan_data.get("nodes", []):
+            node_type_str = node_data.get("type", "generic")
+            try:
+                node_type = NodeType(node_type_str.lower())
+            except ValueError:
+                node_type = NodeType.GENERIC
+
+            node = NodeDefinition(
+                node_type=node_type,
+                name=node_data.get("name", ""),
+                code=node_data.get("code"),
+                prompt=node_data.get("prompt"),
+                url=node_data.get("url"),
+                method=node_data.get("method", "GET"),
+                query=node_data.get("query"),
+                config=node_data.get("config", {}),
+            )
+            nodes.append(node)
+
+        # 转换边
+        edges = []
+        for edge_data in plan_data.get("edges", []):
+            edge = EdgeDefinition(
+                source_node=edge_data.get("source", edge_data.get("source_node", "")),
+                target_node=edge_data.get("target", edge_data.get("target_node", "")),
+                condition=edge_data.get("condition"),
+            )
+            edges.append(edge)
+
+        # 创建规划
+        plan = WorkflowPlan(
+            name=plan_data.get("name", f"Plan for: {goal[:30]}"),
+            description=plan_data.get("description", ""),
+            goal=goal,
+            nodes=nodes,
+            edges=edges,
+        )
+
+        # 验证规划
+        errors = plan.validate()
+        if errors:
+            raise ValueError(f"工作流规划验证失败: {'; '.join(errors)}")
+
+        # 检测循环依赖
+        if plan.has_circular_dependency():
+            raise ValueError("工作流存在循环依赖 (Circular dependency detected)")
+
+        return plan
+
+    async def decompose_to_nodes(self, goal: str) -> list["NodeDefinition"]:
+        """将目标分解为节点定义列表（Phase 8 新增）
+
+        参数：
+            goal: 用户目标
+
+        返回：
+            NodeDefinition 列表
+        """
+        from src.domain.agents.node_definition import NodeDefinition, NodeType
+
+        # 调用 LLM 分解
+        node_dicts = await self.llm.decompose_to_nodes(goal)
+
+        # 转换为 NodeDefinition
+        nodes = []
+        for node_data in node_dicts:
+            node_type_str = node_data.get("type", "generic")
+            try:
+                node_type = NodeType(node_type_str.lower())
+            except ValueError:
+                node_type = NodeType.GENERIC
+
+            node = NodeDefinition(
+                node_type=node_type,
+                name=node_data.get("name", ""),
+                code=node_data.get("code"),
+                prompt=node_data.get("prompt"),
+                url=node_data.get("url"),
+                query=node_data.get("query"),
+                config=node_data.get("config", {}),
+            )
+            nodes.append(node)
+
+        return nodes
+
+    async def create_workflow_plan_and_publish(self, goal: str) -> "WorkflowPlan":
+        """创建工作流规划并发布决策事件（Phase 8 新增）
+
+        参数：
+            goal: 用户目标
+
+        返回：
+            WorkflowPlan 实例
+        """
+        plan = await self.create_workflow_plan(goal)
+
+        # 发布决策事件
+        if self.event_bus:
+            event = DecisionMadeEvent(
+                source="conversation_agent",
+                decision_type=DecisionType.CREATE_WORKFLOW_PLAN.value,
+                decision_id=plan.id,
+                payload=plan.to_dict(),
+                confidence=1.0,
+            )
+            await self.event_bus.publish(event)
+
+        # 记录决策
+        self.session_context.add_decision(
+            {
+                "id": plan.id,
+                "type": DecisionType.CREATE_WORKFLOW_PLAN.value,
+                "payload": {"plan_name": plan.name, "node_count": len(plan.nodes)},
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
+        return plan
+
+
+# 类型提示导入（避免循环导入）
+if False:  # TYPE_CHECKING
+    from src.domain.agents.node_definition import NodeDefinition
+    from src.domain.agents.workflow_plan import WorkflowPlan
 
 
 # 导出

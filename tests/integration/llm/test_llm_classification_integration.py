@@ -141,7 +141,7 @@ class TestLLMClassificationIntegration:
 
         # 主要验证类型是否正确
         assert result.task_type == expected_type, (
-            f"任务 {start} -> {goal} 分类错误: " f"期望 {expected_type}, 实际 {result.task_type}"
+            f"任务 {start} -> {goal} 分类错误: 期望 {expected_type}, 实际 {result.task_type}"
         )
 
         # 置信度应该合理

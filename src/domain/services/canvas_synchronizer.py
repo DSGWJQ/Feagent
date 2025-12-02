@@ -35,6 +35,42 @@ class SyncStatistics:
 
 
 @dataclass
+class NodeCreatedEvent:
+    """节点创建事件
+
+    继承Event基类需要的字段，并添加自定义字段。
+    """
+
+    source: str
+    workflow_id: str
+    node_id: str
+    node_type: str
+    position: dict[str, float] = field(default_factory=lambda: {"x": 0, "y": 0})
+    config: dict[str, Any] = field(default_factory=dict)
+    # Event基类字段
+    id: str = field(default_factory=lambda: str(__import__("uuid").uuid4()))
+    timestamp: Any = field(default_factory=__import__("datetime").datetime.now)
+    correlation_id: str | None = None
+
+
+@dataclass
+class NodeExecutionCompletedEvent:
+    """节点执行完成事件
+
+    继承Event基类需要的字段，并添加自定义字段。
+    """
+
+    source: str
+    workflow_id: str
+    node_id: str
+    outputs: dict[str, Any] = field(default_factory=dict)
+    # Event基类字段
+    id: str = field(default_factory=lambda: str(__import__("uuid").uuid4()))
+    timestamp: Any = field(default_factory=__import__("datetime").datetime.now)
+    correlation_id: str | None = None
+
+
+@dataclass
 class CanvasState:
     """画布状态"""
 
@@ -366,4 +402,8 @@ class CanvasSynchronizer:
 # 导出
 __all__ = [
     "CanvasSynchronizer",
+    "NodeCreatedEvent",
+    "NodeExecutionCompletedEvent",
+    "SyncStatistics",
+    "CanvasState",
 ]
