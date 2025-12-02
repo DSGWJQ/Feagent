@@ -52,6 +52,8 @@ class DecisionType(str, Enum):
     REQUEST_CLARIFICATION = "request_clarification"  # 请求澄清
     RESPOND = "respond"  # 直接回复
     CONTINUE = "continue"  # 继续推理
+    ERROR_RECOVERY = "error_recovery"  # 错误恢复（Phase 13）
+    REPLAN_WORKFLOW = "replan_workflow"  # 重新规划工作流（Phase 13）
 
 
 @dataclass
@@ -181,6 +183,26 @@ class ConversationAgentLLM(Protocol):
         """
         ...
 
+    async def replan_workflow(
+        self,
+        goal: str,
+        failed_node_id: str,
+        failure_reason: str,
+        execution_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """重新规划工作流（Phase 13 新增）
+
+        参数：
+            goal: 原始目标
+            failed_node_id: 失败的节点ID
+            failure_reason: 失败原因
+            execution_context: 执行上下文
+
+        返回：
+            重新规划的工作流字典
+        """
+        ...
+
 
 class ConversationAgent:
     """对话Agent
@@ -233,6 +255,10 @@ class ConversationAgent:
         self.max_cost = max_cost
         self.coordinator = coordinator
         self._current_input: str | None = None
+
+        # Phase 13: 反馈监听
+        self.pending_feedbacks: list[dict[str, Any]] = []
+        self._is_listening_feedbacks = False
 
     def execute_step(self, user_input: str) -> ReActStep:
         """执行单个ReAct步骤
@@ -653,6 +679,8 @@ class ConversationAgent:
             "user_id": self.session_context.global_context.user_id,
             "user_preferences": self.session_context.global_context.user_preferences,
             "system_config": self.session_context.global_context.system_config,
+            # Phase 13: 添加待处理的反馈
+            "pending_feedbacks": self.pending_feedbacks.copy(),
         }
 
         return context
@@ -799,6 +827,181 @@ class ConversationAgent:
                 "timestamp": datetime.now().isoformat(),
             }
         )
+
+        return plan
+
+    # === Phase 13: 反馈监听与错误恢复 ===
+
+    def start_feedback_listening(self) -> None:
+        """开始监听协调者反馈事件
+
+        订阅 WorkflowAdjustmentRequestedEvent 和 NodeFailureHandledEvent，
+        将反馈存储到 pending_feedbacks 供 ReAct 循环使用。
+        """
+        if self._is_listening_feedbacks:
+            return
+
+        if not self.event_bus:
+            raise ValueError("EventBus is required for feedback listening")
+
+        from src.domain.agents.coordinator_agent import (
+            NodeFailureHandledEvent,
+            WorkflowAdjustmentRequestedEvent,
+        )
+
+        self.event_bus.subscribe(WorkflowAdjustmentRequestedEvent, self._handle_adjustment_event)
+        self.event_bus.subscribe(NodeFailureHandledEvent, self._handle_failure_handled_event)
+
+        self._is_listening_feedbacks = True
+
+    def stop_feedback_listening(self) -> None:
+        """停止监听协调者反馈事件"""
+        if not self._is_listening_feedbacks:
+            return
+
+        if not self.event_bus:
+            return
+
+        from src.domain.agents.coordinator_agent import (
+            NodeFailureHandledEvent,
+            WorkflowAdjustmentRequestedEvent,
+        )
+
+        self.event_bus.unsubscribe(WorkflowAdjustmentRequestedEvent, self._handle_adjustment_event)
+        self.event_bus.unsubscribe(NodeFailureHandledEvent, self._handle_failure_handled_event)
+
+        self._is_listening_feedbacks = False
+
+    async def _handle_adjustment_event(self, event: Any) -> None:
+        """处理工作流调整请求事件"""
+        self.pending_feedbacks.append(
+            {
+                "type": "workflow_adjustment",
+                "workflow_id": event.workflow_id,
+                "failed_node_id": event.failed_node_id,
+                "failure_reason": event.failure_reason,
+                "suggested_action": event.suggested_action,
+                "execution_context": event.execution_context,
+                "timestamp": event.timestamp,
+            }
+        )
+
+    async def _handle_failure_handled_event(self, event: Any) -> None:
+        """处理节点失败处理完成事件"""
+        self.pending_feedbacks.append(
+            {
+                "type": "node_failure_handled",
+                "workflow_id": event.workflow_id,
+                "node_id": event.node_id,
+                "strategy": event.strategy,
+                "success": event.success,
+                "retry_count": event.retry_count,
+                "timestamp": event.timestamp,
+            }
+        )
+
+    def get_pending_feedbacks(self) -> list[dict[str, Any]]:
+        """获取待处理的反馈列表
+
+        返回：
+            反馈列表的副本
+        """
+        return self.pending_feedbacks.copy()
+
+    def clear_feedbacks(self) -> None:
+        """清空待处理的反馈"""
+        self.pending_feedbacks.clear()
+
+    async def generate_error_recovery_decision(self) -> Decision | None:
+        """生成错误恢复决策
+
+        根据 pending_feedbacks 中的反馈信息生成恢复决策。
+
+        返回：
+            错误恢复决策，如果没有待处理的反馈返回 None
+        """
+        if not self.pending_feedbacks:
+            return None
+
+        # 获取最新的调整请求
+        adjustment_feedbacks = [
+            f for f in self.pending_feedbacks if f["type"] == "workflow_adjustment"
+        ]
+
+        if not adjustment_feedbacks:
+            return None
+
+        feedback = adjustment_feedbacks[0]
+
+        # 构建上下文
+        context = self.get_context_for_reasoning()
+        context["feedback"] = feedback
+
+        # 调用 LLM 生成恢复计划（如果有 plan_error_recovery 方法）
+        recovery_plan = {}
+        if hasattr(self.llm, "plan_error_recovery"):
+            recovery_plan = await self.llm.plan_error_recovery(context)  # type: ignore
+
+        # 创建决策
+        decision = Decision(
+            type=DecisionType.ERROR_RECOVERY,
+            payload={
+                "failed_node_id": feedback["failed_node_id"],
+                "failure_reason": feedback.get("failure_reason", ""),
+                "workflow_id": feedback["workflow_id"],
+                "recovery_plan": recovery_plan,
+                "execution_context": feedback.get("execution_context", {}),
+            },
+        )
+
+        # 记录决策
+        self.session_context.add_decision(
+            {
+                "id": decision.id,
+                "type": decision.type.value,
+                "payload": decision.payload,
+                "timestamp": decision.timestamp.isoformat(),
+            }
+        )
+
+        return decision
+
+    async def replan_workflow(
+        self,
+        original_goal: str,
+        failed_node_id: str,
+        failure_reason: str,
+        execution_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """根据失败信息重新规划工作流
+
+        参数：
+            original_goal: 原始目标
+            failed_node_id: 失败的节点ID
+            failure_reason: 失败原因
+            execution_context: 执行上下文（已完成的节点和输出）
+
+        返回：
+            重新规划的工作流
+        """
+        # 构建上下文
+        context = self.get_context_for_reasoning()
+        context["original_goal"] = original_goal
+        context["failed_node_id"] = failed_node_id
+        context["failure_reason"] = failure_reason
+        context["execution_context"] = execution_context
+
+        # 调用 LLM 重新规划
+        if hasattr(self.llm, "replan_workflow"):
+            plan = await self.llm.replan_workflow(
+                goal=original_goal,
+                failed_node_id=failed_node_id,
+                failure_reason=failure_reason,
+                execution_context=execution_context,
+            )
+        else:
+            # 回退到普通的工作流规划
+            plan = await self.llm.plan_workflow(original_goal, context)
 
         return plan
 
