@@ -32,7 +32,9 @@ from src.domain.services.execution_result import (
     ExecutionResult,
     OutputValidator,
     RetryPolicy,
-    WorkflowExecutionResult,
+)
+from src.domain.services.execution_result import (
+    WorkflowExecutionResult as LegacyWorkflowExecutionResult,
 )
 from src.domain.services.node_hierarchy_service import NodeHierarchyService
 from src.domain.services.node_registry import Node, NodeFactory, NodeType
@@ -82,6 +84,68 @@ class Edge:
 
 
 @dataclass
+class WorkflowExecutionResult:
+    """工作流执行结果 - Phase 16 标准结构
+
+    属性：
+        success: 是否成功
+        summary: 执行摘要
+        workflow_id: 工作流ID
+        executed_nodes: 已执行的节点列表
+        failed_node: 失败的节点ID（如果有）
+        error_message: 错误消息
+        diagnostics: 诊断信息
+        execution_time: 执行时间（秒）
+        outputs: 输出数据
+    """
+
+    success: bool = False
+    summary: str = ""
+    workflow_id: str = ""
+    executed_nodes: list[str] = field(default_factory=list)
+    failed_node: str | None = None
+    error_message: str | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+    execution_time: float = 0.0
+    outputs: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """序列化为字典"""
+        return {
+            "success": self.success,
+            "summary": self.summary,
+            "workflow_id": self.workflow_id,
+            "executed_nodes": self.executed_nodes,
+            "failed_node": self.failed_node,
+            "error_message": self.error_message,
+            "diagnostics": self.diagnostics,
+            "execution_time": self.execution_time,
+            "outputs": self.outputs,
+        }
+
+
+@dataclass
+class ReflectionResult:
+    """反思结果 - Phase 16
+
+    属性：
+        assessment: 评估说明
+        issues: 发现的问题列表
+        recommendations: 建议列表
+        confidence: 置信度 (0-1)
+        should_retry: 是否建议重试
+        suggested_modifications: 建议的修改
+    """
+
+    assessment: str = ""
+    issues: list[str] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
+    confidence: float = 0.0
+    should_retry: bool = False
+    suggested_modifications: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class WorkflowExecutionStartedEvent(Event):
     """工作流执行开始事件"""
 
@@ -95,7 +159,18 @@ class WorkflowExecutionCompletedEvent(Event):
 
     workflow_id: str = ""
     status: str = "completed"
+    success: bool = True
     result: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class WorkflowReflectionCompletedEvent(Event):
+    """工作流反思完成事件 - Phase 16"""
+
+    workflow_id: str = ""
+    assessment: str = ""
+    should_retry: bool = False
+    confidence: float = 0.0
 
 
 @dataclass
@@ -119,6 +194,42 @@ class NodeExecutor(Protocol):
         ...
 
 
+class WorkflowExecutorProtocol(Protocol):
+    """工作流执行器协议 - Phase 16
+
+    定义工作流执行器接口，用于执行整个工作流。
+    """
+
+    async def execute(self, workflow: dict[str, Any]) -> dict[str, Any]:
+        """执行工作流
+
+        参数：
+            workflow: 工作流定义
+
+        返回：
+            执行结果字典
+        """
+        ...
+
+
+class ReflectionLLMProtocol(Protocol):
+    """反思 LLM 协议 - Phase 16
+
+    定义反思 LLM 接口，用于评估执行结果。
+    """
+
+    async def reflect(self, execution_result: dict[str, Any]) -> dict[str, Any]:
+        """反思执行结果
+
+        参数：
+            execution_result: 执行结果
+
+        返回：
+            反思结果字典
+        """
+        ...
+
+
 class WorkflowAgent:
     """工作流Agent
 
@@ -127,6 +238,8 @@ class WorkflowAgent:
     2. 执行工作流（按拓扑顺序）
     3. 发布执行状态事件
     4. 处理对话Agent的决策
+    5. 执行工作流并返回标准结果 (Phase 16)
+    6. 反思执行结果并生成评估 (Phase 16)
 
     使用示例：
         agent = WorkflowAgent(
@@ -138,27 +251,40 @@ class WorkflowAgent:
         node = agent.create_node(decision)
         agent.add_node(node)
         result = await agent.execute_workflow()
+
+        # Phase 16: 新的执行和反思方式
+        agent = WorkflowAgent(event_bus=event_bus, executor=executor, llm=llm)
+        result = await agent.execute(workflow)
+        reflection = await agent.reflect(result)
     """
 
     def __init__(
         self,
-        workflow_context: WorkflowContext,
-        node_factory: NodeFactory,
+        workflow_context: WorkflowContext | None = None,
+        node_factory: NodeFactory | None = None,
         node_executor: NodeExecutor | None = None,
         event_bus: EventBus | None = None,
+        executor: WorkflowExecutorProtocol | None = None,
+        llm: ReflectionLLMProtocol | None = None,
     ):
         """初始化工作流Agent
 
         参数：
-            workflow_context: 工作流上下文
-            node_factory: 节点工厂
+            workflow_context: 工作流上下文（可选）
+            node_factory: 节点工厂（可选）
             node_executor: 节点执行器（可选）
             event_bus: 事件总线（可选）
+            executor: 工作流执行器（可选，Phase 16）
+            llm: 反思 LLM（可选，Phase 16）
         """
         self.workflow_context = workflow_context
         self.node_factory = node_factory
         self.node_executor = node_executor
         self.event_bus = event_bus
+
+        # Phase 16: 新增执行器和 LLM
+        self.executor = executor
+        self.llm = llm
 
         self._nodes: dict[str, Node] = {}
         self._edges: list[Edge] = []
@@ -552,7 +678,7 @@ class WorkflowAgent:
                     },
                 )
 
-    async def execute_workflow_with_results(self) -> WorkflowExecutionResult:
+    async def execute_workflow_with_results(self) -> LegacyWorkflowExecutionResult:
         """执行整个工作流并返回结构化结果
 
         返回：
@@ -570,7 +696,7 @@ class WorkflowAgent:
 
                 if not result.success:
                     execution_time_ms = (time.time() - start_time) * 1000
-                    return WorkflowExecutionResult(
+                    return LegacyWorkflowExecutionResult(
                         success=False,
                         node_results=node_results,
                         failed_node_id=node_id,
@@ -579,7 +705,7 @@ class WorkflowAgent:
                     )
 
             execution_time_ms = (time.time() - start_time) * 1000
-            return WorkflowExecutionResult(
+            return LegacyWorkflowExecutionResult(
                 success=True,
                 node_results=node_results,
                 metadata={"execution_time_ms": execution_time_ms},
@@ -587,7 +713,7 @@ class WorkflowAgent:
 
         except Exception as e:
             execution_time_ms = (time.time() - start_time) * 1000
-            return WorkflowExecutionResult(
+            return LegacyWorkflowExecutionResult(
                 success=False,
                 node_results=node_results,
                 error_message=str(e),
@@ -1209,14 +1335,164 @@ class WorkflowAgent:
                 if node_id in self._nodes:
                     del self._nodes[node_id]
 
+    # ========== Phase 16: 执行和反思方法 ==========
+
+    async def execute(self, workflow: dict[str, Any]) -> WorkflowExecutionResult:
+        """执行工作流并返回标准结果
+
+        参数：
+            workflow: 工作流定义，包含 id, nodes, edges
+
+        返回：
+            WorkflowExecutionResult 标准执行结果
+        """
+        workflow_id = workflow.get("id", "")
+        start_time = time.time()
+
+        # 发布开始事件
+        if self.event_bus:
+            await self.event_bus.publish(
+                WorkflowExecutionStartedEvent(
+                    source="workflow_agent",
+                    workflow_id=workflow_id,
+                    node_count=len(workflow.get("nodes", [])),
+                )
+            )
+
+        try:
+            # 使用执行器执行工作流
+            if self.executor:
+                executor_result = await self.executor.execute(workflow)
+            else:
+                # 默认执行（用于测试）
+                executor_result = {
+                    "success": True,
+                    "outputs": {},
+                    "executed_nodes": [],
+                }
+
+            execution_time = time.time() - start_time
+
+            # 构建标准执行结果
+            success = executor_result.get("success", True)
+            result = WorkflowExecutionResult(
+                success=success,
+                summary="工作流执行成功" if success else "工作流执行失败",
+                workflow_id=workflow_id,
+                executed_nodes=executor_result.get("executed_nodes", []),
+                failed_node=executor_result.get("failed_node"),
+                error_message=executor_result.get("error"),
+                execution_time=executor_result.get("execution_time", execution_time),
+                outputs=executor_result.get("outputs", {}),
+            )
+
+            # 发布完成事件
+            if self.event_bus:
+                await self.event_bus.publish(
+                    WorkflowExecutionCompletedEvent(
+                        source="workflow_agent",
+                        workflow_id=workflow_id,
+                        status="completed" if success else "failed",
+                        success=success,
+                        result=result.to_dict(),
+                    )
+                )
+
+            return result
+
+        except Exception as e:
+            execution_time = time.time() - start_time
+            result = WorkflowExecutionResult(
+                success=False,
+                summary=f"工作流执行异常: {e!s}",
+                workflow_id=workflow_id,
+                error_message=str(e),
+                execution_time=execution_time,
+            )
+
+            # 发布完成事件（失败）
+            if self.event_bus:
+                await self.event_bus.publish(
+                    WorkflowExecutionCompletedEvent(
+                        source="workflow_agent",
+                        workflow_id=workflow_id,
+                        status="failed",
+                        success=False,
+                        result=result.to_dict(),
+                    )
+                )
+
+            return result
+
+    async def reflect(self, execution_result: WorkflowExecutionResult) -> ReflectionResult:
+        """反思执行结果并生成评估
+
+        参数：
+            execution_result: 执行结果
+
+        返回：
+            ReflectionResult 反思结果
+        """
+        workflow_id = execution_result.workflow_id
+
+        if self.llm:
+            # 使用 LLM 进行反思
+            llm_result = await self.llm.reflect(execution_result.to_dict())
+
+            reflection = ReflectionResult(
+                assessment=llm_result.get("assessment", ""),
+                issues=llm_result.get("issues", []),
+                recommendations=llm_result.get("recommendations", []),
+                confidence=llm_result.get("confidence", 0.0),
+                should_retry=llm_result.get("should_retry", False),
+                suggested_modifications=llm_result.get("suggested_modifications", {}),
+            )
+        else:
+            # 无 LLM 时的回退反思
+            if execution_result.success:
+                reflection = ReflectionResult(
+                    assessment=f"工作流 {workflow_id} 执行成功",
+                    issues=[],
+                    recommendations=[],
+                    confidence=1.0,
+                    should_retry=False,
+                )
+            else:
+                reflection = ReflectionResult(
+                    assessment=f"工作流 {workflow_id} 执行失败: {execution_result.error_message}",
+                    issues=[execution_result.error_message or "未知错误"],
+                    recommendations=["检查执行日志"],
+                    confidence=0.5,
+                    should_retry=True,
+                )
+
+        # 发布反思完成事件
+        if self.event_bus:
+            await self.event_bus.publish(
+                WorkflowReflectionCompletedEvent(
+                    source="workflow_agent",
+                    workflow_id=workflow_id,
+                    assessment=reflection.assessment,
+                    should_retry=reflection.should_retry,
+                    confidence=reflection.confidence,
+                )
+            )
+
+        return reflection
+
 
 # 导出
 __all__ = [
     "ExecutionStatus",
     "Edge",
+    "WorkflowExecutionResult",
+    "ReflectionResult",
     "WorkflowExecutionStartedEvent",
     "WorkflowExecutionCompletedEvent",
+    "WorkflowReflectionCompletedEvent",
     "NodeExecutionEvent",
     "NodeExecutor",
+    "WorkflowExecutorProtocol",
+    "ReflectionLLMProtocol",
     "WorkflowAgent",
 ]

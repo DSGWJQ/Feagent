@@ -42,6 +42,19 @@ class StepType(str, Enum):
     FINAL = "final"  # 最终回复
 
 
+class IntentType(str, Enum):
+    """意图类型 (Phase 14)
+
+    用于区分用户输入的意图，决定是否需要 ReAct 循环。
+    """
+
+    CONVERSATION = "conversation"  # 普通对话（不需要 ReAct）
+    WORKFLOW_MODIFICATION = "workflow_modification"  # 工作流修改（需要 ReAct）
+    WORKFLOW_QUERY = "workflow_query"  # 查询工作流状态
+    CLARIFICATION = "clarification"  # 澄清请求
+    ERROR_RECOVERY_REQUEST = "error_recovery_request"  # 错误恢复请求
+
+
 class DecisionType(str, Enum):
     """决策类型"""
 
@@ -138,6 +151,45 @@ class DecisionMadeEvent(Event):
     confidence: float = 1.0
 
 
+@dataclass
+class SimpleMessageEvent(Event):
+    """简单消息事件 (Phase 15)
+
+    当对话不需要 ReAct 循环（普通对话、工作流查询）时发布此事件。
+    协调者Agent订阅此事件进行统计记录。
+
+    属性：
+    - user_input: 用户输入
+    - response: 回复内容
+    - intent: 意图类型
+    - confidence: 意图分类置信度
+    - session_id: 会话ID
+    """
+
+    user_input: str = ""
+    response: str = ""
+    intent: str = ""
+    confidence: float = 1.0
+    session_id: str = ""
+
+
+@dataclass
+class IntentClassificationResult:
+    """意图分类结果 (Phase 14)
+
+    属性：
+    - intent: 识别的意图类型
+    - confidence: 置信度 (0-1)
+    - reasoning: 分类理由
+    - extracted_entities: 从输入中提取的实体
+    """
+
+    intent: IntentType
+    confidence: float = 1.0
+    reasoning: str = ""
+    extracted_entities: dict[str, Any] = field(default_factory=dict)
+
+
 class ConversationAgentLLM(Protocol):
     """对话Agent使用的LLM接口
 
@@ -203,6 +255,36 @@ class ConversationAgentLLM(Protocol):
         """
         ...
 
+    async def classify_intent(self, user_input: str, context: dict[str, Any]) -> dict[str, Any]:
+        """分类用户意图（Phase 14 新增）
+
+        参数：
+            user_input: 用户输入
+            context: 上下文信息
+
+        返回：
+            意图分类结果字典，包含：
+            - intent: 意图类型 (conversation, workflow_modification, workflow_query, etc.)
+            - confidence: 置信度 (0-1)
+            - reasoning: 分类理由
+            - extracted_entities: 提取的实体 (可选)
+        """
+        ...
+
+    async def generate_response(self, user_input: str, context: dict[str, Any]) -> str:
+        """直接生成回复（Phase 14 新增）
+
+        用于普通对话场景，跳过 ReAct 循环直接生成回复。
+
+        参数：
+            user_input: 用户输入
+            context: 上下文信息
+
+        返回：
+            回复文本
+        """
+        ...
+
 
 class ConversationAgent:
     """对话Agent
@@ -232,6 +314,8 @@ class ConversationAgent:
         max_tokens: int | None = None,
         max_cost: float | None = None,
         coordinator: Any | None = None,
+        enable_intent_classification: bool = False,
+        intent_confidence_threshold: float = 0.7,
     ):
         """初始化对话Agent
 
@@ -244,6 +328,8 @@ class ConversationAgent:
             max_tokens: 最大 token 限制（阶段5新增）
             max_cost: 最大成本限制（阶段5新增）
             coordinator: 协调者 Agent（阶段5新增）
+            enable_intent_classification: 是否启用意图分类（Phase 14，默认False保持向后兼容）
+            intent_confidence_threshold: 意图分类置信度阈值（Phase 14）
         """
         self.session_context = session_context
         self.llm = llm
@@ -259,6 +345,13 @@ class ConversationAgent:
         # Phase 13: 反馈监听
         self.pending_feedbacks: list[dict[str, Any]] = []
         self._is_listening_feedbacks = False
+
+        # Phase 14: 意图分类配置
+        self.enable_intent_classification = enable_intent_classification
+        self.intent_confidence_threshold = intent_confidence_threshold
+
+        # Phase 16: WorkflowAgent 引用（用于新执行链路）
+        self.workflow_agent: Any | None = None
 
     def execute_step(self, user_input: str) -> ReActStep:
         """执行单个ReAct步骤
@@ -1005,6 +1098,198 @@ class ConversationAgent:
 
         return plan
 
+    # === Phase 14: 意图分类与分流处理 ===
+
+    async def classify_intent(self, user_input: str) -> IntentClassificationResult:
+        """分类用户输入的意图
+
+        参数：
+            user_input: 用户输入
+
+        返回：
+            IntentClassificationResult 意图分类结果
+        """
+        # 获取上下文
+        context = self.get_context_for_reasoning()
+        context["user_input"] = user_input
+
+        # 调用 LLM 分类意图
+        result_dict = await self.llm.classify_intent(user_input, context)
+
+        # 转换意图类型
+        intent_str = result_dict.get("intent", "conversation")
+        try:
+            intent = IntentType(intent_str)
+        except ValueError:
+            intent = IntentType.CONVERSATION
+
+        return IntentClassificationResult(
+            intent=intent,
+            confidence=result_dict.get("confidence", 1.0),
+            reasoning=result_dict.get("reasoning", ""),
+            extracted_entities=result_dict.get("extracted_entities", {}),
+        )
+
+    async def process_with_intent(self, user_input: str) -> ReActResult:
+        """基于意图分类处理用户输入
+
+        如果启用意图分类且置信度足够高：
+        - 普通对话：直接生成回复，跳过 ReAct 循环
+        - 工作流查询：查询状态并返回
+        - 工作流修改/错误恢复：使用 ReAct 循环
+
+        参数：
+            user_input: 用户输入
+
+        返回：
+            ReActResult 处理结果
+        """
+        self._current_input = user_input
+
+        # 如果未启用意图分类，直接使用 ReAct 循环
+        if not self.enable_intent_classification:
+            return await self.run_async(user_input)
+
+        # 分类意图
+        classification = await self.classify_intent(user_input)
+
+        # 如果置信度低于阈值，回退到 ReAct 循环
+        if classification.confidence < self.intent_confidence_threshold:
+            return await self.run_async(user_input)
+
+        # 根据意图类型分流处理
+        if classification.intent == IntentType.CONVERSATION:
+            # 普通对话：直接生成回复
+            return await self._handle_conversation(user_input, classification)
+
+        elif classification.intent == IntentType.WORKFLOW_QUERY:
+            # 工作流查询：返回状态信息
+            return await self._handle_workflow_query(user_input, classification)
+
+        else:
+            # 工作流修改、澄清请求、错误恢复：使用 ReAct 循环
+            return await self.run_async(user_input)
+
+    async def _handle_conversation(
+        self, user_input: str, classification: IntentClassificationResult
+    ) -> ReActResult:
+        """处理普通对话意图
+
+        直接生成回复，不使用 ReAct 循环。
+
+        参数：
+            user_input: 用户输入
+            classification: 意图分类结果
+
+        返回：
+            ReActResult
+        """
+        context = self.get_context_for_reasoning()
+        context["user_input"] = user_input
+        context["intent_classification"] = {
+            "intent": classification.intent.value,
+            "confidence": classification.confidence,
+            "reasoning": classification.reasoning,
+        }
+
+        # 直接生成回复
+        response = await self.llm.generate_response(user_input, context)
+
+        # 构建结果
+        result = ReActResult(
+            completed=True,
+            final_response=response,
+            iterations=0,  # 没有 ReAct 迭代
+        )
+
+        # 添加到对话历史
+        self.session_context.conversation_history.append({"role": "user", "content": user_input})
+        self.session_context.conversation_history.append({"role": "assistant", "content": response})
+
+        # Phase 15: 发布简单消息事件
+        if self.event_bus:
+            event = SimpleMessageEvent(
+                source="conversation_agent",
+                user_input=user_input,
+                response=response,
+                intent=classification.intent.value,
+                confidence=classification.confidence,
+                session_id=self.session_context.session_id,
+            )
+            await self.event_bus.publish(event)
+
+        return result
+
+    async def _handle_workflow_query(
+        self, user_input: str, classification: IntentClassificationResult
+    ) -> ReActResult:
+        """处理工作流查询意图
+
+        参数：
+            user_input: 用户输入
+            classification: 意图分类结果
+
+        返回：
+            ReActResult
+        """
+        context = self.get_context_for_reasoning()
+        context["user_input"] = user_input
+        context["extracted_entities"] = classification.extracted_entities
+
+        # 如果有专门的工作流状态查询方法
+        if hasattr(self.llm, "generate_workflow_status"):
+            response = await self.llm.generate_workflow_status(  # type: ignore[attr-defined]
+                user_input, context
+            )
+        else:
+            # 回退到通用回复生成
+            response = await self.llm.generate_response(user_input, context)
+
+        result = ReActResult(
+            completed=True,
+            final_response=response,
+            iterations=0,
+        )
+
+        # Phase 15: 发布简单消息事件
+        if self.event_bus:
+            event = SimpleMessageEvent(
+                source="conversation_agent",
+                user_input=user_input,
+                response=response,
+                intent=classification.intent.value,
+                confidence=classification.confidence,
+                session_id=self.session_context.session_id,
+            )
+            await self.event_bus.publish(event)
+
+        return result
+
+    # === Phase 16: 新执行链路 ===
+
+    async def execute_workflow(self, workflow: dict[str, Any]) -> Any:
+        """执行工作流并返回结果（Phase 16 新执行链路）
+
+        通过 WorkflowAgent 执行工作流，自动调用反思，
+        不创建子 Agent，直接使用已注册的 WorkflowAgent。
+
+        参数：
+            workflow: 工作流定义
+
+        返回：
+            WorkflowExecutionResult 执行结果
+        """
+        if not self.workflow_agent:
+            raise ValueError("WorkflowAgent not registered. Set workflow_agent first.")
+
+        # 执行工作流
+        result = await self.workflow_agent.execute(workflow)
+
+        # 自动调用反思
+        await self.workflow_agent.reflect(result)
+
+        return result
+
 
 # 类型提示导入（避免循环导入）
 if False:  # TYPE_CHECKING
@@ -1015,11 +1300,14 @@ if False:  # TYPE_CHECKING
 # 导出
 __all__ = [
     "StepType",
+    "IntentType",
     "DecisionType",
     "ReActStep",
     "ReActResult",
     "Decision",
     "DecisionMadeEvent",
+    "SimpleMessageEvent",
+    "IntentClassificationResult",
     "ConversationAgentLLM",
     "ConversationAgent",
 ]

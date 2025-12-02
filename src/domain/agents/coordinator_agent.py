@@ -240,6 +240,14 @@ class CoordinatorAgent:
         # Phase 12: 注册的 WorkflowAgent 实例
         self._workflow_agents: dict[str, Any] = {}
 
+        # Phase 15: 简单消息日志
+        self.message_log: list[dict[str, Any]] = []
+        self._is_listening_simple_messages = False
+
+        # Phase 16: 反思上下文存储
+        self.reflection_contexts: dict[str, dict[str, Any]] = {}
+        self._is_listening_reflections = False
+
     @property
     def rules(self) -> list[Rule]:
         """获取所有规则（按优先级排序）"""
@@ -877,6 +885,165 @@ class CoordinatorAgent:
         if "node_outputs" not in state:
             state["node_outputs"] = {}
         state["node_outputs"][node_id] = output
+
+    # === Phase 15: 简单消息监听 ===
+
+    def start_simple_message_listening(self) -> None:
+        """开始监听简单消息事件
+
+        订阅 SimpleMessageEvent，将消息记录到 message_log。
+        """
+        if self._is_listening_simple_messages:
+            return
+
+        if not self.event_bus:
+            raise ValueError("EventBus is required for simple message listening")
+
+        from src.domain.agents.conversation_agent import SimpleMessageEvent
+
+        self.event_bus.subscribe(SimpleMessageEvent, self._handle_simple_message_event)
+        self._is_listening_simple_messages = True
+
+    def stop_simple_message_listening(self) -> None:
+        """停止监听简单消息事件"""
+        if not self._is_listening_simple_messages:
+            return
+
+        if not self.event_bus:
+            return
+
+        from src.domain.agents.conversation_agent import SimpleMessageEvent
+
+        self.event_bus.unsubscribe(SimpleMessageEvent, self._handle_simple_message_event)
+        self._is_listening_simple_messages = False
+
+    async def _handle_simple_message_event(self, event: Any) -> None:
+        """处理简单消息事件
+
+        将消息记录到 message_log。
+
+        参数：
+            event: SimpleMessageEvent 实例
+        """
+        self.message_log.append(
+            {
+                "user_input": event.user_input,
+                "response": event.response,
+                "intent": event.intent,
+                "confidence": event.confidence,
+                "session_id": event.session_id,
+                "timestamp": event.timestamp,
+            }
+        )
+
+    def get_message_statistics(self) -> dict[str, Any]:
+        """获取消息统计
+
+        返回：
+            包含消息统计的字典：
+            - total_messages: 总消息数
+            - by_intent: 按意图分类的消息数
+        """
+        by_intent: dict[str, int] = {}
+
+        for msg in self.message_log:
+            intent = msg.get("intent", "unknown")
+            by_intent[intent] = by_intent.get(intent, 0) + 1
+
+        return {
+            "total_messages": len(self.message_log),
+            "by_intent": by_intent,
+        }
+
+    # === Phase 16: 反思上下文监听 ===
+
+    def start_reflection_listening(self) -> None:
+        """开始监听反思事件
+
+        订阅 WorkflowReflectionCompletedEvent，记录反思结果到上下文。
+        """
+        if self._is_listening_reflections:
+            return
+
+        if not self.event_bus:
+            raise ValueError("EventBus is required for reflection listening")
+
+        from src.domain.agents.workflow_agent import WorkflowReflectionCompletedEvent
+
+        self.event_bus.subscribe(WorkflowReflectionCompletedEvent, self._handle_reflection_event)
+        self._is_listening_reflections = True
+
+    def stop_reflection_listening(self) -> None:
+        """停止监听反思事件"""
+        if not self._is_listening_reflections:
+            return
+
+        if not self.event_bus:
+            return
+
+        from src.domain.agents.workflow_agent import WorkflowReflectionCompletedEvent
+
+        self.event_bus.unsubscribe(WorkflowReflectionCompletedEvent, self._handle_reflection_event)
+        self._is_listening_reflections = False
+
+    async def _handle_reflection_event(self, event: Any) -> None:
+        """处理反思事件
+
+        将反思结果记录到上下文，包括目标、规则、错误、建议。
+
+        参数：
+            event: WorkflowReflectionCompletedEvent 实例
+        """
+        workflow_id = event.workflow_id
+
+        # 创建反思记录
+        reflection_record = {
+            "assessment": event.assessment,
+            "should_retry": event.should_retry,
+            "confidence": event.confidence,
+            "timestamp": event.timestamp,
+        }
+
+        if workflow_id not in self.reflection_contexts:
+            # 首次反思，创建上下文
+            self.reflection_contexts[workflow_id] = {
+                "workflow_id": workflow_id,
+                "assessment": event.assessment,
+                "should_retry": event.should_retry,
+                "confidence": event.confidence,
+                "timestamp": event.timestamp,
+                "history": [reflection_record],
+            }
+        else:
+            # 追加历史记录
+            context = self.reflection_contexts[workflow_id]
+            context["assessment"] = event.assessment
+            context["should_retry"] = event.should_retry
+            context["confidence"] = event.confidence
+            context["timestamp"] = event.timestamp
+            context["history"].append(reflection_record)
+
+    def get_reflection_summary(self, workflow_id: str) -> dict[str, Any] | None:
+        """获取工作流的反思摘要
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            反思摘要字典，如果不存在返回None
+        """
+        context = self.reflection_contexts.get(workflow_id)
+        if not context:
+            return None
+
+        return {
+            "workflow_id": workflow_id,
+            "assessment": context.get("assessment", ""),
+            "should_retry": context.get("should_retry", False),
+            "confidence": context.get("confidence", 0.0),
+            "total_reflections": len(context.get("history", [])),
+            "last_updated": context.get("timestamp"),
+        }
 
 
 # 导出
