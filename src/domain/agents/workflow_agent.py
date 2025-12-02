@@ -18,6 +18,8 @@
 - 结果汇报：向对话Agent反馈执行结果
 """
 
+import asyncio
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
@@ -25,6 +27,13 @@ from uuid import uuid4
 
 from src.domain.services.context_manager import WorkflowContext
 from src.domain.services.event_bus import Event, EventBus
+from src.domain.services.execution_result import (
+    ErrorCode,
+    ExecutionResult,
+    OutputValidator,
+    RetryPolicy,
+    WorkflowExecutionResult,
+)
 from src.domain.services.node_hierarchy_service import NodeHierarchyService
 from src.domain.services.node_registry import Node, NodeFactory, NodeType
 
@@ -447,6 +456,143 @@ class WorkflowAgent:
             )
 
         return result
+
+    async def execute_node_with_result(
+        self,
+        node_id: str,
+        retry_policy: RetryPolicy | None = None,
+        output_validator: OutputValidator | None = None,
+    ) -> ExecutionResult:
+        """执行节点并返回结构化结果
+
+        支持自动重试和输出校验。
+
+        参数：
+            node_id: 节点ID
+            retry_policy: 重试策略（可选）
+            output_validator: 输出校验器（可选）
+
+        返回：
+            结构化执行结果
+        """
+        node = self._nodes.get(node_id)
+        if not node:
+            return ExecutionResult.failure(
+                error_code=ErrorCode.INTERNAL_ERROR,
+                error_message=f"Node not found: {node_id}",
+            )
+
+        policy = retry_policy or RetryPolicy(max_retries=0)
+        attempt = 0
+        start_time = time.time()
+
+        while True:
+            try:
+                # 执行节点
+                inputs = self._collect_node_inputs(node_id)
+
+                # 检查是否是自定义节点类型
+                custom_type_name = node.config.get("_custom_type")
+                if custom_type_name and custom_type_name in self._custom_executors:
+                    executor = self._custom_executors[custom_type_name]
+                    output = await executor.execute(node.config, inputs)
+                elif self.node_executor:
+                    output = await self.node_executor.execute(node_id, node.config, inputs)
+                else:
+                    output = {"status": "success", "executed": True}
+
+                # 校验输出
+                if output_validator:
+                    validation_result = output_validator.validate(output)
+                    if not validation_result.is_valid:
+                        execution_time_ms = (time.time() - start_time) * 1000
+                        return ExecutionResult.failure(
+                            error_code=ErrorCode.VALIDATION_FAILED,
+                            error_message=validation_result.error_message or "Validation failed",
+                            output=output,
+                            metadata={
+                                "execution_time_ms": execution_time_ms,
+                                "retry_count": attempt,
+                                "node_id": node_id,
+                            },
+                        )
+
+                # 成功
+                execution_time_ms = (time.time() - start_time) * 1000
+                self.workflow_context.set_node_output(node_id, output)
+
+                return ExecutionResult.ok(
+                    output=output,
+                    metadata={
+                        "execution_time_ms": execution_time_ms,
+                        "retry_count": attempt,
+                        "node_id": node_id,
+                    },
+                )
+
+            except Exception as e:
+                error_result = ExecutionResult.from_exception(e)
+
+                # 判断是否应该重试
+                if policy.should_retry(error_result.error_code, attempt):
+                    delay = policy.get_delay(attempt)
+                    await asyncio.sleep(delay)
+                    attempt += 1
+                    continue
+
+                # 不重试，返回失败结果
+                execution_time_ms = (time.time() - start_time) * 1000
+                return ExecutionResult.failure(
+                    error_code=error_result.error_code,
+                    error_message=str(e),
+                    metadata={
+                        "execution_time_ms": execution_time_ms,
+                        "retry_count": attempt,
+                        "node_id": node_id,
+                    },
+                )
+
+    async def execute_workflow_with_results(self) -> WorkflowExecutionResult:
+        """执行整个工作流并返回结构化结果
+
+        返回：
+            工作流执行结果
+        """
+        start_time = time.time()
+        node_results: dict[str, ExecutionResult] = {}
+
+        try:
+            execution_order = self._topological_sort()
+
+            for node_id in execution_order:
+                result = await self.execute_node_with_result(node_id)
+                node_results[node_id] = result
+
+                if not result.success:
+                    execution_time_ms = (time.time() - start_time) * 1000
+                    return WorkflowExecutionResult(
+                        success=False,
+                        node_results=node_results,
+                        failed_node_id=node_id,
+                        error_message=result.error_message,
+                        metadata={"execution_time_ms": execution_time_ms},
+                    )
+
+            execution_time_ms = (time.time() - start_time) * 1000
+            return WorkflowExecutionResult(
+                success=True,
+                node_results=node_results,
+                metadata={"execution_time_ms": execution_time_ms},
+            )
+
+        except Exception as e:
+            execution_time_ms = (time.time() - start_time) * 1000
+            return WorkflowExecutionResult(
+                success=False,
+                node_results=node_results,
+                error_message=str(e),
+                metadata={"execution_time_ms": execution_time_ms},
+            )
 
     def _collect_node_inputs(self, node_id: str) -> dict[str, Any]:
         """收集节点的输入
