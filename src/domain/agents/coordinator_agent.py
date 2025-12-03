@@ -83,6 +83,44 @@ class ValidationResult:
 
 
 @dataclass
+class ContextResponse:
+    """上下文响应结构（Phase 1）
+
+    协调者返回给对话Agent的上下文信息，包含：
+    - rules: 相关规则列表
+    - knowledge: 相关知识库条目
+    - tools: 可用工具列表
+    - summary: 上下文摘要文本
+    - workflow_context: 可选的工作流上下文
+
+    属性：
+        rules: 规则字典列表，每个包含 id, name, description
+        knowledge: 知识条目列表，每个包含 source_id, title, content_preview
+        tools: 工具字典列表，每个包含 id, name, description
+        summary: 人类可读的上下文摘要
+        workflow_context: 当前工作流的状态上下文（可选）
+    """
+
+    rules: list[dict[str, Any]] = field(default_factory=list)
+    knowledge: list[dict[str, Any]] = field(default_factory=list)
+    tools: list[dict[str, Any]] = field(default_factory=list)
+    summary: str = ""
+    workflow_context: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """转换为字典"""
+        result = {
+            "rules": self.rules,
+            "knowledge": self.knowledge,
+            "tools": self.tools,
+            "summary": self.summary,
+        }
+        if self.workflow_context is not None:
+            result["workflow_context"] = self.workflow_context
+        return result
+
+
+@dataclass
 class DecisionValidatedEvent(Event):
     """决策验证通过事件"""
 
@@ -153,6 +191,37 @@ class WorkflowAbortedEvent(Event):
 
 
 @dataclass
+class SubAgentCompletedEvent(Event):
+    """子Agent完成事件（Phase 3）
+
+    当子Agent执行完成时发布此事件。
+    ConversationAgent 订阅此事件以恢复执行。
+
+    属性：
+    - subagent_id: 子Agent实例ID
+    - subagent_type: 子Agent类型
+    - session_id: 会话ID
+    - success: 是否成功
+    - result: 执行结果
+    - error: 错误信息（失败时）
+    - execution_time: 执行时间（秒）
+    """
+
+    subagent_id: str = ""
+    subagent_type: str = ""
+    session_id: str = ""
+    success: bool = True
+    result: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    execution_time: float = 0.0
+
+    @property
+    def event_type(self) -> str:
+        """事件类型"""
+        return "subagent_completed"
+
+
+@dataclass
 class FailureHandlingResult:
     """失败处理结果（Phase 12）
 
@@ -196,6 +265,9 @@ class CoordinatorAgent:
         circuit_breaker_config: Any | None = None,
         context_bridge: Any | None = None,
         failure_strategy_config: dict[str, Any] | None = None,
+        context_compressor: Any | None = None,
+        snapshot_manager: Any | None = None,
+        knowledge_retriever: Any | None = None,
     ):
         """初始化协调者Agent
 
@@ -205,6 +277,9 @@ class CoordinatorAgent:
             circuit_breaker_config: 熔断器配置（阶段5新增）
             context_bridge: 上下文桥接器（阶段5新增）
             failure_strategy_config: 失败处理策略配置（Phase 12）
+            context_compressor: 上下文压缩器（阶段2新增）
+            snapshot_manager: 快照管理器（阶段2新增）
+            knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
         """
         self.event_bus = event_bus
         self.rejection_rate_threshold = rejection_rate_threshold
@@ -247,6 +322,313 @@ class CoordinatorAgent:
         # Phase 16: 反思上下文存储
         self.reflection_contexts: dict[str, dict[str, Any]] = {}
         self._is_listening_reflections = False
+
+        # 阶段2新增：上下文压缩器
+        self.context_compressor = context_compressor
+        self.snapshot_manager = snapshot_manager
+        self._is_compressing_context = False
+        self._compressed_contexts: dict[str, Any] = {}  # workflow_id -> CompressedContext
+
+        # Phase 3: 子Agent管理
+        from src.domain.services.sub_agent_scheduler import SubAgentRegistry
+
+        self.subagent_registry = SubAgentRegistry()
+        self.active_subagents: dict[str, dict[str, Any]] = {}
+        self._is_listening_subagent_events = False
+
+        # Phase 3: 子Agent结果存储（按会话ID分组）
+        self.subagent_results: dict[str, list[dict[str, Any]]] = {}
+
+        # Phase 4: 容器执行监控
+        self.container_executions: dict[str, list[dict[str, Any]]] = {}  # workflow_id -> executions
+        self.container_logs: dict[str, list[dict[str, Any]]] = {}  # container_id -> logs
+        self._is_listening_container_events = False
+
+        # Phase 5 阶段2: 知识库集成
+        self.knowledge_retriever = knowledge_retriever
+        self._knowledge_cache: dict[str, Any] = {}  # workflow_id -> KnowledgeReferences
+        self._auto_knowledge_retrieval_enabled = False
+
+        # Phase 1: 工具仓库
+        self._tool_repository: Any | None = None
+
+    # ==================== Phase 1: 上下文服务 ====================
+
+    @property
+    def tool_repository(self) -> Any | None:
+        """获取工具仓库"""
+        return self._tool_repository
+
+    @tool_repository.setter
+    def tool_repository(self, repo: Any) -> None:
+        """设置工具仓库"""
+        self._tool_repository = repo
+
+    def get_context(
+        self,
+        user_input: str,
+        workflow_id: str | None = None,
+    ) -> ContextResponse:
+        """获取上下文信息（同步版本）
+
+        根据用户输入，查询规则库、知识库、工具库，返回相关上下文。
+
+        参数：
+            user_input: 用户输入文本
+            workflow_id: 可选的工作流ID，用于获取工作流上下文
+
+        返回：
+            ContextResponse 包含规则、知识、工具和摘要
+        """
+        # 1. 获取规则
+        rules_data = self._get_relevant_rules(user_input)
+
+        # 2. 获取工具（同步，不查询知识库）
+        tools_data = self._get_relevant_tools(user_input)
+
+        # 3. 获取工作流上下文（如果有）
+        workflow_context = None
+        if workflow_id and workflow_id in self.workflow_states:
+            workflow_context = self.workflow_states[workflow_id].copy()
+
+        # 4. 生成摘要
+        summary = self._generate_context_summary(
+            rules_count=len(rules_data),
+            tools_count=len(tools_data),
+            knowledge_count=0,
+            user_input=user_input,
+        )
+
+        return ContextResponse(
+            rules=rules_data,
+            knowledge=[],  # 同步版本不查询知识库
+            tools=tools_data,
+            summary=summary,
+            workflow_context=workflow_context,
+        )
+
+    async def get_context_async(
+        self,
+        user_input: str,
+        workflow_id: str | None = None,
+    ) -> ContextResponse:
+        """获取上下文信息（异步版本）
+
+        根据用户输入，异步查询规则库、知识库、工具库，返回相关上下文。
+
+        参数：
+            user_input: 用户输入文本
+            workflow_id: 可选的工作流ID，用于获取工作流上下文
+
+        返回：
+            ContextResponse 包含规则、知识、工具和摘要
+        """
+        # 1. 获取规则
+        rules_data = self._get_relevant_rules(user_input)
+
+        # 2. 获取知识（异步）
+        knowledge_data = await self._get_relevant_knowledge_async(user_input, workflow_id)
+
+        # 3. 获取工具
+        tools_data = self._get_relevant_tools(user_input)
+
+        # 4. 获取工作流上下文（如果有）
+        workflow_context = None
+        if workflow_id and workflow_id in self.workflow_states:
+            workflow_context = self.workflow_states[workflow_id].copy()
+
+        # 5. 生成摘要
+        summary = self._generate_context_summary(
+            rules_count=len(rules_data),
+            tools_count=len(tools_data),
+            knowledge_count=len(knowledge_data),
+            user_input=user_input,
+        )
+
+        return ContextResponse(
+            rules=rules_data,
+            knowledge=knowledge_data,
+            tools=tools_data,
+            summary=summary,
+            workflow_context=workflow_context,
+        )
+
+    def _get_relevant_rules(self, user_input: str) -> list[dict[str, Any]]:
+        """获取相关规则
+
+        返回所有规则（规则通常是通用的验证规则）
+
+        参数：
+            user_input: 用户输入
+
+        返回：
+            规则字典列表
+        """
+        return [
+            {
+                "id": rule.id,
+                "name": rule.name,
+                "description": rule.description,
+                "priority": rule.priority,
+            }
+            for rule in self._rules
+        ]
+
+    async def _get_relevant_knowledge_async(
+        self,
+        user_input: str,
+        workflow_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """异步获取相关知识
+
+        参数：
+            user_input: 用户输入
+            workflow_id: 工作流ID
+
+        返回：
+            知识条目列表
+        """
+        if not self.knowledge_retriever:
+            return []
+
+        try:
+            results = await self.knowledge_retriever.retrieve_by_query(
+                query=user_input,
+                workflow_id=workflow_id,
+                top_k=5,
+            )
+            return results
+        except Exception:
+            return []
+
+    def _get_relevant_tools(self, user_input: str) -> list[dict[str, Any]]:
+        """获取相关工具
+
+        根据用户输入的关键词匹配工具
+
+        参数：
+            user_input: 用户输入
+
+        返回：
+            工具字典列表
+        """
+        if not self._tool_repository:
+            return []
+
+        try:
+            # 获取所有已发布的工具
+            all_tools = self._tool_repository.find_published()
+
+            # 简单的关键词匹配
+            input_lower = user_input.lower()
+            keywords = input_lower.split()
+
+            matched_tools = []
+            for tool in all_tools:
+                # 检查工具名称、描述或标签是否匹配关键词
+                tool_text = (
+                    getattr(tool, "name", "").lower()
+                    + " "
+                    + getattr(tool, "description", "").lower()
+                    + " "
+                    + " ".join(getattr(tool, "tags", []))
+                ).lower()
+
+                if any(kw in tool_text for kw in keywords) or not user_input:
+                    matched_tools.append(
+                        {
+                            "id": getattr(tool, "id", ""),
+                            "name": getattr(tool, "name", ""),
+                            "description": getattr(tool, "description", ""),
+                            "category": getattr(tool, "category", ""),
+                        }
+                    )
+
+            return matched_tools
+        except Exception:
+            return []
+
+    def _generate_context_summary(
+        self,
+        rules_count: int,
+        tools_count: int,
+        knowledge_count: int,
+        user_input: str,
+    ) -> str:
+        """生成上下文摘要
+
+        参数：
+            rules_count: 规则数量
+            tools_count: 工具数量
+            knowledge_count: 知识条目数量
+            user_input: 用户输入
+
+        返回：
+            摘要文本
+        """
+        parts = []
+
+        if user_input:
+            parts.append(f"用户输入: {user_input[:50]}{'...' if len(user_input) > 50 else ''}")
+
+        parts.append(f"可用规则: {rules_count}")
+        parts.append(f"相关工具: {tools_count}")
+
+        if knowledge_count > 0:
+            parts.append(f"知识条目: {knowledge_count}")
+
+        return " | ".join(parts)
+
+    def get_available_tools(self) -> list[dict[str, Any]]:
+        """获取所有可用工具
+
+        返回：
+            工具字典列表
+        """
+        if not self._tool_repository:
+            return []
+
+        try:
+            all_tools = self._tool_repository.find_all()
+            return [
+                {
+                    "id": getattr(tool, "id", ""),
+                    "name": getattr(tool, "name", ""),
+                    "description": getattr(tool, "description", ""),
+                    "category": getattr(tool, "category", ""),
+                }
+                for tool in all_tools
+            ]
+        except Exception:
+            return []
+
+    def find_tools_by_query(self, query: str) -> list[dict[str, Any]]:
+        """按查询找到相关工具
+
+        参数：
+            query: 查询字符串（可以是关键词或标签）
+
+        返回：
+            匹配的工具列表
+        """
+        if not self._tool_repository:
+            return []
+
+        try:
+            # 尝试按标签查找
+            if hasattr(self._tool_repository, "find_by_tags"):
+                tools = self._tool_repository.find_by_tags([query])
+                return [
+                    {
+                        "id": getattr(tool, "id", ""),
+                        "name": getattr(tool, "name", ""),
+                        "description": getattr(tool, "description", ""),
+                    }
+                    for tool in tools
+                ]
+            return []
+        except Exception:
+            return []
 
     @property
     def rules(self) -> list[Rule]:
@@ -401,6 +783,7 @@ class CoordinatorAgent:
         """启动工作流状态监控
 
         订阅工作流相关事件，维护状态快照。
+        如果启用了上下文压缩，会同时压缩事件数据。
         """
         if self._is_monitoring:
             return
@@ -415,10 +798,18 @@ class CoordinatorAgent:
             WorkflowExecutionStartedEvent,
         )
 
+        # 根据是否启用压缩选择处理器
+        if self._is_compressing_context:
+            workflow_started_handler = self._handle_workflow_started_with_compression
+            node_execution_handler = self._handle_node_execution_with_compression
+        else:
+            workflow_started_handler = self._handle_workflow_started
+            node_execution_handler = self._handle_node_execution
+
         # 订阅工作流事件
-        self.event_bus.subscribe(WorkflowExecutionStartedEvent, self._handle_workflow_started)
+        self.event_bus.subscribe(WorkflowExecutionStartedEvent, workflow_started_handler)
         self.event_bus.subscribe(WorkflowExecutionCompletedEvent, self._handle_workflow_completed)
-        self.event_bus.subscribe(NodeExecutionEvent, self._handle_node_execution)
+        self.event_bus.subscribe(NodeExecutionEvent, node_execution_handler)
 
         self._is_monitoring = True
 
@@ -476,6 +867,17 @@ class CoordinatorAgent:
             self.workflow_states[workflow_id]["status"] = event.status
             self.workflow_states[workflow_id]["completed_at"] = datetime.now()
             self.workflow_states[workflow_id]["result"] = event.result
+
+        # 如果启用了压缩，更新上下文
+        if self._is_compressing_context:
+            self._compress_and_save_context(
+                workflow_id=workflow_id,
+                source_type="execution",
+                raw_data={
+                    "workflow_status": event.status,
+                    "result": event.result,
+                },
+            )
 
     async def _handle_node_execution(self, event: Any) -> None:
         """处理节点执行事件"""
@@ -961,6 +1363,7 @@ class CoordinatorAgent:
         """开始监听反思事件
 
         订阅 WorkflowReflectionCompletedEvent，记录反思结果到上下文。
+        如果启用了上下文压缩，会同时压缩反思数据。
         """
         if self._is_listening_reflections:
             return
@@ -970,7 +1373,13 @@ class CoordinatorAgent:
 
         from src.domain.agents.workflow_agent import WorkflowReflectionCompletedEvent
 
-        self.event_bus.subscribe(WorkflowReflectionCompletedEvent, self._handle_reflection_event)
+        # 根据是否启用压缩选择处理器
+        if self._is_compressing_context:
+            handler = self._handle_reflection_event_with_compression
+        else:
+            handler = self._handle_reflection_event
+
+        self.event_bus.subscribe(WorkflowReflectionCompletedEvent, handler)
         self._is_listening_reflections = True
 
     def stop_reflection_listening(self) -> None:
@@ -1045,18 +1454,1345 @@ class CoordinatorAgent:
             "last_updated": context.get("timestamp"),
         }
 
+    # === 阶段2: 上下文压缩 ===
+
+    def start_context_compression(self) -> None:
+        """开始上下文压缩
+
+        启用后，Coordinator 会在收到反思事件或节点执行事件时
+        自动调用压缩器更新上下文快照。
+        """
+        if self._is_compressing_context:
+            return
+
+        if not self.context_compressor:
+            from src.domain.services.context_compressor import ContextCompressor
+
+            self.context_compressor = ContextCompressor()
+
+        if not self.snapshot_manager:
+            from src.domain.services.context_compressor import ContextSnapshotManager
+
+            self.snapshot_manager = ContextSnapshotManager()
+
+        self._is_compressing_context = True
+
+    def stop_context_compression(self) -> None:
+        """停止上下文压缩"""
+        self._is_compressing_context = False
+
+    def _compress_and_save_context(
+        self,
+        workflow_id: str,
+        source_type: str,
+        raw_data: dict[str, Any],
+    ) -> None:
+        """压缩并保存上下文
+
+        参数：
+            workflow_id: 工作流ID
+            source_type: 来源类型 (execution/reflection/conversation)
+            raw_data: 原始数据
+        """
+        if not self._is_compressing_context:
+            return
+
+        if not self.context_compressor or not self.snapshot_manager:
+            return
+
+        from src.domain.services.context_compressor import CompressionInput
+
+        input_data = CompressionInput(
+            source_type=source_type,
+            workflow_id=workflow_id,
+            raw_data=raw_data,
+        )
+
+        # 获取现有上下文
+        existing = self._compressed_contexts.get(workflow_id)
+
+        if existing:
+            # 增量更新
+            new_context = self.context_compressor.merge(existing, input_data)
+        else:
+            # 全新压缩
+            new_context = self.context_compressor.compress(input_data)
+
+        # 更新缓存
+        self._compressed_contexts[workflow_id] = new_context
+
+        # 保存快照
+        self.snapshot_manager.save_snapshot(new_context)
+
+    def get_compressed_context(self, workflow_id: str) -> Any:
+        """获取压缩后的上下文
+
+        对话 Agent 可以使用此方法获取工作流的压缩上下文。
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            CompressedContext 实例，如果不存在返回None
+        """
+        # 优先从缓存获取
+        if workflow_id in self._compressed_contexts:
+            return self._compressed_contexts[workflow_id]
+
+        # 从快照管理器获取
+        if self.snapshot_manager:
+            return self.snapshot_manager.get_latest_snapshot(workflow_id)
+
+        return None
+
+    def get_context_summary_text(self, workflow_id: str) -> str | None:
+        """获取上下文的摘要文本
+
+        返回人类可读的摘要文本，适合作为对话 Agent 的上下文。
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            摘要文本，如果不存在返回None
+        """
+        context = self.get_compressed_context(workflow_id)
+        if context and hasattr(context, "to_summary_text"):
+            return context.to_summary_text()
+        return None
+
+    async def _handle_workflow_started_with_compression(self, event: Any) -> None:
+        """处理工作流开始事件（带压缩）"""
+        await self._handle_workflow_started(event)
+
+        # 压缩初始上下文
+        if self._is_compressing_context:
+            workflow_id = event.workflow_id
+            self._compress_and_save_context(
+                workflow_id=workflow_id,
+                source_type="execution",
+                raw_data={
+                    "workflow_status": "running",
+                    "node_count": event.node_count,
+                },
+            )
+
+    async def _handle_node_execution_with_compression(self, event: Any) -> None:
+        """处理节点执行事件（带压缩）"""
+        await self._handle_node_execution(event)
+
+        # 压缩节点执行结果
+        if self._is_compressing_context:
+            workflow_id = getattr(event, "workflow_id", None) or self._current_workflow_id
+            if workflow_id:
+                raw_data = {
+                    "executed_nodes": [
+                        {
+                            "node_id": event.node_id,
+                            "status": event.status,
+                            "output": getattr(event, "result", None),
+                            "error": getattr(event, "error", None),
+                        }
+                    ],
+                    "workflow_status": "running",
+                }
+
+                # 如果有工作流状态，补充进度信息
+                if workflow_id in self.workflow_states:
+                    state = self.workflow_states[workflow_id]
+                    executed = len(state.get("executed_nodes", []))
+                    total = state.get("node_count", 0)
+                    if total > 0:
+                        raw_data["progress"] = executed / total
+
+                    # 如果有错误，添加到错误列表
+                    if event.status == "failed" and getattr(event, "error", None):
+                        raw_data["errors"] = [
+                            {
+                                "node_id": event.node_id,
+                                "error": event.error,
+                                "retryable": True,
+                            }
+                        ]
+
+                self._compress_and_save_context(
+                    workflow_id=workflow_id,
+                    source_type="execution",
+                    raw_data=raw_data,
+                )
+
+    async def _handle_reflection_event_with_compression(self, event: Any) -> None:
+        """处理反思事件（带压缩）"""
+        await self._handle_reflection_event(event)
+
+        # 压缩反思结果
+        if self._is_compressing_context:
+            workflow_id = event.workflow_id
+            self._compress_and_save_context(
+                workflow_id=workflow_id,
+                source_type="reflection",
+                raw_data={
+                    "assessment": event.assessment,
+                    "should_retry": getattr(event, "should_retry", False),
+                    "confidence": event.confidence,
+                    "recommendations": getattr(event, "recommendations", []),
+                },
+            )
+
+    # ==================== Phase 3: 子Agent管理 ====================
+
+    def register_subagent_type(self, agent_type: Any, agent_class: type) -> None:
+        """注册子Agent类型
+
+        参数：
+            agent_type: SubAgentType 枚举值
+            agent_class: 子Agent类
+        """
+        self.subagent_registry.register(agent_type, agent_class)
+
+    def get_registered_subagent_types(self) -> list[Any]:
+        """获取已注册的子Agent类型列表
+
+        返回：
+            SubAgentType 列表
+        """
+        return self.subagent_registry.list_types()
+
+    def start_subagent_listener(self) -> None:
+        """启动子Agent事件监听器
+
+        订阅 SpawnSubAgentEvent 以处理子Agent生成请求。
+        """
+        if self._is_listening_subagent_events:
+            return
+
+        if self.event_bus:
+            from src.domain.agents.conversation_agent import SpawnSubAgentEvent
+
+            self.event_bus.subscribe(SpawnSubAgentEvent, self._handle_spawn_subagent_event_wrapper)
+            self._is_listening_subagent_events = True
+
+    async def _handle_spawn_subagent_event_wrapper(self, event: Any) -> None:
+        """SpawnSubAgentEvent 处理器包装器"""
+        await self.handle_spawn_subagent_event(event)
+
+    async def handle_spawn_subagent_event(self, event: Any) -> Any:
+        """处理子Agent生成事件
+
+        参数：
+            event: SpawnSubAgentEvent 事件
+
+        返回：
+            SubAgentResult 执行结果
+        """
+        return await self.execute_subagent(
+            subagent_type=event.subagent_type,
+            task_payload=event.task_payload,
+            context=event.context_snapshot,
+            session_id=event.session_id,
+        )
+
+    async def execute_subagent(
+        self,
+        subagent_type: str,
+        task_payload: dict[str, Any],
+        context: dict[str, Any] | None = None,
+        session_id: str = "",
+    ) -> Any:
+        """执行子Agent任务
+
+        参数：
+            subagent_type: 子Agent类型（字符串）
+            task_payload: 任务负载
+            context: 执行上下文
+            session_id: 会话ID
+
+        返回：
+            SubAgentResult 执行结果
+        """
+        from datetime import datetime
+
+        from src.domain.services.sub_agent_scheduler import (
+            SubAgentResult,
+            SubAgentType,
+        )
+
+        # 转换类型字符串为枚举
+        try:
+            agent_type_enum = SubAgentType(subagent_type)
+        except ValueError:
+            return SubAgentResult(
+                agent_id="",
+                agent_type=subagent_type,
+                success=False,
+                error=f"Unknown subagent type: {subagent_type}",
+            )
+
+        # 创建子Agent实例
+        agent = self.subagent_registry.create_instance(agent_type_enum)
+        if agent is None:
+            return SubAgentResult(
+                agent_id="",
+                agent_type=subagent_type,
+                success=False,
+                error=f"SubAgent type not registered: {subagent_type}",
+            )
+
+        subagent_id = agent.agent_id
+
+        # 记录活跃子Agent
+        self.active_subagents[subagent_id] = {
+            "type": subagent_type,
+            "status": "running",
+            "started_at": datetime.now().isoformat(),
+            "session_id": session_id,
+        }
+
+        try:
+            # 执行子Agent
+            result = await agent.execute(task_payload, context or {})
+
+            # 更新状态
+            self.active_subagents[subagent_id]["status"] = (
+                "completed" if result.success else "failed"
+            )
+            self.active_subagents[subagent_id]["completed_at"] = datetime.now().isoformat()
+
+            # 存储结果到会话
+            if session_id:
+                if session_id not in self.subagent_results:
+                    self.subagent_results[session_id] = []
+                self.subagent_results[session_id].append(
+                    {
+                        "subagent_id": subagent_id,
+                        "subagent_type": subagent_type,
+                        "success": result.success,
+                        "result": result.output,
+                        "error": result.error,
+                        "execution_time": result.execution_time,
+                    }
+                )
+
+            # 发布完成事件
+            if self.event_bus:
+                self.event_bus.publish(
+                    SubAgentCompletedEvent(
+                        subagent_id=subagent_id,
+                        subagent_type=subagent_type,
+                        session_id=session_id,
+                        success=result.success,
+                        result=result.output,
+                        error=result.error,
+                        execution_time=result.execution_time,
+                        source="coordinator_agent",
+                    )
+                )
+
+            # 清理已完成的子Agent
+            del self.active_subagents[subagent_id]
+
+            return result
+
+        except Exception as e:
+            # 记录失败
+            self.active_subagents[subagent_id]["status"] = "failed"
+            self.active_subagents[subagent_id]["error"] = str(e)
+
+            # 发布失败事件
+            if self.event_bus:
+                self.event_bus.publish(
+                    SubAgentCompletedEvent(
+                        subagent_id=subagent_id,
+                        subagent_type=subagent_type,
+                        session_id=session_id,
+                        success=False,
+                        error=str(e),
+                        source="coordinator_agent",
+                    )
+                )
+
+            # 清理
+            del self.active_subagents[subagent_id]
+
+            return SubAgentResult(
+                agent_id=subagent_id,
+                agent_type=subagent_type,
+                success=False,
+                error=str(e),
+            )
+
+    def get_subagent_status(self, subagent_id: str) -> dict[str, Any] | None:
+        """获取子Agent状态
+
+        参数：
+            subagent_id: 子Agent实例ID
+
+        返回：
+            状态字典，如果不存在返回None
+        """
+        return self.active_subagents.get(subagent_id)
+
+    def get_session_subagent_results(self, session_id: str) -> list[dict[str, Any]]:
+        """获取会话的子Agent执行结果列表
+
+        参数：
+            session_id: 会话ID
+
+        返回：
+            该会话的所有子Agent执行结果列表，如果不存在返回空列表
+        """
+        return self.subagent_results.get(session_id, [])
+
+    # ==================== Phase 4: 容器执行监控 ====================
+
+    def start_container_execution_listening(self) -> None:
+        """启动容器执行事件监听
+
+        订阅容器执行相关事件。
+        """
+        if self._is_listening_container_events:
+            return
+
+        if not self.event_bus:
+            raise ValueError("EventBus is required for container execution listening")
+
+        from src.domain.agents.container_events import (
+            ContainerExecutionCompletedEvent,
+            ContainerExecutionStartedEvent,
+            ContainerLogEvent,
+        )
+
+        self.event_bus.subscribe(ContainerExecutionStartedEvent, self._handle_container_started)
+        self.event_bus.subscribe(ContainerExecutionCompletedEvent, self._handle_container_completed)
+        self.event_bus.subscribe(ContainerLogEvent, self._handle_container_log)
+
+        self._is_listening_container_events = True
+
+    def stop_container_execution_listening(self) -> None:
+        """停止容器执行事件监听"""
+        if not self._is_listening_container_events:
+            return
+
+        if not self.event_bus:
+            return
+
+        from src.domain.agents.container_events import (
+            ContainerExecutionCompletedEvent,
+            ContainerExecutionStartedEvent,
+            ContainerLogEvent,
+        )
+
+        self.event_bus.unsubscribe(ContainerExecutionStartedEvent, self._handle_container_started)
+        self.event_bus.unsubscribe(
+            ContainerExecutionCompletedEvent, self._handle_container_completed
+        )
+        self.event_bus.unsubscribe(ContainerLogEvent, self._handle_container_log)
+
+        self._is_listening_container_events = False
+
+    async def _handle_container_started(self, event: Any) -> None:
+        """处理容器执行开始事件"""
+        workflow_id = event.workflow_id
+
+        if workflow_id not in self.container_executions:
+            self.container_executions[workflow_id] = []
+
+        self.container_executions[workflow_id].append(
+            {
+                "container_id": event.container_id,
+                "node_id": event.node_id,
+                "image": event.image,
+                "status": "running",
+                "started_at": event.timestamp,
+            }
+        )
+
+    async def _handle_container_completed(self, event: Any) -> None:
+        """处理容器执行完成事件"""
+        workflow_id = event.workflow_id
+
+        if workflow_id not in self.container_executions:
+            self.container_executions[workflow_id] = []
+
+        self.container_executions[workflow_id].append(
+            {
+                "container_id": event.container_id,
+                "node_id": event.node_id,
+                "success": event.success,
+                "exit_code": event.exit_code,
+                "stdout": event.stdout,
+                "stderr": event.stderr,
+                "execution_time": event.execution_time,
+                "status": "completed" if event.success else "failed",
+                "completed_at": event.timestamp,
+            }
+        )
+
+    async def _handle_container_log(self, event: Any) -> None:
+        """处理容器日志事件"""
+        container_id = event.container_id
+
+        if container_id not in self.container_logs:
+            self.container_logs[container_id] = []
+
+        self.container_logs[container_id].append(
+            {
+                "level": event.log_level,
+                "message": event.message,
+                "timestamp": event.timestamp,
+                "node_id": event.node_id,
+            }
+        )
+
+    def get_workflow_container_executions(self, workflow_id: str) -> list[dict[str, Any]]:
+        """获取工作流的容器执行记录
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            容器执行记录列表
+        """
+        return self.container_executions.get(workflow_id, [])
+
+    def get_container_logs(self, container_id: str) -> list[dict[str, Any]]:
+        """获取容器日志
+
+        参数：
+            container_id: 容器ID
+
+        返回：
+            日志列表
+        """
+        return self.container_logs.get(container_id, [])
+
+    def get_container_execution_statistics(self) -> dict[str, Any]:
+        """获取容器执行统计
+
+        返回：
+            包含执行统计的字典
+        """
+        total = 0
+        successful = 0
+        failed = 0
+        total_time = 0.0
+
+        for _workflow_id, executions in self.container_executions.items():
+            for execution in executions:
+                # 兼容两种格式：有 status 字段或只有 success 字段
+                status = execution.get("status")
+                has_result = status in ["completed", "failed"] or "success" in execution
+
+                if has_result:
+                    total += 1
+                    if execution.get("success", False):
+                        successful += 1
+                    else:
+                        failed += 1
+                    total_time += execution.get("execution_time", 0.0)
+
+        return {
+            "total_executions": total,
+            "successful": successful,
+            "failed": failed,
+            "total_execution_time": total_time,
+        }
+
+    # ==================== Phase 5 阶段2: 知识库集成 ====================
+
+    async def retrieve_knowledge(
+        self,
+        query: str,
+        workflow_id: str | None = None,
+        top_k: int = 5,
+    ) -> Any:
+        """按查询检索知识
+
+        参数：
+            query: 查询文本
+            workflow_id: 工作流ID（可选，用于过滤和缓存）
+            top_k: 返回结果数量
+
+        返回：
+            KnowledgeReferences 知识引用集合
+        """
+        from src.domain.services.knowledge_reference import (
+            KnowledgeReference,
+            KnowledgeReferences,
+        )
+
+        refs = KnowledgeReferences()
+
+        if not self.knowledge_retriever:
+            return refs
+
+        # 检索知识
+        results = await self.knowledge_retriever.retrieve_by_query(
+            query=query,
+            workflow_id=workflow_id,
+            top_k=top_k,
+        )
+
+        # 转换为 KnowledgeReference
+        for result in results:
+            ref = KnowledgeReference(
+                source_id=result.get("source_id", ""),
+                title=result.get("title", ""),
+                content_preview=result.get("content_preview", ""),
+                relevance_score=result.get("relevance_score", 0.0),
+                document_id=result.get("document_id"),
+                source_type=result.get("source_type", "knowledge_base"),
+            )
+            refs.add(ref)
+
+        # 如果指定了 workflow_id，缓存结果
+        if workflow_id:
+            self._knowledge_cache[workflow_id] = refs
+
+        return refs
+
+    async def retrieve_knowledge_by_error(
+        self,
+        error_type: str,
+        error_message: str | None = None,
+        top_k: int = 3,
+    ) -> Any:
+        """按错误类型检索解决方案
+
+        参数：
+            error_type: 错误类型
+            error_message: 错误消息（可选）
+            top_k: 返回结果数量
+
+        返回：
+            KnowledgeReferences 知识引用集合
+        """
+        from src.domain.services.knowledge_reference import (
+            KnowledgeReference,
+            KnowledgeReferences,
+        )
+
+        refs = KnowledgeReferences()
+
+        if not self.knowledge_retriever:
+            return refs
+
+        # 检索错误相关知识
+        results = await self.knowledge_retriever.retrieve_by_error(
+            error_type=error_type,
+            error_message=error_message,
+            top_k=top_k,
+        )
+
+        # 转换为 KnowledgeReference
+        for result in results:
+            ref = KnowledgeReference(
+                source_id=result.get("source_id", ""),
+                title=result.get("title", ""),
+                content_preview=result.get("content_preview", ""),
+                relevance_score=result.get("relevance_score", 0.0),
+                source_type=result.get("source_type", "error_solution"),
+            )
+            refs.add(ref)
+
+        return refs
+
+    async def retrieve_knowledge_by_goal(
+        self,
+        goal_text: str,
+        workflow_id: str | None = None,
+        top_k: int = 3,
+    ) -> Any:
+        """按目标检索相关知识
+
+        参数：
+            goal_text: 目标描述文本
+            workflow_id: 工作流ID（可选）
+            top_k: 返回结果数量
+
+        返回：
+            KnowledgeReferences 知识引用集合
+        """
+        from src.domain.services.knowledge_reference import (
+            KnowledgeReference,
+            KnowledgeReferences,
+        )
+
+        refs = KnowledgeReferences()
+
+        if not self.knowledge_retriever:
+            return refs
+
+        # 检索目标相关知识
+        results = await self.knowledge_retriever.retrieve_by_goal(
+            goal_text=goal_text,
+            workflow_id=workflow_id,
+            top_k=top_k,
+        )
+
+        # 转换为 KnowledgeReference
+        for result in results:
+            ref = KnowledgeReference(
+                source_id=result.get("source_id", ""),
+                title=result.get("title", ""),
+                content_preview=result.get("content_preview", ""),
+                relevance_score=result.get("relevance_score", 0.0),
+                document_id=result.get("document_id"),
+                source_type=result.get("source_type", "goal_related"),
+            )
+            refs.add(ref)
+
+        return refs
+
+    def get_cached_knowledge(self, workflow_id: str) -> Any:
+        """获取缓存的知识引用
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            KnowledgeReferences 或 None
+        """
+        return self._knowledge_cache.get(workflow_id)
+
+    def clear_cached_knowledge(self, workflow_id: str) -> None:
+        """清除缓存的知识引用
+
+        参数：
+            workflow_id: 工作流ID
+        """
+        if workflow_id in self._knowledge_cache:
+            del self._knowledge_cache[workflow_id]
+
+    async def enrich_context_with_knowledge(
+        self,
+        workflow_id: str,
+        goal: str | None = None,
+        errors: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """根据目标和错误丰富上下文
+
+        自动检索与目标和错误相关的知识，并将结果附加到上下文中。
+
+        参数：
+            workflow_id: 工作流ID
+            goal: 任务目标（可选）
+            errors: 错误列表（可选），每个错误包含 error_type 和 message
+
+        返回：
+            包含 knowledge_references 的上下文字典
+        """
+        from src.domain.services.knowledge_reference import KnowledgeReferences
+
+        all_refs = KnowledgeReferences()
+
+        # 基于目标检索知识
+        if goal and self.knowledge_retriever:
+            goal_refs = await self.retrieve_knowledge_by_goal(
+                goal_text=goal,
+                workflow_id=workflow_id,
+            )
+            all_refs = all_refs.merge(goal_refs)
+
+        # 基于错误检索知识
+        if errors and self.knowledge_retriever:
+            for error in errors:
+                error_type = error.get("error_type", "")
+                error_message = error.get("message", "")
+                if error_type:
+                    error_refs = await self.retrieve_knowledge_by_error(
+                        error_type=error_type,
+                        error_message=error_message,
+                    )
+                    all_refs = all_refs.merge(error_refs)
+
+        # 去重
+        all_refs = all_refs.deduplicate()
+
+        # 缓存结果
+        self._knowledge_cache[workflow_id] = all_refs
+
+        # 返回包含知识引用的上下文
+        return {
+            "workflow_id": workflow_id,
+            "knowledge_references": all_refs.to_dict_list(),
+        }
+
+    async def inject_knowledge_to_context(
+        self,
+        workflow_id: str,
+        goal: str | None = None,
+        errors: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """向现有压缩上下文注入知识
+
+        参数：
+            workflow_id: 工作流ID
+            goal: 任务目标（可选）
+            errors: 错误列表（可选）
+        """
+        # 检索知识
+        enriched = await self.enrich_context_with_knowledge(
+            workflow_id=workflow_id,
+            goal=goal,
+            errors=errors,
+        )
+
+        # 如果有压缩上下文，注入知识引用
+        if workflow_id in self._compressed_contexts:
+            ctx = self._compressed_contexts[workflow_id]
+            if hasattr(ctx, "knowledge_references"):
+                # 合并现有和新的知识引用
+                existing_refs = ctx.knowledge_references or []
+                new_refs = enriched.get("knowledge_references", [])
+
+                # 去重合并（按 source_id）
+                seen_ids = {r.get("source_id") for r in existing_refs}
+                for ref in new_refs:
+                    if ref.get("source_id") not in seen_ids:
+                        existing_refs.append(ref)
+                        seen_ids.add(ref.get("source_id"))
+
+                ctx.knowledge_references = existing_refs
+
+    def get_knowledge_enhanced_summary(self, workflow_id: str) -> str | None:
+        """获取知识增强的上下文摘要
+
+        返回包含知识引用信息的人类可读摘要。
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            摘要文本，如果不存在返回None
+        """
+        # 获取压缩上下文
+        ctx = self.get_compressed_context(workflow_id)
+        if not ctx:
+            return None
+
+        # 生成基础摘要
+        summary_parts = []
+        if hasattr(ctx, "to_summary_text"):
+            summary_parts.append(ctx.to_summary_text())
+
+        # 添加知识引用详情
+        if hasattr(ctx, "knowledge_references") and ctx.knowledge_references:
+            refs = ctx.knowledge_references
+            ref_summaries = []
+            for ref in refs[:3]:  # 最多显示3条
+                title = ref.get("title", "未知")
+                score = ref.get("relevance_score", 0)
+                ref_summaries.append(f"  - {title} (相关度: {score:.0%})")
+
+            if ref_summaries:
+                summary_parts.append("知识引用:")
+                summary_parts.extend(ref_summaries)
+
+        return "\n".join(summary_parts) if summary_parts else None
+
+    def get_context_for_conversation_agent(
+        self,
+        workflow_id: str,
+    ) -> dict[str, Any] | None:
+        """获取用于对话Agent的上下文
+
+        将压缩上下文转换为对话Agent可用的格式。
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            对话Agent可用的上下文字典，如果不存在返回None
+        """
+        ctx = self.get_compressed_context(workflow_id)
+        if not ctx:
+            return None
+
+        # 构建对话Agent可用的上下文
+        agent_context = {
+            "workflow_id": workflow_id,
+            "goal": getattr(ctx, "task_goal", ""),
+            "task_goal": getattr(ctx, "task_goal", ""),
+            "execution_status": getattr(ctx, "execution_status", {}),
+            "node_summary": getattr(ctx, "node_summary", []),
+            "errors": getattr(ctx, "error_log", []),
+            "next_actions": getattr(ctx, "next_actions", []),
+            "conversation_summary": getattr(ctx, "conversation_summary", ""),
+            "reflection_summary": getattr(ctx, "reflection_summary", {}),
+        }
+
+        # 添加知识引用
+        if hasattr(ctx, "knowledge_references"):
+            agent_context["knowledge_references"] = ctx.knowledge_references
+            agent_context["references"] = ctx.knowledge_references
+
+        # 添加缓存的知识
+        cached = self.get_cached_knowledge(workflow_id)
+        if cached and hasattr(cached, "to_dict_list"):
+            agent_context["cached_knowledge"] = cached.to_dict_list()
+
+        return agent_context
+
+    async def auto_enrich_context_on_error(
+        self,
+        workflow_id: str,
+        error_type: str,
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        """错误发生时自动丰富上下文
+
+        当节点执行失败时，自动检索相关的错误解决方案知识。
+
+        参数：
+            workflow_id: 工作流ID
+            error_type: 错误类型
+            error_message: 错误消息（可选）
+
+        返回：
+            丰富后的上下文字典
+        """
+        # 构建错误列表
+        errors = [{"error_type": error_type, "message": error_message or ""}]
+
+        # 获取现有目标
+        goal = None
+        if workflow_id in self._compressed_contexts:
+            ctx = self._compressed_contexts[workflow_id]
+            goal = getattr(ctx, "task_goal", None)
+
+        # 丰富上下文
+        enriched = await self.enrich_context_with_knowledge(
+            workflow_id=workflow_id,
+            goal=goal,
+            errors=errors,
+        )
+
+        # 注入到压缩上下文
+        await self.inject_knowledge_to_context(
+            workflow_id=workflow_id,
+            errors=errors,
+        )
+
+        return enriched
+
+    def enable_auto_knowledge_retrieval(self) -> None:
+        """启用自动知识检索
+
+        启用后，在节点失败和反思事��时会自动检索相关知识。
+        """
+        self._auto_knowledge_retrieval_enabled = True
+
+    def disable_auto_knowledge_retrieval(self) -> None:
+        """禁用自动知识检索"""
+        self._auto_knowledge_retrieval_enabled = False
+
+    async def handle_node_failure_with_knowledge(
+        self,
+        workflow_id: str,
+        node_id: str,
+        error_type: str,
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        """处理节点失败并检索相关知识
+
+        当节点执行失败时调用此方法，会自动检索与错误相关的知识，
+        并将其添加到压缩上下文中。
+
+        参数：
+            workflow_id: 工作流ID
+            node_id: 失败的节点ID
+            error_type: 错误类型
+            error_message: 错误消息（可选）
+
+        返回：
+            包含知识引用的结果字典
+        """
+        # 记录错误到错误日志
+        if workflow_id in self._compressed_contexts:
+            ctx = self._compressed_contexts[workflow_id]
+            if hasattr(ctx, "error_log"):
+                ctx.error_log.append(
+                    {
+                        "node_id": node_id,
+                        "error_type": error_type,
+                        "error_message": error_message or "",
+                    }
+                )
+
+        # 自动检索错误相关知识
+        result = await self.auto_enrich_context_on_error(
+            workflow_id=workflow_id,
+            error_type=error_type,
+            error_message=error_message,
+        )
+
+        return result
+
+    async def handle_reflection_with_knowledge(
+        self,
+        workflow_id: str,
+        assessment: str,
+        confidence: float = 0.0,
+        recommendations: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """处理反思事件并检索相关知识
+
+        当收到反思事件时调用此方法，会基于工作流目标检索相关知识。
+
+        参数：
+            workflow_id: 工作流ID
+            assessment: 评估内容
+            confidence: 置信度
+            recommendations: 建议列表（可选）
+
+        返回：
+            包含知识引用的结果字典
+        """
+        # 更新反思摘要
+        if workflow_id in self._compressed_contexts:
+            ctx = self._compressed_contexts[workflow_id]
+            if hasattr(ctx, "reflection_summary"):
+                ctx.reflection_summary = {
+                    "assessment": assessment,
+                    "confidence": confidence,
+                    "recommendations": recommendations or [],
+                }
+            if hasattr(ctx, "next_actions") and recommendations:
+                ctx.next_actions = recommendations
+
+        # 获取目标并检索相关知识
+        goal = None
+        if workflow_id in self._compressed_contexts:
+            ctx = self._compressed_contexts[workflow_id]
+            goal = getattr(ctx, "task_goal", None)
+
+        # 基于目标和评估检索知识
+        result = await self.enrich_context_with_knowledge(
+            workflow_id=workflow_id,
+            goal=goal or assessment,  # 如果没有目标，使用评估内容
+        )
+
+        # 注入到上下文
+        await self.inject_knowledge_to_context(
+            workflow_id=workflow_id,
+            goal=goal or assessment,
+        )
+
+        return result
+
+    # ==================== Phase 5: 执行总结管理 ====================
+
+    def _init_summary_storage(self) -> None:
+        """初始化总结存储（懒加载）"""
+        if not hasattr(self, "_execution_summaries"):
+            self._execution_summaries: dict[str, Any] = {}
+        if not hasattr(self, "_channel_bridge"):
+            self._channel_bridge: Any | None = None
+
+    def set_channel_bridge(self, bridge: Any) -> None:
+        """设置通信桥接器
+
+        参数：
+            bridge: AgentChannelBridge 实例
+        """
+        self._init_summary_storage()
+        self._channel_bridge = bridge
+
+    def record_execution_summary(self, summary: Any) -> None:
+        """同步记录执行总结
+
+        参数：
+            summary: ExecutionSummary 实例
+        """
+        self._init_summary_storage()
+        workflow_id = getattr(summary, "workflow_id", "")
+        if workflow_id:
+            self._execution_summaries[workflow_id] = summary
+
+    async def record_execution_summary_async(self, summary: Any) -> None:
+        """异步记录执行总结并发布事件
+
+        参数：
+            summary: ExecutionSummary 实例
+        """
+        from src.domain.agents.execution_summary import ExecutionSummaryRecordedEvent
+
+        self._init_summary_storage()
+        workflow_id = getattr(summary, "workflow_id", "")
+        session_id = getattr(summary, "session_id", "")
+        success = getattr(summary, "success", True)
+        summary_id = getattr(summary, "summary_id", "")
+
+        if workflow_id:
+            self._execution_summaries[workflow_id] = summary
+
+        # 发布事件
+        if self.event_bus:
+            event = ExecutionSummaryRecordedEvent(
+                source="coordinator_agent",
+                workflow_id=workflow_id,
+                session_id=session_id,
+                success=success,
+                summary_id=summary_id,
+            )
+            await self.event_bus.publish(event)
+
+    def get_execution_summary(self, workflow_id: str) -> Any | None:
+        """获取执行总结
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            ExecutionSummary 实例，如果不存在返回 None
+        """
+        self._init_summary_storage()
+        return self._execution_summaries.get(workflow_id)
+
+    def get_summary_statistics(self) -> dict[str, Any]:
+        """获取总结统计
+
+        返回：
+            包含统计信息的字典
+        """
+        self._init_summary_storage()
+
+        total = len(self._execution_summaries)
+        successful = sum(
+            1 for s in self._execution_summaries.values() if getattr(s, "success", False)
+        )
+        failed = total - successful
+
+        return {
+            "total": total,
+            "successful": successful,
+            "failed": failed,
+        }
+
+    async def record_and_push_summary(self, summary: Any) -> None:
+        """记录总结并推送到前端
+
+        参数：
+            summary: ExecutionSummary 实例
+        """
+        # 记录总结
+        await self.record_execution_summary_async(summary)
+
+        # 推送到前端（如果有桥接器）
+        self._init_summary_storage()
+        if self._channel_bridge:
+            session_id = getattr(summary, "session_id", "")
+            if session_id:
+                await self._channel_bridge.push_execution_summary(session_id, summary)
+
+    def get_all_summaries(self) -> dict[str, Any]:
+        """获取所有总结
+
+        返回：
+            工作流ID到总结的映射
+        """
+        self._init_summary_storage()
+        return self._execution_summaries.copy()
+
+    # ==================== Phase 6: 强力压缩器与查询接口 ====================
+
+    def _init_power_compressor_storage(self) -> None:
+        """初始化强力压缩器存储（懒加载）"""
+        if not hasattr(self, "_power_compressed_contexts"):
+            self._power_compressed_contexts: dict[str, dict[str, Any]] = {}
+        if not hasattr(self, "_power_compressor"):
+            self._power_compressor: Any | None = None
+
+    def _get_power_compressor(self) -> Any:
+        """获取强力压缩器实例"""
+        self._init_power_compressor_storage()
+        if self._power_compressor is None:
+            from src.domain.services.power_compressor import PowerCompressor
+
+            self._power_compressor = PowerCompressor()
+        return self._power_compressor
+
+    async def compress_and_store(self, summary: Any) -> Any:
+        """压缩执行总结并存储
+
+        使用 PowerCompressor 压缩执行总结，生成八段格式的压缩上下文，
+        并存储到内部缓存中。
+
+        参数：
+            summary: ExecutionSummary 实例
+
+        返回：
+            PowerCompressedContext 实例
+        """
+
+        compressor = self._get_power_compressor()
+        self._init_power_compressor_storage()
+
+        # 使用压缩器压缩总结
+        compressed = compressor.compress_summary(summary)
+
+        # 转换为字典并存储
+        workflow_id = compressed.workflow_id
+        if workflow_id:
+            self._power_compressed_contexts[workflow_id] = compressed.to_dict()
+
+        return compressed
+
+    def store_compressed_context(self, workflow_id: str, data: dict[str, Any]) -> None:
+        """存储压缩上下文
+
+        直接存储已格式化的压缩上下文数据。
+
+        参数：
+            workflow_id: 工作流ID
+            data: 压缩上下文数据字典
+        """
+        self._init_power_compressor_storage()
+        self._power_compressed_contexts[workflow_id] = data
+
+    def query_compressed_context(self, workflow_id: str) -> dict[str, Any] | None:
+        """查询压缩上下文
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            压缩上下文字典，如果不存在返回 None
+        """
+        self._init_power_compressor_storage()
+        return self._power_compressed_contexts.get(workflow_id)
+
+    def query_subtask_errors(self, workflow_id: str) -> list[dict[str, Any]]:
+        """查询子任务错误
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            子任务错误列表
+        """
+        self._init_power_compressor_storage()
+        ctx = self._power_compressed_contexts.get(workflow_id)
+        if ctx:
+            return ctx.get("subtask_errors", [])
+        return []
+
+    def query_unresolved_issues(self, workflow_id: str) -> list[dict[str, Any]]:
+        """查询未解决问题
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            未解决问题列表
+        """
+        self._init_power_compressor_storage()
+        ctx = self._power_compressed_contexts.get(workflow_id)
+        if ctx:
+            return ctx.get("unresolved_issues", [])
+        return []
+
+    def query_next_plan(self, workflow_id: str) -> list[dict[str, Any]]:
+        """查询后续计划
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            后续计划列表
+        """
+        self._init_power_compressor_storage()
+        ctx = self._power_compressed_contexts.get(workflow_id)
+        if ctx:
+            return ctx.get("next_plan", [])
+        return []
+
+    def get_context_for_conversation(self, workflow_id: str) -> dict[str, Any] | None:
+        """获取用于对话Agent下一轮输入的上下文
+
+        返回包含所有八段压缩信息的上下文，供对话Agent引用。
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            对话Agent可用的上下文字典，如果不存在返回 None
+        """
+        self._init_power_compressor_storage()
+        ctx = self._power_compressed_contexts.get(workflow_id)
+        if not ctx:
+            return None
+
+        # 返回完整的八段上下文
+        return {
+            "workflow_id": ctx.get("workflow_id", workflow_id),
+            "task_goal": ctx.get("task_goal", ""),
+            "execution_status": ctx.get("execution_status", {}),
+            "node_summary": ctx.get("node_summary", []),
+            "subtask_errors": ctx.get("subtask_errors", []),
+            "unresolved_issues": ctx.get("unresolved_issues", []),
+            "decision_history": ctx.get("decision_history", []),
+            "next_plan": ctx.get("next_plan", []),
+            "knowledge_sources": ctx.get("knowledge_sources", []),
+        }
+
+    def get_knowledge_for_conversation(self, workflow_id: str) -> list[dict[str, Any]]:
+        """获取用于对话Agent引用的知识来源
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            知识来源列表
+        """
+        self._init_power_compressor_storage()
+        ctx = self._power_compressed_contexts.get(workflow_id)
+        if ctx:
+            return ctx.get("knowledge_sources", [])
+        return []
+
+    def get_power_compression_statistics(self) -> dict[str, Any]:
+        """获取强力压缩器统计
+
+        返回：
+            包含统计信息的字典
+        """
+        self._init_power_compressor_storage()
+
+        total = len(self._power_compressed_contexts)
+        total_errors = sum(
+            len(ctx.get("subtask_errors", [])) for ctx in self._power_compressed_contexts.values()
+        )
+        total_issues = sum(
+            len(ctx.get("unresolved_issues", []))
+            for ctx in self._power_compressed_contexts.values()
+        )
+        total_plans = sum(
+            len(ctx.get("next_plan", [])) for ctx in self._power_compressed_contexts.values()
+        )
+
+        return {
+            "total_contexts": total,
+            "total_subtask_errors": total_errors,
+            "total_unresolved_issues": total_issues,
+            "total_next_plan_items": total_plans,
+        }
+
 
 # 导出
 __all__ = [
     "FailureHandlingStrategy",
     "Rule",
     "ValidationResult",
+    "ContextResponse",
     "DecisionValidatedEvent",
     "DecisionRejectedEvent",
     "CircuitBreakerAlertEvent",
     "WorkflowAdjustmentRequestedEvent",
     "NodeFailureHandledEvent",
     "WorkflowAbortedEvent",
+    "SubAgentCompletedEvent",
     "FailureHandlingResult",
     "CoordinatorAgent",
 ]

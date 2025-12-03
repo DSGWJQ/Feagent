@@ -21,6 +21,9 @@ from fastapi.responses import StreamingResponse
 from src.domain.agents.coordinator_agent import CoordinatorAgent
 from src.domain.services.event_bus import EventBus
 from src.interfaces.api.dto.coordinator_dto import (
+    CompressedContextResponse,
+    ContextHistoryResponse,
+    ContextSnapshotItem,
     SystemStatusResponse,
     WorkflowListResponse,
     WorkflowStateResponse,
@@ -313,6 +316,215 @@ async def stream_workflow_status(
                         "workflow_id": workflow_id,
                         "status": current_state.get("status"),
                         "result": current_state.get("result"),
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    event_type="workflow_completed",
+                )
+                yield format_sse_done()
+                break
+
+            # 等待下一次轮询
+            await asyncio.sleep(poll_interval)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ==================== 上下文压缩 API（阶段2新增） ====================
+
+
+@router.get("/workflows/{workflow_id}/context", response_model=CompressedContextResponse)
+async def get_compressed_context(workflow_id: str) -> CompressedContextResponse:
+    """获取工作流的压缩上下文
+
+    返回八段压缩结构的上下文数据。
+
+    参数：
+        workflow_id: 工作流ID
+
+    返回：
+        压缩上下文响应
+
+    异常：
+        404: 上下文不存在或压缩未启用
+    """
+    coordinator = get_coordinator()
+    context = coordinator.get_compressed_context(workflow_id)
+
+    if context is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Context for workflow {workflow_id} not found",
+        )
+
+    # 获取摘要文本
+    summary_text = coordinator.get_context_summary_text(workflow_id) or ""
+
+    return CompressedContextResponse(
+        workflow_id=context.workflow_id,
+        version=context.version,
+        created_at=context.created_at.isoformat(),
+        task_goal=context.task_goal,
+        execution_status=context.execution_status,
+        node_summary=context.node_summary,
+        decision_history=context.decision_history,
+        reflection_summary=context.reflection_summary,
+        conversation_summary=context.conversation_summary,
+        error_log=context.error_log,
+        next_actions=context.next_actions,
+        summary_text=summary_text,
+        evidence_refs=context.evidence_refs,
+    )
+
+
+@router.get("/workflows/{workflow_id}/context/history", response_model=ContextHistoryResponse)
+async def get_context_history(workflow_id: str) -> ContextHistoryResponse:
+    """获取工作流的上下文历史
+
+    返回工作流的所有上下文快照列表。
+
+    参数：
+        workflow_id: 工作流ID
+
+    返回：
+        上下文历史响应
+    """
+    coordinator = get_coordinator()
+
+    if not coordinator.snapshot_manager:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Snapshot manager not available",
+        )
+
+    snapshots = coordinator.snapshot_manager.list_snapshots(workflow_id)
+
+    snapshot_items = []
+    for snap in snapshots:
+        snapshot_items.append(
+            ContextSnapshotItem(
+                snapshot_id=f"snap_{snap.workflow_id}_{snap.version}",
+                workflow_id=snap.workflow_id,
+                version=snap.version,
+                created_at=snap.created_at.isoformat(),
+                task_goal=snap.task_goal,
+            )
+        )
+
+    return ContextHistoryResponse(
+        workflow_id=workflow_id,
+        snapshots=snapshot_items,
+        total=len(snapshot_items),
+    )
+
+
+@router.get("/workflows/{workflow_id}/context/stream")
+async def stream_context_updates(
+    workflow_id: str,
+    poll_interval: float = Query(default=1.0, ge=0.1, le=10.0, description="轮询间隔（秒）"),
+    timeout: float = Query(default=60.0, ge=1.0, le=300.0, description="超时时间（秒）"),
+) -> StreamingResponse:
+    """SSE 实时推送上下文更新
+
+    通过 Server-Sent Events 实时推送上下文变化。
+
+    参数：
+        workflow_id: 工作流ID
+        poll_interval: 轮询间隔（秒），默认1秒
+        timeout: 超时时间（秒），默认60秒
+
+    返回：
+        SSE 流响应
+
+    事件格式：
+        - context_update: 上下文更新
+        - initial_context: 初始上下文
+    """
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        coordinator = get_coordinator()
+        start_time = datetime.now()
+        last_version: int | None = None
+
+        # 发送初始上下文
+        context = coordinator.get_compressed_context(workflow_id)
+        if context:
+            summary_text = coordinator.get_context_summary_text(workflow_id) or ""
+            yield format_sse_event(
+                {
+                    "type": "initial_context",
+                    "workflow_id": workflow_id,
+                    "version": context.version,
+                    "task_goal": context.task_goal,
+                    "execution_status": context.execution_status,
+                    "node_summary": context.node_summary,
+                    "reflection_summary": context.reflection_summary,
+                    "summary_text": summary_text,
+                    "timestamp": datetime.now().isoformat(),
+                },
+                event_type="initial_context",
+            )
+            last_version = context.version
+
+        while True:
+            # 检查超时
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if elapsed > timeout:
+                yield format_sse_event(
+                    {"type": "timeout", "message": "Stream timeout"},
+                    event_type="timeout",
+                )
+                yield format_sse_done()
+                break
+
+            # 获取当前上下文
+            current_context = coordinator.get_compressed_context(workflow_id)
+
+            if current_context is None:
+                # 上下文不存在，发送错误并结束
+                yield format_sse_event(
+                    {"type": "error", "message": f"Context for {workflow_id} not found"},
+                    event_type="error",
+                )
+                yield format_sse_done()
+                break
+
+            # 检测版本变化
+            if last_version is None or current_context.version > last_version:
+                summary_text = coordinator.get_context_summary_text(workflow_id) or ""
+                yield format_sse_event(
+                    {
+                        "type": "context_update",
+                        "workflow_id": workflow_id,
+                        "version": current_context.version,
+                        "task_goal": current_context.task_goal,
+                        "execution_status": current_context.execution_status,
+                        "node_summary": current_context.node_summary,
+                        "reflection_summary": current_context.reflection_summary,
+                        "error_log": current_context.error_log,
+                        "next_actions": current_context.next_actions,
+                        "summary_text": summary_text,
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    event_type="context_update",
+                )
+                last_version = current_context.version
+
+            # 检查工作流是否完成
+            workflow_state = coordinator.get_workflow_state(workflow_id)
+            if workflow_state and workflow_state.get("status") in ("completed", "failed"):
+                yield format_sse_event(
+                    {
+                        "type": "workflow_completed",
+                        "workflow_id": workflow_id,
+                        "status": workflow_state.get("status"),
                         "timestamp": datetime.now().isoformat(),
                     },
                     event_type="workflow_completed",

@@ -58,10 +58,93 @@ class SSEEvent(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now, description="时间戳")
 
 
+# ==================== 压缩上下文 DTO（阶段2新增） ====================
+
+
+class NodeSummaryItem(BaseModel):
+    """节点摘要项"""
+
+    node_id: str = Field(..., description="节点ID")
+    type: str | None = Field(default=None, description="节点类型")
+    status: str | None = Field(default=None, description="节点状态")
+    output_summary: str | None = Field(default=None, description="输出摘要")
+    retry_count: int | None = Field(default=None, description="重试次数")
+
+
+class DecisionHistoryItem(BaseModel):
+    """决策历史项"""
+
+    decision_type: str | None = Field(default=None, description="决策类型")
+    choice: str | None = Field(default=None, description="选择")
+    reason: str | None = Field(default=None, description="原因")
+    timestamp: str | None = Field(default=None, description="时间戳")
+
+
+class ErrorLogItem(BaseModel):
+    """错误日志项"""
+
+    node_id: str | None = Field(default=None, description="节点ID")
+    error: str | None = Field(default=None, description="错误信息")
+    retryable: bool = Field(default=False, description="是否可重试")
+
+
+class CompressedContextResponse(BaseModel):
+    """压缩上下文响应
+
+    包含八段压缩结构和元数据。
+    """
+
+    # 元数据
+    workflow_id: str = Field(..., description="工作流ID")
+    version: int = Field(default=1, description="版本号")
+    created_at: str = Field(..., description="创建时间（ISO格式）")
+
+    # 八段内容
+    task_goal: str = Field(default="", description="第1段：任务目标")
+    execution_status: dict[str, Any] = Field(default_factory=dict, description="第2段：执行状态")
+    node_summary: list[dict[str, Any]] = Field(default_factory=list, description="第3段：节点摘要")
+    decision_history: list[dict[str, Any]] = Field(
+        default_factory=list, description="第4段：决策历史"
+    )
+    reflection_summary: dict[str, Any] = Field(default_factory=dict, description="第5段：反思摘要")
+    conversation_summary: str = Field(default="", description="第6段：对话摘要")
+    error_log: list[dict[str, Any]] = Field(default_factory=list, description="第7段：错误日志")
+    next_actions: list[str] = Field(default_factory=list, description="第8段：下一步行动")
+
+    # 附加信息
+    summary_text: str = Field(default="", description="人类可读的摘要文本")
+    evidence_refs: list[str] = Field(default_factory=list, description="证据引用")
+
+
+class ContextSnapshotItem(BaseModel):
+    """上下文快照项"""
+
+    snapshot_id: str = Field(..., description="快照ID")
+    workflow_id: str = Field(..., description="工作流ID")
+    version: int = Field(default=1, description="版本号")
+    created_at: str = Field(..., description="创建时间")
+    task_goal: str = Field(default="", description="任务目标")
+
+
+class ContextHistoryResponse(BaseModel):
+    """上下文历史响应"""
+
+    workflow_id: str = Field(..., description="工作流ID")
+    snapshots: list[ContextSnapshotItem] = Field(default_factory=list, description="快照列表")
+    total: int = Field(default=0, description="总数")
+
+
 # 导出
 __all__ = [
     "WorkflowStateResponse",
     "SystemStatusResponse",
     "WorkflowListResponse",
     "SSEEvent",
+    # 压缩上下文 DTO
+    "NodeSummaryItem",
+    "DecisionHistoryItem",
+    "ErrorLogItem",
+    "CompressedContextResponse",
+    "ContextSnapshotItem",
+    "ContextHistoryResponse",
 ]

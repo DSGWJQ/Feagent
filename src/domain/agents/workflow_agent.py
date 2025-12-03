@@ -1480,6 +1480,202 @@ class WorkflowAgent:
 
         return reflection
 
+    # ==================== Phase 5: NodeDefinition 集成 ====================
+
+    def create_node_from_definition(self, node_def: "NodeDefinition") -> Node:
+        """从 NodeDefinition 创建 Node
+
+        递归转换 NodeDefinition 为 Node，包括子节点。
+
+        参数：
+            node_def: NodeDefinition 实例
+
+        返回：
+            Node 实例
+        """
+        from src.domain.agents.node_definition import NodeType as DefNodeType
+
+        # 映射 NodeDefinition 类型到 node_registry 类型
+        # NodeDefinition 类型 -> node_registry 的 NodeType
+        type_mapping = {
+            DefNodeType.PYTHON: NodeType.CODE,  # PYTHON -> CODE
+            DefNodeType.LLM: NodeType.LLM,
+            DefNodeType.HTTP: NodeType.API,  # HTTP -> API
+            DefNodeType.DATABASE: NodeType.GENERIC,  # DATABASE -> GENERIC
+            DefNodeType.GENERIC: NodeType.GENERIC,
+            DefNodeType.CONDITION: NodeType.CONDITION,
+            DefNodeType.LOOP: NodeType.LOOP,
+            DefNodeType.PARALLEL: NodeType.PARALLEL,
+            DefNodeType.CONTAINER: NodeType.GENERIC,  # 容器节点使用 GENERIC 类型
+        }
+
+        # 转换节点类型
+        node_type = type_mapping.get(node_def.node_type, NodeType.GENERIC)
+
+        # 构建配置
+        config = {
+            "name": node_def.name,
+            "description": node_def.description,
+            "code": node_def.code,
+            "is_container": node_def.is_container,
+            "container_config": node_def.container_config,
+        }
+
+        # 使用工厂创建节点
+        node = self.node_factory.create(node_type, config)
+
+        # 设置父节点ID
+        if node_def.parent_id:
+            node.parent_id = node_def.parent_id
+
+        # 设置折叠状态
+        node.collapsed = node_def.collapsed
+
+        # 递归创建子节点
+        for child_def in node_def.children:
+            child_node = self.create_node_from_definition(child_def)
+            child_node.parent_id = node.id
+            node.add_child(child_node)
+
+        return node
+
+    def get_hierarchical_execution_order(self, node_id: str) -> list[str]:
+        """获取层次化节点的执行顺序
+
+        返回节点及其所有后代的执行顺序。
+        子节点先于父节点执行，以便父节点可以聚合子节点结果。
+
+        参数：
+            node_id: 节点ID
+
+        返回：
+            按执行顺序排列的节点ID列表
+        """
+        node = self._nodes.get(node_id)
+        if not node:
+            return []
+
+        result: list[str] = []
+
+        def collect_descendants(n: Node) -> None:
+            """递归收集所有后代"""
+            # 先收集子节点
+            for child in n.children:
+                collect_descendants(child)
+            # 最后添加自己
+            result.append(n.id)
+
+        collect_descendants(node)
+        return result
+
+    async def execute_hierarchical_node(self, node_id: str) -> dict[str, Any]:
+        """执行层次化节点
+
+        按顺序执行节点及其所有子节点，并聚合结果。
+
+        参数：
+            node_id: 节点ID
+
+        返回：
+            执行结果字典
+        """
+        node = self._nodes.get(node_id)
+        if not node:
+            return {"status": "failed", "error": f"Node not found: {node_id}"}
+
+        execution_order = self.get_hierarchical_execution_order(node_id)
+        children_results: dict[str, dict[str, Any]] = {}
+
+        # 按顺序执行每个节点
+        for nid in execution_order:
+            current_node = self._nodes.get(nid)
+            if not current_node:
+                continue
+
+            # 检查是否是容器节点
+            if current_node.config.get("is_container"):
+                result = await self.execute_container_node(nid)
+            else:
+                # 普通节点执行
+                if self.node_executor:
+                    inputs = self._collect_node_inputs(nid)
+                    result = await self.node_executor.execute(nid, current_node.config, inputs)
+                else:
+                    result = {"status": "success", "executed": True}
+
+            # 存储结果
+            if nid != node_id:
+                children_results[nid] = result
+
+            # 存储到上下文
+            self.workflow_context.set_node_output(nid, result)
+
+            # 发布节点执行事件
+            if self.event_bus:
+                await self.event_bus.publish(
+                    NodeExecutionEvent(
+                        source="workflow_agent",
+                        node_id=nid,
+                        node_type=current_node.type.value,
+                        status="completed",
+                        result=result,
+                    )
+                )
+
+        return {
+            "status": "completed",
+            "children_results": children_results,
+            "node_id": node_id,
+        }
+
+    async def execute_container_node(self, node_id: str) -> dict[str, Any]:
+        """执行容器节点
+
+        使用容器执行器执行节点代码。
+
+        参数：
+            node_id: 节点ID
+
+        返回：
+            执行结果字典
+        """
+        node = self._nodes.get(node_id)
+        if not node:
+            return {"success": False, "error": f"Node not found: {node_id}"}
+
+        # 检查容器执行器
+        if not hasattr(self, "container_executor") or self.container_executor is None:
+            return {"success": False, "error": "No container executor configured"}
+
+        # 获取代码和配置
+        code = node.config.get("code", "")
+        container_config = node.config.get("container_config", {})
+
+        # 获取节点输入
+        inputs = self._collect_node_inputs(node_id)
+
+        # 创建容器配置
+        from src.domain.agents.container_executor import ContainerConfig
+
+        config = ContainerConfig.from_dict(container_config)
+
+        # 执行
+        if self.event_bus and hasattr(self.container_executor, "execute_with_events"):
+            # 带事件的执行
+            result = await self.container_executor.execute_with_events(
+                code=code,
+                config=config,
+                event_bus=self.event_bus,
+                node_id=node_id,
+                workflow_id=self.workflow_context.workflow_id,
+                inputs=inputs,
+            )
+        else:
+            # 普通执行
+            result = await self.container_executor.execute_async(code, config, inputs)
+
+        return result.to_dict() if hasattr(result, "to_dict") else result
+
 
 # 导出
 __all__ = [

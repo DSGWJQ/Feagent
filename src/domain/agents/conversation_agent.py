@@ -55,6 +55,51 @@ class IntentType(str, Enum):
     ERROR_RECOVERY_REQUEST = "error_recovery_request"  # 错误恢复请求
 
 
+class ConversationAgentState(str, Enum):
+    """ConversationAgent 状态枚举 (Phase 3)
+
+    跟踪 Agent 执行状态，特别是子Agent等待场景。
+
+    状态：
+    - IDLE: 空闲，等待用户输入
+    - PROCESSING: 正在处理（ReAct循环中）
+    - WAITING_FOR_SUBAGENT: 等待子Agent结果
+    - COMPLETED: 处理完成
+    - ERROR: 发生错误
+    """
+
+    IDLE = "idle"
+    PROCESSING = "processing"
+    WAITING_FOR_SUBAGENT = "waiting_for_subagent"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+# 有效状态转换矩阵
+VALID_STATE_TRANSITIONS: dict[ConversationAgentState, list[ConversationAgentState]] = {
+    ConversationAgentState.IDLE: [
+        ConversationAgentState.PROCESSING,
+        ConversationAgentState.ERROR,
+    ],
+    ConversationAgentState.PROCESSING: [
+        ConversationAgentState.WAITING_FOR_SUBAGENT,
+        ConversationAgentState.COMPLETED,
+        ConversationAgentState.ERROR,
+        ConversationAgentState.IDLE,  # 取消或重置
+    ],
+    ConversationAgentState.WAITING_FOR_SUBAGENT: [
+        ConversationAgentState.PROCESSING,  # 收到子Agent结果后恢复
+        ConversationAgentState.ERROR,
+    ],
+    ConversationAgentState.COMPLETED: [
+        ConversationAgentState.IDLE,  # 重新开始
+    ],
+    ConversationAgentState.ERROR: [
+        ConversationAgentState.IDLE,  # 重置
+    ],
+}
+
+
 class DecisionType(str, Enum):
     """决策类型"""
 
@@ -67,6 +112,7 @@ class DecisionType(str, Enum):
     CONTINUE = "continue"  # 继续推理
     ERROR_RECOVERY = "error_recovery"  # 错误恢复（Phase 13）
     REPLAN_WORKFLOW = "replan_workflow"  # 重新规划工作流（Phase 13）
+    SPAWN_SUBAGENT = "spawn_subagent"  # 生成子Agent（Phase 3）
 
 
 @dataclass
@@ -171,6 +217,56 @@ class SimpleMessageEvent(Event):
     intent: str = ""
     confidence: float = 1.0
     session_id: str = ""
+
+
+@dataclass
+class StateChangedEvent(Event):
+    """状态变化事件 (Phase 3)
+
+    当 ConversationAgent 状态发生变化时发布此事件。
+    协调者Agent订阅此事件以跟踪Agent状态。
+
+    属性：
+    - from_state: 原状态
+    - to_state: 新状态
+    - session_id: 会话ID
+    """
+
+    from_state: str = ""
+    to_state: str = ""
+    session_id: str = ""
+
+    @property
+    def event_type(self) -> str:
+        """事件类型"""
+        return "conversation_agent_state_changed"
+
+
+@dataclass
+class SpawnSubAgentEvent(Event):
+    """生成子Agent事件 (Phase 3)
+
+    当 ConversationAgent 需要生成子Agent执行任务时发布此事件。
+    Coordinator 订阅此事件以创建和执行子Agent。
+
+    属性：
+    - subagent_type: 子Agent类型（search, mcp, python_executor, data_processor）
+    - task_payload: 任务负载数据
+    - priority: 优先级（数字越小优先级越高）
+    - session_id: 会话ID
+    - context_snapshot: 上下文快照（可选）
+    """
+
+    subagent_type: str = ""
+    task_payload: dict[str, Any] = field(default_factory=dict)
+    priority: int = 0
+    session_id: str = ""
+    context_snapshot: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def event_type(self) -> str:
+        """事件类型"""
+        return "spawn_subagent_requested"
 
 
 @dataclass
@@ -353,6 +449,262 @@ class ConversationAgent:
         # Phase 16: WorkflowAgent 引用（用于新执行链路）
         self.workflow_agent: Any | None = None
 
+        # Phase 3: 状态机初始化
+        self._state: ConversationAgentState = ConversationAgentState.IDLE
+        self.pending_subagent_id: str | None = None
+        self.pending_task_id: str | None = None
+        self.suspended_context: dict[str, Any] | None = None
+
+        # Phase 3: 子Agent结果存储
+        self.last_subagent_result: dict[str, Any] | None = None
+        self.subagent_result_history: list[dict[str, Any]] = []
+        self._is_listening_subagent_completions = False
+
+        # Phase 1: 协调者上下文缓存
+        self._coordinator_context: Any | None = None
+
+    @property
+    def state(self) -> ConversationAgentState:
+        """获取当前状态"""
+        return self._state
+
+    def transition_to(self, new_state: ConversationAgentState) -> None:
+        """状态转换
+
+        参数：
+            new_state: 目标状态
+
+        异常：
+            DomainError: 无效的状态转换
+        """
+        from src.domain.exceptions import DomainError
+
+        valid_transitions = VALID_STATE_TRANSITIONS.get(self._state, [])
+        if new_state not in valid_transitions:
+            raise DomainError(f"Invalid state transition: {self._state.value} -> {new_state.value}")
+
+        old_state = self._state
+        self._state = new_state
+
+        # 发布状态变化事件
+        if self.event_bus:
+            self.event_bus.publish(
+                StateChangedEvent(
+                    from_state=old_state.value,
+                    to_state=new_state.value,
+                    session_id=self.session_context.session_id,
+                    source="conversation_agent",
+                )
+            )
+
+    def wait_for_subagent(
+        self,
+        subagent_id: str,
+        task_id: str,
+        context: dict[str, Any],
+    ) -> None:
+        """等待子Agent执行
+
+        暂停当前执行，保存上下文，等待子Agent结果。
+
+        参数：
+            subagent_id: 子Agent ID
+            task_id: 任务ID
+            context: 当前执行上下文（用于恢复）
+        """
+        self.pending_subagent_id = subagent_id
+        self.pending_task_id = task_id
+        self.suspended_context = context.copy()
+        self.transition_to(ConversationAgentState.WAITING_FOR_SUBAGENT)
+
+    def resume_from_subagent(self, result: dict[str, Any]) -> dict[str, Any]:
+        """从子Agent等待中恢复
+
+        使用子Agent结果恢复执行。
+
+        参数：
+            result: 子Agent执行结果
+
+        返回：
+            恢复的上下文（包含子Agent结果）
+        """
+        # 获取保存的上下文
+        context = self.suspended_context.copy() if self.suspended_context else {}
+
+        # 添加子Agent结果
+        context["subagent_result"] = result
+
+        # 清除待处理状态
+        self.pending_subagent_id = None
+        self.pending_task_id = None
+        self.suspended_context = None
+
+        # 转换回处理状态
+        self.transition_to(ConversationAgentState.PROCESSING)
+
+        return context
+
+    def is_waiting_for_subagent(self) -> bool:
+        """检查是否正在等待子Agent"""
+        return self._state == ConversationAgentState.WAITING_FOR_SUBAGENT
+
+    def is_processing(self) -> bool:
+        """检查是否正在处理"""
+        return self._state == ConversationAgentState.PROCESSING
+
+    def is_idle(self) -> bool:
+        """检查是否空闲"""
+        return self._state == ConversationAgentState.IDLE
+
+    def create_spawn_subagent_decision(
+        self,
+        subagent_type: str,
+        task_payload: dict[str, Any],
+        context_snapshot: dict[str, Any] | None = None,
+        priority: int = 0,
+        confidence: float = 1.0,
+    ) -> Decision:
+        """创建 spawn_subagent 决策
+
+        参数：
+            subagent_type: 子Agent类型
+            task_payload: 任务负载
+            context_snapshot: 上下文快照（可选）
+            priority: 优先级（默认0）
+            confidence: 置信度（默认1.0）
+
+        返回：
+            Decision 决策对象
+        """
+        return Decision(
+            type=DecisionType.SPAWN_SUBAGENT,
+            payload={
+                "subagent_type": subagent_type,
+                "task_payload": task_payload,
+                "priority": priority,
+                "context_snapshot": context_snapshot or {},
+            },
+            confidence=confidence,
+        )
+
+    def request_subagent_spawn(
+        self,
+        subagent_type: str,
+        task_payload: dict[str, Any],
+        priority: int = 0,
+        wait_for_result: bool = True,
+        context_snapshot: dict[str, Any] | None = None,
+    ) -> str:
+        """请求生成子Agent
+
+        发布 SpawnSubAgentEvent 事件，并根据 wait_for_result 决定是否等待结果。
+
+        参数：
+            subagent_type: 子Agent类型
+            task_payload: 任务负载
+            priority: 优先级（默认0）
+            wait_for_result: 是否等待结果（默认True）
+            context_snapshot: 上下文快照（可选）
+
+        返回：
+            生成的子Agent ID
+        """
+        from uuid import uuid4
+
+        subagent_id = f"subagent_{uuid4().hex[:12]}"
+        task_id = f"task_{uuid4().hex[:8]}"
+
+        # 发布事件
+        if self.event_bus:
+            self.event_bus.publish(
+                SpawnSubAgentEvent(
+                    subagent_type=subagent_type,
+                    task_payload=task_payload,
+                    priority=priority,
+                    session_id=self.session_context.session_id,
+                    context_snapshot=context_snapshot or {},
+                    source="conversation_agent",
+                )
+            )
+
+        # 如果需要等待结果，进入等待状态
+        if wait_for_result:
+            self.wait_for_subagent(
+                subagent_id=subagent_id,
+                task_id=task_id,
+                context=context_snapshot or {},
+            )
+
+        return subagent_id
+
+    def start_subagent_completion_listener(self) -> None:
+        """启动子Agent完成事件监听器
+
+        订阅 SubAgentCompletedEvent，当子Agent完成时恢复执行。
+        """
+        if self._is_listening_subagent_completions:
+            return
+
+        if not self.event_bus:
+            raise ValueError("EventBus is required for subagent completion listening")
+
+        from src.domain.agents.coordinator_agent import SubAgentCompletedEvent
+
+        self.event_bus.subscribe(SubAgentCompletedEvent, self._handle_subagent_completed_wrapper)
+        self._is_listening_subagent_completions = True
+
+    def stop_subagent_completion_listener(self) -> None:
+        """停止子Agent完成事件监听器"""
+        if not self._is_listening_subagent_completions:
+            return
+
+        if not self.event_bus:
+            return
+
+        from src.domain.agents.coordinator_agent import SubAgentCompletedEvent
+
+        self.event_bus.unsubscribe(SubAgentCompletedEvent, self._handle_subagent_completed_wrapper)
+        self._is_listening_subagent_completions = False
+
+    async def _handle_subagent_completed_wrapper(self, event: Any) -> None:
+        """SubAgentCompletedEvent 处理器包装器"""
+        self.handle_subagent_completed(event)
+
+    def handle_subagent_completed(self, event: Any) -> None:
+        """处理子Agent完成事件
+
+        恢复执行状态，存储结果到历史。
+
+        参数：
+            event: SubAgentCompletedEvent 事件
+        """
+        # 检查是否是我们等待的子Agent
+        if self.pending_subagent_id and event.subagent_id != self.pending_subagent_id:
+            # 不是等待的子Agent，忽略
+            return
+
+        # 存储结果
+        result_record = {
+            "subagent_id": event.subagent_id,
+            "subagent_type": event.subagent_type,
+            "success": event.success,
+            "data": event.result.get("data") if event.result else None,
+            "error": event.error,
+            "execution_time": event.execution_time,
+        }
+
+        self.last_subagent_result = {
+            "success": event.success,
+            "data": event.result.get("data") if event.result else None,
+            "error": event.error,
+        }
+
+        self.subagent_result_history.append(result_record)
+
+        # 恢复执行状态
+        if self._state == ConversationAgentState.WAITING_FOR_SUBAGENT:
+            self.resume_from_subagent(event.result)
+
     def execute_step(self, user_input: str) -> ReActStep:
         """执行单个ReAct步骤
 
@@ -498,6 +850,22 @@ class ConversationAgent:
         result = ReActResult()
         self._current_input = user_input
         start_time = time.time()
+
+        # Phase 1: 从协调者获取上下文（规则库、知识库、工具库）
+        coordinator_context = None
+        if self.coordinator and hasattr(self.coordinator, "get_context_async"):
+            try:
+                coordinator_context = await self.coordinator.get_context_async(user_input)
+                # 记录上下文信息
+                self._log_coordinator_context(coordinator_context)
+            except Exception as e:
+                # 上下文获取失败不应阻止主流程
+                import logging
+
+                logging.warning(f"Failed to get coordinator context: {e}")
+
+        # 保存协调者上下文供后续使用
+        self._coordinator_context = coordinator_context
 
         for i in range(self.max_iterations):
             result.iterations = i + 1
@@ -777,6 +1145,43 @@ class ConversationAgent:
         }
 
         return context
+
+    def _log_coordinator_context(self, context: Any) -> None:
+        """记录协调者上下文信息（Phase 1）
+
+        将协调者返回的上下文信息记录到日志，方便调试和追踪。
+
+        参数：
+            context: ContextResponse 对象
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        if context is None:
+            logger.debug("Coordinator context is None")
+            return
+
+        # 记录上下文摘要
+        summary = getattr(context, "summary", "")
+        rules_count = len(getattr(context, "rules", []))
+        tools_count = len(getattr(context, "tools", []))
+        knowledge_count = len(getattr(context, "knowledge", []))
+
+        logger.info(
+            f"Coordinator context retrieved: "
+            f"rules={rules_count}, tools={tools_count}, knowledge={knowledge_count}"
+        )
+
+        if summary:
+            logger.debug(f"Context summary: {summary}")
+
+        # 如果有工作流上下文，也记录
+        workflow_context = getattr(context, "workflow_context", None)
+        if workflow_context:
+            workflow_id = workflow_context.get("workflow_id", "unknown")
+            status = workflow_context.get("status", "unknown")
+            logger.debug(f"Workflow context: id={workflow_id}, status={status}")
 
     # === Phase 8: 工作流规划能力 ===
 

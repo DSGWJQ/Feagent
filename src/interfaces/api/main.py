@@ -19,6 +19,7 @@ from src.interfaces.api.routes import (
     agents,
     auth,
     concurrent_workflows,
+    coordinator_status,
     health,
     knowledge,
     llm_providers,
@@ -143,6 +144,7 @@ app.include_router(llm_providers.router, prefix="/api", tags=["LLM Providers"])
 app.include_router(scheduled_workflows.router, prefix="/api", tags=["Scheduled Workflows"])
 app.include_router(concurrent_workflows.router, prefix="/api", tags=["Concurrent Workflows"])
 app.include_router(health.router, prefix="/api", tags=["Health"])
+app.include_router(coordinator_status.router, prefix="/api/coordinator", tags=["Coordinator"])
 app.include_router(memory_metrics.router, tags=["Memory"])
 app.include_router(knowledge.router, tags=["Knowledge"])
 app.include_router(websocket.router, tags=["WebSocket"])
