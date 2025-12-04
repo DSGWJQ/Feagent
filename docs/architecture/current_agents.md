@@ -555,3 +555,106 @@ WorkflowAgent(
     event_bus=event_bus,
 )
 ```
+
+---
+
+## 10. 会话流生成器（SessionFlowGenerator）设计
+
+> 目标：让 ConversationAgent 能够把推理过程、工具调用和最终答案以流式方式主动推送给用户层，即便没有 Claude Code 那样的消息队列，也能满足前端渲染协议。
+
+### 10.1 背景与目标
+- **现状痛点**：ConversationAgent 只能通过 EventBus 间接通知，前端要等待 Workflow 结束才能看到结果，缺少对“思考链路”的实时可视化。
+- **建设目标**：提供一个被 ConversationAgent 直接驱动的“会话流生成器”，ReAct 的每一步（Thought/Action/Observation）以及工具调用、最终回答都能即时推送。
+- **技术约束**：当前仍是单体/轻量服务，没有外部 MQ；需要在本进程内实现可靠、可追溯的流式管道。
+
+### 10.2 项目审批要点
+| 维度 | 审批结论 | 关键说明 |
+|------|----------|---------|
+| 业务必要性 | ✅ 通过 | 解决“用户看不到 Agent 思考过程”的核心诉求 |
+| 技术可行性 | ✅ 通过 | 复用 SessionContext + EventBus，新增内存 Broker，改动面可控 |
+| 交互成本 | ✅ 通过 | 前端已有 SSE/WS 能力，只需遵循统一消息协议 |
+| 风险等级 | 🟡 中 | 新增流式管道需处理背压与故障隔离，规划里写明缓解方案 |
+
+### 10.3 体系结构概览
+```
+ConversationAgent
+    │ (1) SessionFlowCommand（会话流指令）
+    ▼
+SessionFlowGenerator（领域服务）
+    ├─ FlowStateTracker（状态追踪器）        # 维护会话上下文、序号
+    ├─ FlowFormatter（格式化器）             # 输出标准化消息（type/schema/version）
+    ├─ FlowBroker（异步队列）               # 内存流，提供背压与重放
+    └─ FlowDispatcher（分发器）             # 推送至接口层（SSE/WebSocket）
+            │ (4) 推送 SessionFlowMessage
+            ▼
+用户交互层（FastAPI 流式接口 → 前端渲染）
+```
+
+### 10.4 关键职责
+1. **指令接收**：提供 `emit_thought/emit_action/emit_observation/emit_final` 等 API，ConversationAgent 在 ReAct 各阶段显式调用。
+2. **统一格式化**：将原始 payload 规范化为 `SessionFlowMessage`，包含 type、timestamp、content、tool_call 等字段，前端一次解析即可展示。
+3. **顺序与补偿**：FlowStateTracker 记录步骤序号与工具调用上下文，支持局部重放、补齐缺失步骤。
+4. **推送与背压**：FlowBroker 以 session 维度的 `asyncio.Queue` 存放消息，FlowDispatcher 监听并推送至 SSE/WS；若队列过长可返回背压信号并暂存 N 条。
+5. **事件类型覆盖**：支持 `THOUGHT`、`ACTION`、`OBSERVATION`、`TOOL_REQUEST`、`TOOL_RESULT`、`FINAL_ANSWER`、`SYSTEM_NOTICE` 等类型。
+
+### 10.5 数据模型
+```python
+class SessionFlowType(str, Enum):
+    THOUGHT = "thought"
+    ACTION = "action"
+    OBSERVATION = "observation"
+    TOOL_REQUEST = "tool_request"
+    TOOL_RESULT = "tool_result"
+    FINAL_ANSWER = "final_answer"
+    SYSTEM_NOTICE = "system_notice"
+
+@dataclass
+class SessionFlowCommand:
+    session_id: str
+    step_id: str                     # 例如 "goal-3.step-1"
+    flow_type: SessionFlowType
+    payload: dict                    # 原始数据
+    routing_hint: dict | None        # 是否需要高亮/提醒
+
+@dataclass
+class SessionFlowMessage:
+    session_id: str
+    stream_seq: int                  # 流式递增序号
+    displayed_at: datetime
+    flow_type: SessionFlowType
+    content: dict                    # 标题/正文/元数据
+    raw_payload: dict | None
+```
+
+### 10.6 交互流程（一步一步）
+1. **生成思考**：ConversationAgent 在 ReAct 的 Thought 阶段调用 `emit_thought` 发送 SessionFlowCommand。
+2. **状态入栈**：FlowStateTracker 记录 `step_id`、当前目标、父节点，生成 `stream_seq` 与时间轴。
+3. **格式化输出**：FlowFormatter 根据 `flow_type` 套用模板（工具调用展示名称+参数，最终回答支持 Markdown）。
+4. **排队与背压**：消息写入对应 session 的 FlowBroker 队列；若接近阈值触发慢速告警并向 Agent 返回背压提示。
+5. **分发推送**：FlowDispatcher 监听队列 → FastAPI `SessionFlowStreamEndpoint`（SSE/WS）→ 前端 `StreamAdapter` 逐条渲染。
+6. **状态同步**：如需用户确认（例如“请确认工具调用”），可透过现有 WebSocket 回传给 ConversationAgent 继续流程。
+
+### 10.7 推送机制（无消息队列）
+- **SessionFlowBroker**：基于 `asyncio.Queue` 或 `MemoryChannel`，以 `session_id` 作为 key，支持 `max_queue_size`、过载丢弃策略与磁盘持久化钩子。
+- **接口层适配**：新增 `/api/v1/sessions/{session_id}/flow/stream` SSE 端点，复用现有 `StreamManager` 管理连接。
+- **断线恢复**：用户重连时可调用 `GET /api/v1/sessions/{session_id}/flow?after_seq=xxx` 拉取缺失片段，保证体验连续。
+
+### 10.8 设计评判与风险缓解
+- **格式一致性**：Formatter 层隔离前端差异，未来切换 UI 仅需新增 formatter。
+- **资源占用**：大量并发会话会放大内存队列，需要指标（队列长度、延迟）与自动裁剪策略。
+- **耦合度**：ConversationAgent 直接驱动组件，避免额外 Coordinator 跳转；WorkflowAgent 产生的工具结果通过 EventBus 转换为 SessionFlowCommand 注入。
+- **失效场景**：Dispatcher 故障不会影响核心执行，FlowGenerator 只负责展示；最终答案仍通过原通道返回用户。
+
+### 10.9 迭代规划（调整后）
+1. **阶段 A：MVP（最小可行版本）**
+   - 实现 SessionFlowGenerator、基础 Markdown FlowFormatter、内存型 FlowBroker；
+   - ConversationAgent 接入 `emit_*` API，前端以 SSE 即时显示推理链路。
+2. **阶段 B：工具可视化**
+   - 订阅 WorkflowAgent/Coordinator 事件并映射为 TOOL_REQUEST/RESULT；
+   - 增加 `system_notice`，用于安全告警、重试提醒等系统提示。
+3. **阶段 C：可靠性增强**
+   - 持久化最近 N 条消息并提供拉取接口；
+   - 建立指标与告警（处理延迟、丢包率）。
+4. **阶段 D：可插拔传输层**
+   - FlowDispatcher 支持 SSE / WebSocket / gRPC Stream 多种输出；
+   - 如未来引入消息队列，仅需将 FlowBroker 替换为 Kafka/Redis Stream 适配器。

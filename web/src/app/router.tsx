@@ -27,6 +27,7 @@ import { KnowledgeUploadPage } from '@/features/knowledge/pages';
 import { ScheduledWorkflowsPage, SchedulerMonitorPage } from '@/features/scheduler/pages';
 // import { ToolsLibraryPage } from '@/features/tools/pages';
 import { LLMProvidersPage } from '@/features/llm/pages';
+import { StreamingDemoPage } from '@/features/demo/pages/StreamingDemoPage';
 
 /**
  * 路由配置
@@ -58,6 +59,12 @@ export const router = createBrowserRouter([
   {
     path: '/knowledge/upload',
     element: <KnowledgeUploadPage />,
+  },
+
+  // Demo 页面（流式消息展示）
+  {
+    path: '/demo/streaming',
+    element: <StreamingDemoPage />,
   },
 
   // 应用页面（使用 MainLayout）

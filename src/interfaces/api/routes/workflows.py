@@ -6,7 +6,7 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
@@ -417,70 +417,128 @@ def chat_with_workflow(
 async def chat_stream_react_with_workflow(
     workflow_id: str,
     request: ChatRequest,
+    http_request: Request,
     db: Session = Depends(get_db_session),
     use_case: UpdateWorkflowByChatUseCase = Depends(get_update_workflow_by_chat_use_case),
 ):
     """Modify a workflow through conversational input with streaming ReAct steps (SSE).
 
+    Phase 3 改进版：使用 ConversationFlowEmitter 实现流式输出。
+
+    返回事件类型:
+    - thinking: 思考过程
+    - tool_call: 工具调用
+    - tool_result: 工具执行结果
+    - final: 最终响应
+    - error: 错误信息
+
     Returns: Server-Sent Events stream of ReAct reasoning steps
     """
+    from src.domain.services.conversation_flow_emitter import (
+        ConversationFlowEmitter,
+    )
+    from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler
 
-    async def event_generator() -> AsyncGenerator[str, None]:
-        """Generate SSE events for streaming workflow chat with ReAct steps."""
+    # 创建 emitter
+    session_id = f"wf_{workflow_id}_{id(http_request)}"
+    emitter = ConversationFlowEmitter(session_id=session_id, timeout=30.0)
+
+    async def run_workflow_chat():
+        """运行工作流聊天逻辑，通过 emitter 发送事件"""
         try:
             input_data = UpdateWorkflowByChatInput(
                 workflow_id=workflow_id,
                 user_message=request.message,
             )
 
+            # 发送开始思考
+            await emitter.emit_thinking(f"正在分析请求: {request.message[:50]}...")
+
             # Stream events from the use case
             async for event in use_case.execute_streaming(input_data):
-                # Convert event to SSE format
-                event_json = json.dumps(event, ensure_ascii=False)
-                yield f"data: {event_json}\n\n"
+                # 检查客户端是否断开
+                if await http_request.is_disconnected():
+                    await emitter.complete_with_error("Client disconnected")
+                    return
 
-            # Signal end of stream
-            yield "data: [DONE]\n\n"
+                event_type = event.get("type", "")
 
-            # Commit to database after streaming completes
+                # 转换事件类型到 emitter
+                if event_type == "processing_started":
+                    await emitter.emit_thinking(event.get("message", "处理中..."))
+                elif event_type == "react_step":
+                    step_data = event.get("step", {})
+                    thought = step_data.get("thought", "")
+                    action = step_data.get("action", {})
+                    observation = step_data.get("observation", "")
+
+                    if thought:
+                        await emitter.emit_thinking(thought)
+                    if action:
+                        action_type = action.get("type", "unknown")
+                        await emitter.emit_tool_call(
+                            tool_name=action_type,
+                            tool_id=f"action_{event.get('step_number', 0)}",
+                            arguments=action,
+                        )
+                    if observation:
+                        await emitter.emit_tool_result(
+                            tool_id=f"action_{event.get('step_number', 0)}",
+                            result={"observation": observation},
+                            success=True,
+                        )
+                elif event_type == "modifications_preview":
+                    await emitter.emit_tool_result(
+                        tool_id="modifications",
+                        result={
+                            "count": event.get("count", 0),
+                            "modifications": event.get("modifications", []),
+                        },
+                        success=True,
+                    )
+                elif event_type == "workflow_updated":
+                    await emitter.emit_final_response(
+                        event.get("message", "工作流已更新"),
+                        metadata={
+                            "workflow_id": workflow_id,
+                            "ai_message": event.get("ai_message", ""),
+                        },
+                    )
+                elif event_type == "error":
+                    await emitter.emit_error(
+                        event.get("detail", "未知错误"),
+                        error_code=event.get("error", "UNKNOWN"),
+                    )
+
+            # 完成
+            await emitter.complete()
             db.commit()
 
         except NotFoundError as exc:
-            # Send error event
-            error_event = {
-                "type": "error",
-                "error": "workflow_not_found",
-                "detail": f"{exc.entity_type} not found: {exc.entity_id}",
-            }
-            yield f"data: {json.dumps(error_event)}\n\n"
+            await emitter.emit_error(
+                f"{exc.entity_type} not found: {exc.entity_id}",
+                error_code="WORKFLOW_NOT_FOUND",
+            )
+            await emitter.complete()
             db.rollback()
         except DomainError as exc:
-            # Send error event
-            error_event = {
-                "type": "error",
-                "error": "domain_error",
-                "detail": str(exc),
-            }
-            yield f"data: {json.dumps(error_event)}\n\n"
+            await emitter.emit_error(str(exc), error_code="DOMAIN_ERROR")
+            await emitter.complete()
             db.rollback()
         except Exception as exc:
-            # Send generic error event
-            error_event = {
-                "type": "error",
-                "error": "internal_error",
-                "detail": str(exc),
-            }
-            yield f"data: {json.dumps(error_event)}\n\n"
+            await emitter.emit_error(str(exc), error_code="INTERNAL_ERROR")
+            await emitter.complete()
             db.rollback()
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    # 启动工作流聊天任务
+    import asyncio
+
+    asyncio.create_task(run_workflow_chat())
+
+    # 创建 SSE handler 并返回响应
+    handler = SSEEmitterHandler(emitter, http_request)
+    return handler.create_response(
+        headers={"X-Session-ID": session_id},
     )
 
 

@@ -47,3 +47,24 @@ export type {
   MessageRole,
   AIReplyRule,
 } from './chat';
+
+// Streaming 相关类型
+export type {
+  StreamingMessage,
+  StreamingMessageType,
+  StreamingMessageMetadata,
+  ChatMessageWithStreaming,
+  StreamingEvent,
+  StreamingSessionState,
+  ToolCallMetadata,
+  ToolResultMetadata,
+  ErrorMetadata,
+} from './streaming';
+
+export {
+  parseSSELine,
+  getMessageTypeLabel,
+  getMessageTypeIcon,
+  isIntermediateStep,
+  isTerminalMessage,
+} from './streaming';

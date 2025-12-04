@@ -19,6 +19,7 @@ from src.interfaces.api.routes import (
     agents,
     auth,
     concurrent_workflows,
+    conversation_stream,
     coordinator_status,
     health,
     knowledge,
@@ -148,6 +149,7 @@ app.include_router(coordinator_status.router, prefix="/api/coordinator", tags=["
 app.include_router(memory_metrics.router, tags=["Memory"])
 app.include_router(knowledge.router, tags=["Knowledge"])
 app.include_router(websocket.router, tags=["WebSocket"])
+app.include_router(conversation_stream.router, prefix="/api", tags=["Conversation Stream"])
 
 
 if __name__ == "__main__":

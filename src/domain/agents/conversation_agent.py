@@ -19,6 +19,7 @@
 - 请求信息澄清
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -412,6 +413,7 @@ class ConversationAgent:
         coordinator: Any | None = None,
         enable_intent_classification: bool = False,
         intent_confidence_threshold: float = 0.7,
+        emitter: Any | None = None,
     ):
         """初始化对话Agent
 
@@ -426,6 +428,7 @@ class ConversationAgent:
             coordinator: 协调者 Agent（阶段5新增）
             enable_intent_classification: 是否启用意图分类（Phase 14，默认False保持向后兼容）
             intent_confidence_threshold: 意图分类置信度阈值（Phase 14）
+            emitter: ConversationFlowEmitter 实例（Phase 2，可选）
         """
         self.session_context = session_context
         self.llm = llm
@@ -448,6 +451,9 @@ class ConversationAgent:
 
         # Phase 16: WorkflowAgent 引用（用于新执行链路）
         self.workflow_agent: Any | None = None
+
+        # Phase 2: 流式输出 emitter
+        self.emitter = emitter
 
         # Phase 3: 状态机初始化
         self._state: ConversationAgentState = ConversationAgentState.IDLE
@@ -486,14 +492,16 @@ class ConversationAgent:
         old_state = self._state
         self._state = new_state
 
-        # 发布状态变化事件
+        # 发布状态变化事件（异步任务，不阻塞同步方法）
         if self.event_bus:
-            self.event_bus.publish(
-                StateChangedEvent(
-                    from_state=old_state.value,
-                    to_state=new_state.value,
-                    session_id=self.session_context.session_id,
-                    source="conversation_agent",
+            asyncio.create_task(
+                self.event_bus.publish(
+                    StateChangedEvent(
+                        from_state=old_state.value,
+                        to_state=new_state.value,
+                        session_id=self.session_context.session_id,
+                        source="conversation_agent",
+                    )
                 )
             )
 
@@ -614,16 +622,18 @@ class ConversationAgent:
         subagent_id = f"subagent_{uuid4().hex[:12]}"
         task_id = f"task_{uuid4().hex[:8]}"
 
-        # 发布事件
+        # 发布事件（异步任务，不阻塞同步方法）
         if self.event_bus:
-            self.event_bus.publish(
-                SpawnSubAgentEvent(
-                    subagent_type=subagent_type,
-                    task_payload=task_payload,
-                    priority=priority,
-                    session_id=self.session_context.session_id,
-                    context_snapshot=context_snapshot or {},
-                    source="conversation_agent",
+            asyncio.create_task(
+                self.event_bus.publish(
+                    SpawnSubAgentEvent(
+                        subagent_type=subagent_type,
+                        task_payload=task_payload,
+                        priority=priority,
+                        session_id=self.session_context.session_id,
+                        context_snapshot=context_snapshot or {},
+                        source="conversation_agent",
+                    )
                 )
             )
 
@@ -915,7 +925,18 @@ class ConversationAgent:
             context["iteration"] = i + 1
 
             # 思考
-            thought = await self.llm.think(context)
+            try:
+                thought = await self.llm.think(context)
+
+                # Phase 2: 发送思考步骤到 emitter
+                if self.emitter:
+                    await self.emitter.emit_thinking(thought)
+            except Exception as e:
+                # Phase 2: 发送错误到 emitter
+                if self.emitter:
+                    await self.emitter.emit_error(str(e), error_code="LLM_THINK_ERROR")
+                    await self.emitter.complete()
+                raise
 
             # 决定行动
             action = await self.llm.decide_action(context)
@@ -943,7 +964,21 @@ class ConversationAgent:
                 result.completed = True
                 result.final_response = action.get("response", "任务完成")
                 result.execution_time = time.time() - start_time
+
+                # Phase 2: 发送最终响应到 emitter 并完成
+                if self.emitter:
+                    await self.emitter.emit_final_response(result.final_response)
+                    await self.emitter.complete()
+
                 return result
+
+            # Phase 2: 处理工具调用
+            if action_type == "tool_call" and self.emitter:
+                await self.emitter.emit_tool_call(
+                    tool_name=action.get("tool_name", ""),
+                    tool_id=action.get("tool_id", ""),
+                    arguments=action.get("arguments", {}),
+                )
 
             # 记录决策并发布事件
             if action_type in ["create_node", "execute_workflow", "request_clarification"]:
@@ -956,6 +991,12 @@ class ConversationAgent:
             if not should_continue:
                 result.completed = True
                 result.final_response = action.get("response", "任务完成")
+
+                # Phase 2: 发送最终响应到 emitter 并完成
+                if self.emitter:
+                    await self.emitter.emit_final_response(result.final_response)
+                    await self.emitter.complete()
+
                 return result
 
         # 达到最大迭代
@@ -963,6 +1004,11 @@ class ConversationAgent:
         result.limit_type = "max_iterations"
         result.alert_message = f"已达到最大迭代次数限制 ({self.max_iterations} 次)，循环已终止"
         result.execution_time = time.time() - start_time
+
+        # Phase 2: 完成 emitter
+        if self.emitter:
+            await self.emitter.complete()
+
         return result
 
     def decompose_goal(self, goal_description: str) -> list[Goal]:
@@ -1623,6 +1669,11 @@ class ConversationAgent:
             )
             await self.event_bus.publish(event)
 
+        # Phase 2: 发送最终响应到 emitter 并完成（普通对话跳过思考）
+        if self.emitter:
+            await self.emitter.emit_final_response(response)
+            await self.emitter.complete()
+
         return result
 
     async def _handle_workflow_query(
@@ -1667,6 +1718,11 @@ class ConversationAgent:
                 session_id=self.session_context.session_id,
             )
             await self.event_bus.publish(event)
+
+        # Phase 2: 发送最终响应到 emitter 并完成
+        if self.emitter:
+            await self.emitter.emit_final_response(response)
+            await self.emitter.complete()
 
         return result
 
