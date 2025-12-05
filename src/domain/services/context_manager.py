@@ -24,7 +24,14 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from src.domain.services.event_bus import Event
+
+if TYPE_CHECKING:
+    from src.domain.services.event_bus import EventBus
+    from src.domain.services.short_term_buffer import ShortTermBuffer
+    from src.domain.services.structured_dialogue_summary import StructuredDialogueSummary
 
 
 @dataclass
@@ -44,6 +51,36 @@ class Goal:
     description: str
     parent_id: str | None = None
     status: str = "pending"
+
+
+@dataclass
+class ShortTermSaturatedEvent(Event):
+    """???????? (Step 2)
+
+    ? SessionContext ? usage_ratio ??????? 0.92?????
+    ????????????????
+    """
+
+    def __init__(
+        self,
+        session_id: str,
+        usage_ratio: float,
+        total_tokens: int,
+        context_limit: int,
+        buffer_size: int,
+        source: str = "session_context",
+    ) -> None:
+        super().__init__(source=source)
+        self.session_id = session_id
+        self.usage_ratio = usage_ratio
+        self.total_tokens = total_tokens
+        self.context_limit = context_limit
+        self.buffer_size = buffer_size
+
+    @property
+    def event_type(self) -> str:
+        """????"""
+        return "short_term_saturated"
 
 
 class GlobalContext:
@@ -117,6 +154,7 @@ class SessionContext:
     - 管理对话历史
     - 管理目标栈（支持嵌套目标）
     - 记录决策历史
+    - 跟踪上下文使用情况（token 使用和使用率）
 
     生命周期：单次用户会话
 
@@ -127,6 +165,8 @@ class SessionContext:
         )
         session_ctx.push_goal(goal)
         session_ctx.add_message({"role": "user", "content": "..."})
+        session_ctx.set_model_info("openai", "gpt-4", 8192)
+        session_ctx.update_token_usage(prompt_tokens=100, completion_tokens=50)
     """
 
     session_id: str
@@ -143,6 +183,27 @@ class SessionContext:
 
     # 摘要缓存
     conversation_summary: str | None = None
+
+    # Token 使用跟踪（Step 1: 模型上下文能力确认）
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_tokens: int = 0
+    usage_ratio: float = 0.0
+
+    # 模型信息
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    context_limit: int = 0
+
+    # Step 2: 短期记忆缓冲区
+    short_term_buffer: list["ShortTermBuffer"] = field(default_factory=list)
+    is_saturated: bool = False
+    saturation_threshold: float = 0.92
+    _event_bus: "EventBus | None" = field(default=None, repr=False)
+
+    # Step 3: 会话冻结与备份
+    _is_frozen: bool = field(default=False, repr=False)
+    _backup: dict[str, Any] | None = field(default=None, repr=False)
 
     def add_message(self, message: dict[str, Any]) -> None:
         """添加消息到对话历史
@@ -187,6 +248,272 @@ class SessionContext:
             decision: 决策字典
         """
         self.decision_history.append(decision)
+
+    def set_model_info(self, provider: str, model: str, context_limit: int) -> None:
+        """设置模型信息
+
+        参数：
+            provider: LLM 提供商名称
+            model: 模型名称
+            context_limit: 上下文窗口大小
+        """
+        self.llm_provider = provider
+        self.llm_model = model
+        self.context_limit = context_limit
+
+        # 重新计算使用率
+        self._recalculate_usage_ratio()
+
+    def update_token_usage(self, prompt_tokens: int, completion_tokens: int) -> None:
+        """更新 token 使用情况
+
+        参数：
+            prompt_tokens: 本轮使用的 prompt tokens
+            completion_tokens: 本轮使用的 completion tokens
+        """
+        self.total_prompt_tokens += prompt_tokens
+        self.total_completion_tokens += completion_tokens
+        self.total_tokens = self.total_prompt_tokens + self.total_completion_tokens
+
+        # 重新计算使用率
+        self._recalculate_usage_ratio()
+
+    def _recalculate_usage_ratio(self) -> None:
+        """重新计算使用率（内部方法）"""
+        if self.context_limit > 0:
+            self.usage_ratio = self.total_tokens / self.context_limit
+        else:
+            self.usage_ratio = 0.0
+
+    def get_usage_ratio(self) -> float:
+        """获取当前上下文使用率
+
+        返回：
+            使用率（0-1 之间，超过 1 表示超限）
+        """
+        return self.usage_ratio
+
+    def is_approaching_limit(self, threshold: float = 0.8) -> bool:
+        """判断是否接近上下文限制
+
+        参数：
+            threshold: 阈值（默认 0.8，即 80%）
+
+        返回：
+            是否接近限制
+        """
+        return self.usage_ratio >= threshold
+
+    def get_remaining_tokens(self) -> int:
+        """获取剩余可用 token 数
+
+        返回：
+            剩余 token 数（最小为 0）
+        """
+        remaining = self.context_limit - self.total_tokens
+        return max(0, remaining)
+
+    def get_token_usage_summary(self) -> dict[str, Any]:
+        """获取 token 使用摘要
+
+        返回：
+            包含所有 token 使用信息的字典
+        """
+        return {
+            "total_prompt_tokens": self.total_prompt_tokens,
+            "total_completion_tokens": self.total_completion_tokens,
+            "total_tokens": self.total_tokens,
+            "usage_ratio": self.usage_ratio,
+            "context_limit": self.context_limit,
+            "remaining_tokens": self.get_remaining_tokens(),
+            "llm_provider": self.llm_provider,
+            "llm_model": self.llm_model,
+        }
+
+    def reset_token_usage(self) -> None:
+        """重置 token 使用计数器"""
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_tokens = 0
+        self.usage_ratio = 0.0
+
+    def set_event_bus(self, event_bus: "EventBus") -> None:
+        """设置事件总线（Step 2）
+
+        参数：
+            event_bus: EventBus 实例
+        """
+        self._event_bus = event_bus
+
+    def check_saturation(self, threshold: float | None = None) -> bool:
+        """检查是否达到饱和阈值（Step 2）
+
+        参数：
+            threshold: 自定义阈值（可选，默认使用 saturation_threshold）
+
+        返回：
+            是否达到饱和阈值
+        """
+        if threshold is None:
+            threshold = self.saturation_threshold
+
+        return self.usage_ratio >= threshold
+
+    def _trigger_saturation_event(self) -> None:
+        """触发饱和事件（Step 2，内部方法）
+
+        发布 ShortTermSaturatedEvent 并设置 is_saturated 标志。
+        """
+        import asyncio
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # 设置饱和标志（防止重复触发）
+        self.is_saturated = True
+
+        # 发布事件
+        if self._event_bus:
+            event = ShortTermSaturatedEvent(
+                source="session_context",
+                session_id=self.session_id,
+                usage_ratio=self.usage_ratio,
+                total_tokens=self.total_tokens,
+                context_limit=self.context_limit,
+                buffer_size=len(self.short_term_buffer),
+            )
+
+            # 异步发布事件
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self._event_bus.publish(event))
+                else:
+                    loop.run_until_complete(self._event_bus.publish(event))
+            except RuntimeError:
+                # 如果没有事件循环，创建新的
+                asyncio.run(self._event_bus.publish(event))
+
+            logger.warning(
+                f"🔴 Short-term memory saturated! "
+                f"Session: {self.session_id}, "
+                f"Usage: {self.usage_ratio:.1%}, "
+                f"Buffer size: {len(self.short_term_buffer)} turns"
+            )
+
+    def reset_saturation(self) -> None:
+        """重置饱和状态（Step 2）
+
+        清除 is_saturated 标志，允许再次触发饱和事件。
+        通常在上下文压缩完成后调用。
+        """
+        self.is_saturated = False
+
+    def freeze(self) -> None:
+        """冻结会话（Step 3）
+
+        冻结会话后，不允许修改会话状态。
+        用于在压缩过程中防止并发修改。
+        """
+        self._is_frozen = True
+
+    def unfreeze(self) -> None:
+        """解冻会话（Step 3）
+
+        解冻会话，允许修改会话状态。
+        """
+        self._is_frozen = False
+
+    def is_frozen(self) -> bool:
+        """判断会话是否被冻结（Step 3）
+
+        返回：
+            是否被冻结
+        """
+        return self._is_frozen
+
+    def create_backup(self) -> dict[str, Any]:
+        """创建会话备份（Step 3）
+
+        备份当前会话状态，用于压缩失败时回滚。
+
+        返回：
+            包含会话状态的备份字典
+        """
+
+        backup = {
+            "total_prompt_tokens": self.total_prompt_tokens,
+            "total_completion_tokens": self.total_completion_tokens,
+            "total_tokens": self.total_tokens,
+            "usage_ratio": self.usage_ratio,
+            "short_term_buffer": [buffer.to_dict() for buffer in self.short_term_buffer],
+            "conversation_summary": self.conversation_summary,
+            "is_saturated": self.is_saturated,
+        }
+
+        self._backup = backup
+        return backup
+
+    def restore_from_backup(self, backup: dict[str, Any]) -> None:
+        """从备份恢复会话状态（Step 3）
+
+        参数：
+            backup: 备份字典
+        """
+        from src.domain.services.short_term_buffer import ShortTermBuffer
+
+        self.total_prompt_tokens = backup["total_prompt_tokens"]
+        self.total_completion_tokens = backup["total_completion_tokens"]
+        self.total_tokens = backup["total_tokens"]
+        self.usage_ratio = backup["usage_ratio"]
+        self.short_term_buffer = [
+            ShortTermBuffer.from_dict(data) for data in backup["short_term_buffer"]
+        ]
+        self.conversation_summary = backup["conversation_summary"]
+        self.is_saturated = backup["is_saturated"]
+
+    def compress_buffer_with_summary(
+        self, summary: "StructuredDialogueSummary", keep_recent_turns: int = 2
+    ) -> None:
+        """用摘要压缩 buffer（Step 3）
+
+        将旧的对话轮次压缩为摘要，只保留最近的 N 轮。
+
+        参数：
+            summary: 结构化对话摘要
+            keep_recent_turns: 保留最近的轮次数（默认 2）
+        """
+        # 保留最近的 N 轮
+        if len(self.short_term_buffer) > keep_recent_turns:
+            self.short_term_buffer = self.short_term_buffer[-keep_recent_turns:]
+
+        # 存储摘要（转换为文本格式）
+        self.conversation_summary = summary.to_text()
+
+    def add_turn(self, buffer: "ShortTermBuffer") -> None:
+        """添加对话轮次到短期缓冲区（Step 2）
+
+        参数：
+            buffer: ShortTermBuffer 实例
+
+        说明：
+            - 添加轮次到缓冲区
+            - 检测是否达到饱和阈值
+            - 如果达到阈值且未饱和，发布 ShortTermSaturatedEvent
+
+        异常：
+            RuntimeError: 如果会话被冻结
+        """
+        # Step 3: 检查会话是否被冻结
+        if self._is_frozen:
+            raise RuntimeError("Cannot add turn to frozen session (会话已冻结，无法添加轮次)")
+
+        # 添加到缓冲区
+        self.short_term_buffer.append(buffer)
+
+        # 检测饱和
+        if not self.is_saturated and self.check_saturation():
+            self._trigger_saturation_event()
 
 
 @dataclass
@@ -373,7 +700,7 @@ class ContextBridge:
         transferred_data = {}
 
         # 从节点输出收集
-        for node_id, outputs in source.node_data.items():
+        for _node_id, outputs in source.node_data.items():
             for key, value in outputs.items():
                 if keys is None or key in keys:
                     transferred_data[key] = value
@@ -406,7 +733,7 @@ class ContextBridge:
         """
         # 收集所有数据
         all_data = []
-        for node_id, outputs in source.node_data.items():
+        for _node_id, outputs in source.node_data.items():
             all_data.extend(outputs.values())
 
         for var_value in source.variables.values():

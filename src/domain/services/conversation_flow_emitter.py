@@ -380,6 +380,25 @@ class ConversationFlowEmitter:
         )
         await self.emit_step(step)
 
+    async def emit_system_notice(self, content: str, **metadata: Any) -> None:
+        """发送系统通知 (Step 2: 短期记忆缓冲与饱和事件)
+
+        用于发送系统级别的通知消息，例如上下文压缩提示。
+
+        参数:
+            content: 通知内容
+            **metadata: 额外元数据
+        """
+        step = ConversationStep(
+            kind=StepKind.ACTION,
+            content=content,
+            metadata={
+                "notice_type": "system",
+                **metadata,
+            },
+        )
+        await self.emit_step(step)
+
     async def complete(self) -> None:
         """完成发射
 

@@ -7,7 +7,16 @@
       "Bash(timeout:*)",
       "Bash(git add:*)",
       "Bash(git reset:*)",
-      "Bash(git commit --no-verify -m \"$(cat <<''EOF''\nfeat: Phase 6-7 - PowerCompressor & Documentation\n\nPhase 6: 强力压缩器与知识系统集成\n- 实现八段压缩模块 (PowerCompressor)\n- 添加 SubtaskError, UnresolvedIssue, NextPlanItem, KnowledgeSource 数据类\n- CoordinatorAgent 集成压缩存储与查询接口\n- 23 单元测试 + 9 集成测试全部通过\n\nPhase 7: 文档与运维\n- 创建多 Agent 协作架构指南 (multi_agent_collaboration_guide.md)\n- 创建运维指南 (operations_guide.md)\n- 创建演示 Notebook (multi_agent_demo.ipynb)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+      "Bash(git commit --no-verify -m \"$(cat <<''EOF''\nfeat: Phase 6-7 - PowerCompressor & Documentation\n\nPhase 6: 强力压缩器与知识系统集成\n- 实现八段压缩模块 (PowerCompressor)\n- 添加 SubtaskError, UnresolvedIssue, NextPlanItem, KnowledgeSource 数据类\n- CoordinatorAgent 集成压缩存储与查询接口\n- 23 单元测试 + 9 集成测试全部通过\n\nPhase 7: 文档与运维\n- 创建多 Agent 协作架构指南 (multi_agent_collaboration_guide.md)\n- 创建运维指南 (operations_guide.md)\n- 创建演示 Notebook (multi_agent_demo.ipynb)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: Phase 2-5 - ConversationFlowEmitter & ReliableEmitter\n\nPhase 2: ConversationFlowEmitter 核心实现\n- 异步队列驱动的消息发射器\n- 支持 thinking/reasoning/tool_call/tool_result/delta/final 消息类型\n- StepKind 枚举和 ConversationStep 数据类\n- 33 个单元测试全部通过\n\nPhase 3: SSE 实时通道集成\n- SSEEmitterHandler 处理 SSE 流\n- /api/conversation/stream 流式端点\n- 断开/重连测试覆盖\n- 45 个集成测试全部通过\n\nPhase 4: 格式化与前端展示\n- StreamMessageFormatter 后端格式化层\n- FrontendMessage/FrontendMessageType 数据结构\n- 前端组件: StreamingMessageDisplay, StreamingChat\n- useConversationStream Hook\n- Demo 页面 /demo/streaming\n- 26 个格式化测试通过\n\nPhase 5: 可靠性与扩展\n- ReliableEmitter 有界队列 + 背压控制\n- BufferOverflowPolicy (BLOCK/DROP_OLDEST/DROP_NEWEST/RAISE)\n- MessageStore 接口 + InMemoryMessageStore 实现\n- 协调者查询接口 (get_session_summary, get_by_kind)\n- 负载测试: 1000+ QPS 稳定\n- 运维文档补充\n- 51 个测试全部通过\n\n总测试数: 110 个测试全部通过\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(python -m scripts.validate_tool_configs:*)",
+      "Bash(ruff check:*)",
+      "Bash(python:*)",
+      "Bash(git commit:*)",
+      "Bash(pyright:*)",
+      "Bash(git checkout:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

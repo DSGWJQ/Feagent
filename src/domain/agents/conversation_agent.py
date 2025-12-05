@@ -855,11 +855,16 @@ class ConversationAgent:
         返回：
             ReAct结果
         """
+        import logging
         import time
 
         result = ReActResult()
         self._current_input = user_input
         start_time = time.time()
+
+        # Step 1: 初始化模型信息（如果尚未设置）
+        if self.session_context.context_limit == 0:
+            self._initialize_model_info()
 
         # Phase 1: 从协调者获取上下文（规则库、知识库、工具库）
         coordinator_context = None
@@ -870,8 +875,6 @@ class ConversationAgent:
                 self._log_coordinator_context(coordinator_context)
             except Exception as e:
                 # 上下文获取失败不应阻止主流程
-                import logging
-
                 logging.warning(f"Failed to get coordinator context: {e}")
 
         # 保存协调者上下文供后续使用
@@ -942,17 +945,31 @@ class ConversationAgent:
             action = await self.llm.decide_action(context)
 
             # 阶段5：累计 token 和成本
+            # Step 1: 记录每轮的 token 使用情况
+            prompt_tokens = 0
+            completion_tokens = 0
             try:
                 if hasattr(self.llm, "get_token_usage"):
                     tokens = self.llm.get_token_usage()  # type: ignore[attr-defined]
                     if isinstance(tokens, int | float):
                         result.total_tokens += int(tokens)
+                        completion_tokens = int(tokens)
                 if hasattr(self.llm, "get_cost"):
                     cost = self.llm.get_cost()  # type: ignore[attr-defined]
                     if isinstance(cost, int | float):
                         result.total_cost += float(cost)
             except (TypeError, AttributeError):
                 pass  # LLM 不支持这些方法时跳过
+
+            # Step 1: 更新 SessionContext 的 token 使用情况
+            if prompt_tokens > 0 or completion_tokens > 0:
+                self.session_context.update_token_usage(
+                    prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+                )
+
+                # Step 1: 检查是否接近上下文限制并输出预警
+                if self.session_context.is_approaching_limit():
+                    self._log_context_warning()
 
             step = ReActStep(step_type=StepType.REASONING, thought=thought, action=action)
             result.steps.append(step)
@@ -1228,6 +1245,53 @@ class ConversationAgent:
             workflow_id = workflow_context.get("workflow_id", "unknown")
             status = workflow_context.get("status", "unknown")
             logger.debug(f"Workflow context: id={workflow_id}, status={status}")
+
+    def _initialize_model_info(self) -> None:
+        """初始化模型信息（Step 1: 模型上下文能力确认）
+
+        从 LLM 客户端或配置中获取模型信息，并设置到 SessionContext。
+        """
+        import logging
+
+        from src.config import settings
+        from src.lc.model_metadata import get_model_metadata
+
+        logger = logging.getLogger(__name__)
+
+        # 尝试从配置获取模型信息
+        provider = "openai"  # 默认提供商
+        model = settings.openai_model
+
+        # 获取模型元数据
+        metadata = get_model_metadata(provider, model)
+
+        # 设置到 SessionContext
+        self.session_context.set_model_info(
+            provider=provider, model=model, context_limit=metadata.context_window
+        )
+
+        logger.info(
+            f"Model info initialized: provider={provider}, model={model}, "
+            f"context_limit={metadata.context_window}"
+        )
+
+    def _log_context_warning(self) -> None:
+        """记录上下文限制预警（Step 1: 模型上下文能力确认）
+
+        当上下文使用率接近限制时，输出预警日志。
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        summary = self.session_context.get_token_usage_summary()
+
+        logger.warning(
+            f"⚠️ Context limit approaching! "
+            f"Usage: {summary['total_tokens']}/{summary['context_limit']} tokens "
+            f"({summary['usage_ratio']:.1%}), "
+            f"Remaining: {summary['remaining_tokens']} tokens"
+        )
 
     # === Phase 8: 工作流规划能力 ===
 
