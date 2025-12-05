@@ -94,12 +94,17 @@ class TestHandleSubAgentCompletedEvent:
     @pytest.fixture
     def mock_event_bus(self):
         """创建 Mock EventBus"""
+        from unittest.mock import AsyncMock  # Import AsyncMock
+
         event_bus = MagicMock()
         event_bus.subscribe = MagicMock()
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()  # Changed: Use AsyncMock for async method
         return event_bus
 
-    def test_handle_completion_resumes_agent(self, mock_session_context, mock_llm, mock_event_bus):
+    @pytest.mark.asyncio  # Added: Make test async
+    async def test_handle_completion_resumes_agent(
+        self, mock_session_context, mock_llm, mock_event_bus
+    ):
         """处理完成事件应恢复Agent状态"""
         from src.domain.agents.conversation_agent import (
             ConversationAgent,
@@ -115,6 +120,12 @@ class TestHandleSubAgentCompletedEvent:
 
         # 设置等待状态
         agent.transition_to(ConversationAgentState.PROCESSING)
+
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+
+        await asyncio.sleep(0.01)  # Allow task to complete
+
         agent.wait_for_subagent(
             subagent_id="subagent_001",
             task_id="task_001",
@@ -138,7 +149,10 @@ class TestHandleSubAgentCompletedEvent:
         # 应恢复到处理状态
         assert agent.state == ConversationAgentState.PROCESSING
 
-    def test_handle_completion_stores_result(self, mock_session_context, mock_llm, mock_event_bus):
+    @pytest.mark.asyncio  # Added: Make test async
+    async def test_handle_completion_stores_result(
+        self, mock_session_context, mock_llm, mock_event_bus
+    ):
         """处理完成事件应存储结果"""
         from src.domain.agents.conversation_agent import (
             ConversationAgent,
@@ -153,6 +167,12 @@ class TestHandleSubAgentCompletedEvent:
         )
 
         agent.transition_to(ConversationAgentState.PROCESSING)
+
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+
+        await asyncio.sleep(0.01)  # Allow task to complete
+
         agent.wait_for_subagent(
             subagent_id="subagent_001",
             task_id="task_001",
@@ -198,9 +218,11 @@ class TestSubAgentResultHistory:
     @pytest.fixture
     def mock_event_bus(self):
         """创建 Mock EventBus"""
+        from unittest.mock import AsyncMock  # Import AsyncMock
+
         event_bus = MagicMock()
         event_bus.subscribe = MagicMock()
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()  # Changed: Use AsyncMock for async method
         return event_bus
 
     def test_agent_has_subagent_result_history(
@@ -218,7 +240,8 @@ class TestSubAgentResultHistory:
         assert hasattr(agent, "subagent_result_history")
         assert isinstance(agent.subagent_result_history, list)
 
-    def test_completion_adds_to_history(self, mock_session_context, mock_llm, mock_event_bus):
+    @pytest.mark.asyncio  # Added: Make test async
+    async def test_completion_adds_to_history(self, mock_session_context, mock_llm, mock_event_bus):
         """完成事件应添加到历史"""
         from src.domain.agents.conversation_agent import (
             ConversationAgent,
@@ -233,6 +256,12 @@ class TestSubAgentResultHistory:
         )
 
         agent.transition_to(ConversationAgentState.PROCESSING)
+
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+
+        await asyncio.sleep(0.01)  # Allow task to complete
+
         agent.wait_for_subagent(
             subagent_id="subagent_001",
             task_id="task_001",

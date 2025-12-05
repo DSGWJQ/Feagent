@@ -16,7 +16,12 @@
       "Bash(git commit:*)",
       "Bash(pyright:*)",
       "Bash(git checkout:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(pytest:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell -Command \"(Get-Content ''D:\\My_Project\\agent_data\\src\\domain\\agents\\conversation_agent.py'').Length\")",
+      "Bash(pip show:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

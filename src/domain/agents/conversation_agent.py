@@ -414,6 +414,7 @@ class ConversationAgent:
         enable_intent_classification: bool = False,
         intent_confidence_threshold: float = 0.7,
         emitter: Any | None = None,
+        stream_emitter: Any | None = None,
     ):
         """初始化对话Agent
 
@@ -429,6 +430,7 @@ class ConversationAgent:
             enable_intent_classification: 是否启用意图分类（Phase 14，默认False保持向后兼容）
             intent_confidence_threshold: 意图分类置信度阈值（Phase 14）
             emitter: ConversationFlowEmitter 实例（Phase 2，可选）
+            stream_emitter: 流式输出器实例（Phase 8.4，可选）
         """
         self.session_context = session_context
         self.llm = llm
@@ -455,6 +457,9 @@ class ConversationAgent:
         # Phase 2: 流式输出 emitter
         self.emitter = emitter
 
+        # Phase 8.4: 流式进度输出器
+        self.stream_emitter = stream_emitter
+
         # Phase 3: 状态机初始化
         self._state: ConversationAgentState = ConversationAgentState.IDLE
         self.pending_subagent_id: str | None = None
@@ -468,6 +473,10 @@ class ConversationAgent:
 
         # Phase 1: 协调者上下文缓存
         self._coordinator_context: Any | None = None
+
+        # Phase 8.4: 进度事件转发
+        self.progress_events: list[Any] = []  # 存储进度事件历史
+        self._is_listening_progress = False
 
     @property
     def state(self) -> ConversationAgentState:
@@ -1092,19 +1101,32 @@ class ConversationAgent:
         return completed_goal
 
     def make_decision(self, context_hint: str) -> Decision:
-        """做出决策
+        """做出决策（增强版：集成 Pydantic schema 验证）
 
         参数：
             context_hint: 上下文提示
 
         返回：
             决策对象
+
+        异常：
+            ValidationError: 如果决策 payload 不符合 schema
         """
         import asyncio
+
+        from pydantic import ValidationError
+
+        from src.domain.agents.conversation_agent_enhanced import (
+            validate_and_enhance_decision,
+        )
 
         # 获取上下文
         context = self.get_context_for_reasoning()
         context["hint"] = context_hint
+
+        # 添加资源约束到上下文
+        if hasattr(self.session_context, "resource_constraints"):
+            context["resource_constraints"] = self.session_context.resource_constraints
 
         # 调用LLM决定行动
         try:
@@ -1119,9 +1141,61 @@ class ConversationAgent:
         except RuntimeError:
             action = asyncio.run(self.llm.decide_action(context))
 
-        # 转换为Decision
+        # 获取 action_type
         action_type = action.get("action_type", "continue")
 
+        # ========================================
+        # 【增强功能】使用 Pydantic schema 验证
+        # ========================================
+        try:
+            # 获取资源约束（如果存在）
+            constraints = (
+                self.session_context.resource_constraints
+                if hasattr(self.session_context, "resource_constraints")
+                else None
+            )
+
+            # 综合验证和增强
+            validated_payload, metadata = validate_and_enhance_decision(
+                action_type, action, constraints
+            )
+
+            # 使用验证后的 payload（转回字典）
+            validated_dict = validated_payload.model_dump()
+
+            # 将元数据添加到 session context（用于调试和监控）
+            if metadata:
+                if not hasattr(self.session_context, "_decision_metadata"):
+                    self.session_context._decision_metadata = []
+                self.session_context._decision_metadata.append(
+                    {
+                        "action_type": action_type,
+                        "timestamp": datetime.now().isoformat(),
+                        "metadata": metadata,
+                    }
+                )
+
+        except ValidationError as e:
+            # Payload 验证失败
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.error(f"决策 payload 验证失败: {e.errors()}")
+
+            # 记录验证失败
+            self.session_context.add_decision(
+                {
+                    "type": "validation_failed",
+                    "action_type": action_type,
+                    "errors": str(e.errors()),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+            # 重新抛出异常
+            raise
+
+        # 转换为Decision（使用验证后的 payload）
         decision_type_mapping = {
             "create_node": DecisionType.CREATE_NODE,
             "create_workflow_plan": DecisionType.CREATE_WORKFLOW_PLAN,
@@ -1130,14 +1204,18 @@ class ConversationAgent:
             "request_clarification": DecisionType.REQUEST_CLARIFICATION,
             "respond": DecisionType.RESPOND,
             "continue": DecisionType.CONTINUE,
+            "error_recovery": DecisionType.ERROR_RECOVERY,
+            "replan_workflow": DecisionType.REPLAN_WORKFLOW,
+            "spawn_subagent": DecisionType.SPAWN_SUBAGENT,
         }
 
         decision = Decision(
-            type=decision_type_mapping.get(action_type, DecisionType.CONTINUE), payload=action
+            type=decision_type_mapping.get(action_type, DecisionType.CONTINUE),
+            payload=validated_dict,  # 使用验证后的 payload
         )
 
         # 记录决策
-        self._record_decision(action)
+        self._record_decision(validated_dict)
 
         return decision
 
@@ -1789,6 +1867,261 @@ class ConversationAgent:
             await self.emitter.complete()
 
         return result
+
+    # === Phase 8.4: 进度事件转发 ===
+
+    def start_progress_event_listener(self) -> None:
+        """启动进度事件监听器
+
+        订阅 ExecutionProgressEvent 以接收工作流执行进度更新。
+        """
+        if self._is_listening_progress:
+            return
+
+        if not self.event_bus:
+            raise ValueError("EventBus is required for progress event listening")
+
+        from src.domain.agents.workflow_agent import ExecutionProgressEvent
+
+        self.event_bus.subscribe(ExecutionProgressEvent, self._handle_progress_event_async)
+        self._is_listening_progress = True
+
+    async def _handle_progress_event_async(self, event: Any) -> None:
+        """异步处理进度事件（EventBus 回调）
+
+        参数：
+            event: ExecutionProgressEvent 实例
+        """
+        self.handle_progress_event(event)
+
+        # 如果有流式输出器，转发事件
+        if self.stream_emitter:
+            await self.forward_progress_event(event)
+
+    def handle_progress_event(self, event: Any) -> None:
+        """处理进度事件并记录到历史
+
+        参数：
+            event: ExecutionProgressEvent 实例
+        """
+        self.progress_events.append(event)
+
+    async def forward_progress_event(self, event: Any) -> None:
+        """转发进度事件到流式输出器
+
+        参数：
+            event: ExecutionProgressEvent 实例
+        """
+        if not self.stream_emitter:
+            return
+
+        # 格式化为用户可读消息
+        formatted_message = self.format_progress_message(event)
+
+        # 通过流式输出器发送
+        await self.stream_emitter.emit(
+            {
+                "type": "progress",
+                "message": formatted_message,
+                "node_id": event.node_id,
+                "status": event.status,
+                "progress": event.progress,
+            }
+        )
+
+    def format_progress_message(self, event: Any) -> str:
+        """格式化进度事件为用户可读消息
+
+        参数：
+            event: ExecutionProgressEvent 实例
+
+        返回：
+            格式化的消息字符串
+        """
+        status = event.status
+        progress = event.progress
+        message = event.message
+
+        # 根据状态格式化消息
+        if status == "started":
+            return f"[开始] {message}"
+        elif status == "running":
+            progress_percent = f"{progress * 100:.0f}%"
+            return f"[执行中 {progress_percent}] {message}"
+        elif status == "completed":
+            return f"[完成 100%] {message}"
+        elif status == "failed":
+            return f"[失败] {message}"
+        else:
+            return f"[{status}] {message}"
+
+    def format_progress_for_websocket(self, event: Any) -> dict[str, Any]:
+        """格式化进度事件为 WebSocket 消息
+
+        参数：
+            event: ExecutionProgressEvent 实例
+
+        返回：
+            WebSocket 消息字典
+        """
+        return {
+            "type": "progress",
+            "data": {
+                "workflow_id": event.workflow_id,
+                "node_id": event.node_id,
+                "status": event.status,
+                "progress": event.progress,
+                "message": event.message,
+            },
+        }
+
+    def format_progress_for_sse(self, event: Any) -> str:
+        """格式化进度事件为 SSE 消息
+
+        参数:
+            event: ExecutionProgressEvent 实例
+
+        返回：
+            SSE 格式的消息字符串
+        """
+        import json
+
+        data = {
+            "workflow_id": event.workflow_id,
+            "node_id": event.node_id,
+            "status": event.status,
+            "progress": event.progress,
+            "message": event.message,
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+    def get_progress_events_by_workflow(self, workflow_id: str) -> list[Any]:
+        """按工作流ID查询进度事件
+
+        参数：
+            workflow_id: 工作流ID
+
+        返回：
+            该工作流的进度事件列表
+        """
+        return [
+            event
+            for event in self.progress_events
+            if hasattr(event, "workflow_id") and event.workflow_id == workflow_id
+        ]
+
+    # === 第五步: 异常处理与重规划 ===
+
+    def format_error_for_user(
+        self, node_id: str, error: Exception, node_name: str = ""
+    ) -> "FormattedError":
+        """将错误格式化为用户友好消息
+
+        参数：
+            node_id: 节点ID
+            error: 异常实例
+            node_name: 节点名称（可选）
+
+        返回：
+            格式化的错误信息，包含消息和用户选项
+        """
+        from src.domain.agents.error_handling import (
+            ExceptionClassifier,
+            FormattedError,
+            UserActionOptionsGenerator,
+            UserFriendlyMessageGenerator,
+        )
+
+        classifier = ExceptionClassifier()
+        message_generator = UserFriendlyMessageGenerator()
+        options_generator = UserActionOptionsGenerator()
+
+        # 分类错误
+        category = classifier.classify(error)
+
+        # 生成用户友好消息
+        details = f"{node_name}: {error}" if node_name else str(error)
+        message = message_generator.generate(category, details)
+
+        # 获取用户操作选项
+        options = options_generator.get_options(category)
+
+        return FormattedError(message=message, options=options, category=category)
+
+    async def handle_user_error_decision(self, decision: "UserDecision") -> "UserDecisionResult":
+        """处理用户的错误恢复决策
+
+        参数：
+            decision: 用户决策
+
+        返回：
+            决策处理结果
+        """
+        from src.domain.agents.error_handling import UserDecisionResult
+
+        if decision.action == "retry":
+            return UserDecisionResult(
+                action_taken="retry", should_continue=True, node_skipped=False
+            )
+        elif decision.action == "skip":
+            return UserDecisionResult(action_taken="skip", should_continue=True, node_skipped=True)
+        elif decision.action == "abort":
+            return UserDecisionResult(
+                action_taken="abort",
+                should_continue=False,
+                workflow_aborted=True,
+            )
+        elif decision.action == "provide_data":
+            return UserDecisionResult(action_taken="provide_data", should_continue=True)
+        else:
+            return UserDecisionResult(action_taken=decision.action, should_continue=True)
+
+    async def emit_error_event(self, node_id: str, error: Exception, recovery_action: str) -> None:
+        """发布错误事件到事件总线
+
+        参数：
+            node_id: 节点ID
+            error: 异常实例
+            recovery_action: 恢复动作
+        """
+        if not self.event_bus:
+            return
+
+        from src.domain.agents.error_handling import NodeErrorEvent
+
+        event = NodeErrorEvent(
+            node_id=node_id,
+            error_type=type(error).__name__,
+            error_message=str(error),
+            recovery_action=recovery_action,
+        )
+
+        await self.event_bus.publish(event)
+
+    async def emit_recovery_complete_event(
+        self, node_id: str, success: bool, method: str, attempts: int = 1
+    ) -> None:
+        """发布恢复完成事件
+
+        参数：
+            node_id: 节点ID
+            success: 是否成功
+            method: 恢复方法
+            attempts: 尝试次数
+        """
+        if not self.event_bus:
+            return
+
+        from src.domain.agents.error_handling import RecoveryCompleteEvent
+
+        event = RecoveryCompleteEvent(
+            node_id=node_id,
+            success=success,
+            recovery_method=method,
+            attempts=attempts,
+        )
+
+        await self.event_bus.publish(event)
 
     # === Phase 16: 新执行链路 ===
 

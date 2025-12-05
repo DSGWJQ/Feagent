@@ -167,8 +167,10 @@ class TestConversationAgentSpawnDecision:
     @pytest.fixture
     def mock_event_bus(self):
         """创建 Mock EventBus"""
+        from unittest.mock import AsyncMock  # Import AsyncMock
+
         event_bus = MagicMock()
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()  # Changed: Use AsyncMock for async method
         return event_bus
 
     def test_agent_can_create_spawn_decision(self, mock_session_context, mock_llm, mock_event_bus):
@@ -194,7 +196,10 @@ class TestConversationAgentSpawnDecision:
         assert decision.type == DecisionType.SPAWN_SUBAGENT
         assert decision.payload["subagent_type"] == "search"
 
-    def test_spawn_decision_publishes_event(self, mock_session_context, mock_llm, mock_event_bus):
+    @pytest.mark.asyncio  # Added: Make test async
+    async def test_spawn_decision_publishes_event(
+        self, mock_session_context, mock_llm, mock_event_bus
+    ):
         """生成 spawn 决策应发布事件"""
         from src.domain.agents.conversation_agent import (
             ConversationAgent,
@@ -211,11 +216,19 @@ class TestConversationAgentSpawnDecision:
         # 先转换到处理状态
         agent.transition_to(ConversationAgentState.PROCESSING)
 
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+
+        await asyncio.sleep(0.01)  # Allow task to complete
+
         # 创建 spawn 决策并发布
         agent.request_subagent_spawn(
             subagent_type="search",
             task_payload={"query": "测试"},
         )
+
+        # Give asyncio.create_task() a chance to run
+        await asyncio.sleep(0.01)  # Allow task to complete
 
         # 验证事件发布（至少发布两次：状态变化 + spawn 请求）
         assert mock_event_bus.publish.call_count >= 2
@@ -252,11 +265,14 @@ class TestSpawnDecisionStateMachineIntegration:
     @pytest.fixture
     def mock_event_bus(self):
         """创建 Mock EventBus"""
+        from unittest.mock import AsyncMock  # Import AsyncMock
+
         event_bus = MagicMock()
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()  # Changed: Use AsyncMock for async method
         return event_bus
 
-    def test_spawn_request_transitions_to_waiting(
+    @pytest.mark.asyncio  # Added: Make test async
+    async def test_spawn_request_transitions_to_waiting(
         self, mock_session_context, mock_llm, mock_event_bus
     ):
         """请求 spawn 应转换为等待状态"""
@@ -274,6 +290,11 @@ class TestSpawnDecisionStateMachineIntegration:
         # 开始处理
         agent.transition_to(ConversationAgentState.PROCESSING)
 
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+
+        await asyncio.sleep(0.01)  # Allow task to complete
+
         # 请求 spawn 子Agent
         agent.request_subagent_spawn(
             subagent_type="search",
@@ -281,11 +302,15 @@ class TestSpawnDecisionStateMachineIntegration:
             wait_for_result=True,
         )
 
+        # Give asyncio.create_task() a chance to run
+        await asyncio.sleep(0.01)  # Allow task to complete
+
         # 应进入等待状态
         assert agent.state == ConversationAgentState.WAITING_FOR_SUBAGENT
         assert agent.pending_subagent_id is not None
 
-    def test_spawn_without_waiting_stays_processing(
+    @pytest.mark.asyncio  # Added: Make test async
+    async def test_spawn_without_waiting_stays_processing(
         self, mock_session_context, mock_llm, mock_event_bus
     ):
         """不等待结果的 spawn 应保持处理状态"""
@@ -303,12 +328,20 @@ class TestSpawnDecisionStateMachineIntegration:
         # 开始处理
         agent.transition_to(ConversationAgentState.PROCESSING)
 
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+
+        await asyncio.sleep(0.01)  # Allow task to complete
+
         # 请求 spawn 子Agent（不等待）
         agent.request_subagent_spawn(
             subagent_type="data_processor",
             task_payload={"action": "process"},
             wait_for_result=False,
         )
+
+        # Give asyncio.create_task() a chance to run
+        await asyncio.sleep(0.01)  # Allow task to complete
 
         # 应保持处理状态
         assert agent.state == ConversationAgentState.PROCESSING

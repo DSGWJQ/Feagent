@@ -184,6 +184,29 @@ class NodeExecutionEvent(Event):
     error: str | None = None
 
 
+@dataclass
+class ExecutionProgressEvent(Event):
+    """执行进度事件 - Phase 8.4
+
+    在工作流执行过程中发布的进度更新事件，供 ConversationAgent 流式反馈。
+
+    属性：
+        workflow_id: 工作流ID
+        node_id: 节点ID
+        status: 执行状态（started/running/completed/failed）
+        progress: 进度百分比（0.0-1.0）
+        message: 进度描述消息
+        metadata: 可选的额外元数据
+    """
+
+    workflow_id: str = ""
+    node_id: str = ""
+    status: str = ""
+    progress: float = 0.0
+    message: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
 class NodeExecutor(Protocol):
     """节点执行器接口"""
 
@@ -298,6 +321,10 @@ class WorkflowAgent:
         # 自定义节点执行器实例缓存
         self._custom_executors: dict[str, Any] = {}
 
+        # Phase 8.4: 进度跟踪
+        self._executed_nodes: list[str] = []  # 已执行的节点列表
+        self._total_nodes: int = 0  # 总节点数（用于计算进度）
+
     @property
     def nodes(self) -> list[Node]:
         """获取所有节点"""
@@ -375,12 +402,49 @@ class WorkflowAgent:
                     f"Required field '{field_name}' is missing / 必填字段 '{field_name}' 缺失"
                 )
 
-    def add_node(self, node: Node) -> None:
+    def add_node(
+        self,
+        node_or_id: Node | str,
+        node_type: str | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> None:
         """添加节点到工作流
 
+        支持两种调用方式：
+        1. add_node(node) - 传入Node对象
+        2. add_node(node_id, node_type, config) - 传入节点参数（便利方式）
+
         参数：
-            node: 要添加的节点
+            node_or_id: Node对象或节点ID
+            node_type: 节点类型（仅在便利方式下使用）
+            config: 节点配置（仅在便利方式下使用）
         """
+        # Import Node at the top to avoid UnboundLocalError
+        from src.domain.services.node_registry import Node, NodeType
+
+        # 判断调用方式
+        if isinstance(node_or_id, Node):
+            # 方式1：传入Node对象
+            node = node_or_id
+        elif isinstance(node_or_id, str):
+            # 方式2：便利方式，构造Node对象
+            if node_type is None:
+                raise ValueError("node_type is required when using convenience method")
+
+            # 将字符串类型转换为NodeType枚举
+            if isinstance(node_type, str):
+                node_type_enum = NodeType(node_type)
+            else:
+                node_type_enum = node_type
+
+            node = Node(
+                id=node_or_id,
+                type=node_type_enum,
+                config=config or {},
+            )
+        else:
+            raise TypeError(f"Expected Node or str, got {type(node_or_id)}")
+
         # 添加到 _nodes
         self._nodes[node.id] = node
 
@@ -790,6 +854,224 @@ class WorkflowAgent:
         except Exception as e:
             self._execution_status = ExecutionStatus.FAILED
             return {"status": "failed", "error": str(e)}
+
+    # ==================== Phase 8.4: 进度事件相关方法 ====================
+
+    async def _publish_progress_event(
+        self,
+        workflow_id: str,
+        node_id: str,
+        status: str,
+        progress: float,
+        message: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """发布进度事件（内部辅助方法）
+
+        将事件发布失败视为非关键错误，不阻塞主流程执行。
+
+        参数：
+            workflow_id: 工作流ID
+            node_id: 节点ID
+            status: 执行状态
+            progress: 进度百分比
+            message: 进度消息
+            metadata: 可选的元数据
+        """
+        if not self.event_bus:
+            return
+
+        try:
+            await self.event_bus.publish(
+                ExecutionProgressEvent(
+                    source="workflow_agent",
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    status=status,
+                    progress=progress,
+                    message=message,
+                    metadata=metadata or {},
+                )
+            )
+        except Exception:
+            # 事件发布失败不应阻塞执行
+            pass
+
+    async def execute_node_with_progress(self, node_id: str) -> dict[str, Any]:
+        """执行单个节点并发布进度事件
+
+        参数：
+            node_id: 节点ID
+
+        返回：
+            执行结果
+        """
+        node = self._nodes.get(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
+
+        workflow_id = self.workflow_context.workflow_id if self.workflow_context else "unknown"
+
+        # 发布节点开始事件
+        await self._publish_progress_event(
+            workflow_id=workflow_id,
+            node_id=node_id,
+            status="started",
+            progress=0.0,
+            message=f"开始执行节点 {node_id}",
+        )
+
+        try:
+            # 获取节点输入
+            inputs = self._collect_node_inputs(node_id)
+
+            # 发布运行中事件
+            await self._publish_progress_event(
+                workflow_id=workflow_id,
+                node_id=node_id,
+                status="running",
+                progress=0.5,
+                message=f"正在执行节点 {node_id}",
+            )
+
+            # 执行节点
+            custom_type_name = node.config.get("_custom_type")
+            if custom_type_name and custom_type_name in self._custom_executors:
+                executor = self._custom_executors[custom_type_name]
+                result = await executor.execute(node.config, inputs)
+            elif self.node_executor:
+                result = await self.node_executor.execute(node_id, node.config, inputs)
+            else:
+                result = {"status": "success", "executed": True}
+
+            # 存储节点输出到上下文
+            if self.workflow_context:
+                self.workflow_context.set_node_output(node_id, result)
+
+            # 更新已执行节点列表
+            if node_id not in self._executed_nodes:
+                self._executed_nodes.append(node_id)
+
+            # 发布节点完成事件
+            await self._publish_progress_event(
+                workflow_id=workflow_id,
+                node_id=node_id,
+                status="completed",
+                progress=1.0,
+                message=f"节点 {node_id} 执行完成",
+            )
+
+            return result
+
+        except Exception as e:
+            # 发布节点失败事件
+            await self._publish_progress_event(
+                workflow_id=workflow_id,
+                node_id=node_id,
+                status="failed",
+                progress=0.5,
+                message=f"节点 {node_id} 执行失败: {str(e)}",
+            )
+            raise
+
+    async def execute_workflow_with_progress(self) -> dict[str, Any]:
+        """执行整个工作流并发布进度事件
+
+        按拓扑顺序执行所有节点，并在每个步骤发布进度事件。
+
+        返回：
+            执行结果
+        """
+        self._execution_status = ExecutionStatus.RUNNING
+
+        workflow_id = self.workflow_context.workflow_id if self.workflow_context else "unknown"
+
+        # 初始化进度跟踪
+        self._executed_nodes = []
+        self._total_nodes = len(self._nodes)
+
+        # 发布工作流开始执行事件
+        if self.event_bus:
+            await self.event_bus.publish(
+                WorkflowExecutionStartedEvent(
+                    source="workflow_agent",
+                    workflow_id=workflow_id,
+                    node_count=self._total_nodes,
+                )
+            )
+
+        try:
+            # 获取拓扑排序的节点顺序
+            execution_order = self._topological_sort()
+
+            results = {}
+            for idx, node_id in enumerate(execution_order):
+                # 执行节点（会自动发布进度事件）
+                result = await self.execute_node_with_progress(node_id)
+                results[node_id] = result
+
+            self._execution_status = ExecutionStatus.COMPLETED
+
+            # 发布工作流完成事件
+            if self.event_bus:
+                await self.event_bus.publish(
+                    WorkflowExecutionCompletedEvent(
+                        source="workflow_agent",
+                        workflow_id=workflow_id,
+                        status="completed",
+                        result=results,
+                    )
+                )
+
+            return {"status": "completed", "results": results}
+
+        except Exception as e:
+            self._execution_status = ExecutionStatus.FAILED
+
+            # 发布工作流失败事件
+            if self.event_bus:
+                await self.event_bus.publish(
+                    WorkflowExecutionCompletedEvent(
+                        source="workflow_agent",
+                        workflow_id=workflow_id,
+                        status="failed",
+                        success=False,
+                        result={"error": str(e)},
+                    )
+                )
+
+            return {"status": "failed", "error": str(e)}
+
+    def get_workflow_progress(self) -> float:
+        """获取当前工作流执行进度
+
+        返回：
+            进度百分比（0.0-1.0）
+        """
+        # Calculate total nodes dynamically from _nodes dict
+        total = self._total_nodes if self._total_nodes > 0 else len(self._nodes)
+
+        if total == 0:
+            return 0.0
+
+        return len(self._executed_nodes) / total
+
+    def get_progress_summary(self) -> dict[str, Any]:
+        """获取执行进度摘要
+
+        返回：
+            包含进度信息的字典
+        """
+        # Calculate total nodes dynamically
+        total = self._total_nodes if self._total_nodes > 0 else len(self._nodes)
+
+        return {
+            "total_nodes": total,
+            "completed_nodes": len(self._executed_nodes),
+            "progress": self.get_workflow_progress(),
+            "status": self._execution_status.value,
+            "executed_nodes": self._executed_nodes.copy(),
+        }
 
     def _topological_sort(self) -> list[str]:
         """对节点进行拓扑排序

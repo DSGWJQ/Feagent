@@ -206,24 +206,37 @@ class TestConversationAgentDecisionTypes:
 
         llm = MagicMock()
         # 使用 AsyncMock 并设置 return_value 属性以便同步方式访问
+        # Fixed: Flattened structure to match CreateWorkflowPlanPayload schema
         llm.decide_action = AsyncMock(
             return_value={
                 "action_type": "create_workflow_plan",
-                "plan": {
-                    "name": "Test Plan",
-                    "nodes": [{"name": "N1", "type": "python", "code": "pass"}],
-                    "edges": [],
-                },
+                "name": "Test Plan",  # Moved out of "plan" nest
+                "description": "测试工作流规划",  # Added: required field
+                "nodes": [
+                    {
+                        "node_id": "node_1",  # Added: required field
+                        "type": "PYTHON",  # Changed: lowercase -> uppercase (enum)
+                        "name": "N1",
+                        "config": {"code": "pass"},  # Wrapped in config dict
+                    }
+                ],
+                "edges": [],
             }
         )
         # 设置 return_value 属性以便 _run_sync 方式也能访问
         llm.decide_action.return_value = {
             "action_type": "create_workflow_plan",
-            "plan": {
-                "name": "Test Plan",
-                "nodes": [{"name": "N1", "type": "python", "code": "pass"}],
-                "edges": [],
-            },
+            "name": "Test Plan",  # Moved out of "plan" nest
+            "description": "测试工作流规划",  # Added: required field
+            "nodes": [
+                {
+                    "node_id": "node_1",  # Added: required field
+                    "type": "PYTHON",  # Changed: lowercase -> uppercase (enum)
+                    "name": "N1",
+                    "config": {"code": "pass"},  # Wrapped in config dict
+                }
+            ],
+            "edges": [],
         }
 
         agent = ConversationAgent(session_context=session_ctx, llm=llm)

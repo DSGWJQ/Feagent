@@ -434,11 +434,14 @@ class TestStateTransitionEvents:
     @pytest.fixture
     def mock_event_bus(self):
         """创建 Mock EventBus"""
+        from unittest.mock import AsyncMock  # Import AsyncMock
+
         event_bus = MagicMock()
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()  # Changed: Use AsyncMock for async method
         return event_bus
 
-    def test_transition_publishes_event(self, mock_session_context, mock_llm, mock_event_bus):
+    @pytest.mark.asyncio  # Added: Make test async to handle asyncio.create_task()
+    async def test_transition_publishes_event(self, mock_session_context, mock_llm, mock_event_bus):
         """状态转换应发布事件"""
         from src.domain.agents.conversation_agent import (
             ConversationAgent,
@@ -453,6 +456,11 @@ class TestStateTransitionEvents:
         )
 
         agent.transition_to(ConversationAgentState.PROCESSING)
+
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+
+        await asyncio.sleep(0.01)  # Allow task to complete
 
         # 验证事件发布
         mock_event_bus.publish.assert_called()

@@ -255,6 +255,7 @@ class TestConversationAgentDecisionMaking:
         mock_llm.decide_action.return_value = {
             "action_type": "create_node",
             "node_type": "LLM",
+            "node_name": "数据分析节点",  # Added: required field
             "config": {"model": "gpt-4", "user_prompt": "分析数据"},
         }
 
@@ -266,6 +267,7 @@ class TestConversationAgentDecisionMaking:
         # Assert
         assert decision.type == DecisionType.CREATE_NODE
         assert decision.payload["node_type"] == "LLM"
+        assert decision.payload["node_name"] == "数据分析节点"  # Added: verify node_name
         assert decision.payload["config"]["model"] == "gpt-4"
 
     def test_decision_to_execute_workflow(self):
@@ -319,7 +321,12 @@ class TestConversationAgentDecisionMaking:
         session_ctx = SessionContext(session_id="session_abc", global_context=global_ctx)
 
         mock_llm = AsyncMock()
-        mock_llm.decide_action.return_value = {"action_type": "create_node", "node_type": "API"}
+        mock_llm.decide_action.return_value = {
+            "action_type": "create_node",
+            "node_type": "HTTP",  # Fixed: API -> HTTP (valid enum value)
+            "node_name": "API节点",  # Added: required field
+            "config": {"url": "https://api.example.com", "method": "GET"},  # Added: required field
+        }
 
         agent = ConversationAgent(session_context=session_ctx, llm=mock_llm)
 
