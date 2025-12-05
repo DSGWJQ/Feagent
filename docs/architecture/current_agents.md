@@ -1258,6 +1258,150 @@ for turn in conversation_turns:
    - 可以调用 PowerCompressor 生成摘要
    - 摘要可以存储到知识库或数据库
 
+#### MemoryCompressionHandler（自动压缩处理器）(Step 6)
+
+**功能概述：**
+`MemoryCompressionHandler` 订阅 `ShortTermSaturatedEvent`，自动执行压缩流程，无需手动触发。
+
+**核心组件** (`src/domain/services/memory_compression_handler.py`)
+
+```python
+from src.domain.services.memory_compression_handler import (
+    MemoryCompressionHandler,
+    BufferCompressor,
+    get_planning_context,
+)
+
+# 1. 创建处理器
+event_bus = EventBus()
+handler = MemoryCompressionHandler(
+    event_bus=event_bus,
+    keep_recent_turns=2,  # 保留最近 2 轮
+)
+
+# 2. 注册处理器（订阅饱和事件）
+handler.register()
+
+# 3. 注册会话
+handler.register_session(session_context)
+
+# 4. 正常对话 - 达到阈值时自动压缩
+for turn in conversation_turns:
+    session_context.update_token_usage(...)
+    session_context.add_turn(buffer)
+    # 当 usage_ratio >= 0.92 时，自动触发：
+    # - 冻结会话
+    # - 执行压缩
+    # - 回写摘要
+    # - 解冻会话
+    # - 重置饱和状态
+
+# 5. 获取规划上下文（包含压缩摘要）
+planning_ctx = get_planning_context(session_context)
+# {
+#     "session_id": "...",
+#     "previous_summary": "【核心目标】...",  # 压缩摘要
+#     "current_goal": "...",
+#     "token_usage": {...},
+#     "recent_turns": [...]
+# }
+```
+
+**BufferCompressor（缓冲区压缩器）：**
+- 分析对话内容，提取核心目标、关键决策、任务进展
+- 生成 StructuredDialogueSummary 八段结构摘要
+- 支持增量压缩（合并已有摘要和新对话）
+
+#### TokenGuardrail（Token 预算守卫）(Step 6)
+
+**功能概述：**
+`TokenGuardrail` 在规划前检查 token 预算，必要时先压缩上下文，确保有足够空间执行工作流。
+
+**核心组件** (`src/domain/services/token_guardrail.py`)
+
+```python
+from src.domain.services.token_guardrail import (
+    TokenGuardrail,
+    BudgetStatus,
+    WorkflowFeasibility,
+)
+
+# 1. 创建 Guardrail
+guardrail = TokenGuardrail(
+    pre_planning_threshold=0.85,  # 规划前压缩阈值
+    critical_threshold=0.95,       # 临界阈值
+    keep_recent_turns=2,
+)
+
+# 2. 检查预算状态
+status = guardrail.check_budget(session_context)
+# BudgetStatus.OK - 预算充足
+# BudgetStatus.COMPRESS_RECOMMENDED - 建议压缩
+# BudgetStatus.CRITICAL - 临界状态
+
+# 3. 规划前确保预算
+await guardrail.ensure_budget_for_planning(session_context)
+# 如果 usage_ratio >= 0.85，自动执行压缩
+
+# 4. 估算工作流 token 需求
+workflow_nodes = [
+    {"type": "llm", "estimated_tokens": 800},
+    {"type": "code", "estimated_tokens": 200},
+]
+estimated = guardrail.estimate_workflow_tokens(workflow_nodes)  # 1000
+
+# 5. 检查工作流可行性
+feasibility = guardrail.check_workflow_feasibility(session_context, workflow_nodes)
+# {
+#     "is_feasible": True,
+#     "needs_compression": False,
+#     "remaining_budget": 5000,
+#     "estimated_required": 1000,
+#     "message": "预算充足，可以执行工作流"
+# }
+
+# 6. 工作流准备（按需压缩）
+await guardrail.prepare_for_workflow(session_context, workflow_nodes)
+
+# 7. 获取预算报告
+report = guardrail.get_budget_report(session_context)
+# {
+#     "session_id": "...",
+#     "total_tokens": 7500,
+#     "usage_ratio": 0.75,
+#     "remaining_tokens": 2500,
+#     "status": "ok",
+#     "recommendation": None
+# }
+```
+
+**动态阈值：**
+```python
+# 根据模型上下文大小自动调整阈值
+guardrail = TokenGuardrail.for_model("gpt-4-128k", context_limit=128000)
+# 大上下文模型使用 pre_planning_threshold=0.90
+
+guardrail = TokenGuardrail.for_model("gpt-3.5", context_limit=4096)
+# 小上下文模型使用 pre_planning_threshold=0.75
+```
+
+**测试覆盖（Step 6）：**
+```bash
+# 记忆饱和测试
+pytest tests/unit/domain/services/test_memory_saturation.py -v
+# 23 tests passed ✅
+
+# Token Guardrail 测试
+pytest tests/unit/domain/services/test_token_guardrail.py -v
+# 21 tests passed ✅
+
+# 压缩一致性测试
+pytest tests/unit/domain/services/test_compression_planning_consistency.py -v
+# 16 tests passed ✅
+
+# Step 6 总计：60 个测试全部通过 ✅
+```
+
 ---
 
 ### 2.6 长期知识库治理 (Step 4)
@@ -3221,6 +3365,162 @@ Coordinator._handle_workflow_completed()
 
 ---
 
+## 5. 异常流程 (第五步实现)
+
+### 5.1 错误分类 (ErrorCategory)
+
+定义了细粒度的错误分类，用于精确识别问题类型：
+
+| 错误分类 | 值 | 描述 | 可重试 | 需用户干预 |
+|---------|-----|------|--------|-----------|
+| DATA_MISSING | `data_missing` | 数据缺失 | ❌ | ✅ |
+| NODE_CRASH | `node_crash` | 节点崩溃 | ❌ | ❌ |
+| API_FAILURE | `api_failure` | API调用失败 | ✅ | ❌ |
+| TIMEOUT | `timeout` | 超时 | ✅ | ❌ |
+| VALIDATION_ERROR | `validation` | 验证错误 | ❌ | ✅ |
+| DEPENDENCY_ERROR | `dependency` | 依赖错误 | ❌ | ❌ |
+| RESOURCE_EXHAUSTED | `resource` | 资源耗尽 | ❌ | ❌ |
+| RATE_LIMITED | `rate_limit` | 限流 | ✅ | ❌ |
+| PERMISSION_DENIED | `permission` | 权限不足 | ❌ | ✅ |
+| UNKNOWN | `unknown` | 未知错误 | ❌ | ✅ |
+
+### 5.2 恢复动作 (RecoveryAction)
+
+定义了错误发生后的恢复动作：
+
+| 恢复动作 | 值 | 描述 |
+|---------|-----|------|
+| RETRY | `retry` | 自动重试 |
+| RETRY_WITH_BACKOFF | `retry_backoff` | 指数退避重试 |
+| SKIP | `skip` | 跳过节点 |
+| REPLAN | `replan` | 重新规划 |
+| ASK_USER | `ask_user` | 询问用户 |
+| FALLBACK | `fallback` | 使用备选方案 |
+| ABORT | `abort` | 终止执行 |
+
+### 5.3 错误分类到恢复动作映射
+
+```python
+DEFAULT_RECOVERY_MAPPING = {
+    ErrorCategory.TIMEOUT: RecoveryAction.RETRY_WITH_BACKOFF,
+    ErrorCategory.API_FAILURE: RecoveryAction.RETRY,
+    ErrorCategory.RATE_LIMITED: RecoveryAction.RETRY_WITH_BACKOFF,
+    ErrorCategory.DATA_MISSING: RecoveryAction.ASK_USER,
+    ErrorCategory.VALIDATION_ERROR: RecoveryAction.ASK_USER,
+    ErrorCategory.DEPENDENCY_ERROR: RecoveryAction.REPLAN,
+    ErrorCategory.NODE_CRASH: RecoveryAction.SKIP,
+    ErrorCategory.RESOURCE_EXHAUSTED: RecoveryAction.ABORT,
+    ErrorCategory.PERMISSION_DENIED: RecoveryAction.ASK_USER,
+    ErrorCategory.UNKNOWN: RecoveryAction.ASK_USER,
+}
+```
+
+### 5.4 异常处理流程
+
+```
+节点执行失败
+    │
+    ▼
+ExceptionClassifier.classify(error)
+    │ 返回 ErrorCategory
+    ▼
+RecoveryStrategyMapper.get_recovery_action(category)
+    │ 返回 RecoveryAction
+    ▼
+┌─────────────────────────────────────────┐
+│           根据 RecoveryAction 执行       │
+├─────────────────────────────────────────┤
+│ RETRY/RETRY_WITH_BACKOFF                │
+│   ├─ 检查重试次数 < max_retries        │
+│   ├─ 计算退避延迟（如果需要）           │
+│   └─ 重新执行操作                       │
+├─────────────────────────────────────────┤
+│ SKIP                                    │
+│   └─ 跳过当前节点，继续执行             │
+├─────────────────────────────────────────┤
+│ REPLAN                                  │
+│   └─ 触发工作流重新规划                 │
+├─────────────────────────────────────────┤
+│ ASK_USER                                │
+│   ├─ 生成用户友好消息                   │
+│   ├─ 提供操作选项（重试/跳过/终止）    │
+│   └─ 等待用户决策                       │
+├─────────────────────────────────────────┤
+│ ABORT                                   │
+│   └─ 终止整个工作流执行                 │
+└─────────────────────────────────────────┘
+```
+
+### 5.5 用户友好消息示例
+
+```python
+USER_FRIENDLY_TEMPLATES = {
+    ErrorCategory.TIMEOUT: "操作超时：{details}。这可能是由于网络问题或服务繁忙导致的。",
+    ErrorCategory.DATA_MISSING: "缺少必要的数据：{details}。请提供所需信息后重试。",
+    ErrorCategory.API_FAILURE: "服务调用失败：{details}。外部服务可能暂时不可用。",
+    ErrorCategory.VALIDATION_ERROR: "数据格式错误：{details}。请检查输入数据的格式。",
+    ErrorCategory.NODE_CRASH: "处理过程中遇到错误，已跳过当前步骤继续执行。",
+}
+```
+
+### 5.6 对话记录示例：失败→解释→用户确认→重试
+
+```
+=== 执行阶段 ===
+[系统] 正在执行节点: 调用天气API...
+
+=== 错误发生 ===
+[系统] ❌ 节点执行失败
+       错误类型: TIMEOUT
+       原因: API call timed out after 30s
+
+=== 用户友好解释 ===
+[助手] 操作超时：调用天气API: API call timed out after 30s。
+       这可能是由于网络问题或服务繁忙导致的。
+
+       请选择如何处理：
+       [1] 重试 - 等待后重新尝试
+       [2] 跳过 - 跳过此步骤继续
+       [3] 终止 - 停止整个流程
+
+=== 用户决策 ===
+[用户] 选择: 1 (重试)
+
+=== 恢复执行 ===
+[系统] 等待 2 秒后重试...
+[系统] 正在重新执行节点: 调用天气API...
+[系统] ✅ 节点执行成功
+
+=== 恢复完成 ===
+[助手] 已成功获取天气数据，继续执行后续步骤。
+```
+
+### 5.7 核心组件
+
+| 组件 | 职责 | 位置 |
+|------|------|------|
+| `ErrorCategory` | 错误分类枚举 | `error_handling.py` |
+| `RecoveryAction` | 恢复动作枚举 | `error_handling.py` |
+| `ExceptionClassifier` | 异常分类器 | `error_handling.py` |
+| `RecoveryStrategyMapper` | 恢复策略映射 | `error_handling.py` |
+| `RecoveryExecutor` | 恢复执行器 | `error_handling.py` |
+| `BackoffCalculator` | 指数退避计算 | `error_handling.py` |
+| `UserFriendlyMessageGenerator` | 用户消息生成 | `error_handling.py` |
+| `ErrorDialogueManager` | 错误对话管理 | `error_handling.py` |
+| `ConversationAgent.format_error_for_user()` | 格式化错误 | `conversation_agent.py` |
+| `ConversationAgent.handle_user_error_decision()` | 处理用户决策 | `conversation_agent.py` |
+
+### 5.8 测试覆盖
+
+| 测试文件 | 测试数 | 状态 |
+|---------|-------|------|
+| `test_error_classification.py` | 24 | ✅ 全部通过 |
+| `test_error_recovery_strategy.py` | 27 | ✅ 全部通过 |
+| `test_conversation_error_handling.py` | 19 | ✅ 全部通过 |
+| **总计** | **70** | **✅ 100%** |
+
+---
+
 ## 6. 当前能力总结
 
 ### 6.1 已完成的能力
@@ -3234,6 +3534,7 @@ Coordinator._handle_workflow_completed()
 | Phase 5 | 知识库集成 | ✅ 完成 | ✅ |
 | Phase 8 | 决策执行桥接 | ✅ 完成 | ✅ |
 | **Phase 8.4** | **Payload校验/DAG校验/进度事件** | **✅ 完成** | **✅ 27/27 (100%)** |
+| **第五步** | **异常处理与重规划** | **✅ 完成** | **✅ 70/70 (100%)** |
 | Phase 11 | 执行结果标准化 | ✅ 完成 | ✅ |
 | Phase 12 | 失败处理策略 | ✅ 完成 | ✅ |
 | Phase 13 | 状态机 | ✅ 完成 | ✅ |
@@ -3954,3 +4255,761 @@ class SessionFlowMessage:
 4. **阶段 D：可插拔传输层**
    - FlowDispatcher 支持 SSE / WebSocket / gRPC Stream 多种输出；
    - 如未来引入消息队列，仅需将 FlowBroker 替换为 Kafka/Redis Stream 适配器。
+
+---
+
+## 11. 复杂分析任务运行手册（Runbook）
+
+> **目标**：为运维人员和开发者提供一份完整的操作指南，覆盖从需求采集到结果汇报的全流程，确保复杂分析任务的可靠执行。
+
+### 11.1 流程总览
+
+```mermaid
+flowchart TB
+    subgraph Phase1["阶段1: 需求采集"]
+        A1[用户输入] --> A2[意图分类]
+        A2 --> A3{复杂任务?}
+        A3 -->|是| A4[目标分解]
+        A3 -->|否| A5[简单响应]
+    end
+
+    subgraph Phase2["阶段2: 规划"]
+        B1[GoalDecomposition] --> B2[生成子目标栈]
+        B2 --> B3[Token预算检查]
+        B3 --> B4{需要压缩?}
+        B4 -->|是| B5[执行上下文压缩]
+        B4 -->|否| B6[生成工作流计划]
+        B5 --> B6
+    end
+
+    subgraph Phase3["阶段3: 委派"]
+        C1[DecisionMadeEvent] --> C2[Coordinator验证]
+        C2 --> C3{验证通过?}
+        C3 -->|是| C4[生成SubAgent]
+        C3 -->|否| C5[DecisionRejectedEvent]
+        C4 --> C6[任务分发]
+    end
+
+    subgraph Phase4["阶段4: 监控"]
+        D1[WorkflowExecutionStarted] --> D2[节点执行]
+        D2 --> D3[进度事件发布]
+        D3 --> D4[状态同步SSE]
+        D4 --> D5{全部完成?}
+        D5 -->|否| D2
+    end
+
+    subgraph Phase5["阶段5: 异常处理"]
+        E1[节点失败] --> E2[FailureStrategy评估]
+        E2 --> E3{策略}
+        E3 -->|RETRY| E4[重试执行]
+        E3 -->|SKIP| E5[跳过继续]
+        E3 -->|ABORT| E6[终止流程]
+        E3 -->|REPLAN| E7[重新规划]
+    end
+
+    subgraph Phase6["阶段6: 结果汇报"]
+        F1[收集子任务结果] --> F2[合并分析结果]
+        F2 --> F3[生成摘要报告]
+        F3 --> F4[推送最终响应]
+    end
+
+    A4 --> B1
+    B6 --> C1
+    C6 --> D1
+    D5 -->|是| F1
+    D2 -.->|失败| E1
+    E4 --> D2
+    E5 --> D2
+    E7 --> B1
+```
+
+### 11.2 阶段1：需求采集
+
+#### 11.2.1 操作流程
+
+| 步骤 | 执行者 | 动作 | 输出 |
+|------|--------|------|------|
+| 1.1 | 用户 | 提交分析请求 | 原始输入文本 |
+| 1.2 | ConversationAgent | 调用 `classify_intent()` | IntentClassification |
+| 1.3 | ConversationAgent | 判断意图类型 | COMPLEX_TASK / SIMPLE_QUERY |
+| 1.4 | ConversationAgent | 复杂任务进入目标分解 | Goal 对象 |
+
+#### 11.2.2 意图分类逻辑
+
+```python
+# 位置: conversation_agent.py
+async def classify_intent(self, user_input: str) -> IntentClassification:
+    """
+    分类规则：
+    - greeting: 问候语（你好、Hi、早上好等）
+    - simple_query: 单步可完成（查询、定义、解释）
+    - complex_task: 需要多步骤（分析、比较、生成报告）
+    - workflow_request: 明确要求工作流
+    """
+```
+
+#### 11.2.3 日志示例
+
+```json
+{
+  "timestamp": "2025-12-06T10:15:32.456Z",
+  "level": "INFO",
+  "logger": "ConversationAgent",
+  "event": "intent_classified",
+  "session_id": "sess_abc123",
+  "user_input": "分析过去一年的销售数据，找出增长最快的产品类别",
+  "intent": "complex_task",
+  "confidence": 0.92,
+  "keywords_detected": ["分析", "销售数据", "增长", "产品类别"]
+}
+```
+
+### 11.3 阶段2：规划
+
+#### 11.3.1 目标分解流程
+
+```mermaid
+flowchart LR
+    A[原始目标] --> B[push_goal]
+    B --> C[decompose_goal]
+    C --> D[子目标1]
+    C --> E[子目标2]
+    C --> F[子目标N]
+    D --> G[目标栈]
+    E --> G
+    F --> G
+    G --> H[逐个弹出执行]
+```
+
+#### 11.3.2 Token预算检查
+
+在生成工作流计划前，系统会自动检查上下文预算：
+
+```python
+# 位置: token_guardrail.py
+guardrail = TokenGuardrail(
+    pre_planning_threshold=0.85,  # 85%触发压缩建议
+    critical_threshold=0.95       # 95%强制压缩
+)
+
+status = guardrail.check_budget(session)
+if status == BudgetStatus.COMPRESS_RECOMMENDED:
+    await guardrail.ensure_budget_for_planning(session)
+```
+
+#### 11.3.3 工作流计划生成
+
+| 节点类型 | 用途 | 示例 |
+|----------|------|------|
+| DATA_COLLECTOR | 数据采集 | 查询数据库、调用API |
+| METRIC_CALCULATOR | 指标计算 | 统计、聚合、趋势分析 |
+| CHART_GENERATOR | 图表生成 | 柱状图、折线图、饼图 |
+| DATA_ANALYZER | 数据分析 | 归因分析、异常检测 |
+
+#### 11.3.4 日志示例
+
+```json
+{
+  "timestamp": "2025-12-06T10:15:33.123Z",
+  "level": "INFO",
+  "logger": "ConversationAgent",
+  "event": "workflow_plan_generated",
+  "session_id": "sess_abc123",
+  "goal_id": "goal_001",
+  "plan": {
+    "nodes": [
+      {"id": "n1", "type": "DATA_COLLECTOR", "config": {"source": "sales_db"}},
+      {"id": "n2", "type": "METRIC_CALCULATOR", "config": {"metrics": ["growth_rate"]}},
+      {"id": "n3", "type": "DATA_ANALYZER", "config": {"method": "top_k"}}
+    ],
+    "edges": [
+      {"from": "n1", "to": "n2"},
+      {"from": "n2", "to": "n3"}
+    ]
+  },
+  "estimated_tokens": 2500
+}
+```
+
+### 11.4 阶段3：委派
+
+#### 11.4.1 决策验证流程
+
+```mermaid
+sequenceDiagram
+    participant CA as ConversationAgent
+    participant EB as EventBus
+    participant CO as CoordinatorAgent
+    participant WA as WorkflowAgent
+
+    CA->>EB: DecisionMadeEvent
+    EB->>CO: 中间件拦截
+    CO->>CO: 规则验证
+    alt 验证通过
+        CO->>EB: DecisionValidatedEvent
+        EB->>WA: 接收执行指令
+        WA->>WA: 创建工作流实例
+    else 验证失败
+        CO->>EB: DecisionRejectedEvent
+        EB->>CA: 接收拒绝通知
+        CA->>CA: 重新规划或通知用户
+    end
+```
+
+#### 11.4.2 子Agent生成
+
+```python
+# 位置: coordinator_agent.py
+async def spawn_subagent(
+    self,
+    agent_type: str,
+    task_config: dict,
+    parent_context: SessionContext
+) -> SubAgentHandle:
+    """
+    生成子Agent处理特定任务
+
+    agent_type: data_collector | metric_calculator | analyzer
+    task_config: 任务配置（数据源、参数等）
+    parent_context: 父会话上下文（用于继承设置）
+    """
+```
+
+#### 11.4.3 委派规则验证
+
+| 规则ID | 规则名称 | 验证内容 | 失败动作 |
+|--------|----------|----------|----------|
+| R001 | 权限检查 | 用户是否有权执行此操作 | REJECT |
+| R002 | 资源限制 | 并发任务数是否超限 | QUEUE |
+| R003 | 数据访问 | 是否有权访问目标数据源 | REJECT |
+| R004 | Token预算 | 上下文是否足够 | COMPRESS |
+
+#### 11.4.4 日志示例
+
+```json
+{
+  "timestamp": "2025-12-06T10:15:34.567Z",
+  "level": "INFO",
+  "logger": "CoordinatorAgent",
+  "event": "decision_validated",
+  "session_id": "sess_abc123",
+  "decision_type": "execute_workflow",
+  "workflow_id": "wf_xyz789",
+  "validation_results": {
+    "R001": {"passed": true},
+    "R002": {"passed": true, "current_tasks": 3, "limit": 10},
+    "R003": {"passed": true, "data_sources": ["sales_db"]},
+    "R004": {"passed": true, "usage_ratio": 0.72}
+  }
+}
+```
+
+### 11.5 阶段4：监控
+
+#### 11.5.1 执行状态机
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: 工作流创建
+    PENDING --> RUNNING: 开始执行
+    RUNNING --> NODE_EXECUTING: 节点执行中
+    NODE_EXECUTING --> NODE_COMPLETED: 节点完成
+    NODE_EXECUTING --> NODE_FAILED: 节点失败
+    NODE_COMPLETED --> RUNNING: 继续下一节点
+    NODE_FAILED --> HANDLING_FAILURE: 异常处理
+    HANDLING_FAILURE --> RUNNING: 恢复执行
+    HANDLING_FAILURE --> FAILED: 终止
+    RUNNING --> SUCCEEDED: 全部完成
+    SUCCEEDED --> [*]
+    FAILED --> [*]
+```
+
+#### 11.5.2 监控指标
+
+| 指标名称 | 类型 | 描述 | 告警阈值 |
+|----------|------|------|----------|
+| `workflow.duration_ms` | Histogram | 工作流总耗时 | > 30000ms |
+| `node.execution_time_ms` | Histogram | 单节点耗时 | > 10000ms |
+| `workflow.failure_rate` | Counter | 失败率 | > 5% |
+| `context.usage_ratio` | Gauge | 上下文使用率 | > 90% |
+| `subagent.active_count` | Gauge | 活跃子Agent数 | > 20 |
+
+#### 11.5.3 SSE 实时推送
+
+```python
+# 位置: interfaces/api/routes/workflow_stream.py
+@router.get("/workflows/{workflow_id}/stream")
+async def stream_workflow_status(workflow_id: str):
+    async def event_generator():
+        async for event in workflow_monitor.subscribe(workflow_id):
+            yield {
+                "event": event.event_type,
+                "data": json.dumps({
+                    "node_id": event.node_id,
+                    "status": event.status,
+                    "progress": event.progress,
+                    "message": event.message
+                })
+            }
+    return EventSourceResponse(event_generator())
+```
+
+#### 11.5.4 日志示例
+
+```json
+{
+  "timestamp": "2025-12-06T10:15:40.234Z",
+  "level": "INFO",
+  "logger": "WorkflowAgent",
+  "event": "node_completed",
+  "session_id": "sess_abc123",
+  "workflow_id": "wf_xyz789",
+  "node_id": "n1",
+  "node_type": "DATA_COLLECTOR",
+  "duration_ms": 1523,
+  "output_summary": {
+    "records_fetched": 15420,
+    "date_range": "2024-01-01 to 2024-12-31"
+  },
+  "progress": {
+    "completed": 1,
+    "total": 3,
+    "percentage": 33.3
+  }
+}
+```
+
+### 11.6 阶段5：异常处理
+
+#### 11.6.1 失败策略决策树
+
+```mermaid
+flowchart TB
+    A[节点执行失败] --> B{错误类型}
+    B -->|TRANSIENT| C[临时错误]
+    B -->|PERMANENT| D[永久错误]
+    B -->|RESOURCE| E[资源不足]
+
+    C --> F{重试次数}
+    F -->|< max_retries| G[RETRY]
+    F -->|>= max_retries| H[SKIP/ABORT]
+
+    D --> I{节点重要性}
+    I -->|CRITICAL| J[ABORT]
+    I -->|OPTIONAL| K[SKIP]
+
+    E --> L{可压缩?}
+    L -->|是| M[压缩后RETRY]
+    L -->|否| N[REPLAN]
+
+    G --> O[等待退避后重试]
+    K --> P[标记跳过继续]
+    J --> Q[终止工作流]
+    M --> O
+    N --> R[重新生成计划]
+```
+
+#### 11.6.2 错误分类与处理策略
+
+| 错误类型 | 示例 | 默认策略 | 退避时间 |
+|----------|------|----------|----------|
+| `NETWORK_TIMEOUT` | API 调用超时 | RETRY(3) | 指数退避 1s→2s→4s |
+| `RATE_LIMIT` | 触发限流 | RETRY(5) | 固定 60s |
+| `AUTH_EXPIRED` | Token 过期 | REFRESH_AND_RETRY | 无 |
+| `DATA_NOT_FOUND` | 数据不存在 | SKIP | 无 |
+| `INVALID_CONFIG` | 配置错误 | ABORT | 无 |
+| `CONTEXT_OVERFLOW` | 上下文溢出 | COMPRESS_AND_RETRY | 无 |
+
+#### 11.6.3 异常处理代码示例
+
+```python
+# 位置: coordinator_agent.py
+async def handle_node_failure(
+    self,
+    workflow_id: str,
+    node_id: str,
+    error: Exception
+) -> FailureAction:
+    """异常处理主入口"""
+
+    # 1. 分类错误
+    error_type = self._classify_error(error)
+
+    # 2. 获取节点配置
+    node_config = await self._get_node_config(workflow_id, node_id)
+
+    # 3. 评估策略
+    strategy = self._evaluate_strategy(error_type, node_config)
+
+    # 4. 执行策略
+    match strategy:
+        case FailureStrategy.RETRY:
+            return await self._execute_retry(workflow_id, node_id)
+        case FailureStrategy.SKIP:
+            return await self._execute_skip(workflow_id, node_id)
+        case FailureStrategy.ABORT:
+            return await self._execute_abort(workflow_id, error)
+        case FailureStrategy.REPLAN:
+            return await self._execute_replan(workflow_id, error)
+```
+
+#### 11.6.4 日志示例
+
+```json
+{
+  "timestamp": "2025-12-06T10:15:45.789Z",
+  "level": "WARN",
+  "logger": "CoordinatorAgent",
+  "event": "node_failure_handled",
+  "session_id": "sess_abc123",
+  "workflow_id": "wf_xyz789",
+  "node_id": "n2",
+  "error": {
+    "type": "NETWORK_TIMEOUT",
+    "message": "Connection to metrics API timed out after 10s",
+    "original_exception": "asyncio.TimeoutError"
+  },
+  "strategy": "RETRY",
+  "retry_count": 1,
+  "max_retries": 3,
+  "next_retry_at": "2025-12-06T10:15:47.789Z",
+  "backoff_seconds": 2
+}
+```
+
+### 11.7 阶段6：结果汇报
+
+#### 11.7.1 结果聚合流程
+
+```mermaid
+flowchart LR
+    subgraph 子任务结果
+        R1[DataCollector结果]
+        R2[MetricCalculator结果]
+        R3[Analyzer结果]
+    end
+
+    R1 --> M[ResultMerger]
+    R2 --> M
+    R3 --> M
+
+    M --> S[SummaryGenerator]
+    S --> F[格式化输出]
+    F --> U[用户响应]
+
+    subgraph 输出格式
+        F --> F1[文本摘要]
+        F --> F2[数据表格]
+        F --> F3[图表URL]
+        F --> F4[下载链接]
+    end
+```
+
+#### 11.7.2 结果数据结构
+
+```python
+@dataclass
+class WorkflowResult:
+    workflow_id: str
+    status: WorkflowStatus
+    started_at: datetime
+    completed_at: datetime
+    duration_ms: int
+
+    # 节点结果
+    node_results: list[NodeResult]
+
+    # 聚合摘要
+    summary: str
+    key_findings: list[str]
+
+    # 数据产出
+    data_artifacts: list[DataArtifact]
+    chart_urls: list[str]
+
+    # 元数据
+    token_usage: dict
+    cost_estimate: float
+```
+
+#### 11.7.3 摘要生成模板
+
+```python
+# 位置: conversation_agent.py
+SUMMARY_TEMPLATE = """
+## 分析结果摘要
+
+### 任务概述
+- **原始需求**：{original_request}
+- **执行时间**：{duration}
+- **处理数据量**：{data_volume}
+
+### 关键发现
+{key_findings}
+
+### 详细结果
+{detailed_results}
+
+### 建议下一步
+{recommendations}
+"""
+```
+
+#### 11.7.4 日志示例
+
+```json
+{
+  "timestamp": "2025-12-06T10:16:15.456Z",
+  "level": "INFO",
+  "logger": "ConversationAgent",
+  "event": "workflow_completed",
+  "session_id": "sess_abc123",
+  "workflow_id": "wf_xyz789",
+  "result": {
+    "status": "SUCCEEDED",
+    "duration_ms": 42567,
+    "nodes_executed": 3,
+    "nodes_succeeded": 3,
+    "summary": "过去一年销售数据分析完成，发现电子产品类别增长最快...",
+    "key_findings": [
+      "电子产品类别同比增长 45%",
+      "Q4 销售额占全年 38%",
+      "TOP3 产品贡献了 62% 的增长"
+    ],
+    "artifacts": [
+      {"type": "table", "name": "growth_by_category.csv"},
+      {"type": "chart", "name": "quarterly_trend.png"}
+    ]
+  },
+  "token_usage": {
+    "input_tokens": 3420,
+    "output_tokens": 1256,
+    "total_tokens": 4676
+  }
+}
+```
+
+### 11.8 运维操作手册
+
+#### 11.8.1 常见问题排查
+
+| 症状 | 可能原因 | 排查步骤 | 解决方案 |
+|------|----------|----------|----------|
+| 工作流卡在 PENDING | EventBus 未正确订阅 | 检查 Coordinator 启动日志 | 重启 Coordinator |
+| 节点反复重试失败 | 下游服务不可用 | 检查外部 API 状态 | 切换备用数据源 |
+| 上下文溢出 | 对话过长未压缩 | 检查 `usage_ratio` 指标 | 手动触发压缩 |
+| 子Agent 泄漏 | 任务完成未清理 | 检查 `subagent.active_count` | 调用 cleanup API |
+| SSE 断开 | 网络不稳定 | 检查客户端重连逻辑 | 实现断线重连 |
+
+#### 11.8.2 手动干预命令
+
+```bash
+# 查看活跃工作流
+curl http://localhost:8000/api/v1/workflows?status=RUNNING
+
+# 强制终止工作流
+curl -X POST http://localhost:8000/api/v1/workflows/{workflow_id}/abort
+
+# 手动触发上下文压缩
+curl -X POST http://localhost:8000/api/v1/sessions/{session_id}/compress
+
+# 查看子Agent状态
+curl http://localhost:8000/api/v1/coordinator/subagents
+
+# 清理僵尸子Agent
+curl -X POST http://localhost:8000/api/v1/coordinator/cleanup
+```
+
+#### 11.8.3 健康检查清单
+
+```yaml
+# 每日检查项
+daily_checks:
+  - name: "API 可用性"
+    command: "curl -s http://localhost:8000/health"
+    expected: '{"status": "healthy"}'
+
+  - name: "数据库连接"
+    command: "curl -s http://localhost:8000/health/db"
+    expected: '{"connected": true}'
+
+  - name: "EventBus 状态"
+    command: "curl -s http://localhost:8000/health/eventbus"
+    expected: '{"subscribers": ">0"}'
+
+  - name: "Token 使用率"
+    command: "curl -s http://localhost:8000/metrics | grep context_usage"
+    alert_threshold: 0.9
+
+# 每周检查项
+weekly_checks:
+  - name: "工作流成功率"
+    query: "SELECT success_rate FROM workflow_stats WHERE period='7d'"
+    alert_threshold: 0.95
+
+  - name: "平均执行时间"
+    query: "SELECT avg_duration_ms FROM workflow_stats WHERE period='7d'"
+    alert_threshold: 30000
+```
+
+### 11.9 真实案例：销售数据分析
+
+#### 11.9.1 用户请求
+
+```
+用户：分析过去一年的销售数据，找出增长最快的产品类别，并生成季度趋势图
+```
+
+#### 11.9.2 完整执行日志
+
+```
+[10:15:32.456] INFO  ConversationAgent  intent_classified
+    session_id=sess_abc123
+    intent=complex_task
+    confidence=0.92
+
+[10:15:32.789] INFO  ConversationAgent  goal_pushed
+    goal_id=goal_001
+    description="分析销售数据并生成报告"
+
+[10:15:33.012] INFO  TokenGuardrail  budget_checked
+    session_id=sess_abc123
+    usage_ratio=0.45
+    status=OK
+
+[10:15:33.456] INFO  ConversationAgent  workflow_plan_generated
+    nodes=[DATA_COLLECTOR, METRIC_CALCULATOR, CHART_GENERATOR, DATA_ANALYZER]
+    estimated_duration_ms=35000
+
+[10:15:33.789] INFO  EventBus  event_published
+    event_type=DecisionMadeEvent
+    decision_type=execute_workflow
+
+[10:15:34.012] INFO  CoordinatorAgent  decision_validating
+    workflow_id=wf_xyz789
+    rules_checked=[R001, R002, R003, R004]
+
+[10:15:34.234] INFO  CoordinatorAgent  decision_validated
+    all_rules_passed=true
+
+[10:15:34.567] INFO  WorkflowAgent  workflow_started
+    workflow_id=wf_xyz789
+    total_nodes=4
+
+[10:15:35.123] INFO  WorkflowAgent  node_executing
+    node_id=n1
+    node_type=DATA_COLLECTOR
+
+[10:15:40.234] INFO  WorkflowAgent  node_completed
+    node_id=n1
+    duration_ms=5111
+    records_fetched=15420
+
+[10:15:40.567] INFO  WorkflowAgent  node_executing
+    node_id=n2
+    node_type=METRIC_CALCULATOR
+
+[10:15:48.789] INFO  WorkflowAgent  node_completed
+    node_id=n2
+    duration_ms=8222
+    metrics_calculated=["growth_rate", "market_share"]
+
+[10:15:49.012] INFO  WorkflowAgent  node_executing
+    node_id=n3
+    node_type=CHART_GENERATOR
+
+[10:15:55.234] INFO  WorkflowAgent  node_completed
+    node_id=n3
+    duration_ms=6222
+    chart_url="/artifacts/quarterly_trend_wf_xyz789.png"
+
+[10:15:55.567] INFO  WorkflowAgent  node_executing
+    node_id=n4
+    node_type=DATA_ANALYZER
+
+[10:16:10.789] INFO  WorkflowAgent  node_completed
+    node_id=n4
+    duration_ms=15222
+    findings_count=5
+
+[10:16:11.012] INFO  WorkflowAgent  workflow_completed
+    workflow_id=wf_xyz789
+    status=SUCCEEDED
+    total_duration_ms=36445
+
+[10:16:15.456] INFO  ConversationAgent  response_generated
+    session_id=sess_abc123
+    summary_length=1256
+    artifacts_count=2
+```
+
+#### 11.9.3 最终用户响应
+
+```markdown
+## 销售数据分析报告
+
+### 执行概述
+- 分析时间范围：2024-01-01 至 2024-12-31
+- 处理数据量：15,420 条销售记录
+- 执行耗时：36.4 秒
+
+### 关键发现
+
+1. **增长最快类别**：电子产品（同比增长 45%）
+2. **季度分布**：Q4 销售额占全年 38%，为最高季度
+3. **头部效应**：TOP 3 产品贡献了整体增长的 62%
+
+### 季度趋势图
+
+![季度销售趋势](/artifacts/quarterly_trend_wf_xyz789.png)
+
+### 详细数据
+
+| 产品类别 | 年销售额 | 同比增长 | 市场份额 |
+|----------|----------|----------|----------|
+| 电子产品 | ¥12.5M | +45% | 28% |
+| 家居用品 | ¥8.2M | +22% | 18% |
+| 服装 | ¥7.8M | +15% | 17% |
+
+### 建议
+- 加大电子产品库存备货
+- Q4 前提前布局营销活动
+- 关注头部产品供应链稳定性
+```
+
+### 11.10 测试覆盖
+
+本 Runbook 所涉及的功能已通过以下测试验证：
+
+| 测试文件 | 测试数量 | 覆盖内容 |
+|----------|----------|----------|
+| `test_conversation_agent.py` | 45 | 意图分类、目标分解、ReAct循环 |
+| `test_coordinator_agent.py` | 38 | 规则验证、子Agent管理、失败处理 |
+| `test_workflow_agent.py` | 32 | 节点执行、状态机、进度事件 |
+| `test_memory_saturation.py` | 23 | 饱和事件、自动压缩 |
+| `test_token_guardrail.py` | 21 | 预算检查、工作流可行性 |
+| `test_exception_handling.py` | 18 | 错误分类、重试策略 |
+
+**总计：177 个测试，覆盖率 > 85%**
+
+---
+
+## 12. 附录
+
+### 12.1 术语表
+
+| 术语 | 定义 |
+|------|------|
+| ReAct | Reasoning + Acting，推理与行动交替的Agent执行模式 |
+| SubAgent | 由Coordinator生成的子Agent，处理特定任务 |
+| DAG | Directed Acyclic Graph，有向无环图，工作流拓扑结构 |
+| SSE | Server-Sent Events，服务端推送事件 |
+| Token Guardrail | Token预算守卫，防止上下文溢出 |
+| FailureStrategy | 失败处理策略（RETRY/SKIP/ABORT/REPLAN） |
+
+### 12.2 相关文档链接
+
+- [多Agent协作架构指南](./multi_agent_collaboration_guide.md)
+- [运维指南](./operations_guide.md)
+- [API文档](../api/README.md)
+- [测试指南](../../tests/README.md)
