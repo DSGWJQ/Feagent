@@ -1,0 +1,38 @@
+# API 节点 - HTTP API 调用
+name: api
+kind: node
+description: HTTP API 调用节点，支持 RESTful 请求
+version: "1.0.0"
+
+parameters:
+  - name: method
+    type: string
+    description: HTTP 方法
+    required: false
+    default: "GET"
+    enum: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+  - name: url
+    type: string
+    description: 请求 URL
+    required: true
+  - name: headers
+    type: object
+    description: 请求头
+    required: false
+    default: {}
+  - name: body
+    type: object
+    description: 请求体
+    required: false
+
+returns:
+  type: object
+  properties:
+    status:
+      type: integer
+      description: HTTP 状态码
+    data:
+      type: object
+      description: 响应数据
+
+executor_type: api

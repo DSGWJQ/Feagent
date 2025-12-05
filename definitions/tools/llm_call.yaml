@@ -1,0 +1,53 @@
+# LLM Call 工具 - 统一格式
+name: llm_call
+kind: tool
+description: LLM 调用工具，支持多种大语言模型提供商
+version: "1.0.0"
+category: ai
+
+parameters:
+  - name: provider
+    type: string
+    description: LLM 提供商
+    required: true
+    enum: ["openai", "anthropic", "google", "azure"]
+  - name: model
+    type: string
+    description: 模型名称
+    required: true
+  - name: messages
+    type: array
+    description: 消息列表
+    required: true
+  - name: temperature
+    type: number
+    description: 温度参数
+    required: false
+    default: 0.7
+    constraints:
+      min: 0.0
+      max: 2.0
+  - name: max_tokens
+    type: integer
+    description: 最大输出 token 数
+    required: false
+    default: 1000
+    constraints:
+      min: 1
+      max: 128000
+
+returns:
+  type: object
+  properties:
+    content:
+      type: string
+      description: 生成的内容
+    usage:
+      type: object
+      description: token 使用统计
+
+executor_type: llm
+tags:
+  - ai
+  - llm
+  - chat

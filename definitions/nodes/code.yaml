@@ -1,0 +1,39 @@
+# Code 节点 - 代码执行
+name: code
+kind: node
+description: 代码执行节点，支持 Python 和 JavaScript
+version: "1.0.0"
+
+parameters:
+  - name: language
+    type: string
+    description: 编程语言
+    required: false
+    default: "python"
+    enum: ["python", "javascript"]
+  - name: code
+    type: string
+    description: 要执行的代码
+    required: true
+  - name: inputs
+    type: array
+    description: 输入变量名列表
+    required: false
+    default: []
+  - name: outputs
+    type: array
+    description: 输出变量名列表
+    required: false
+    default: []
+
+returns:
+  type: object
+  properties:
+    result:
+      type: object
+      description: 执行结果
+    stdout:
+      type: string
+      description: 标准输出
+
+executor_type: code

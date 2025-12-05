@@ -1,0 +1,54 @@
+# HTTP Request 工具 - 统一格式
+name: http_request
+kind: tool
+description: HTTP 请求工具，支持各种 HTTP 方法
+version: "1.0.0"
+category: http
+
+parameters:
+  - name: url
+    type: string
+    description: 请求 URL
+    required: true
+  - name: method
+    type: string
+    description: HTTP 方法
+    required: true
+    default: "GET"
+    enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+  - name: headers
+    type: object
+    description: 请求头
+    required: false
+    default: {}
+  - name: body
+    type: object
+    description: 请求体 (用于 POST/PUT/PATCH)
+    required: false
+  - name: timeout
+    type: number
+    description: 超时时间（秒）
+    required: false
+    default: 30
+    constraints:
+      min: 1
+      max: 300
+
+returns:
+  type: object
+  properties:
+    status_code:
+      type: integer
+      description: HTTP 状态码
+    headers:
+      type: object
+      description: 响应头
+    body:
+      type: object
+      description: 响应体
+
+executor_type: http
+tags:
+  - http
+  - api
+  - network

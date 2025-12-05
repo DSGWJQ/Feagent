@@ -1,0 +1,44 @@
+# LLM 节点 - 大语言模型调用
+name: llm
+kind: node
+description: 大语言模型调用节点，支持多种 LLM 提供商
+version: "1.0.0"
+
+parameters:
+  - name: model
+    type: string
+    description: 模型名称
+    required: false
+    default: "gpt-4"
+  - name: temperature
+    type: number
+    description: 温度参数，控制输出随机性
+    required: false
+    default: 0.7
+    constraints:
+      min: 0.0
+      max: 2.0
+  - name: max_tokens
+    type: integer
+    description: 最大输出 token 数
+    required: false
+  - name: system_prompt
+    type: string
+    description: 系统提示词
+    required: false
+  - name: user_prompt
+    type: string
+    description: 用户提示词
+    required: true
+
+returns:
+  type: object
+  properties:
+    content:
+      type: string
+      description: LLM 生成的内容
+    tokens_used:
+      type: integer
+      description: 使用的 token 数量
+
+executor_type: llm
