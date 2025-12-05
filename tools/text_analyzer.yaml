@@ -1,0 +1,92 @@
+# 文本分析工具配置
+# 使用 Python 模块进行文本分析
+
+name: text_analyzer
+description: |
+  对输入文本进行多维度分析。
+  包括字数统计、关键词提取、情感分析等功能。
+  使用 Python 模块实现，可扩展更多分析能力。
+category: ai
+version: "1.0.0"
+author: system
+tags:
+  - text
+  - analysis
+  - nlp
+  - python
+icon: "📊"
+shareable_scope: team
+
+entry:
+  type: python
+  module: tools.text_analyzer
+  function: analyze_text
+
+parameters:
+  - name: text
+    type: string
+    description: 要分析的文本内容
+    required: true
+
+  - name: language
+    type: string
+    description: 文本语言
+    required: false
+    default: "auto"
+    enum:
+      - auto
+      - zh
+      - en
+      - ja
+
+  - name: features
+    type: array
+    description: |
+      要执行的分析功能列表。
+      可选值: word_count, char_count, keywords, sentiment, summary
+    required: false
+    default:
+      - word_count
+      - char_count
+
+  - name: keyword_count
+    type: number
+    description: 提取的关键词数量
+    required: false
+    default: 10
+
+returns:
+  word_count:
+    type: number
+    description: 词数
+  char_count:
+    type: number
+    description: 字符数（不含空格）
+  char_count_with_spaces:
+    type: number
+    description: 字符数（含空格）
+  line_count:
+    type: number
+    description: 行数
+  paragraph_count:
+    type: number
+    description: 段落数
+  keywords:
+    type: array
+    description: 提取的关键词列表
+  sentiment:
+    type: object
+    description: 情感分析结果
+    properties:
+      score:
+        type: number
+        description: 情感得分（-1 到 1）
+      label:
+        type: string
+        description: 情感标签（positive/negative/neutral）
+  summary:
+    type: string
+    description: 文本摘要
+  language:
+    type: string
+    description: 检测到的语言

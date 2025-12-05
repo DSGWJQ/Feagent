@@ -1,0 +1,100 @@
+# JSON 转换工具配置
+# 使用 JavaScript 代码处理 JSON 数据
+
+name: json_transformer
+description: |
+  使用 JavaScript 代码转换 JSON 数据。
+  支持 JSONPath 查询、数据映射、过滤等操作。
+  适合数据预处理和格式转换场景。
+category: custom
+version: "1.0.0"
+author: community
+tags:
+  - json
+  - transform
+  - javascript
+  - data
+icon: "🔄"
+shareable_scope: public
+
+entry:
+  type: javascript
+  code: |
+    /**
+     * JSON 数据转换函数
+     * @param {Object} input - 输入对象
+     * @param {Object} input.data - 要转换的 JSON 数据
+     * @param {string} input.path - JSONPath 表达式（可选）
+     * @param {Object} input.mapping - 字段映射规则（可选）
+     * @returns {Object} 转换后的数据
+     */
+    function execute(input) {
+      const { data, path, mapping } = input;
+      let result = data;
+
+      // 如果指定了路径，提取子数据
+      if (path) {
+        result = extractByPath(result, path);
+      }
+
+      // 如果指定了映射规则，执行映射
+      if (mapping && typeof mapping === 'object') {
+        result = applyMapping(result, mapping);
+      }
+
+      return { result, success: true };
+    }
+
+    function extractByPath(obj, path) {
+      const keys = path.replace(/^\$\.?/, '').split('.');
+      return keys.reduce((acc, key) => {
+        if (acc && key) {
+          // 支持数组索引 [0]
+          const match = key.match(/^(\w+)\[(\d+)\]$/);
+          if (match) {
+            return acc[match[1]]?.[parseInt(match[2])];
+          }
+          return acc[key];
+        }
+        return acc;
+      }, obj);
+    }
+
+    function applyMapping(data, mapping) {
+      if (Array.isArray(data)) {
+        return data.map(item => applyMapping(item, mapping));
+      }
+      const result = {};
+      for (const [newKey, sourcePath] of Object.entries(mapping)) {
+        result[newKey] = extractByPath(data, sourcePath);
+      }
+      return result;
+    }
+
+parameters:
+  - name: data
+    type: object
+    description: 要转换的 JSON 数据
+    required: true
+
+  - name: path
+    type: string
+    description: |
+      JSONPath 表达式，用于提取子数据。
+      示例: "$.users[0].name" 或 "items"
+    required: false
+
+  - name: mapping
+    type: object
+    description: |
+      字段映射规则，键为新字段名，值为源路径。
+      示例: {"userName": "name", "userAge": "profile.age"}
+    required: false
+
+returns:
+  result:
+    type: any
+    description: 转换后的数据
+  success:
+    type: boolean
+    description: 是否转换成功

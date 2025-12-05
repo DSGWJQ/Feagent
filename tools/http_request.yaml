@@ -1,0 +1,78 @@
+# HTTP 请求工具配置
+# 用于发送 HTTP 请求获取数据
+
+name: http_request
+description: |
+  发送 HTTP 请求获取数据。
+  支持 GET、POST、PUT、DELETE 等方法。
+  可配置请求头、请求体和超时时间。
+category: http
+version: "1.0.0"
+author: system
+tags:
+  - http
+  - network
+  - api
+  - request
+icon: "🌐"
+shareable_scope: public
+
+entry:
+  type: builtin
+  handler: http_request
+
+parameters:
+  - name: url
+    type: string
+    description: 请求的目标 URL，必须是完整的 HTTP/HTTPS 地址
+    required: true
+
+  - name: method
+    type: string
+    description: HTTP 请求方法
+    required: true
+    enum:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - PATCH
+      - HEAD
+      - OPTIONS
+
+  - name: headers
+    type: object
+    description: 请求头，键值对形式
+    required: false
+    default: {}
+
+  - name: body
+    type: object
+    description: 请求体（仅 POST/PUT/PATCH 有效）
+    required: false
+
+  - name: timeout
+    type: number
+    description: 请求超时时间（秒）
+    required: false
+    default: 30
+
+  - name: follow_redirects
+    type: boolean
+    description: 是否自动跟随重定向
+    required: false
+    default: true
+
+returns:
+  status_code:
+    type: number
+    description: HTTP 响应状态码
+  headers:
+    type: object
+    description: 响应头
+  body:
+    type: any
+    description: 响应体（JSON 自动解析，否则为文本）
+  elapsed:
+    type: number
+    description: 请求耗时（毫秒）

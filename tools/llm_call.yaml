@@ -1,0 +1,93 @@
+# LLM 调用工具配置
+# 用于调用大语言模型处理文本
+
+name: llm_call
+description: |
+  调用大语言模型进行文本生成。
+  支持多种 LLM 提供商（OpenAI、DeepSeek、Qwen 等）。
+  可配置模型参数如温度、最大 Token 数等。
+category: ai
+version: "1.0.0"
+author: system
+tags:
+  - ai
+  - llm
+  - chat
+  - text-generation
+icon: "🤖"
+shareable_scope: public
+
+entry:
+  type: builtin
+  handler: llm_call
+
+parameters:
+  - name: provider
+    type: string
+    description: LLM 提供商
+    required: true
+    enum:
+      - openai
+      - deepseek
+      - qwen
+      - anthropic
+      - ollama
+
+  - name: model
+    type: string
+    description: 模型名称（如 gpt-4、deepseek-chat）
+    required: true
+
+  - name: messages
+    type: array
+    description: |
+      对话消息列表。每条消息包含 role（system/user/assistant）和 content 字段。
+      示例: [{"role": "user", "content": "Hello!"}]
+    required: true
+
+  - name: temperature
+    type: number
+    description: 生成温度（0-2），越高越随机
+    required: false
+    default: 0.7
+
+  - name: max_tokens
+    type: number
+    description: 最大生成 Token 数
+    required: false
+    default: 1000
+
+  - name: top_p
+    type: number
+    description: 核采样概率（0-1）
+    required: false
+    default: 1.0
+
+  - name: stop
+    type: array
+    description: 停止生成的标记列表
+    required: false
+
+returns:
+  content:
+    type: string
+    description: 生成的文本内容
+  usage:
+    type: object
+    description: Token 使用统计
+    properties:
+      prompt_tokens:
+        type: number
+        description: 输入 Token 数
+      completion_tokens:
+        type: number
+        description: 输出 Token 数
+      total_tokens:
+        type: number
+        description: 总 Token 数
+  model:
+    type: string
+    description: 实际使用的模型名称
+  finish_reason:
+    type: string
+    description: 生成结束原因（stop/length/content_filter）

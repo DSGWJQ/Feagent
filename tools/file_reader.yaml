@@ -1,0 +1,69 @@
+# 文件读取工具配置
+# 用于读取本地或远程文件内容
+
+name: file_reader
+description: |
+  读取文件内容。
+  支持文本文件的读取，可指定编码格式。
+  可选择读取全部或指定行范围。
+category: file
+version: "1.0.0"
+author: system
+tags:
+  - file
+  - read
+  - text
+icon: "📄"
+shareable_scope: team
+
+entry:
+  type: builtin
+  handler: file_reader
+
+parameters:
+  - name: path
+    type: string
+    description: 文件路径（相对于工作目录或绝对路径）
+    required: true
+
+  - name: encoding
+    type: string
+    description: 文件编码
+    required: false
+    default: "utf-8"
+    enum:
+      - utf-8
+      - gbk
+      - gb2312
+      - ascii
+      - latin-1
+
+  - name: start_line
+    type: number
+    description: 起始行号（从 1 开始，可选）
+    required: false
+
+  - name: end_line
+    type: number
+    description: 结束行号（包含，可选）
+    required: false
+
+  - name: max_size
+    type: number
+    description: 最大读取字节数，防止读取超大文件
+    required: false
+    default: 1048576  # 1MB
+
+returns:
+  content:
+    type: string
+    description: 文件内容
+  size:
+    type: number
+    description: 文件大小（字节）
+  line_count:
+    type: number
+    description: 总行数
+  encoding:
+    type: string
+    description: 使用的编码格式
