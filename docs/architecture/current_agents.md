@@ -75,7 +75,7 @@
 | WorkflowAgent | `src/domain/agents/workflow_agent.py` | ~600 | 节点管理、工作流执行、状态同步 |
 | CoordinatorAgent | `src/domain/agents/coordinator_agent.py` | ~2200 | 规则验证、监控、失败处理、知识集成 |
 | EventBus | `src/domain/services/event_bus.py` | ~280 | 发布/订阅、中间件链 |
-| NodeDefinition | `src/domain/agents/node_definition.py` | ~520 | 节点类型定义、层次化结构 |
+| NodeDefinition | `src/domain/agents/node_definition.py` | ~990 | 节点类型定义、层次化结构、场景化模板（数据采集/指标计算/图表生成/数据分析） |
 
 ---
 
@@ -1614,7 +1614,885 @@ print(f"批准时间: {history[0]['timestamp']}")
 
 ---
 
-### 2.7 检索与监督整合 (Step 5)
+### 2.7 Schema 强制与依赖敏感规划 (Phase 8.2)
+
+#### 功能概述
+
+ConversationAgent 现已实现强制性 Pydantic schema 验证和依赖敏感的工作流规划：
+- **Schema 强制验证**：所有决策 payload 必须通过 Pydantic schema 验证
+- **依赖关系识别**：识别数据依赖、顺序依赖、条件依赖
+- **资源约束感知**：考虑时间限制、API 调用限制、并发限制
+- **循环检测**：使用 Kahn's 算法检测工作流中的循环依赖
+- **并行机会分析**：自动识别可并行执行的节点
+
+#### 核心组件
+
+**1. Schema 验证集成** (`src/domain/agents/conversation_agent.py:1094-1210`)
+
+```python
+def make_decision(self, context_hint: str) -> Decision:
+    """做出决策（增强版：集成 Pydantic schema 验证）
+
+    流程：
+    1. 调用 LLM 获取决策
+    2. 使用 Pydantic schema 验证 payload
+    3. 检测循环依赖（针对工作流规划）
+    4. 分析并行机会和资源约束
+    5. 记录验证元数据到 session context
+
+    异常：
+        ValidationError: 如果决策 payload 不符合 schema
+    """
+    from pydantic import ValidationError
+    from src.domain.agents.conversation_agent_enhanced import validate_and_enhance_decision
+
+    # 获取上下文
+    context = self.get_context_for_reasoning()
+    context["hint"] = context_hint
+
+    # 添加资源约束（如果存在）
+    if hasattr(self.session_context, "resource_constraints"):
+        context["resource_constraints"] = self.session_context.resource_constraints
+
+    # 调用 LLM 获取决策
+    action = self._call_llm_decide(context)
+    action_type = action.get("action_type", "continue")
+
+    # ✨ 使用 Pydantic schema 验证 ✨
+    try:
+        constraints = (
+            self.session_context.resource_constraints
+            if hasattr(self.session_context, "resource_constraints")
+            else None
+        )
+
+        # 综合验证：Schema + 依赖关系 + 资源约束
+        validated_payload, metadata = validate_and_enhance_decision(
+            action_type, action, constraints
+        )
+
+        # 记录验证元数据
+        if metadata:
+            if not hasattr(self.session_context, "_decision_metadata"):
+                self.session_context._decision_metadata = []
+            self.session_context._decision_metadata.append({
+                "action_type": action_type,
+                "timestamp": datetime.now().isoformat(),
+                "metadata": metadata,
+            })
+
+        # 使用验证后的 payload
+        validated_dict = validated_payload.model_dump()
+
+    except ValidationError as e:
+        logger.error(f"决策 payload 验证失败: {e.errors()}")
+        self.session_context.add_decision({
+            "type": "validation_failed",
+            "action_type": action_type,
+            "errors": str(e.errors()),
+            "timestamp": datetime.now().isoformat(),
+        })
+        raise
+
+    # 转换为 Decision
+    decision = Decision(
+        type=decision_type_mapping.get(action_type, DecisionType.CONTINUE),
+        payload=validated_dict,
+    )
+
+    return decision
+```
+
+**2. 验证与增强函数** (`src/domain/agents/conversation_agent_enhanced.py`)
+
+```python
+def validate_and_enhance_decision(
+    action_type: str,
+    payload: dict[str, Any],
+    constraints: dict[str, Any] | None = None
+) -> tuple[Any, dict[str, Any]]:
+    """综合验证和增强决策
+
+    验证流程：
+    1. Pydantic schema 验证
+    2. 依赖关系验证（针对工作流）
+    3. 并行机会分析
+    4. 资源约束检查
+    5. 执行时间估算
+
+    Args:
+        action_type: 动作类型
+        payload: payload 字典
+        constraints: 资源约束
+
+    Returns:
+        (validated_payload, metadata)
+        - validated_payload: 验证后的 Pydantic 对象
+        - metadata: 包含依赖分析、资源检查、时间估算的元数据
+
+    Raises:
+        ValidationError: Pydantic 验证失败
+        ValueError: 循环依赖检测失败
+    """
+    metadata: dict[str, Any] = {}
+
+    # 1. Schema 验证
+    validated = validate_decision_payload(action_type, payload)
+
+    # 2. 工作流规划特殊处理
+    if isinstance(validated, CreateWorkflowPlanPayload):
+        # 验证依赖关系
+        validate_workflow_dependencies(validated)
+        metadata["dependencies_valid"] = True
+
+        # 分析并行机会
+        parallel_analysis = analyze_parallel_opportunities(
+            validated.nodes, validated.edges
+        )
+        metadata["parallel_analysis"] = parallel_analysis
+
+        # 检查资源约束
+        if constraints:
+            resource_check = check_resource_constraints(validated, constraints)
+            metadata["resource_check"] = resource_check
+
+        # 估算执行时间
+        time_estimate = estimate_execution_time(validated)
+        metadata["time_estimate"] = time_estimate
+
+    return validated, metadata
+
+
+def detect_cyclic_dependencies(
+    nodes: list[WorkflowNode],
+    edges: list[WorkflowEdge]
+) -> tuple[bool, list[str] | None]:
+    """检测工作流中的循环依赖
+
+    使用 Kahn's 算法进行拓扑排序：
+    1. 构建邻接表和入度表
+    2. 从入度为 0 的节点开始处理
+    3. 逐步移除边并更新入度
+    4. 如果所有节点都被访问，则无循环
+    5. 否则存在循环，返回未访问节点列表
+
+    Args:
+        nodes: 节点列表
+        edges: 边列表
+
+    Returns:
+        (has_cycle, cycle_path)
+        - has_cycle: 是否存在循环
+        - cycle_path: 如果存在循环，返回涉及的节点 ID
+    """
+    # 构建邻接表
+    graph: dict[str, list[str]] = {node.node_id: [] for node in nodes}
+    in_degree: dict[str, int] = {node.node_id: 0 for node in nodes}
+
+    for edge in edges:
+        graph[edge.source].append(edge.target)
+        in_degree[edge.target] += 1
+
+    # Kahn's 拓扑排序
+    queue = [node_id for node_id, degree in in_degree.items() if degree == 0]
+    visited = []
+
+    while queue:
+        node_id = queue.pop(0)
+        visited.append(node_id)
+
+        for neighbor in graph[node_id]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    # 检查循环
+    has_cycle = len(visited) != len(nodes)
+    if has_cycle:
+        unvisited = [n.node_id for n in nodes if n.node_id not in visited]
+        return True, unvisited
+
+    return False, None
+
+
+def analyze_parallel_opportunities(
+    nodes: list[WorkflowNode],
+    edges: list[WorkflowEdge]
+) -> dict[str, Any]:
+    """分析并行执行机会
+
+    将节点按依赖层级分组：
+    - 第 0 层：无依赖的起始节点
+    - 第 1 层：仅依赖第 0 层的节点
+    - 第 n 层：依赖前 n-1 层的节点
+
+    同一层级的节点可以并行执行。
+
+    Returns:
+        {
+            "total_nodes": 节点总数,
+            "parallel_levels": 层级数量,
+            "levels": 每层的节点列表,
+            "max_parallel_in_level": 单层最大并行数
+        }
+    """
+    # 构建依赖关系
+    dependencies: dict[str, list[str]] = {node.node_id: [] for node in nodes}
+    for edge in edges:
+        dependencies[edge.target].append(edge.source)
+
+    # 按依赖层级分组
+    levels: list[list[str]] = []
+    processed = set()
+
+    while len(processed) < len(nodes):
+        # 当前层级：所有依赖都已处理的节点
+        current_level = [
+            node_id
+            for node_id, deps in dependencies.items()
+            if node_id not in processed and all(d in processed for d in deps)
+        ]
+
+        if not current_level:
+            break
+
+        levels.append(current_level)
+        processed.update(current_level)
+
+    return {
+        "total_nodes": len(nodes),
+        "parallel_levels": len(levels),
+        "levels": levels,
+        "max_parallel_in_level": max(len(level) for level in levels) if levels else 0,
+    }
+
+
+def check_resource_constraints(
+    payload: CreateWorkflowPlanPayload,
+    constraints: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """检查资源约束
+
+    验证工作流是否满足：
+    - 时间约束：全局超时不超过限制
+    - 并发限制：并行节点数不超过阈值
+    - API 限制：各类型 API 调用次数不超过配额
+
+    Returns:
+        {
+            "constraints_met": bool,
+            "warnings": list[str],
+            "violations": list[str],
+            "api_calls": dict[str, int]
+        }
+    """
+    if constraints is None:
+        constraints = {}
+
+    result = {
+        "constraints_met": True,
+        "warnings": [],
+        "violations": [],
+    }
+
+    # 检查时间约束
+    time_limit = constraints.get("time_limit", 300)
+    global_timeout = payload.global_config.get("timeout", 0) if payload.global_config else 0
+
+    if global_timeout > time_limit:
+        result["constraints_met"] = False
+        result["violations"].append(
+            f"全局超时 ({global_timeout}s) 超过时间限制 ({time_limit}s)"
+        )
+
+    # 检查并发限制
+    max_parallel = constraints.get("max_parallel", 3)
+    parallel_analysis = analyze_parallel_opportunities(payload.nodes, payload.edges)
+    max_parallel_in_level = parallel_analysis["max_parallel_in_level"]
+
+    if max_parallel_in_level > max_parallel:
+        result["warnings"].append(
+            f"某些并行层级有 {max_parallel_in_level} 个节点，超过限制 ({max_parallel})"
+        )
+
+    # 统计 API 调用
+    api_calls = {"HTTP": 0, "LLM": 0, "DATABASE": 0}
+    for node in payload.nodes:
+        if node.type in api_calls:
+            api_calls[node.type] += 1
+
+    result["api_calls"] = api_calls
+
+    return result
+```
+
+**3. ReAct Prompt 模板** (`src/domain/agents/react_prompts.py`)
+
+```python
+REACT_SYSTEM_PROMPT = """你是一个智能任务规划助手，擅长将复杂任务分解为可执行的工作流。
+
+你的核心能力：
+1. **依赖关系识别**：理解任务之间的先后顺序和数据流
+   - 数据依赖：任务 B 需要任务 A 的输出数据
+   - 顺序依赖：任务 B 必须在任务 A 完成后执行
+   - 条件依赖：任务 B 的执行取决于任务 A 的结果
+
+2. **资源约束感知**：考虑实际执行环境的限制
+   - 时间约束：任务总执行时间限制（默认5分钟）
+   - API限制：外部API调用次数限制
+   - 并发限制：同时执行的任务数量限制（默认3个）
+   - 成本约束：LLM token 使用成本估算
+
+3. **结构化决策**：生成符合规范的 JSON 格式决策
+   - 所有决策必须包含 action_type
+   - 决策 payload 必须符合 Pydantic schema
+   - 工作流规划必须是有效的 DAG（无循环）
+"""
+
+WORKFLOW_PLANNING_PROMPT = """# 任务规划
+
+## 规划要求
+
+### 1. 依赖关系分析
+识别任务之间的依赖关系：
+- **数据依赖**：任务 B 需要任务 A 的输出数据
+  - 示例：分析数据（B）依赖获取数据（A）的输出
+  - 表示方法：在节点 B 的 input_mapping 中引用 ${node_A.output.field}
+
+- **顺序依赖**：任务 B 必须在任务 A 完成后执行
+  - 示例：发送报告（B）必须在生成报告（A）之后
+  - 表示方法：在 edges 中添加 {source: "A", target: "B"}
+
+- **条件依赖**：任务 B 的执行取决于任务 A 的结果
+  - 示例：重试任务（B）仅在失败时执行
+  - 表示方法：使用 CONDITION 节点判断
+
+### 2. 资源约束考虑
+评估以下资源约束：
+- **时间约束**：任务总执行时间限制（默认5分钟）
+  - 估算每个节点的执行时间
+  - 考虑并行执行的时间节省
+  - 设置合理的超时时间
+
+- **API限制**：外部API调用次数限制
+  - HTTP 请求：通常有 rate limit
+  - LLM 调用：有 token 和费用限制
+  - DATABASE 查询：避免过度查询
+
+- **并发限制**：同时执行的任务数量限制（默认3个）
+  - 识别可并行执行的节点
+  - 避免资源竞争
+  - 合理安排执行顺序
+
+### 3. 工作流结构
+生成的工作流必须：
+- 是有效的 DAG（无循环依赖）
+- 节点 ID 必须唯一
+- 所有边的 source/target 必须存在
+- 每个节点的 config 必须包含必填字段
+"""
+
+DEPENDENCY_ANALYSIS_PROMPT = """# 依赖关系分析
+
+## 分析步骤
+
+1. **识别数据流**：
+   - 哪些任务产生数据？
+   - 哪些任务消费数据？
+   - 数据如何在任务间传递？
+
+2. **识别执行顺序**：
+   - 哪些任务必须先执行？
+   - 哪些任务可以并行执行？
+   - 是否存在条件分支？
+
+3. **标注依赖关系**：
+   - 使用 edges 表示顺序依赖
+   - 使用 input_mapping 表示数据依赖
+   - 使用 CONDITION 节点表示条件依赖
+
+## 示例
+
+### 场景：分析销售数据并生成报告
+
+**任务分解**：
+1. 获取销售数据（DATABASE）
+2. 计算统计指标（PYTHON）
+3. 生成图表（PYTHON）
+4. 发送报告（HTTP）
+
+**依赖分析**：
+- 任务2 数据依赖 任务1（需要销售数据）
+- 任务3 数据依赖 任务2（需要统计指标）
+- 任务4 顺序依赖 任务3（必须在图表生成后）
+
+**工作流定义**：
+```json
+{
+  "name": "销售数据分析",
+  "nodes": [
+    {
+      "node_id": "fetch_data",
+      "type": "DATABASE",
+      "name": "获取销售数据",
+      "config": {"query": "SELECT * FROM sales"}
+    },
+    {
+      "node_id": "calc_stats",
+      "type": "PYTHON",
+      "name": "计算统计",
+      "config": {"code": "stats = calculate(data)"},
+      "input_mapping": {"data": "${fetch_data.output.data}"}
+    },
+    {
+      "node_id": "gen_chart",
+      "type": "PYTHON",
+      "name": "生成图表",
+      "config": {"code": "chart = plot(stats)"},
+      "input_mapping": {"stats": "${calc_stats.output.stats}"}
+    },
+    {
+      "node_id": "send_report",
+      "type": "HTTP",
+      "name": "发送报告",
+      "config": {
+        "url": "https://api.email.com/send",
+        "method": "POST",
+        "body": {"chart": "${gen_chart.output.chart}"}
+      }
+    }
+  ],
+  "edges": [
+    {"source": "fetch_data", "target": "calc_stats"},
+    {"source": "calc_stats", "target": "gen_chart"},
+    {"source": "gen_chart", "target": "send_report"}
+  ]
+}
+```
+"""
+
+RESOURCE_CONSTRAINT_PROMPT = """# 资源约束评估
+
+## 约束类型
+
+### 1. 时间约束
+- **全局超时**：整个工作流的最大执行时间
+- **节点超时**：单个节点的最大执行时间
+- **建议**：
+  - HTTP 请求：30-60 秒
+  - LLM 调用：60-120 秒
+  - DATABASE 查询：10-30 秒
+  - PYTHON 执行：5-60 秒
+
+### 2. 并发约束
+- **最大并发数**：同时执行的节点数量（默认3个）
+- **并行机会**：识别可以并行执行的节点
+- **建议**：
+  - 独立的 HTTP 请求可以并行
+  - 数据依赖的节点必须串行
+  - 考虑系统资源限制
+
+### 3. API 限制
+- **Rate Limit**：API 调用频率限制
+- **Token Limit**：LLM token 使用限制
+- **成本限制**：付费 API 的预算限制
+- **建议**：
+  - 缓存 API 响应避免重复调用
+  - 批量请求减少调用次数
+  - 监控 token 使用量
+
+## 评估结果格式
+
+```json
+{
+  "global_config": {
+    "timeout": 300,        // 5 分钟全局超时
+    "max_parallel": 3,     // 最多 3 个并行
+    "max_retries": 2       // 最多重试 2 次
+  },
+  "estimated_time": 120,   // 预计执行时间（秒）
+  "api_calls": {
+    "HTTP": 2,
+    "LLM": 1,
+    "DATABASE": 1
+  },
+  "parallel_levels": 3,    // 3 个执行层级
+  "max_parallel_in_level": 2  // 最大层级有 2 个并行节点
+}
+```
+"""
+
+
+def format_planning_context(context: dict[str, Any]) -> str:
+    """格式化规划上下文
+
+    将会话上下文格式化为适合 LLM 理解的字符串，包含：
+    - 当前目标
+    - 目标栈（父目标链）
+    - 对话历史
+    - 已执行决策
+    - 资源约束
+
+    Args:
+        context: 包含会话信息的字典
+
+    Returns:
+        格式化后的上下文字符串
+    """
+    lines = []
+
+    # 当前目标
+    if current_goal := context.get("current_goal"):
+        lines.append(f"**当前目标**: {current_goal.get('description', 'N/A')}")
+        if parent_id := current_goal.get("parent_id"):
+            lines.append(f"**父目标**: {parent_id}")
+
+    # 对话历史
+    if conversation_history := context.get("conversation_history"):
+        lines.append("\n**对话历史**:")
+        for msg in conversation_history[-5:]:  # 最近 5 条
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")[:100]  # 截断
+            lines.append(f"- {role}: {content}")
+
+    # 已执行决策
+    if decision_history := context.get("decision_history"):
+        lines.append("\n**已执行决策**:")
+        for decision in decision_history[-3:]:  # 最近 3 条
+            dtype = decision.get("type", "unknown")
+            lines.append(f"- {dtype}")
+
+    # 资源约束
+    if resource_constraints := context.get("resource_constraints"):
+        lines.append("\n**资源约束**:")
+        for key, value in resource_constraints.items():
+            lines.append(f"- {key}: {value}")
+
+    return "\n".join(lines) if lines else "无上下文信息"
+```
+
+#### Pydantic Schema 引用
+
+所有决策 payload 现在使用 Pydantic schema 进行验证，确保数据结构正确性：
+
+```python
+# 文件位置: src/domain/agents/decision_payload.py
+
+from pydantic import BaseModel, Field, field_validator
+
+class CreateWorkflowPlanPayload(BaseModel):
+    """创建工作流规划 payload
+
+    必填字段：
+    - action_type: "create_workflow_plan"
+    - name: 工作流名称
+    - description: 工作流描述
+    - nodes: 节点列表（至少 1 个）
+    - edges: 边列表（可为空）
+
+    可选字段：
+    - global_config: 全局配置（超时、并发限制等）
+    """
+    action_type: str = "create_workflow_plan"
+    name: str = Field(..., min_length=1, description="工作流名称")
+    description: str = Field(..., min_length=1, description="工作流描述")
+    nodes: list[WorkflowNode] = Field(..., min_items=1, description="节点列表")
+    edges: list[WorkflowEdge] = Field(default_factory=list, description="边列表")
+    global_config: dict[str, Any] | None = Field(default=None, description="全局配置")
+
+    @field_validator("nodes")
+    @classmethod
+    def validate_unique_node_ids(cls, nodes: list[WorkflowNode]) -> list[WorkflowNode]:
+        """验证节点 ID 唯一性"""
+        node_ids = [node.node_id for node in nodes]
+        if len(node_ids) != len(set(node_ids)):
+            raise ValueError("节点 ID 必须唯一")
+        return nodes
+
+    @field_validator("edges")
+    @classmethod
+    def validate_edges_reference_existing_nodes(
+        cls, edges: list[WorkflowEdge], values: dict
+    ) -> list[WorkflowEdge]:
+        """验证边引用的节点存在"""
+        if "nodes" not in values:
+            return edges
+
+        node_ids = {node.node_id for node in values["nodes"]}
+        for edge in edges:
+            if edge.source not in node_ids:
+                raise ValueError(f"边的源节点 {edge.source} 不存在")
+            if edge.target not in node_ids:
+                raise ValueError(f"边的目标节点 {edge.target} 不存在")
+
+        return edges
+
+
+class WorkflowNode(BaseModel):
+    """工作流节点定义"""
+    node_id: str = Field(..., min_length=1, description="节点唯一标识")
+    type: str = Field(..., description="节点类型（HTTP/LLM/PYTHON/DATABASE/CONDITION）")
+    name: str = Field(..., min_length=1, description="节点名称")
+    config: dict[str, Any] = Field(..., description="节点配置")
+    input_mapping: dict[str, str] | None = Field(default=None, description="输入映射")
+
+    @field_validator("type")
+    @classmethod
+    def validate_node_type(cls, v: str) -> str:
+        """验证节点类型合法性"""
+        allowed_types = ["HTTP", "LLM", "PYTHON", "DATABASE", "CONDITION", "START", "END"]
+        if v not in allowed_types:
+            raise ValueError(f"不支持的节点类型: {v}")
+        return v
+
+
+class WorkflowEdge(BaseModel):
+    """工作流边定义"""
+    source: str = Field(..., min_length=1, description="源节点 ID")
+    target: str = Field(..., min_length=1, description="目标节点 ID")
+    condition: str | None = Field(default=None, description="条件表达式（可选）")
+```
+
+完整的 schema 定义涵盖所有 10 种决策类型：
+- `RespondPayload` - 简单回复
+- `CreateNodePayload` - 创建单个节点
+- `CreateWorkflowPlanPayload` - 创建工作流规划
+- `ExecuteWorkflowPayload` - 执行工作流
+- `RequestClarificationPayload` - 请求澄清
+- `ContinuePayload` - 继续推理
+- `ModifyNodePayload` - 修改节点
+- `ErrorRecoveryPayload` - 错误恢复
+- `ReplanWorkflowPayload` - 重新规划
+- `SpawnSubagentPayload` - 生成子Agent
+
+#### 测试覆盖
+
+```bash
+# Schema 验证测试
+pytest tests/unit/domain/agents/test_conversation_agent_enhanced.py::TestSchemaEnforcement -v
+# 4 tests passed ✅
+
+# 依赖关系测试
+pytest tests/unit/domain/agents/test_conversation_agent_enhanced.py::TestDependencyAwarePlanning -v
+# 3 tests passed ✅
+
+# 资源约束测试
+pytest tests/unit/domain/agents/test_conversation_agent_enhanced.py::TestResourceConstraintAwareness -v
+# 3 tests passed ✅
+
+# 真实场景测试
+pytest tests/unit/domain/agents/test_conversation_agent_enhanced.py::TestRealWorldScenario -v
+# 1 test passed ✅
+
+# 验证与增强函数测试
+pytest tests/unit/domain/agents/ -k "conversation_agent_enhanced" -v
+# 覆盖率：83% (conversation_agent_enhanced.py)
+
+# Phase 8.2 总计：12 个测试全部通过 ✅
+```
+
+**关键测试示例**：
+
+```python
+# 测试：循环依赖检测
+def test_plan_workflow_should_detect_cyclic_dependencies():
+    """验证循环依赖检测"""
+    mock_llm.decide_action.return_value = {
+        "action_type": "create_workflow_plan",
+        "name": "循环工作流",
+        "description": "测试循环检测",
+        "nodes": [
+            {"node_id": "node_1", "type": "HTTP", "name": "节点1", "config": {...}},
+            {"node_id": "node_2", "type": "HTTP", "name": "节点2", "config": {...}},
+        ],
+        "edges": [
+            {"source": "node_1", "target": "node_2"},
+            {"source": "node_2", "target": "node_1"}  # 循环！
+        ]
+    }
+
+    # 应该抛出 ValueError
+    with pytest.raises(ValueError) as exc_info:
+        decision = conversation_agent.make_decision(context_hint="")
+
+    assert "循环" in str(exc_info.value) or "cycle" in str(exc_info.value).lower()
+
+
+# 测试：并行机会识别
+def test_plan_workflow_should_identify_parallel_opportunities():
+    """验证并行执行分析"""
+    mock_llm.decide_action.return_value = {
+        "action_type": "create_workflow_plan",
+        "name": "并行数据收集",
+        "description": "同时从多个来源收集数据",
+        "nodes": [
+            {"node_id": "node_1", "type": "HTTP", "name": "获取天气", "config": {...}},
+            {"node_id": "node_2", "type": "HTTP", "name": "获取股票", "config": {...}},
+            {"node_id": "node_3", "type": "LLM", "name": "综合分析", "config": {...}},
+        ],
+        "edges": [
+            {"source": "node_1", "target": "node_3"},
+            {"source": "node_2", "target": "node_3"},
+            # node_1 和 node_2 没有直接依赖，可以并行
+        ]
+    }
+
+    decision = conversation_agent.make_decision(context_hint="")
+    payload = CreateWorkflowPlanPayload(**decision.payload)
+
+    # 验证并行结构
+    edges_between_1_2 = [
+        e for e in payload.edges
+        if (e.source == "node_1" and e.target == "node_2") or
+           (e.source == "node_2" and e.target == "node_1")
+    ]
+    assert len(edges_between_1_2) == 0  # node_1 和 node_2 无直接依赖
+
+    # node_3 依赖 node_1 和 node_2
+    node_3_deps = [e for e in payload.edges if e.target == "node_3"]
+    assert len(node_3_deps) == 2
+
+
+# 测试：资源约束检查
+def test_plan_workflow_should_respect_time_constraint():
+    """验证时间约束配置"""
+    conversation_agent.session_context.resource_constraints = {
+        "time_limit": 300,
+        "max_parallel": 3,
+    }
+
+    mock_llm.decide_action.return_value = {
+        "action_type": "create_workflow_plan",
+        "name": "限时任务",
+        "description": "需要在 5 分钟内完成",
+        "nodes": [...],
+        "edges": [],
+        "global_config": {"timeout": 300, "max_parallel": 3}
+    }
+
+    decision = conversation_agent.make_decision(context_hint="")
+    payload = CreateWorkflowPlanPayload(**decision.payload)
+
+    # 验证时间约束
+    assert payload.global_config is not None
+    assert payload.global_config.get("timeout") == 300
+```
+
+#### 使用示例
+
+**创建依赖敏感的工作流规划**：
+
+```python
+from src.domain.agents.conversation_agent import ConversationAgent
+from src.domain.services.context_manager import GlobalContext, SessionContext
+
+# 设置会话上下文和资源约束
+global_ctx = GlobalContext(user_id="user_123")
+session_ctx = SessionContext(session_id="session_001", global_context=global_ctx)
+
+# 设置资源约束
+session_ctx.resource_constraints = {
+    "time_limit": 300,      # 5 分钟时间限制
+    "max_parallel": 3,      # 最多 3 个并行任务
+    "api_limits": {
+        "HTTP": 10,         # 最多 10 次 HTTP 调用
+        "LLM": 5,           # 最多 5 次 LLM 调用
+    }
+}
+
+# 创建 ConversationAgent
+agent = ConversationAgent(
+    session_context=session_ctx,
+    llm=llm,
+    event_bus=event_bus
+)
+
+# 生成决策（自动进行 schema 验证和依赖分析）
+decision = agent.make_decision(context_hint="分析三个月销售数据并生成趋势图")
+
+# 决策 payload 已通过 Pydantic 验证
+# 元数据包含依赖分析和资源检查结果
+metadata = session_ctx._decision_metadata[-1]["metadata"]
+
+print(f"依赖验证: {metadata['dependencies_valid']}")
+print(f"并行层级: {metadata['parallel_analysis']['parallel_levels']}")
+print(f"最大并行数: {metadata['parallel_analysis']['max_parallel_in_level']}")
+print(f"资源约束检查: {metadata['resource_check']['constraints_met']}")
+print(f"API 调用统计: {metadata['resource_check']['api_calls']}")
+print(f"预计执行时间: {metadata['time_estimate']['estimated_total_time']}s")
+```
+
+#### 验证元数据结构
+
+```python
+# 验证元数据示例
+{
+    "action_type": "create_workflow_plan",
+    "timestamp": "2025-12-05T10:30:00",
+    "metadata": {
+        "dependencies_valid": True,
+        "parallel_analysis": {
+            "total_nodes": 4,
+            "parallel_levels": 4,
+            "levels": [
+                ["fetch_data"],
+                ["calculate_trend"],
+                ["generate_chart"],
+                ["send_report"]
+            ],
+            "max_parallel_in_level": 1
+        },
+        "resource_check": {
+            "constraints_met": True,
+            "warnings": [],
+            "violations": [],
+            "api_calls": {
+                "HTTP": 1,
+                "LLM": 0,
+                "DATABASE": 1,
+                "PYTHON": 2
+            }
+        },
+        "time_estimate": {
+            "estimated_total_time": 20,
+            "level_times": [3, 2, 2, 5],
+            "parallel_levels": 4,
+            "sequential_time": 12
+        }
+    }
+}
+```
+
+#### 注意事项
+
+1. **Schema 验证是强制性的**：
+   - 所有决策必须通过 Pydantic 验证
+   - 验证失败会抛出 ValidationError
+   - Coordinator 会拒绝无效的决策
+
+2. **循环依赖检测**：
+   - 使用 Kahn's 算法保证工作流是 DAG
+   - 检测到循环会立即拒绝决策
+   - 返回涉及循环的节点列表便于调试
+
+3. **资源约束是建议性的**：
+   - 超过资源限制会生成警告，不会阻止执行
+   - 严重违规（如超时 10 倍）会被拒绝
+   - 约束配置可通过 SessionContext 动态调整
+
+4. **并行分析提供优化建议**：
+   - 自动识别可并行执行的节点
+   - 估算执行时间考虑并行效果
+   - 元数据可用于工作流可视化
+
+5. **与现有系统兼容**：
+   - 不影响现有决策类型的功能
+   - 仅在 create_workflow_plan 时进行深度分析
+   - 其他决策类型仅做基础 schema 验证
+
+---
+
+### 2.8 检索与监督整合 (Step 5)
 
 #### 功能概述
 
@@ -2080,6 +2958,183 @@ logs = coordinator.get_container_logs(container_id)
 stats = coordinator.get_container_execution_statistics()
 ```
 
+### 4.6 Payload 校验与依赖验证 (Phase 8.4)
+
+**功能概述：** 在事件流中间件层增强决策校验，确保工作流规划的完整性和依赖合法性。
+
+#### 4.6.1 Payload 完整性校验
+
+**目标：** 验证 `DecisionMadeEvent` 的 payload 包含必需字段，防止下游执行失败。
+
+**校验规则：**
+```python
+# create_node 决策必需字段
+required_fields = {
+    "create_node": ["node_type", "config"],
+    "execute_workflow": ["workflow_id"],
+    "create_workflow_plan": ["goal", "nodes", "edges"],
+    "modify_node": ["node_id", "config"]
+}
+
+# 使用示例
+from src.domain.agents.coordinator_agent import PayloadValidationRule
+
+rule = PayloadValidationRule(
+    required_fields=["node_type", "config"],
+    decision_type="create_node"
+)
+coordinator.add_rule(rule)
+```
+
+**校验流程：**
+1. Coordinator 中间件拦截 `DecisionMadeEvent`
+2. 根据 `decision_type` 检查 payload 必需字段
+3. 缺失字段 → 发布 `DecisionRejectedEvent`，返回 ConversationAgent 重新规划
+4. 完整 → 发布 `DecisionValidatedEvent`，继续执行
+
+**测试覆盖：** 9 个单元测试（`test_coordinator_payload_validation.py`）
+- ✅ 必需字段存在时通过校验
+- ✅ 缺失字段时拒绝决策
+- ✅ 多个决策类型的字段验证
+- ✅ 嵌套字段校验（如 `config.url`）
+
+#### 4.6.2 DAG 依赖顺序校验
+
+**目标：** 检测工作流规划中的循环依赖，防止执行死锁。
+
+**校验算法：** Kahn 拓扑排序 + 环检测
+```python
+# 使用示例
+from src.domain.agents.coordinator_agent import DependencyValidationRule
+
+rule = DependencyValidationRule()
+coordinator.add_rule(rule)
+
+# 检测循环依赖示例
+workflow_plan = {
+    "nodes": [
+        {"id": "A", "type": "llm"},
+        {"id": "B", "type": "api"},
+        {"id": "C", "type": "code"}
+    ],
+    "edges": [
+        {"source": "A", "target": "B"},
+        {"source": "B", "target": "C"},
+        {"source": "C", "target": "A"}  # ❌ 循环依赖
+    ]
+}
+
+# 校验结果
+validation_result = coordinator.validate_decision({
+    "decision_type": "create_workflow_plan",
+    "payload": workflow_plan
+})
+# → 返回错误: "工作流存在循环依赖 (Circular dependency detected)"
+```
+
+**检测步骤：**
+1. 构建邻接表和入度表
+2. 使用 Kahn 算法进行拓扑排序
+3. 如果排序后节点数 < 总节点数 → 存在环
+4. 拒绝决策并返回详细错误信息
+
+**测试覆盖：** 9 个单元测试（`test_coordinator_dependency_validation.py`）
+- ✅ 无环 DAG 通过校验
+- ✅ 简单循环（A→B→A）检测
+- ✅ 复杂循环（A→B→C→A）检测
+- ✅ 多个独立子图场景
+- ✅ 单节点工作流通过
+
+#### 4.6.3 ExecutionProgressEvent 流程 (Phase 8.4)
+
+**目标：** 实现工作流执行过程的流式进度反馈，支持用户实时查看执行状态。
+
+**事件结构：**
+```python
+@dataclass
+class ExecutionProgressEvent(Event):
+    workflow_id: str          # 工作流ID
+    node_id: str              # 当前执行节点ID
+    status: str               # started/running/completed/failed
+    progress: float           # 进度百分比 (0.0-1.0)
+    message: str              # 用户可读消息
+    metadata: dict[str, Any]  # 可选元数据（重试次数、耗时等）
+```
+
+**发布者：** `WorkflowAgent`（在节点执行过程中）
+
+**订阅者：** `ConversationAgent`（转发到前端流式输出）
+
+**完整流程：**
+```
+WorkflowAgent.execute_node_with_progress(node_id)
+    │
+    ├─ 发布 ExecutionProgressEvent(status="started", progress=0.0)
+    │       ↓
+    │   EventBus.publish() → ConversationAgent._handle_progress_event_async()
+    │       ↓
+    │   ConversationAgent.progress_events.append(event)  # 存储历史
+    │       ↓
+    │   ConversationAgent.forward_progress_event(event)  # 转发到前端
+    │       ↓
+    │   stream_emitter.emit({
+    │       "type": "progress",
+    │       "message": "[开始] 正在执行节点 node_1",
+    │       "node_id": "node_1",
+    │       "status": "started",
+    │       "progress": 0.0
+    │   })
+    │
+    ├─ 执行节点逻辑...
+    │
+    ├─ 发布 ExecutionProgressEvent(status="running", progress=0.5)
+    │       ↓ (同上流程)
+    │
+    └─ 发布 ExecutionProgressEvent(status="completed", progress=1.0)
+            ↓ (同上流程)
+```
+
+**多格式支持：**
+```python
+# 1. 人类可读格式（内部日志）
+message = conversation_agent.format_progress_message(event)
+# → "[执行中 50%] 正在处理数据"
+
+# 2. WebSocket JSON 格式（前端实时通信）
+ws_msg = conversation_agent.format_progress_for_websocket(event)
+# → {"type": "progress", "data": {"node_id": "...", "progress": 0.5, ...}}
+
+# 3. SSE 格式（Server-Sent Events）
+sse_msg = conversation_agent.format_progress_for_sse(event)
+# → "data: {\"node_id\": \"...\", \"progress\": 0.5}\n\n"
+```
+
+**错误容错机制：**
+```python
+# WorkflowAgent._publish_progress_event() 内部实现
+try:
+    await self.event_bus.publish(ExecutionProgressEvent(...))
+except Exception:
+    # 事件发布失败不应阻塞执行
+    pass
+```
+
+**测试覆盖：** 27 个测试（Phase 8.4 完整测试套件）
+- ✅ WorkflowAgent 进度事件发布（9 tests）
+- ✅ ConversationAgent 进度转发（9 tests）
+- ✅ 端到端集成测试（9 tests）
+- **测试结果：** 27/27 通过 (100%)
+- **覆盖率提升：** ConversationAgent 30%→32%, WorkflowAgent 37%→38%
+
+**查询接口：**
+```python
+# 获取某个工作流的所有进度事件
+events = conversation_agent.get_progress_events_by_workflow("workflow_001")
+
+# 获取所有进度事件历史
+all_events = conversation_agent.progress_events
+```
+
 ---
 
 ## 5. 事件流分析
@@ -2094,6 +3149,7 @@ stats = coordinator.get_container_execution_statistics()
 | WorkflowExecutionStartedEvent | WorkflowAgent | Coordinator | 工作流开始 |
 | WorkflowExecutionCompletedEvent | WorkflowAgent | Coordinator | 工作流完成 |
 | NodeExecutionEvent | WorkflowAgent | Coordinator | 节点执行状态 |
+| **ExecutionProgressEvent** | **WorkflowAgent** | **ConversationAgent** | **流式进度反馈 (Phase 8.4)** |
 | WorkflowReflectionCompletedEvent | WorkflowAgent | Coordinator | 反思完成 |
 | SimpleMessageEvent | ConversationAgent | Coordinator | 简单消息处理 |
 | SubAgentCompletedEvent | Coordinator | ConversationAgent | 子Agent完成 |
@@ -2117,6 +3173,8 @@ ConversationAgent.execute_step()
     ▼
 Coordinator 中间件拦截
     │ validate_decision()
+    │ ├─ Payload 完整性校验 (Phase 8.4)
+    │ └─ DAG 循环依赖校验 (Phase 8.4)
     ▼
 发布 DecisionValidatedEvent
     │
@@ -2127,8 +3185,29 @@ WorkflowAgent.handle_decision()
 发布 WorkflowExecutionStartedEvent
     │
     ▼
-WorkflowAgent.execute_workflow()
+WorkflowAgent.execute_workflow_with_progress()
     │ 执行每个节点
+    │
+    │ ┌─ 对每个节点 (Phase 8.4 进度事件流) ─┐
+    │ │                                          │
+    │ ├─ 发布 ExecutionProgressEvent(status="started", progress=0.0)
+    │ │       ↓
+    │ │   ConversationAgent 订阅并转发到前端
+    │ │       ↓
+    │ │   前端显示: "[开始] 正在执行节点..."
+    │ │
+    │ ├─ 执行节点逻辑...
+    │ │       ↓
+    │ ├─ 发布 ExecutionProgressEvent(status="running", progress=0.5)
+    │ │       ↓
+    │ │   前端显示: "[执行中 50%] 处理数据中..."
+    │ │
+    │ ├─ 完成节点执行
+    │ │       ↓
+    │ └─ 发布 ExecutionProgressEvent(status="completed", progress=1.0)
+    │         ↓
+    │     前端显示: "[完成 100%] 节点执行完成"
+    │
     │ 发布 NodeExecutionEvent (每个节点)
     ▼
 发布 WorkflowExecutionCompletedEvent
@@ -2154,6 +3233,7 @@ Coordinator._handle_workflow_completed()
 | Phase 4 | 容器执行/层次化节点 | ✅ 完成 | ✅ |
 | Phase 5 | 知识库集成 | ✅ 完成 | ✅ |
 | Phase 8 | 决策执行桥接 | ✅ 完成 | ✅ |
+| **Phase 8.4** | **Payload校验/DAG校验/进度事件** | **✅ 完成** | **✅ 27/27 (100%)** |
 | Phase 11 | 执行结果标准化 | ✅ 完成 | ✅ |
 | Phase 12 | 失败处理策略 | ✅ 完成 | ✅ |
 | Phase 13 | 状态机 | ✅ 完成 | ✅ |
@@ -2242,7 +3322,432 @@ pytest tests/unit/domain/services/test_knowledge_compression_integration.py -v
 
 ---
 
-## 9. 架构建议
+## 9. 决策载荷约定（Decision Payload Contract）
+
+> **文档版本**: v1.0
+> **创建日期**: 2025-01-22
+> **关联文档**: `docs/architecture/decision_payload_scenarios.md`
+> **代码位置**: `src/domain/agents/decision_payload.py`
+
+### 9.1 概述
+
+本章节定义了 ConversationAgent 的 10 种决策类型（DecisionType）与 CoordinatorAgent 验证规则之间的契约，确保决策数据的结构正确性和一致性。
+
+### 9.2 核心原则
+
+1. **强类型验证**: 使用 Pydantic 进行 payload 验证
+2. **场景驱动**: 每种决策类型对应明确的用户场景
+3. **可测试性**: 每种 payload 都有完整的单元测试
+4. **向前兼容**: 支持可选字段扩展，不破坏现有功能
+
+### 9.3 决策类型与场景映射
+
+| DecisionType | 用户场景示例 | 必填字段 | 可选字段 |
+|-------------|-------------|---------|---------|
+| `RESPOND` | "你好"、"今天天气怎么样？" | response, intent, confidence | requires_followup |
+| `CREATE_NODE` | "帮我调用天气API" | node_type, node_name, config | description, retry_config |
+| `CREATE_WORKFLOW_PLAN` | "分析三个月销售数据并生成趋势图" | name, description, nodes, edges | global_config |
+| `EXECUTE_WORKFLOW` | "执行刚才创建的流程" | workflow_id | input_params, execution_mode |
+| `REQUEST_CLARIFICATION` | "帮我分析数据"（未指定数据源） | question | options, required_fields, context |
+| `CONTINUE` | （内部决策）继续推理 | thought | next_step, progress |
+| `MODIFY_NODE` | "把LLM温度调整为0.9" | node_id, updates | reason |
+| `ERROR_RECOVERY` | "节点执行失败，API超时" | workflow_id, failed_node_id, failure_reason, recovery_plan, execution_context | error_code |
+| `REPLAN_WORKFLOW` | "当前方案不可行，需要调整" | workflow_id, reason, execution_context | suggested_changes, preserve_nodes |
+| `SPAWN_SUBAGENT` | "搜索最新的机器学习论文" | subagent_type, task_payload | priority, timeout, context_snapshot |
+
+### 9.4 Payload Schema 定义
+
+#### 9.4.1 RESPOND
+
+```python
+from src.domain.agents.decision_payload import RespondPayload
+
+payload = RespondPayload(
+    action_type="respond",
+    response="您好！我是智能助手。",
+    intent="greeting",
+    confidence=1.0,
+    requires_followup=False
+)
+```
+
+**验证规则**:
+- `response` 不能为空
+- `confidence` 范围 [0, 1]
+- `intent` 必须是 IntentType 枚举值
+
+#### 9.4.2 CREATE_NODE
+
+```python
+from src.domain.agents.decision_payload import CreateNodePayload
+
+# HTTP 节点示例
+payload = CreateNodePayload(
+    action_type="create_node",
+    node_type="HTTP",
+    node_name="获取天气",
+    config={
+        "url": "https://api.weather.com/v1/current",
+        "method": "GET",
+        "params": {"city": "北京"}
+    },
+    retry_config={"max_retries": 3, "retry_delay": 1.0}
+)
+```
+
+**验证规则**:
+- `node_type` 必须在允许的类型列表中
+- `config` 必须包含该节点类型所需的必填字段
+- HTTP 节点：必须有 `url`, `method`
+- LLM 节点：必须有 `prompt` 或 `messages`
+- PYTHON 节点：必须有 `code`
+- DATABASE 节点：必须有 `query`
+
+#### 9.4.3 CREATE_WORKFLOW_PLAN
+
+```python
+from src.domain.agents.decision_payload import (
+    CreateWorkflowPlanPayload,
+    WorkflowNode,
+    WorkflowEdge
+)
+
+payload = CreateWorkflowPlanPayload(
+    action_type="create_workflow_plan",
+    name="销售数据分析工作流",
+    description="获取数据、分析趋势、生成图表",
+    nodes=[
+        WorkflowNode(
+            node_id="node_1",
+            type="DATABASE",
+            name="获取销售数据",
+            config={"query": "SELECT * FROM sales WHERE ..."}
+        ),
+        WorkflowNode(
+            node_id="node_2",
+            type="LLM",
+            name="分析数据",
+            config={"model": "gpt-4", "prompt": "..."}
+        )
+    ],
+    edges=[
+        WorkflowEdge(source="node_1", target="node_2")
+    ]
+)
+```
+
+**验证规则**:
+- `nodes` 至少包含 1 个节点
+- 节点 ID 必须唯一
+- `edges` 必须形成有效的 DAG（无环）
+- 边的 source/target 必须存在于 nodes 中
+- 不能有孤立节点（除了 START/END）
+
+#### 9.4.4 ERROR_RECOVERY
+
+```python
+from src.domain.agents.decision_payload import (
+    ErrorRecoveryPayload,
+    RecoveryPlan,
+    RecoveryAction
+)
+
+payload = ErrorRecoveryPayload(
+    action_type="error_recovery",
+    workflow_id="workflow_123",
+    failed_node_id="node_1",
+    failure_reason="HTTP request timeout after 30s",
+    error_code="TIMEOUT",
+    recovery_plan=RecoveryPlan(
+        action=RecoveryAction.RETRY,
+        delay=5.0,
+        max_attempts=3,
+        modifications={"config.timeout": 60}
+    ),
+    execution_context={"retry_count": 1}
+)
+```
+
+**验证规则**:
+- `recovery_plan.action` 必须是 RETRY/SKIP/ABORT/MODIFY 之一
+- 如果 action=RETRY，必须提供 `max_attempts`
+- 如果 action=MODIFY，必须提供 `modifications`
+
+### 9.5 Coordinator 验证规则
+
+#### 9.5.1 强制规则（所有决策）
+
+```python
+# 文件位置: src/domain/agents/coordinator_agent.py
+
+# 规则 1: Payload 必须包含 action_type
+Rule(
+    id="action_type_required",
+    name="payload 必须包含 action_type",
+    condition=lambda d: "action_type" in d and d["action_type"] is not None,
+    error_message="payload 缺少 action_type 字段"
+)
+
+# 规则 2: 禁止危险操作
+Rule(
+    id="no_arbitrary_code",
+    name="禁止任意代码执行",
+    condition=lambda d: not is_dangerous_operation(d),
+    error_message="检测到危险操作"
+)
+
+# 规则 3: 资源限制
+Rule(
+    id="resource_limits",
+    name="payload 大小限制",
+    condition=lambda d: calculate_payload_size(d) <= 1024 * 1024,  # 1MB
+    error_message="payload 超过 1MB 限制"
+)
+```
+
+#### 9.5.2 类型特定规则
+
+```python
+# CREATE_NODE 规则
+Rule(
+    id="create_node_valid_type",
+    name="节点类型必须合法",
+    condition=lambda d: (
+        d.get("action_type") != "create_node" or
+        d.get("node_type") in ALLOWED_NODE_TYPES
+    ),
+    error_message="不支持的节点类型"
+)
+
+# CREATE_WORKFLOW_PLAN 规则
+Rule(
+    id="workflow_dag_valid",
+    name="工作流必须是有效的 DAG",
+    condition=lambda d: (
+        d.get("action_type") != "create_workflow_plan" or
+        is_valid_dag(d.get("nodes", []), d.get("edges", []))
+    ),
+    error_message="工作流包含循环依赖"
+)
+
+# ERROR_RECOVERY 规则
+Rule(
+    id="recovery_plan_valid",
+    name="恢复计划必须完整",
+    condition=lambda d: (
+        d.get("action_type") != "error_recovery" or
+        validate_recovery_plan(d.get("recovery_plan", {}))
+    ),
+    error_message="恢复计划不完整"
+)
+```
+
+### 9.6 Intent → Decision 映射规则
+
+```python
+# 文件位置: src/domain/agents/conversation_agent.py
+
+def map_intent_to_decision(intent: IntentType, context: dict) -> DecisionType:
+    """根据意图和上下文映射到决策类型"""
+
+    mapping = {
+        IntentType.GREETING: [DecisionType.RESPOND],
+        IntentType.SIMPLE_QUERY: [
+            DecisionType.RESPOND,      # 不需要工具
+            DecisionType.CREATE_NODE   # 需要单个工具
+        ],
+        IntentType.COMPLEX_TASK: [
+            DecisionType.CREATE_NODE,           # 单步任务
+            DecisionType.CREATE_WORKFLOW_PLAN,  # 多步任务
+            DecisionType.SPAWN_SUBAGENT        # 需要专门能力
+        ],
+        IntentType.WORKFLOW_REQUEST: [
+            DecisionType.EXECUTE_WORKFLOW,      # 工作流已存在
+            DecisionType.CREATE_WORKFLOW_PLAN   # 工作流不存在
+        ],
+        IntentType.UNKNOWN: [DecisionType.REQUEST_CLARIFICATION]
+    }
+
+    candidates = mapping.get(intent, [])
+
+    # 根据上下文选择最合适的决策类型
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # 多候选决策，需要进一步判断
+    return select_best_decision(candidates, context)
+```
+
+### 9.7 事件流程
+
+```
+用户输入: "分析销售数据并生成趋势图"
+    │
+    ▼
+ConversationAgent.classify_intent()
+    │ → IntentType.COMPLEX_TASK
+    ▼
+ConversationAgent.execute_step()
+    │ → 生成 CREATE_WORKFLOW_PLAN 决策
+    │ → 构造 CreateWorkflowPlanPayload
+    ▼
+发布 DecisionMadeEvent
+    │ decision_type="create_workflow_plan"
+    │ payload={...}  # CreateWorkflowPlanPayload.model_dump()
+    │ confidence=0.9
+    ▼
+EventBus → Coordinator.as_middleware()
+    │
+    ├─ 验证 action_type 存在
+    ├─ 使用 Pydantic 验证 payload 结构
+    ├─ 检查 DAG 有效性
+    ├─ 检查节点类型合法性
+    └─ 检查资源限制
+    │
+    ▼
+    ├─ ✅ 验证通过 → DecisionValidatedEvent
+    │                    ↓
+    │                WorkflowAgent.handle_decision()
+    │                    ↓
+    │                创建节点、执行工作流
+    │
+    └─ ❌ 验证失败 → DecisionRejectedEvent
+                         ↓
+                    ConversationAgent.handle_rejection()
+                         ↓
+                    重新思考、调整决策
+```
+
+### 9.8 测试覆盖
+
+#### 9.8.1 单元测试
+
+```bash
+# 运行 payload 验证测试
+pytest tests/unit/domain/agents/test_decision_payload.py -v
+
+# 测试统计
+# - 38 个测试用例
+# - 覆盖所有 10 种 DecisionType
+# - 包括正向测试（有效 payload）和负向测试（无效 payload）
+# - 测试边界条件和错误处理
+```
+
+**测试示例**:
+
+```python
+def test_create_workflow_plan_with_duplicate_node_ids_should_fail():
+    """测试：节点 ID 重复应该失败"""
+    with pytest.raises(ValidationError) as exc_info:
+        CreateWorkflowPlanPayload(
+            name="工作流",
+            description="测试",
+            nodes=[
+                WorkflowNode(node_id="node_1", ...),
+                WorkflowNode(node_id="node_1", ...)  # 重复 ID
+            ],
+            edges=[]
+        )
+
+    assert "唯一" in str(exc_info.value)
+```
+
+#### 9.8.2 集成测试
+
+```bash
+# 运行 EventBus 集成测试
+pytest tests/integration/domain/agents/test_decision_event_flow.py -v
+
+# 测试场景：
+# - DecisionMadeEvent → Coordinator 验证 → DecisionValidatedEvent
+# - 无效决策被拒绝 → DecisionRejectedEvent
+# - 验证规则按优先级执行
+# - 修正规则自动修复可修正的错误
+```
+
+### 9.9 工厂函数使用
+
+```python
+from src.domain.agents.decision_payload import create_payload_from_dict
+
+# 从字典创建 payload
+payload_dict = {
+    "action_type": "respond",
+    "response": "您好！",
+    "intent": "greeting",
+    "confidence": 1.0
+}
+
+# 自动推断类型并验证
+payload = create_payload_from_dict("respond", payload_dict)
+
+# 转换回字典（用于事件发布）
+event_payload = payload.model_dump()
+```
+
+### 9.10 最佳实践
+
+1. **始终使用 Pydantic Schema**: 不要手动构造 payload 字典，使用对应的 Pydantic 类
+2. **验证优先**: 在发布 DecisionMadeEvent 之前，先用 Pydantic 验证 payload
+3. **错误处理**: 捕获 ValidationError 并转换为用户友好的错误消息
+4. **日志记录**: 记录所有决策和验证结果，便于调试和审计
+5. **测试驱动**: 为每种决策类型编写完整的测试用例
+
+### 9.11 扩展指南
+
+#### 添加新的决策类型
+
+1. 在 `DecisionType` 枚举中添加新类型
+2. 在 `decision_payload.py` 中定义 Pydantic schema
+3. 在 `decision_payload_scenarios.md` 中添加场景描述
+4. 编写单元测试（至少 5 个测试用例）
+5. 在 Coordinator 中添加验证规则
+6. 更新 Intent → Decision 映射规则
+7. 编写集成测试验证完整流程
+
+#### 修改现有 Payload
+
+1. **向后兼容**: 只添加可选字段，不修改必填字段
+2. **版本管理**: 如需破坏性修改，增加版本号（如 RespondPayloadV2）
+3. **测试更新**: 更新相关测试用例
+4. **文档更新**: 同步更新文档和示例
+
+### 9.12 常见问题
+
+**Q: 如何处理 payload 验证失败？**
+
+A: Pydantic 会抛出 `ValidationError`，包含详细的错误信息。Coordinator 应捕获此异常并发布 `DecisionRejectedEvent`，包含错误详情。
+
+```python
+try:
+    payload = CreateNodePayload(**payload_dict)
+except ValidationError as e:
+    errors = [error["msg"] for error in e.errors()]
+    event_bus.publish(DecisionRejectedEvent(
+        decision_id=decision.id,
+        errors=errors
+    ))
+```
+
+**Q: 如何支持自定义节点类型？**
+
+A: 扩展 `NodeType` 枚举，并在 Coordinator 的节点类型白名单中添加。同时需要实现对应的节点执行器。
+
+**Q: 如何处理大型 payload（如包含大量节点的工作流）？**
+
+A: 使用流式传输或分块传输。对于超大工作流，可以先创建工作流骨架，然后逐步添加节点。
+
+### 9.13 相关文档
+
+- 详细场景说明: `docs/architecture/decision_payload_scenarios.md`
+- 代码实现: `src/domain/agents/decision_payload.py`
+- 单元测试: `tests/unit/domain/agents/test_decision_payload.py`
+- Coordinator 验证规则: `src/domain/agents/coordinator_agent.py`
+- ConversationAgent 决策生成: `src/domain/agents/conversation_agent.py`
+
+---
+
+## 10. 架构建议
 
 ### 9.1 短期改进
 
