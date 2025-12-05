@@ -1,0 +1,91 @@
+# 数据采集节点 - 通用节点规范示例
+# 版本: 1.0.0
+# 遵循 definitions/schemas/node_definition_schema.json
+
+name: data_collection
+kind: node
+description: 从数据库采集数据，支持时间范围和过滤条件
+version: "1.0.0"
+author: feagent
+tags:
+  - data
+  - database
+  - collection
+category: data
+
+executor_type: database
+
+# 输入参数
+parameters:
+  - name: table
+    type: string
+    description: 数据表名
+    required: true
+  - name: time_range
+    type: string
+    description: 时间范围（如 "3 months", "90 days"）
+    required: false
+    default: "30 days"
+  - name: filters
+    type: object
+    description: 过滤条件字典
+    required: false
+    default: {}
+  - name: limit
+    type: integer
+    description: 返回记录数限制
+    required: false
+    default: 1000
+    constraints:
+      min: 1
+      max: 10000
+  - name: database
+    type: string
+    description: 数据库名称
+    required: false
+    default: "default"
+
+# 返回值
+returns:
+  type: object
+  properties:
+    data:
+      type: array
+      description: 查询结果数据列表
+    row_count:
+      type: integer
+      description: 返回的行数
+    query:
+      type: string
+      description: 执行的SQL查询语句
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 3
+    delay_seconds: 2.0
+    backoff_multiplier: 2.0
+  on_failure: skip
+  fallback:
+    default_value:
+      data: []
+      row_count: 0
+
+# 执行配置
+execution:
+  timeout_seconds: 60
+  sandbox: false
+
+# 动态代码段
+dynamic_code:
+  pre_execute: |
+    # 预处理：验证表名安全性
+    import re
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table):
+        raise ValueError(f"Invalid table name: {table}")
+  post_execute: |
+    # 后处理：添加元数据
+    result['metadata'] = {
+        'query_time': datetime.now().isoformat(),
+        'source': database
+    }

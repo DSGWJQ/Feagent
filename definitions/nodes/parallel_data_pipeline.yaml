@@ -1,0 +1,79 @@
+# 并行数据管道节点 - 嵌套节点规范示例
+# 版本: 1.0.0
+# 遵循 definitions/schemas/node_definition_schema.json
+
+name: parallel_data_pipeline
+kind: node
+description: 并行执行多个数据处理任务，支持嵌套子节点
+version: "1.0.0"
+author: feagent
+tags:
+  - workflow
+  - parallel
+  - pipeline
+category: control
+
+executor_type: parallel
+
+# 输入参数
+parameters:
+  - name: input_data
+    type: object
+    description: 输入数据
+    required: true
+  - name: parallel_tasks
+    type: array
+    description: 并行任务配置列表
+    required: false
+    default: []
+
+# 返回值
+returns:
+  type: object
+  properties:
+    results:
+      type: object
+      description: 各子任务执行结果
+    execution_time:
+      type: number
+      description: 总执行时间（秒）
+    success_count:
+      type: integer
+      description: 成功执行的任务数
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 1
+  on_failure: skip
+
+# 执行配置
+execution:
+  timeout_seconds: 300
+  sandbox: false
+
+# 嵌套节点声明
+nested:
+  parallel: true
+  children:
+    - name: sales_analysis
+      executor_type: python
+      parameters:
+        - name: data
+          type: array
+          required: true
+    - name: customer_segmentation
+      executor_type: python
+      parameters:
+        - name: data
+          type: array
+          required: true
+    - name: trend_prediction
+      executor_type: llm
+      parameters:
+        - name: historical_data
+          type: object
+          required: true
+        - name: model
+          type: string
+          default: "gpt-4"

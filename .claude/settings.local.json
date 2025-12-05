@@ -21,7 +21,10 @@
       "Bash(findstr:*)",
       "Bash(powershell -Command \"(Get-Content ''D:\\My_Project\\agent_data\\src\\domain\\agents\\conversation_agent.py'').Length\")",
       "Bash(pip show:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(powershell -Command \"(Get-Content ''D:\\My_Project\\agent_data\\docs\\architecture\\current_agents.md'').Length\")",
+      "Bash(powershell -Command \"Get-ChildItem -Path ''D:\\My_Project\\agent_data'' -Directory | Select-Object Name\")",
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []

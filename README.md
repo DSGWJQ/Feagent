@@ -118,12 +118,15 @@ agent_data/
 │       ├── layouts/          # 布局组件
 │       ├── features/         # 业务功能模块
 │       └── shared/           # 共享资源
+├── definitions/               # 节点定义（YAML 规范）
+│   ├── nodes/                # 节点定义文件
+│   └── schemas/              # JSON Schema 校验文件
 ├── tests/                     # 测试
 │   ├── unit/                 # 单元测试
 │   └── integration/          # 集成测试
 ├── alembic/                   # 数据库迁移
 ├── docs/                      # 文档
-└── scripts/                   # 脚本
+└── scripts/                   # 脚本（含 validate_node_definitions.py）
 
 ```
 
@@ -138,6 +141,8 @@ agent_data/
 - 🏗️ [多Agent协作架构](docs/architecture/current_agents.md) - 三Agent系统架构详解
 - 📖 [复杂分析任务 Runbook](docs/architecture/current_agents.md#11-复杂分析任务运行手册runbook) - 需求采集→规划→委派→监控→异常→结果汇报全流程
 - 🔧 [运维操作手册](docs/architecture/current_agents.md#118-运维操作手册) - 常见问题排查与手动干预
+- 📄 [通用节点 YAML 规范](docs/architecture/current_agents.md#14-通用节点-yaml-规范node-definition-specification) - 自描述节点定义、Schema 校验、示例模板
+- 📊 [动态节点运维 Runbook](docs/operations/dynamic_node_runbook.md) - 监控指标、回滚流程、健康检查、故障排查
 
 ### 其他文档
 - [前端架构总结](docs/frontend_architecture_summary.md)

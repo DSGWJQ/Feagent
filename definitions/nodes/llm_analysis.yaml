@@ -1,0 +1,97 @@
+# LLM 数据分析节点 - 通用节点规范示例
+# 版本: 1.0.0
+# 遵循 definitions/schemas/node_definition_schema.json
+
+name: llm_analysis
+kind: node
+description: 使用 LLM 进行数据分析和报告生成
+version: "1.0.0"
+author: feagent
+tags:
+  - llm
+  - analytics
+  - report
+category: llm
+
+executor_type: llm
+
+# 输入参数
+parameters:
+  - name: data
+    type: object
+    description: 要分析的数据
+    required: true
+  - name: metrics
+    type: object
+    description: 统计指标
+    required: false
+    default: {}
+  - name: analysis_type
+    type: string
+    description: 分析类型
+    required: false
+    default: "summary"
+    enum:
+      - summary
+      - insight
+      - recommendation
+  - name: model
+    type: string
+    description: LLM 模型名称
+    required: false
+    default: "gpt-4"
+  - name: temperature
+    type: number
+    description: 温度参数
+    required: false
+    default: 0.7
+    constraints:
+      min: 0.0
+      max: 2.0
+  - name: max_tokens
+    type: integer
+    description: 最大输出 token 数
+    required: false
+    default: 2000
+    constraints:
+      min: 100
+      max: 8000
+  - name: system_prompt
+    type: string
+    description: 系统提示词
+    required: false
+  - name: user_prompt
+    type: string
+    description: 用户提示词模板
+    required: true
+
+# 返回值
+returns:
+  type: object
+  properties:
+    report:
+      type: string
+      description: LLM 生成的分析报告
+    tokens_used:
+      type: integer
+      description: 消耗的 token 数量
+    model:
+      type: string
+      description: 使用的模型名称
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 3
+    delay_seconds: 5.0
+    backoff_multiplier: 2.0
+  on_failure: replan
+  fallback:
+    default_value:
+      report: "分析失败，请稍后重试"
+      tokens_used: 0
+
+# 执行配置
+execution:
+  timeout_seconds: 180
+  sandbox: false

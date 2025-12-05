@@ -29,8 +29,11 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+import yaml
 
 # Phase 4: 层次化深度限制
 MAX_NODE_DEFINITION_DEPTH = 5
@@ -320,6 +323,490 @@ class NodeDefinition:
             node.children.append(child)
 
         return node
+
+    # ========== Phase 8.1 扩展: YAML 解析与序列化 ==========
+
+    # 执行器类型映射
+    EXECUTOR_TYPE_MAP = {
+        "python": NodeType.PYTHON,
+        "code": NodeType.PYTHON,  # code 是 python 的别名
+        "llm": NodeType.LLM,
+        "http": NodeType.HTTP,
+        "database": NodeType.DATABASE,
+        "container": NodeType.CONTAINER,
+        "condition": NodeType.CONDITION,
+        "loop": NodeType.LOOP,
+        "parallel": NodeType.PARALLEL,
+        "generic": NodeType.GENERIC,
+        "api": NodeType.HTTP,  # api 映射到 HTTP
+    }
+
+    @classmethod
+    def from_yaml(cls, yaml_content: str, depth: int = 0) -> "NodeDefinition":
+        """从 YAML 字符串解析 NodeDefinition
+
+        参数：
+            yaml_content: YAML 内容字符串
+            depth: 当前嵌套深度（用于深度限制检查）
+
+        返回：
+            NodeDefinition 实例
+
+        异常：
+            ValueError: YAML 解析错误或缺少必填字段
+        """
+        if not yaml_content or not yaml_content.strip():
+            raise ValueError("YAML content is empty")
+
+        try:
+            data = yaml.safe_load(yaml_content)
+        except yaml.YAMLError as e:
+            raise ValueError(f"YAML parse error: {e}") from e
+
+        if data is None:
+            raise ValueError("YAML content is empty or contains only comments")
+
+        return cls._from_yaml_data(data, depth)
+
+    @classmethod
+    def _from_yaml_data(cls, data: dict[str, Any], depth: int = 0) -> "NodeDefinition":
+        """从解析后的 YAML 数据创建 NodeDefinition
+
+        参数：
+            data: 解析后的 YAML 数据字典
+            depth: 当前嵌套深度
+
+        返回：
+            NodeDefinition 实例
+        """
+        # 校验必填字段
+        required_fields = ["name", "executor_type"]
+        missing = [f for f in required_fields if f not in data or not data[f]]
+        if missing:
+            raise ValueError(f"Missing required fields: {', '.join(missing)}")
+
+        # 解析执行器类型
+        executor_type_str = data.get("executor_type", "generic").lower()
+        node_type = cls.EXECUTOR_TYPE_MAP.get(executor_type_str, NodeType.GENERIC)
+
+        # 解析参数到 input_schema
+        input_schema = {}
+        parameters = data.get("parameters", [])
+        if isinstance(parameters, list):
+            for param in parameters:
+                if isinstance(param, dict) and "name" in param:
+                    param_name = param["name"]
+                    param_type = param.get("type", "any")
+                    input_schema[param_name] = param_type
+
+        # 解析返回值到 output_schema
+        output_schema = {}
+        returns = data.get("returns", {})
+        if isinstance(returns, dict):
+            properties = returns.get("properties", {})
+            for prop_name, prop_def in properties.items():
+                if isinstance(prop_def, dict):
+                    output_schema[prop_name] = prop_def.get("type", "any")
+                else:
+                    output_schema[prop_name] = "any"
+
+        # 构建 config（保存元数据和其他配置）
+        config = {}
+
+        # 保存元数据
+        if "author" in data:
+            config["author"] = data["author"]
+        if "tags" in data:
+            config["tags"] = data["tags"]
+        if "category" in data:
+            config["category"] = data["category"]
+        if "version" in data:
+            config["version"] = data["version"]
+        if "kind" in data:
+            config["kind"] = data["kind"]
+
+        # 保存错误策略
+        if "error_strategy" in data:
+            config["error_strategy"] = data["error_strategy"]
+
+        # 保存动态代码
+        if "dynamic_code" in data:
+            config["dynamic_code"] = data["dynamic_code"]
+
+        # 保存执行配置
+        if "execution" in data:
+            config["execution"] = data["execution"]
+
+        # 保存原始参数定义（用于验证）
+        if parameters:
+            config["parameters"] = parameters
+
+        # 保存原始返回值定义（用于验证）
+        if returns:
+            config["returns"] = returns
+
+        # 提取类型特定字段
+        code = data.get("code")
+        prompt = data.get("prompt")
+        url = data.get("url")
+        method = data.get("method", "GET")
+        query = data.get("query")
+
+        # 创建节点
+        node = cls(
+            node_type=node_type,
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            code=code,
+            prompt=prompt,
+            url=url,
+            method=method,
+            query=query,
+            config=config,
+            input_schema=input_schema,
+            output_schema=output_schema,
+        )
+        node._depth = depth
+
+        # 解析嵌套节点
+        nested = data.get("nested", {})
+        if isinstance(nested, dict):
+            # 保存 parallel 标志
+            if nested.get("parallel"):
+                node.config["nested_parallel"] = True
+
+            # 检查深度限制
+            children_data = nested.get("children", [])
+            if children_data and depth >= MAX_NODE_DEFINITION_DEPTH:
+                raise ValueError(
+                    f"Nested depth exceeded maximum allowed ({MAX_NODE_DEFINITION_DEPTH})"
+                )
+
+            # 递归解析子节点
+            if isinstance(children_data, list):
+                for child_data in children_data:
+                    if isinstance(child_data, dict):
+                        child = cls._from_yaml_data(child_data, depth + 1)
+                        child.parent_id = node.id
+                        child._depth = depth + 1
+                        node.children.append(child)
+
+        return node
+
+    @classmethod
+    def from_yaml_file(cls, file_path: Path | str) -> "NodeDefinition":
+        """从 YAML 文件加载 NodeDefinition
+
+        参数：
+            file_path: YAML 文件路径
+
+        返回：
+            NodeDefinition 实例
+
+        异常：
+            ValueError: 文件不存在或解析错误
+        """
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise ValueError(f"File not found: {file_path}")
+
+        # 尝试多种编码
+        yaml_content = None
+        for encoding in ["utf-8", "utf-8-sig", "gbk", "latin-1"]:
+            try:
+                with open(file_path, encoding=encoding) as f:
+                    yaml_content = f.read()
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if yaml_content is None:
+            raise ValueError(f"Failed to decode file: {file_path}")
+
+        return cls.from_yaml(yaml_content)
+
+    @classmethod
+    def from_yaml_directory(cls, dir_path: Path | str) -> list["NodeDefinition"]:
+        """从目录加载所有 YAML 文件
+
+        参数：
+            dir_path: 目录路径
+
+        返回：
+            NodeDefinition 列表
+        """
+        dir_path = Path(dir_path)
+        nodes = []
+
+        for yaml_file in dir_path.glob("*.yaml"):
+            try:
+                node = cls.from_yaml_file(yaml_file)
+                nodes.append(node)
+            except ValueError:
+                continue  # 跳过无效文件
+
+        for yml_file in dir_path.glob("*.yml"):
+            try:
+                node = cls.from_yaml_file(yml_file)
+                nodes.append(node)
+            except ValueError:
+                continue
+
+        return nodes
+
+    def to_yaml(self) -> str:
+        """序列化为 YAML 字符串
+
+        返回：
+            YAML 格式字符串
+        """
+        data = {
+            "name": self.name,
+            "kind": self.config.get("kind", "node"),
+            "version": self.config.get("version", "1.0.0"),
+            "executor_type": self.node_type.value,
+            "description": self.description,
+        }
+
+        # 添加类型特定字段
+        if self.code:
+            data["code"] = self.code
+        if self.prompt:
+            data["prompt"] = self.prompt
+        if self.url:
+            data["url"] = self.url
+            data["method"] = self.method
+        if self.query:
+            data["query"] = self.query
+
+        # 添加元数据
+        if self.config.get("author"):
+            data["author"] = self.config["author"]
+        if self.config.get("tags"):
+            data["tags"] = self.config["tags"]
+        if self.config.get("category"):
+            data["category"] = self.config["category"]
+
+        # 添加参数
+        if self.config.get("parameters"):
+            data["parameters"] = self.config["parameters"]
+
+        # 添加返回值
+        if self.config.get("returns"):
+            data["returns"] = self.config["returns"]
+
+        # 添加错误策略
+        if self.config.get("error_strategy"):
+            data["error_strategy"] = self.config["error_strategy"]
+
+        # 添加动态代码
+        if self.config.get("dynamic_code"):
+            data["dynamic_code"] = self.config["dynamic_code"]
+
+        # 添加嵌套节点
+        if self.children:
+            nested = {"children": []}
+            if self.config.get("nested_parallel"):
+                nested["parallel"] = True
+            for child in self.children:
+                child_yaml = yaml.safe_load(child.to_yaml())
+                nested["children"].append(child_yaml)
+            data["nested"] = nested
+
+        return yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    # ========== Phase 8.1 扩展: DAG 操作 ==========
+
+    def find_node_by_name(self, name: str) -> "NodeDefinition | None":
+        """按名称查找节点（包括后代）
+
+        参数：
+            name: 节点名称
+
+        返回：
+            找到的节点或 None
+        """
+        if self.name == name:
+            return self
+
+        for child in self.children:
+            found = child.find_node_by_name(name)
+            if found:
+                return found
+
+        return None
+
+    def get_execution_order(self) -> list["NodeDefinition"]:
+        """获取执行顺序（拓扑排序）
+
+        返回：
+            按执行顺序排列的节点列表
+        """
+        # 简单实现：先返回所有子节点，再返回自己
+        # 如果有 depends_on，需要进行拓扑排序
+
+        # 构建依赖图
+        nodes = {self.name: self}
+        for child in self.children:
+            nodes[child.name] = child
+
+        # 检查依赖关系
+        dependencies: dict[str, list[str]] = {}
+        for child in self.children:
+            depends_on = child.config.get("depends_on", [])
+            dependencies[child.name] = depends_on
+
+        # 简单拓扑排序
+        visited = set()
+        result = []
+
+        def visit(node_name: str) -> None:
+            if node_name in visited:
+                return
+            visited.add(node_name)
+
+            # 先访问依赖
+            for dep in dependencies.get(node_name, []):
+                if dep in nodes:
+                    visit(dep)
+
+            if node_name in nodes:
+                result.append(nodes[node_name])
+
+        for child in self.children:
+            visit(child.name)
+
+        return result
+
+    # ========== Phase 8.1 扩展: 输入输出验证 ==========
+
+    def validate_input(self, input_data: dict[str, Any]) -> list[str]:
+        """验证输入数据
+
+        参数：
+            input_data: 输入数据字典
+
+        返回：
+            错误消息列表（空列表表示验证通过）
+        """
+        errors = []
+        parameters = self.config.get("parameters", [])
+
+        if not isinstance(parameters, list):
+            return errors
+
+        for param in parameters:
+            if not isinstance(param, dict):
+                continue
+
+            param_name = param.get("name")
+            if not param_name:
+                continue
+
+            param_type = param.get("type", "any")
+            required = param.get("required", False)
+            constraints = param.get("constraints", {})
+
+            # 检查必填
+            if required and param_name not in input_data:
+                errors.append(f"Missing required parameter: {param_name}")
+                continue
+
+            if param_name not in input_data:
+                continue
+
+            value = input_data[param_name]
+
+            # 类型检查
+            type_error = self._check_type(value, param_type, param_name)
+            if type_error:
+                errors.append(type_error)
+                continue
+
+            # 约束检查
+            constraint_errors = self._check_constraints(value, constraints, param_name)
+            errors.extend(constraint_errors)
+
+        return errors
+
+    def _check_type(self, value: Any, expected_type: str, param_name: str) -> str | None:
+        """检查值类型"""
+        type_map = {
+            "string": str,
+            "number": (int, float),
+            "integer": int,
+            "boolean": bool,
+            "array": list,
+            "object": dict,
+        }
+
+        expected = type_map.get(expected_type)
+        if expected and not isinstance(value, expected):
+            return f"Type mismatch for {param_name}: expected {expected_type}, got {type(value).__name__}"
+
+        return None
+
+    def _check_constraints(
+        self, value: Any, constraints: dict[str, Any], param_name: str
+    ) -> list[str]:
+        """检查约束"""
+        errors = []
+
+        if not isinstance(constraints, dict):
+            return errors
+
+        if "min" in constraints and isinstance(value, int | float):
+            if value < constraints["min"]:
+                errors.append(
+                    f"Constraint violation for {param_name}: value {value} is less than min {constraints['min']}"
+                )
+
+        if "max" in constraints and isinstance(value, int | float):
+            if value > constraints["max"]:
+                errors.append(
+                    f"Constraint violation for {param_name}: value {value} exceeds max {constraints['max']}"
+                )
+
+        if "pattern" in constraints and isinstance(value, str):
+            import re
+
+            pattern = constraints["pattern"]
+            if not re.match(pattern, value):
+                errors.append(
+                    f"Constraint violation for {param_name}: value does not match pattern {pattern}"
+                )
+
+        return errors
+
+    def validate_output(self, output_data: dict[str, Any]) -> list[str]:
+        """验证输出数据
+
+        参数：
+            output_data: 输出数据字典
+
+        返回：
+            错误消息列表（空列表表示验证通过）
+        """
+        errors = []
+        returns = self.config.get("returns", {})
+
+        if not isinstance(returns, dict):
+            return errors
+
+        properties = returns.get("properties", {})
+        for prop_name, prop_def in properties.items():
+            if prop_name not in output_data:
+                # 输出字段不是必须的，跳过
+                continue
+
+            if isinstance(prop_def, dict):
+                expected_type = prop_def.get("type", "any")
+                value = output_data[prop_name]
+                type_error = self._check_type(value, expected_type, prop_name)
+                if type_error:
+                    errors.append(type_error)
+
+        return errors
 
 
 class NodeDefinitionFactory:

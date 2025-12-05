@@ -1,0 +1,114 @@
+# 指标计算节点 - 通用节点规范示例
+# 版本: 1.0.0
+# 遵循 definitions/schemas/node_definition_schema.json
+
+name: metric_calculation
+kind: node
+description: 计算统计指标，支持分组和多种聚合方式
+version: "1.0.0"
+author: feagent
+tags:
+  - data
+  - analytics
+  - metrics
+category: data
+
+executor_type: python
+
+# 输入参数
+parameters:
+  - name: data
+    type: array
+    description: 输入数据列表
+    required: true
+  - name: metrics
+    type: array
+    description: 要计算的指标列表（sum, avg, max, min, count, trend）
+    required: true
+    default:
+      - sum
+      - avg
+  - name: group_by
+    type: string
+    description: 分组字段名称
+    required: false
+  - name: value_column
+    type: string
+    description: 数值列名称
+    required: false
+    default: "amount"
+
+# 返回值
+returns:
+  type: object
+  properties:
+    metrics:
+      type: object
+      description: 计算的指标结果
+    summary:
+      type: string
+      description: 指标摘要描述
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 2
+    delay_seconds: 1.0
+  on_failure: abort
+
+# 执行配置
+execution:
+  timeout_seconds: 120
+  sandbox: true
+  memory_limit: "512m"
+
+# 动态代码段
+dynamic_code:
+  pre_execute: |
+    import pandas as pd
+    import numpy as np
+
+    # 转换为 DataFrame
+    df = pd.DataFrame(data)
+    if df.empty:
+        raise ValueError("Input data is empty")
+  transform: |
+    # 计算指标
+    results = {}
+
+    if group_by and group_by in df.columns:
+        grouped = df.groupby(group_by)
+        for metric in metrics:
+            if metric == 'sum':
+                results[f'{group_by}_sum'] = grouped[value_column].sum().to_dict()
+            elif metric in ['avg', 'mean']:
+                results[f'{group_by}_avg'] = grouped[value_column].mean().to_dict()
+            elif metric == 'max':
+                results[f'{group_by}_max'] = grouped[value_column].max().to_dict()
+            elif metric == 'min':
+                results[f'{group_by}_min'] = grouped[value_column].min().to_dict()
+            elif metric == 'count':
+                results[f'{group_by}_count'] = grouped.size().to_dict()
+    else:
+        for metric in metrics:
+            if metric == 'sum':
+                results['total_sum'] = float(df[value_column].sum())
+            elif metric in ['avg', 'mean']:
+                results['avg'] = float(df[value_column].mean())
+            elif metric == 'max':
+                results['max'] = float(df[value_column].max())
+            elif metric == 'min':
+                results['min'] = float(df[value_column].min())
+            elif metric == 'count':
+                results['count'] = len(df)
+
+    # 趋势分析
+    if 'trend' in metrics and len(df) > 1:
+        first_value = df[value_column].iloc[0]
+        last_value = df[value_column].iloc[-1]
+        results['trend'] = 'up' if last_value > first_value else 'down'
+
+    output = {'metrics': results}
+  post_execute: |
+    # 生成摘要
+    output['summary'] = f"Calculated {len(metrics)} metrics on {len(data)} records"

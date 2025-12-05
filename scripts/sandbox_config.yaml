@@ -1,0 +1,165 @@
+# Feagent 沙箱执行配置
+# 版本: 1.0.0
+# 用于配置动态代码执行的安全策略
+
+# ========== 基础配置 ==========
+sandbox:
+  # 执行超时（秒）
+  timeout_seconds: 30
+
+  # 最大内存使用（MB）
+  max_memory_mb: 256
+
+  # 最大输出大小（字节）
+  max_output_size: 1048576  # 1MB
+
+  # 安全级别: strict | moderate | permissive
+  security_level: strict
+
+  # 是否启用安全检查
+  enable_security_check: true
+
+  # 是否启用执行日志
+  enable_logging: true
+
+  # 执行后是否清理临时文件
+  cleanup_after: true
+
+# ========== 允许的导入模块 ==========
+# 只有这些模块可以在沙箱中被导入
+allowed_imports:
+  # 数学计算
+  - math
+  - decimal
+  - fractions
+  - statistics
+  - random
+
+  # 数据处理
+  - json
+  - csv
+  - collections
+  - itertools
+  - functools
+  - operator
+
+  # 字符串处理
+  - string
+  - re
+  - textwrap
+  - unicodedata
+
+  # 日期时间
+  - datetime
+  - time
+  - calendar
+
+  # 工具类
+  - copy
+  - pprint
+  - typing
+  - dataclasses
+  - enum
+
+# ========== 禁止的模块（黑名单）==========
+# 这些模块绝对不允许导入
+blocked_imports:
+  # 系统操作
+  - os
+  - sys
+  - subprocess
+  - shutil
+  - pathlib
+
+  # 网络操作
+  - socket
+  - urllib
+  - http
+  - ftplib
+  - telnetlib
+  - requests
+
+  # 危险模块
+  - pickle
+  - shelve
+  - marshal
+  - ctypes
+  - importlib
+
+  # 并发/进程
+  - multiprocessing
+  - threading
+  - asyncio
+  - concurrent
+
+  # 其他危险模块
+  - signal
+  - pty
+  - tty
+  - code
+  - codeop
+
+# ========== 禁止的函数调用 ==========
+blocked_functions:
+  - eval
+  - exec
+  - compile
+  - __import__
+  - open
+  - input
+  - execfile
+  - file
+  - globals
+  - locals
+
+# ========== 禁止的属性访问 ==========
+blocked_attributes:
+  - __builtins__
+  - __class__
+  - __bases__
+  - __subclasses__
+  - __globals__
+  - __code__
+  - __reduce__
+  - __reduce_ex__
+  - __mro__
+  - __dict__
+
+# ========== 资源限制 ==========
+resource_limits:
+  # 最大递归深度
+  max_recursion_depth: 100
+
+  # 最大循环迭代次数
+  max_loop_iterations: 1000000
+
+  # 最大字符串长度
+  max_string_length: 10485760  # 10MB
+
+  # 最大列表/字典大小
+  max_collection_size: 1000000
+
+# ========== 隔离目录配置 ==========
+isolation:
+  # 基础隔离目录
+  base_dir: /tmp/feagent_sandbox
+
+  # 是否在每次执行后清理
+  cleanup_on_exit: true
+
+  # 保留执行记录的天数
+  retention_days: 7
+
+# ========== 日志配置 ==========
+logging:
+  # 日志级别
+  level: INFO
+
+  # 是否记录代码内容
+  log_code_content: false
+
+  # 是否记录输出内容
+  log_output_content: true
+
+  # 日志格式
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
