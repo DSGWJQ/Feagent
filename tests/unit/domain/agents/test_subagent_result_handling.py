@@ -292,7 +292,7 @@ class TestCoordinatorContextWriting:
         """创建 Mock EventBus"""
         event_bus = MagicMock()
         event_bus.subscribe = MagicMock()
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()
         return event_bus
 
     def test_coordinator_has_subagent_result_storage(self, mock_event_bus):
@@ -328,7 +328,7 @@ class TestCoordinatorContextWriting:
 
         coordinator.register_subagent_type(SubAgentType.SEARCH, SimpleAgent)
 
-        result = await coordinator.execute_subagent(
+        _result = await coordinator.execute_subagent(
             subagent_type="search",
             task_payload={},
             context={},

@@ -1,416 +1,216 @@
-"""测试：Coordinator 知识库接口集成 - Phase 5 阶段2
+"""Coordinator 与知识维护模块集成示例 (Step 8)
 
-测试目标：
-1. 定义 KnowledgeRetrieverPort 接口
-2. Coordinator 注入知识检索器
-3. Coordinator 可以检索知识
-4. 检索结果转换为 KnowledgeReferences
+演示 Coordinator 如何复用成功方案：
+1. 任务到达时，Coordinator 查询知识库
+2. 检查是否有相似的成功解法可复用
+3. 检查是否有已知失败案例需要预防
+4. 工作流执行后，自动更新知识库
 
-完成标准：
-- KnowledgeRetrieverPort 定义 retrieve_by_query 方法
-- Coordinator 接受 knowledge_retriever 参数
-- coordinator.retrieve_knowledge(query) 返回 KnowledgeReferences
-- 支持按工作流ID过滤检索
-
+用法：
+    pytest tests/unit/domain/services/test_coordinator_knowledge_integration.py -v
 """
 
-from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+class TestCoordinatorKnowledgeIntegration:
+    """Coordinator 与知识维护模块集成测试"""
 
-from src.domain.services.event_bus import EventBus
+    def test_coordinator_queries_knowledge_before_task(self):
+        """测试：Coordinator 在任务执行前查询知识库"""
+        from src.domain.services.knowledge_maintenance import (
+            KnowledgeMaintainer,
+            MemoryCategory,
+            SolutionRetriever,
+        )
 
-# ==================== 测试1：KnowledgeRetrieverPort 接口定义 ====================
+        maintainer = KnowledgeMaintainer()
+        retriever = SolutionRetriever(maintainer)
 
+        maintainer.add_memory(
+            category=MemoryCategory.FACT,
+            content="项目使用 Python 3.11 和 FastAPI 框架",
+            source="project_config",
+            confidence=1.0,
+        )
 
-class TestKnowledgeRetrieverPort:
-    """测试 KnowledgeRetrieverPort 接口"""
+        maintainer.record_success(
+            task_type="api_development",
+            task_description="创建用户管理 REST API",
+            workflow_id="wf_api_001",
+            solution_steps=["定义数据模型", "创建数据库表", "实现 CRUD 端点"],
+            success_metrics={"code_coverage": 0.85},
+            context={"framework": "fastapi"},
+        )
 
-    def test_knowledge_retriever_port_has_retrieve_by_query(self):
-        """KnowledgeRetrieverPort 定义 retrieve_by_query 方法"""
-        from src.domain.services.knowledge_retriever_port import KnowledgeRetrieverPort
+        new_task = {
+            "task_type": "api_development",
+            "task_description": "创建产品管理 API",
+            "context": {"framework": "fastapi"},
+        }
 
-        # 验证接口定义
-        assert hasattr(KnowledgeRetrieverPort, "retrieve_by_query")
+        relevant_memories = maintainer.search_memories("FastAPI")
+        similar_solutions = retriever.find_similar_solutions(
+            task_type=new_task["task_type"],
+            task_description=new_task["task_description"],
+            context=new_task["context"],
+        )
 
-    def test_knowledge_retriever_port_has_retrieve_by_error(self):
-        """KnowledgeRetrieverPort 定义 retrieve_by_error 方法"""
-        from src.domain.services.knowledge_retriever_port import KnowledgeRetrieverPort
+        assert len(relevant_memories) >= 1
+        assert len(similar_solutions) >= 1
 
-        assert hasattr(KnowledgeRetrieverPort, "retrieve_by_error")
+    def test_coordinator_prevents_known_failure(self):
+        """测试：Coordinator 预防已知失败"""
+        from src.domain.services.knowledge_maintenance import (
+            FailureCategory,
+            KnowledgeMaintainer,
+            SolutionRetriever,
+        )
 
-    def test_knowledge_retriever_port_has_retrieve_by_goal(self):
-        """KnowledgeRetrieverPort 定义 retrieve_by_goal 方法"""
-        from src.domain.services.knowledge_retriever_port import KnowledgeRetrieverPort
+        maintainer = KnowledgeMaintainer()
+        retriever = SolutionRetriever(maintainer)
 
-        assert hasattr(KnowledgeRetrieverPort, "retrieve_by_goal")
+        maintainer.record_failure(
+            task_type="external_api_call",
+            task_description="调用第三方支付 API",
+            workflow_id="wf_payment_001",
+            failure_category=FailureCategory.TIMEOUT,
+            error_message="Connection timeout after 30 seconds",
+            root_cause="第三方 API 响应慢",
+            lesson_learned="调用外部 API 必须设置超时",
+            prevention_strategy=["设置 10 秒超时", "实现重试"],
+        )
 
+        warning = retriever.check_known_failure(
+            task_type="external_api_call",
+            task_description="调用物流追踪 API",
+            potential_error="timeout",
+        )
 
-# ==================== 测试2：MockKnowledgeRetriever 实现 ====================
+        assert warning is not None
+        assert len(warning.prevention_strategy) >= 1
 
+    def test_coordinator_updates_knowledge_after_workflow(self):
+        """测试：Coordinator 在工作流完成后更新知识库"""
+        from src.domain.services.knowledge_maintenance import (
+            KnowledgeMaintainer,
+            SolutionRetriever,
+        )
 
-class TestMockKnowledgeRetriever:
-    """测试 MockKnowledgeRetriever"""
+        maintainer = KnowledgeMaintainer()
 
-    @pytest.mark.asyncio
-    async def test_mock_retriever_retrieve_by_query(self):
-        """Mock 检索器可以按查询检索"""
-        from src.domain.services.knowledge_retriever_port import MockKnowledgeRetriever
+        workflow_success_event = {
+            "event_type": "workflow_success",
+            "workflow_id": "wf_report_001",
+            "task_type": "report_generation",
+            "task_description": "生成季度销售分析报告",
+            "execution_steps": ["连接数据仓库", "执行聚合查询", "生成图表"],
+            "metrics": {"accuracy": 0.98},
+        }
 
-        retriever = MockKnowledgeRetriever()
+        maintainer.on_workflow_event(workflow_success_event)
 
-        # 添加测试数据
-        retriever.add_mock_result(
-            query="Python 异常处理",
-            results=[
+        assert maintainer.solution_count == 1
+        retriever = SolutionRetriever(maintainer)
+        solutions = retriever.find_by_task_type("report_generation")
+        assert len(solutions) == 1
+
+    def test_full_coordinator_knowledge_workflow(self):
+        """测试：完整的 Coordinator 知识工作流"""
+        from src.domain.services.knowledge_maintenance import (
+            KnowledgeMaintainer,
+            MemoryCategory,
+            PreferenceType,
+            SolutionRetriever,
+        )
+
+        maintainer = KnowledgeMaintainer()
+        retriever = SolutionRetriever(maintainer)
+
+        maintainer.add_memory(
+            category=MemoryCategory.CONTEXT,
+            content="业务规则：订单金额超过 10000 需人工审核",
+            source="business_rules",
+            confidence=1.0,
+        )
+
+        maintainer.add_preference(
+            user_id="dev_team",
+            preference_type=PreferenceType.CODING_STYLE,
+            key="test_framework",
+            value="pytest",
+        )
+
+        maintainer.on_workflow_event(
+            {
+                "event_type": "workflow_success",
+                "workflow_id": "wf_order_001",
+                "task_type": "order_processing",
+                "task_description": "处理标准订单",
+                "execution_steps": ["验证订单数据", "检查库存", "计算价格"],
+                "metrics": {"success_rate": 0.99},
+            }
+        )
+
+        maintainer.on_workflow_event(
+            {
+                "event_type": "workflow_failure",
+                "workflow_id": "wf_order_002",
+                "task_type": "order_processing",
+                "task_description": "处理大额订单",
+                "error_message": "Order requires manual approval",
+                "failure_category": "logic_error",
+                "root_cause": "未检查订单金额是否需要人工审核",
+            }
+        )
+
+        new_task = {
+            "task_type": "order_processing",
+            "task_description": "处理批量订单",
+        }
+
+        business_rules = maintainer.search_memories("订单")
+        similar_solutions = retriever.find_similar_solutions(
+            task_type=new_task["task_type"],
+            task_description=new_task["task_description"],
+            context={},
+        )
+        known_issues = retriever.check_known_failure(
+            task_type=new_task["task_type"],
+            task_description=new_task["task_description"],
+        )
+
+        assert len(business_rules) >= 1
+        assert len(similar_solutions) >= 1
+        assert known_issues is not None
+
+    def test_continuous_improvement_scenario(self):
+        """测试：持续改进场景"""
+        from src.domain.services.knowledge_maintenance import (
+            KnowledgeMaintainer,
+            SolutionRetriever,
+        )
+
+        maintainer = KnowledgeMaintainer()
+        retriever = SolutionRetriever(maintainer)
+
+        for i, (accuracy, steps) in enumerate(
+            [
+                (0.7, ["查询数据库 LIKE"]),
+                (0.85, ["使用全文索引查询"]),
+                (0.98, ["查询 Elasticsearch"]),
+            ]
+        ):
+            maintainer.on_workflow_event(
                 {
-                    "source_id": "doc_001",
-                    "title": "Python 异常处理指南",
-                    "content_preview": "使用 try-except 捕获异常...",
-                    "relevance_score": 0.92,
+                    "event_type": "workflow_success",
+                    "workflow_id": f"wf_search_v{i+1}",
+                    "task_type": "full_text_search",
+                    "task_description": "实现全文搜索功能",
+                    "execution_steps": steps,
+                    "metrics": {"accuracy": accuracy},
                 }
-            ],
-        )
-
-        results = await retriever.retrieve_by_query("Python 异常处理")
-
-        assert len(results) == 1
-        assert results[0]["title"] == "Python 异常处理指南"
-        assert results[0]["relevance_score"] == 0.92
-
-    @pytest.mark.asyncio
-    async def test_mock_retriever_retrieve_by_error(self):
-        """Mock 检索器可以按错误类型检索"""
-        from src.domain.services.knowledge_retriever_port import MockKnowledgeRetriever
-
-        retriever = MockKnowledgeRetriever()
-
-        # 添加错误解决方案
-        retriever.add_error_solution(
-            error_type="TimeoutError",
-            solution={
-                "title": "超时错误解决方案",
-                "preview": "增加超时时间或添加重试逻辑...",
-                "confidence": 0.85,
-            },
-        )
-
-        results = await retriever.retrieve_by_error("TimeoutError")
-
-        assert len(results) >= 1
-        assert results[0]["title"] == "超时错误解决方案"
-
-    @pytest.mark.asyncio
-    async def test_mock_retriever_retrieve_by_goal(self):
-        """Mock 检索器可以按目标检索"""
-        from src.domain.services.knowledge_retriever_port import MockKnowledgeRetriever
-
-        retriever = MockKnowledgeRetriever()
-
-        # 添加目标相关知识
-        retriever.add_goal_knowledge(
-            keyword="数据处理",
-            knowledge={
-                "doc_id": "doc_etl",
-                "title": "数据处理最佳实践",
-                "preview": "使用 ETL 管道...",
-                "match_score": 0.88,
-            },
-        )
-
-        results = await retriever.retrieve_by_goal("数据处理流程")
-
-        assert len(results) >= 1
-        assert results[0]["title"] == "数据处理最佳实践"
-
-    @pytest.mark.asyncio
-    async def test_mock_retriever_with_workflow_filter(self):
-        """Mock 检索器支持工作流过滤"""
-        from src.domain.services.knowledge_retriever_port import MockKnowledgeRetriever
-
-        retriever = MockKnowledgeRetriever()
-
-        # 添加特定工作流的知识
-        retriever.add_mock_result(
-            query="测试查询",
-            results=[
-                {"source_id": "d1", "title": "通用知识", "relevance_score": 0.9},
-            ],
-            workflow_id="wf_001",
-        )
-
-        # 查询特定工作流
-        results = await retriever.retrieve_by_query("测试查询", workflow_id="wf_001")
-        assert len(results) == 1
-
-        # 查询其他工作流应该没有结果
-        results_other = await retriever.retrieve_by_query("测试查询", workflow_id="wf_other")
-        assert len(results_other) == 0
-
-
-# ==================== 测试3：Coordinator 注入知识检索器 ====================
-
-
-class TestCoordinatorKnowledgeRetrieverInjection:
-    """测试 Coordinator 知识检索器注入"""
-
-    @pytest.fixture
-    def mock_event_bus(self):
-        """创建 Mock EventBus"""
-        event_bus = MagicMock(spec=EventBus)
-        event_bus.publish = AsyncMock()
-        event_bus.subscribe = MagicMock()
-        return event_bus
-
-    @pytest.fixture
-    def mock_knowledge_retriever(self):
-        """创建 Mock 知识检索器"""
-        from src.domain.services.knowledge_retriever_port import MockKnowledgeRetriever
-
-        retriever = MockKnowledgeRetriever()
-        retriever.add_mock_result(
-            query="测试",
-            results=[
-                {
-                    "source_id": "doc_001",
-                    "title": "测试文档",
-                    "content_preview": "测试内容...",
-                    "relevance_score": 0.9,
-                }
-            ],
-        )
-        return retriever
-
-    def test_coordinator_accepts_knowledge_retriever(
-        self, mock_event_bus, mock_knowledge_retriever
-    ):
-        """Coordinator 接受 knowledge_retriever 参数"""
-        from src.domain.agents.coordinator_agent import CoordinatorAgent
-
-        coordinator = CoordinatorAgent(
-            event_bus=mock_event_bus,
-            knowledge_retriever=mock_knowledge_retriever,
-        )
-
-        assert coordinator.knowledge_retriever is not None
-        assert coordinator.knowledge_retriever == mock_knowledge_retriever
-
-    def test_coordinator_without_knowledge_retriever(self, mock_event_bus):
-        """Coordinator 可以不传 knowledge_retriever"""
-        from src.domain.agents.coordinator_agent import CoordinatorAgent
-
-        coordinator = CoordinatorAgent(event_bus=mock_event_bus)
-
-        assert coordinator.knowledge_retriever is None
-
-
-# ==================== 测试4：Coordinator 检索知识 ====================
-
-
-class TestCoordinatorKnowledgeRetrieval:
-    """测试 Coordinator 知识检索功能"""
-
-    @pytest.fixture
-    def mock_event_bus(self):
-        event_bus = MagicMock(spec=EventBus)
-        event_bus.publish = AsyncMock()
-        event_bus.subscribe = MagicMock()
-        return event_bus
-
-    @pytest.fixture
-    def coordinator_with_retriever(self, mock_event_bus):
-        """创建带知识检索器的 Coordinator"""
-        from src.domain.agents.coordinator_agent import CoordinatorAgent
-        from src.domain.services.knowledge_retriever_port import MockKnowledgeRetriever
-
-        retriever = MockKnowledgeRetriever()
-
-        # 添加测试数据
-        retriever.add_mock_result(
-            query="Python 编程",
-            results=[
-                {
-                    "source_id": "doc_py_001",
-                    "title": "Python 基础",
-                    "content_preview": "Python 是一门动态语言...",
-                    "relevance_score": 0.95,
-                },
-                {
-                    "source_id": "doc_py_002",
-                    "title": "Python 进阶",
-                    "content_preview": "装饰器和生成器...",
-                    "relevance_score": 0.85,
-                },
-            ],
-        )
-
-        retriever.add_error_solution(
-            error_type="ValueError",
-            solution={
-                "title": "ValueError 处理",
-                "preview": "检查输入值的有效性...",
-                "confidence": 0.9,
-            },
-        )
-
-        retriever.add_goal_knowledge(
-            keyword="API",
-            knowledge={
-                "doc_id": "doc_api",
-                "title": "REST API 设计",
-                "preview": "使用 RESTful 风格...",
-                "match_score": 0.88,
-            },
-        )
-
-        return CoordinatorAgent(
-            event_bus=mock_event_bus,
-            knowledge_retriever=retriever,
-        )
-
-    @pytest.mark.asyncio
-    async def test_retrieve_knowledge_returns_references(self, coordinator_with_retriever):
-        """retrieve_knowledge 返回 KnowledgeReferences"""
-        from src.domain.services.knowledge_reference import KnowledgeReferences
-
-        refs = await coordinator_with_retriever.retrieve_knowledge("Python 编程")
-
-        assert isinstance(refs, KnowledgeReferences)
-        assert len(refs) == 2
-
-    @pytest.mark.asyncio
-    async def test_retrieve_knowledge_preserves_relevance(self, coordinator_with_retriever):
-        """检索结果保留相关度分数"""
-        refs = await coordinator_with_retriever.retrieve_knowledge("Python 编程")
-
-        ref_list = refs.to_list()
-        assert ref_list[0].relevance_score == 0.95
-        assert ref_list[1].relevance_score == 0.85
-
-    @pytest.mark.asyncio
-    async def test_retrieve_knowledge_by_error(self, coordinator_with_retriever):
-        """按错误类型检索知识"""
-        refs = await coordinator_with_retriever.retrieve_knowledge_by_error("ValueError")
-
-        assert len(refs) >= 1
-        ref_list = refs.to_list()
-        assert any("ValueError" in r.title for r in ref_list)
-
-    @pytest.mark.asyncio
-    async def test_retrieve_knowledge_by_goal(self, coordinator_with_retriever):
-        """按目标检索知识"""
-        refs = await coordinator_with_retriever.retrieve_knowledge_by_goal("构建 API 服务")
-
-        assert len(refs) >= 1
-        ref_list = refs.to_list()
-        assert any("API" in r.title for r in ref_list)
-
-    @pytest.mark.asyncio
-    async def test_retrieve_knowledge_without_retriever(self, mock_event_bus):
-        """无检索器时返回空结果"""
-        from src.domain.agents.coordinator_agent import CoordinatorAgent
-        from src.domain.services.knowledge_reference import KnowledgeReferences
-
-        coordinator = CoordinatorAgent(event_bus=mock_event_bus)
-
-        refs = await coordinator.retrieve_knowledge("任何查询")
-
-        assert isinstance(refs, KnowledgeReferences)
-        assert refs.is_empty()
-
-    @pytest.mark.asyncio
-    async def test_retrieve_knowledge_with_workflow_id(self, coordinator_with_retriever):
-        """支持按工作流ID过滤检索"""
-        # 先检索通用结果
-        refs = await coordinator_with_retriever.retrieve_knowledge(
-            "Python 编程",
-            workflow_id="wf_001",
-        )
-
-        # 应该返回结果（因为 MockRetriever 的默认行为）
-        assert isinstance(refs, type(refs))
-
-
-# ==================== 测试5：检索结果缓存 ====================
-
-
-class TestCoordinatorKnowledgeCache:
-    """测试知识检索结果缓存"""
-
-    @pytest.fixture
-    def mock_event_bus(self):
-        event_bus = MagicMock(spec=EventBus)
-        event_bus.publish = AsyncMock()
-        event_bus.subscribe = MagicMock()
-        return event_bus
-
-    @pytest.mark.asyncio
-    async def test_cache_knowledge_for_workflow(self, mock_event_bus):
-        """缓存工作流的知识引用"""
-        from src.domain.agents.coordinator_agent import CoordinatorAgent
-        from src.domain.services.knowledge_retriever_port import MockKnowledgeRetriever
-
-        retriever = MockKnowledgeRetriever()
-        retriever.add_mock_result(
-            query="测试查询",
-            results=[{"source_id": "d1", "title": "T1", "relevance_score": 0.9}],
-        )
-
-        coordinator = CoordinatorAgent(
-            event_bus=mock_event_bus,
-            knowledge_retriever=retriever,
-        )
-
-        # 检索并缓存
-        refs = await coordinator.retrieve_knowledge("测试查询", workflow_id="wf_001")
-
-        # 验证缓存
-        cached = coordinator.get_cached_knowledge("wf_001")
-        assert cached is not None
-        assert len(cached) == 1
-
-    @pytest.mark.asyncio
-    async def test_get_cached_knowledge_returns_none_if_not_cached(self, mock_event_bus):
-        """未缓存时返回 None"""
-        from src.domain.agents.coordinator_agent import CoordinatorAgent
-
-        coordinator = CoordinatorAgent(event_bus=mock_event_bus)
-
-        cached = coordinator.get_cached_knowledge("wf_nonexistent")
-        assert cached is None
-
-    @pytest.mark.asyncio
-    async def test_clear_cached_knowledge(self, mock_event_bus):
-        """清除缓存的知识"""
-        from src.domain.agents.coordinator_agent import CoordinatorAgent
-        from src.domain.services.knowledge_retriever_port import MockKnowledgeRetriever
-
-        retriever = MockKnowledgeRetriever()
-        retriever.add_mock_result(
-            query="查询",
-            results=[{"source_id": "d1", "title": "T1", "relevance_score": 0.9}],
-        )
-
-        coordinator = CoordinatorAgent(
-            event_bus=mock_event_bus,
-            knowledge_retriever=retriever,
-        )
-
-        # 检索并缓存
-        await coordinator.retrieve_knowledge("查询", workflow_id="wf_001")
-
-        # 清除缓存
-        coordinator.clear_cached_knowledge("wf_001")
-
-        # 验证已清除
-        assert coordinator.get_cached_knowledge("wf_001") is None
-
-
-# 导出
-__all__ = [
-    "TestKnowledgeRetrieverPort",
-    "TestMockKnowledgeRetriever",
-    "TestCoordinatorKnowledgeRetrieverInjection",
-    "TestCoordinatorKnowledgeRetrieval",
-    "TestCoordinatorKnowledgeCache",
-]
+            )
+
+        best = retriever.get_best_solution("full_text_search", "accuracy")
+        assert best is not None
+        assert best.success_metrics["accuracy"] == 0.98
+        assert len(retriever.find_by_task_type("full_text_search")) == 3

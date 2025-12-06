@@ -15,7 +15,7 @@
 """
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -117,7 +117,7 @@ class TestHandleSpawnSubAgentEvent:
     def mock_event_bus(self):
         """创建 Mock EventBus"""
         event_bus = MagicMock(spec=EventBus)
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()
         event_bus.subscribe = MagicMock()
         return event_bus
 
@@ -181,7 +181,7 @@ class TestSubAgentExecution:
     def mock_event_bus(self):
         """创建 Mock EventBus"""
         event_bus = MagicMock(spec=EventBus)
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()
         return event_bus
 
     @pytest.mark.asyncio
@@ -264,7 +264,7 @@ class TestSubAgentLifecycleTracking:
     def mock_event_bus(self):
         """创建 Mock EventBus"""
         event_bus = MagicMock(spec=EventBus)
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()
         return event_bus
 
     @pytest.mark.asyncio
@@ -336,7 +336,7 @@ class TestSubAgentCompletionEvents:
     def mock_event_bus(self):
         """创建 Mock EventBus"""
         event_bus = MagicMock(spec=EventBus)
-        event_bus.publish = MagicMock()
+        event_bus.publish = AsyncMock()
         return event_bus
 
     @pytest.mark.asyncio

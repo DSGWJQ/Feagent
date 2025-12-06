@@ -352,6 +352,34 @@ class CoordinatorAgent:
         # Phase 1: 工具仓库
         self._tool_repository: Any | None = None
 
+        # ==================== 扩展模块 ====================
+
+        # 知识库管理器 (CRUD)
+        from src.domain.services.knowledge_manager import KnowledgeManager
+
+        self.knowledge_manager = KnowledgeManager()
+
+        # 统一日志收集器
+        from src.domain.services.unified_log_collector import UnifiedLogCollector
+
+        self.log_collector = UnifiedLogCollector()
+
+        # 动态告警规则管理器
+        from src.domain.services.dynamic_alert_rule_manager import (
+            DynamicAlertRuleManager,
+        )
+
+        self.alert_rule_manager = DynamicAlertRuleManager()
+
+        # 监督模块 (Supervision Modules)
+        from src.domain.services.supervision_modules import SupervisionCoordinator
+
+        self._supervision_coordinator = SupervisionCoordinator()
+        # 暴露子模块以便直接访问
+        self.conversation_supervision = self._supervision_coordinator.conversation_supervision
+        self.efficiency_monitor = self._supervision_coordinator.efficiency_monitor
+        self.strategy_repository = self._supervision_coordinator.strategy_repository
+
     # ==================== Phase 1: 上下文服务 ====================
 
     @property
@@ -704,8 +732,20 @@ class CoordinatorAgent:
 
         if is_valid:
             self._statistics["passed"] += 1
+            # 记录验证通过日志
+            self.log_collector.info(
+                "CoordinatorAgent",
+                "决策验证通过",
+                {"action_type": decision.get("action_type", "unknown")},
+            )
         else:
             self._statistics["rejected"] += 1
+            # 记录验证失败日志
+            self.log_collector.warning(
+                "CoordinatorAgent",
+                f"决策验证失败: {len(errors)} 个错误",
+                {"action_type": decision.get("action_type", "unknown"), "errors": errors},
+            )
 
         return ValidationResult(is_valid=is_valid, errors=errors, correction=correction)
 
@@ -3121,6 +3161,382 @@ class CoordinatorAgent:
             "total_unresolved_issues": total_issues,
             "total_next_plan_items": total_plans,
         }
+
+    # ==================== 扩展模块：知识库 CRUD ====================
+
+    def create_knowledge(
+        self,
+        title: str,
+        content: str,
+        category: str,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        """创建知识条目
+
+        参数：
+            title: 标题
+            content: 内容
+            category: 类别
+            tags: 标签列表（可选）
+            metadata: 元数据（可选）
+
+        返回：
+            新创建条目的 ID
+        """
+        entry_id = self.knowledge_manager.create(
+            title=title,
+            content=content,
+            category=category,
+            tags=tags,
+            metadata=metadata,
+        )
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"创建知识条目: {title}",
+            {"entry_id": entry_id, "category": category},
+        )
+
+        return entry_id
+
+    def get_knowledge(self, entry_id: str) -> dict[str, Any] | None:
+        """获取知识条目
+
+        参数：
+            entry_id: 条目 ID
+
+        返回：
+            条目字典，如果不存在返回 None
+        """
+        return self.knowledge_manager.get(entry_id)
+
+    def update_knowledge(
+        self,
+        entry_id: str,
+        title: str | None = None,
+        content: str | None = None,
+        category: str | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        """更新知识条目
+
+        参数：
+            entry_id: 条目 ID
+            title: 新标题（可选）
+            content: 新内容（可选）
+            category: 新类别（可选）
+            tags: 新标签（可选）
+            metadata: 新元数据（可选）
+
+        返回：
+            是否更新成功
+        """
+        success = self.knowledge_manager.update(
+            entry_id,
+            title=title,
+            content=content,
+            category=category,
+            tags=tags,
+            metadata=metadata,
+        )
+
+        if success:
+            self.log_collector.info(
+                "CoordinatorAgent",
+                f"更新知识条目: {entry_id}",
+                {"entry_id": entry_id},
+            )
+
+        return success
+
+    def delete_knowledge(self, entry_id: str) -> bool:
+        """删除知识条目
+
+        参数：
+            entry_id: 条目 ID
+
+        返回：
+            是否删除成功
+        """
+        success = self.knowledge_manager.delete(entry_id)
+
+        if success:
+            self.log_collector.info(
+                "CoordinatorAgent",
+                f"删除知识条目: {entry_id}",
+                {"entry_id": entry_id},
+            )
+
+        return success
+
+    def search_knowledge(self, keyword: str) -> list[dict[str, Any]]:
+        """按关键词搜索知识条目
+
+        参数：
+            keyword: 搜索关键词
+
+        返回：
+            匹配的条目列表
+        """
+        return self.knowledge_manager.search(keyword)
+
+    # ==================== 扩展模块：动态告警规则 ====================
+
+    def add_alert_rule(
+        self,
+        name: str,
+        rule_type: str,
+        severity: str = "warning",
+        **kwargs: Any,
+    ) -> str:
+        """添加告警规则
+
+        参数：
+            name: 规则名称
+            rule_type: 规则类型 (threshold/pattern/rate)
+            severity: 严重性 (info/warning/critical)
+            **kwargs: 规则配置（取决于规则类型）
+
+        返回：
+            规则 ID
+        """
+        rule_id = self.alert_rule_manager.create_rule(
+            name=name,
+            rule_type=rule_type,
+            severity=severity,
+            **kwargs,
+        )
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"添加告警规则: {name}",
+            {"rule_id": rule_id, "rule_type": rule_type, "severity": severity},
+        )
+
+        return rule_id
+
+    def remove_alert_rule(self, rule_id: str) -> bool:
+        """删除告警规则
+
+        参数：
+            rule_id: 规则 ID
+
+        返回：
+            是否删除成功
+        """
+        return self.alert_rule_manager.delete_rule(rule_id)
+
+    def get_system_status_with_alerts(self) -> dict[str, Any]:
+        """获取带告警评估的系统状态
+
+        自动评估所有告警规则，返回系统状态和触发的告警。
+
+        返回：
+            系统状态字典，包含 alerts 字段
+        """
+        # 获取基本状态
+        status = self.get_system_status()
+
+        # 计算指标
+        total = self._statistics.get("total", 0)
+        rejected = self._statistics.get("rejected", 0)
+        rejection_rate = rejected / total if total > 0 else 0.0
+
+        # 评估告警规则
+        metrics = {
+            "rejection_rate": rejection_rate,
+            "total_decisions": total,
+            "rejected_decisions": rejected,
+            "passed_decisions": self._statistics.get("passed", 0),
+        }
+
+        alerts = self.alert_rule_manager.evaluate(metrics)
+
+        status["alerts"] = alerts
+        status["alert_rules_count"] = len(self.alert_rule_manager.rules)
+
+        return status
+
+    # ==================== 监督模块代理方法 ====================
+
+    def supervise_input(self, text: str) -> dict[str, Any]:
+        """监督用户输入
+
+        对输入文本进行全面检查，包括偏见、有害内容、稳定性检测。
+
+        参数：
+            text: 用户输入文本
+
+        返回：
+            包含检查结果的字典：
+            - passed: bool - 是否通过检查
+            - issues: list - 检测到的问题列表
+            - action: str - 建议的动作 (allow/warn/block/terminate)
+        """
+        from src.domain.services.supervision_modules import ComprehensiveCheckResult
+
+        result: ComprehensiveCheckResult = self.conversation_supervision.check_all(text)
+
+        # 记录日志
+        if result.passed:
+            self.log_collector.debug(
+                "CoordinatorAgent",
+                "输入检查通过",
+                {"text_length": len(text)},
+            )
+        else:
+            self.log_collector.warning(
+                "CoordinatorAgent",
+                f"输入检查发现 {len(result.issues)} 个问题",
+                {
+                    "text_length": len(text),
+                    "issues": [issue.category for issue in result.issues],
+                    "action": result.action,
+                },
+            )
+            # 记录干预事件
+            for issue in result.issues:
+                self._supervision_coordinator.record_intervention(
+                    intervention_type=issue.category,
+                    reason=issue.message,
+                    source="conversation_supervision",
+                    target_id="user_input",
+                    severity=issue.severity,
+                )
+
+        return {
+            "passed": result.passed,
+            "issues": [
+                {
+                    "detected": issue.detected,
+                    "category": issue.category,
+                    "severity": issue.severity,
+                    "message": issue.message,
+                }
+                for issue in result.issues
+            ],
+            "action": result.action,
+        }
+
+    def record_workflow_resource(
+        self,
+        workflow_id: str,
+        node_id: str,
+        memory_mb: float,
+        cpu_percent: float,
+        duration_seconds: float,
+    ) -> None:
+        """记录工作流节点的资源使用
+
+        参数：
+            workflow_id: 工作流 ID
+            node_id: 节点 ID
+            memory_mb: 内存使用 (MB)
+            cpu_percent: CPU 使用百分比
+            duration_seconds: 执行时长 (秒)
+        """
+        self.efficiency_monitor.record_resource_usage(
+            workflow_id=workflow_id,
+            node_id=node_id,
+            memory_mb=memory_mb,
+            cpu_percent=cpu_percent,
+            duration_seconds=duration_seconds,
+        )
+
+        self.log_collector.debug(
+            "CoordinatorAgent",
+            f"记录资源使用: {workflow_id}/{node_id}",
+            {
+                "memory_mb": memory_mb,
+                "cpu_percent": cpu_percent,
+                "duration_seconds": duration_seconds,
+            },
+        )
+
+    def check_workflow_efficiency(self, workflow_id: str) -> list[dict[str, Any]]:
+        """检查工作流效率
+
+        评估工作流的资源使用是否超过阈值。
+
+        参数：
+            workflow_id: 工作流 ID
+
+        返回：
+            告警列表，每个告警包含 type, message, severity
+        """
+        alerts = self.efficiency_monitor.check_thresholds(workflow_id)
+
+        if alerts:
+            self.log_collector.warning(
+                "CoordinatorAgent",
+                f"工作流效率告警: {workflow_id}",
+                {"alert_count": len(alerts), "alerts": alerts},
+            )
+
+        return alerts
+
+    def add_supervision_strategy(
+        self,
+        name: str,
+        trigger_conditions: list[str],
+        action: str,
+        priority: int = 10,
+        **kwargs: Any,
+    ) -> str:
+        """添加监督策略
+
+        注册一个新的监督策略到策略库。
+
+        参数：
+            name: 策略名称
+            trigger_conditions: 触发条件列表 (如 ["bias", "harmful"])
+            action: 动作类型 (warn/block/terminate)
+            priority: 优先级 (数字越小优先级越高)
+            **kwargs: 额外配置
+
+        返回：
+            策略 ID
+        """
+        strategy_id = self.strategy_repository.register(
+            name=name,
+            trigger_conditions=trigger_conditions,
+            action=action,
+            priority=priority,
+            **kwargs,
+        )
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"添加监督策略: {name}",
+            {
+                "strategy_id": strategy_id,
+                "trigger_conditions": trigger_conditions,
+                "action": action,
+            },
+        )
+
+        return strategy_id
+
+    def get_intervention_events(self) -> list[dict[str, Any]]:
+        """获取干预事件历史
+
+        返回：
+            干预事件列表
+        """
+        events = self._supervision_coordinator.get_intervention_events()
+        return [
+            {
+                "intervention_type": e.intervention_type,
+                "reason": e.reason,
+                "source": e.source,
+                "target_id": e.target_id,
+                "severity": e.severity,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+            }
+            for e in events
+        ]
 
 
 # 导出
