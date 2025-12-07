@@ -1,0 +1,152 @@
+# 工具使用规范模块 (Tool Usage Module)
+#
+# 功能：定义可用工具及其使用方式
+# 适用场景：需要声明和规范工具使用的提示词
+# 版本：1.0.0
+# 创建日期：2025-12-07
+
+name: tool_usage
+version: "1.0.0"
+description: |
+  工具使用规范模块用于声明 Agent 可以使用的工具、工具的功能描述以及使用示例。
+  帮助 Agent 正确选择和使用工具完成任务。
+
+# 变量定义
+variables:
+  - allowed_tools       # 允许使用的工具列表
+  - tool_descriptions   # 工具功能描述
+  - usage_examples      # 使用示例
+
+# 适用的 Agent 类型
+applicable_agents:
+  - ConversationAgent
+  - WorkflowAgent
+
+# 模板内容
+template: |
+  ## 工具使用规范
+
+  ### 可用工具
+  {allowed_tools}
+
+  ### 工具说明
+  {tool_descriptions}
+
+  ### 使用示例
+  {usage_examples}
+
+# 元数据
+metadata:
+  category: tools
+  priority: 3
+  author: system
+  changelog:
+    - version: "1.0.0"
+      date: "2025-12-07"
+      changes: "初始版本"
+
+# 变量说明
+variable_descriptions:
+  allowed_tools:
+    type: string
+    required: true
+    description: "Agent 被允许使用的工具列表"
+    examples:
+      - "HTTP, LLM, DATABASE, PYTHON"
+      - |
+        1. HTTP - 发送 HTTP 请求
+        2. LLM - 调用语言模型
+        3. DATABASE - 查询数据库
+        4. PYTHON - 执行 Python 代码
+        5. CONTAINER - 容器化执行
+
+  tool_descriptions:
+    type: string
+    required: true
+    description: "每个工具的详细功能说明"
+    examples:
+      - |
+        **HTTP**：发送 HTTP 请求到外部 API
+        - 支持 GET, POST, PUT, DELETE 方法
+        - 可配置请求头、请求体、超时
+        - 返回响应状态码和响应体
+
+        **LLM**：调用语言模型进行推理
+        - 支持多种模型（GPT-4, Claude 等）
+        - 可配置温度、最大 token 数
+        - 返回模型生成的文本
+
+        **DATABASE**：执行数据库查询
+        - 支持 SQL 查询
+        - 只读操作，防止数据修改
+        - 返回查询结果集
+
+        **PYTHON**：在沙箱中执行 Python 代码
+        - 隔离执行环境
+        - 有时间和资源限制
+        - 返回执行结果和输出
+
+  usage_examples:
+    type: string
+    required: true
+    description: "工具使用的具体示例"
+    examples:
+      - |
+        **示例 1：使用 HTTP 获取天气数据**
+        ```json
+        {
+          "type": "HTTP",
+          "config": {
+            "url": "https://api.weather.com/current",
+            "method": "GET",
+            "params": {"city": "Beijing"}
+          }
+        }
+        ```
+
+        **示例 2：使用 LLM 分析文本**
+        ```json
+        {
+          "type": "LLM",
+          "config": {
+            "prompt": "请分析以下文本的情感倾向：{text}",
+            "model": "gpt-4",
+            "temperature": 0.7
+          }
+        }
+        ```
+
+# 使用示例
+usage_examples_section:
+  - name: "ConversationAgent 工具配置"
+    variables:
+      allowed_tools: "LLM"
+      tool_descriptions: |
+        **LLM**：调用语言模型进行推理和决策
+        - 用于意图分类
+        - 用于目标分解
+        - 用于生成回复
+      usage_examples: |
+        ```json
+        {
+          "action": "call_llm",
+          "config": {
+            "prompt": "请分析用户意图：{user_input}",
+            "response_format": "json"
+          }
+        }
+        ```
+
+  - name: "WorkflowAgent 工具配置"
+    variables:
+      allowed_tools: |
+        1. HTTP - API 调用
+        2. DATABASE - 数据查询
+        3. PYTHON - 代码执行
+        4. LLM - 模型推理
+        5. CONTAINER - 隔离执行
+      tool_descriptions: |
+        每个工具都有明确的输入输出规范，详见节点类型定义。
+        工具选择应基于任务需求，优先使用轻量级工具。
+      usage_examples: |
+        参考 YAML 节点定义中的配置示例。

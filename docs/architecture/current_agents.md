@@ -10364,3 +10364,4206 @@ jobs:
 | 调度阻塞 | 配额耗尽 | 检查 `scheduler.running_count` | 增加配额或优化完成速度 |
 
 ---
+
+## 24. 小结：Prompt 与 Context 现状 vs 需求
+
+> 审计日期：2025-12-07
+> 目标对比：结构化提示词 + 上下文传递
+> 状态：缺口已识别，待实施
+
+### 24.1 现状审计概览
+
+#### 24.1.1 Prompt（提示词）现状
+
+| 组件 | 文件位置 | 实现方式 | 说明 |
+|------|----------|----------|------|
+| WorkflowChatSystemPrompt | `src/lc/prompts/workflow_chat_system_prompt.py` | 类生成器 | 动态生成系统提示，支持上下文注入 |
+| ReAct Prompts | `src/domain/agents/react_prompts.py` | 字符串常量 | REACT_SYSTEM_PROMPT, WORKFLOW_PLANNING_PROMPT 等 |
+| NodeGenerationPrompts | `src/domain/services/node_code_generator.py` | 字符串常量 | 节点代码生成提示模板 |
+| LLM Node Prompts | `src/infrastructure/executors/prompt_executor.py` | 内联字符串 | LLM 节点执行提示 |
+
+#### 24.1.2 Context（上下文）现状
+
+| 组件 | 文件位置 | 实现方式 | 说明 |
+|------|----------|----------|------|
+| GlobalContext | `src/domain/services/context_manager.py` | 只读类 | 用户信息、系统配置，不可修改 |
+| SessionContext | `src/domain/services/context_manager.py` | 数据类 | 会话级上下文，含 token 跟踪、短期缓冲 |
+| WorkflowContext | `src/domain/services/context_manager.py` | 数据类 | 工作流级上下文，相互隔离 |
+| NodeContext | `src/domain/services/context_manager.py` | 数据类 | 节点级临时上下文 |
+| ShortTermBuffer | `src/domain/services/short_term_buffer.py` | 数据类 | 对话轮次缓冲 |
+| StructuredDialogueSummary | `src/domain/services/structured_dialogue_summary.py` | 数据类 | 八段结构摘要 |
+| ContextCompressor | `src/domain/services/context_compressor.py` | 服务类 | 上下文压缩器 |
+| ContextBridge | `src/domain/services/context_bridge.py` | 服务类 | 上下文桥接器 |
+
+### 24.2 Prompt 与 Context 现状 vs 需求对照表
+
+| 能力维度 | 需求目标 | 现状 | 实现位置 | 缺口说明 |
+|----------|----------|------|----------|----------|
+| **提示词模块化** | 提示词作为独立模块，可配置、可组合 | ❌ 未实现 | - | 现有提示词硬编码在代码中，无独立配置文件，无组合机制 |
+| **提示词版本管理** | 提示词版本控制、回滚能力 | ❌ 未实现 | - | 无版本标识、无变更历史、无回滚机制 |
+| **A/B 测试流程** | 多版本提示词并行测试、效果对比 | ❌ 未实现 | - | 无 A/B 测试基础设施、无实验分流、无效果对比 |
+| **上下文打包协议** | 标准化的上下文序列化格式 | ⚠️ 部分实现 | `to_dict()` 方法分散 | 各 Context 有 to_dict()，但无统一协议规范 |
+| **上下文解包协议** | 标准化的上下文反序列化格式 | ⚠️ 部分实现 | `from_dict()` 方法分散 | 各 Context 有 from_dict()，但无统一协议规范 |
+| **Agent间上下文传递** | 定义明确的跨 Agent 上下文传递协议 | ⚠️ 部分实现 | `ContextBridge` | 有桥接器但缺少标准传递协议定义 |
+| **上下文层级继承** | Global → Session → Workflow → Node | ✅ 已实现 | `context_manager.py` | 四层上下文架构完整 |
+| **Token 使用跟踪** | 实时跟踪上下文 token 使用 | ✅ 已实现 | `SessionContext.update_token_usage()` | Step 1 已完成 |
+| **短期记忆缓冲** | 对话轮次缓冲与饱和检测 | ✅ 已实现 | `ShortTermBuffer`, `ShortTermSaturatedEvent` | Step 2 已完成 |
+| **中期记忆蒸馏** | 结构化摘要生成 | ✅ 已实现 | `StructuredDialogueSummary` | Step 3 八段摘要 |
+| **知识库检索注入** | 从知识库检索并注入上下文 | ✅ 已实现 | `retrieve_knowledge()`, `inject_knowledge_to_context()` | Phase 5 已完成 |
+
+### 24.3 详细缺口分析
+
+#### 24.3.1 提示词模块化缺口
+
+**现状问题：**
+```python
+# 现状：硬编码在代码中
+REACT_SYSTEM_PROMPT = """你是一个智能任务规划助手..."""  # 无法配置
+
+# 期望：模块化配置
+prompts/
+├── react/
+│   ├── system.yaml          # 可独立配置
+│   ├── planning.yaml
+│   └── reasoning.yaml
+├── workflow/
+│   ├── chat_system.yaml
+│   └── node_generation.yaml
+└── registry.yaml             # 提示词注册表
+```
+
+**缺失能力：**
+- 提示词配置文件独立存储
+- 提示词模块注册与加载机制
+- 提示词组合与继承机制
+- 运行时动态加载提示词
+
+#### 24.3.2 提示词版本管理缺口
+
+**现状问题：**
+- 无版本号标识
+- 代码变更即提示词变更
+- 无法追溯历史版本
+
+**缺失能力：**
+- 版本标识符（如 `v1.0.0`）
+- 变更日志记录
+- 版本回滚机制
+- 版本对比工具
+
+#### 24.3.3 A/B 测试流程缺口
+
+**现状问题：**
+- 只能使用单一提示词版本
+- 无法进行效果对比
+- 无实验分流机制
+
+**缺失能力：**
+- 实验定义与配置
+- 流量分流策略
+- 效果指标收集
+- 结果对比分析
+
+#### 24.3.4 上下文打包/解包协议缺口
+
+**现状问题：**
+```python
+# 现状：各 Context 类有自己的序列化方法，但格式不统一
+class SessionContext:
+    def to_dict(self) -> dict: ...  # 格式1
+
+class WorkflowContext:
+    def to_dict(self) -> dict: ...  # 格式2，结构不同
+```
+
+**缺失能力：**
+- 统一的上下文打包协议定义
+- 标准化的序列化格式（如 MessagePack、Protocol Buffers）
+- 版本兼容性处理
+- 压缩与加密支持
+
+### 24.4 待实施改进方向
+
+| 优先级 | 改进项 | 预期收益 | 依赖项 |
+|--------|--------|----------|--------|
+| P0 | 提示词配置文件化 | 提示词独立管理，降低代码耦合 | 无 |
+| P0 | 上下文打包协议定义 | Agent 间标准化通信 | 无 |
+| P1 | 提示词版本管理 | 变更可追溯，支持回滚 | 提示词配置文件化 |
+| P1 | 上下文解包协议定义 | 完整的序列化/反序列化链路 | 打包协议定义 |
+| P2 | A/B 测试基础设施 | 支持提示词效果对比 | 版本管理 |
+| P2 | 提示词组合机制 | 提示词复用与继承 | 配置文件化 |
+
+### 24.5 相关测试基线
+
+> 测试执行日期：2025-12-07
+> 测试状态：全部通过 ✅
+
+**执行命令：**
+```bash
+# 单元测试（128 tests）
+pytest tests/unit/lc/prompts/test_workflow_chat_system_prompt.py \
+       tests/unit/domain/services/test_context_manager.py \
+       tests/unit/domain/services/test_context_manager_usage_ratio.py \
+       tests/unit/domain/services/test_context_compressor.py \
+       tests/unit/domain/services/test_context_bridge.py \
+       tests/unit/domain/services/test_short_term_buffer.py -v
+
+# 集成测试（20 tests）
+pytest tests/integration/test_context_compression_api.py \
+       tests/integration/test_coordinator_context_integration.py -v
+```
+
+**测试结果汇总：**
+
+| 测试文件 | 测试数量 | 状态 |
+|----------|----------|------|
+| test_workflow_chat_system_prompt.py | 26 | ✅ 全部通过 |
+| test_context_manager.py | 18 | ✅ 全部通过 |
+| test_context_manager_usage_ratio.py | 16 | ✅ 全部通过 |
+| test_context_compressor.py | 28 | ✅ 全部通过 |
+| test_context_bridge.py | 28 | ✅ 全部通过 |
+| test_short_term_buffer.py | 12 | ✅ 全部通过 |
+| test_context_compression_api.py | 11 | ✅ 全部通过 |
+| test_coordinator_context_integration.py | 9 | ✅ 全部通过 |
+| **总计** | **148** | ✅ |
+
+**现有提示词相关测试：**
+- `tests/unit/lc/prompts/test_workflow_chat_system_prompt.py` - WorkflowChatSystemPrompt 单元测试（26 tests）
+
+**现有上下文相关测试：**
+- `tests/unit/domain/services/test_context_manager.py` - 上下文管理器测试（18 tests）
+- `tests/unit/domain/services/test_context_manager_usage_ratio.py` - Token 使用率测试（16 tests）
+- `tests/unit/domain/services/test_context_compressor.py` - 上下文压缩测试（28 tests）
+- `tests/unit/domain/services/test_context_bridge.py` - 上下文桥接测试（28 tests）
+- `tests/unit/domain/services/test_context_bridge_enhanced.py` - 增强桥接测试
+- `tests/unit/domain/services/test_short_term_buffer.py` - 短期缓冲测试（12 tests）
+- `tests/integration/test_context_compression_api.py` - 上下文压缩 API 集成测试（11 tests）
+- `tests/integration/test_coordinator_context_integration.py` - Coordinator 上下文集成测试（9 tests）
+
+---
+
+## 25. 提示词模块模板化设计 (Prompt Template System)
+
+> 实现日期：2025-12-07
+> 状态：已完成
+> 测试覆盖：28 tests
+
+### 25.1 系统概述
+
+提示词模板系统实现了结构化、可组合的提示词管理，将提示词分解为四大模块：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Prompt Template System                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────┐│
+│  │    Role     │  │  Behavior   │  │    Tool     │  │ Output  ││
+│  │ Definition  │  │ Guidelines  │  │   Usage     │  │ Format  ││
+│  │  (角色定义)  │  │ (行为准则)   │  │ (工具规范)   │  │(输出格式)││
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └────┬────┘│
+│         │                │                │              │      │
+│         └────────────────┴────────────────┴──────────────┘      │
+│                               │                                  │
+│                               ▼                                  │
+│                    ┌────────────────────┐                       │
+│                    │ PromptTemplateComposer                     │
+│                    │ (模板组合器)          │                       │
+│                    └──────────┬─────────┘                       │
+│                               │                                  │
+│                               ▼                                  │
+│                    ┌────────────────────┐                       │
+│                    │   完整提示词         │                       │
+│                    │   (Agent-specific) │                       │
+│                    └────────────────────┘                       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 25.2 四大模块定义
+
+#### 25.2.1 角色定义模块 (Role Definition)
+
+**文件位置**：`docs/prompt_templates/role_definition.yaml`
+
+**功能**：定义 Agent 的身份、职责和能力范围
+
+**变量占位符**：
+
+| 变量名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `{agent_name}` | string | ✅ | Agent 名称 |
+| `{responsibility}` | string | ✅ | 核心职责描述 |
+| `{capabilities}` | string | ✅ | 能力列表 |
+
+**模板结构**：
+```
+## 角色定义
+
+你是一个 **{agent_name}**。
+
+### 职责
+{responsibility}
+
+### 核心能力
+{capabilities}
+```
+
+**适用 Agent**：ConversationAgent, WorkflowAgent, CoordinatorAgent
+
+#### 25.2.2 行为准则模块 (Behavior Guidelines)
+
+**文件位置**：`docs/prompt_templates/behavior_guidelines.yaml`
+
+**功能**：定义 Agent 应该遵循的行为规范和原则
+
+**变量占位符**：
+
+| 变量名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `{principles}` | string | ✅ | 核心原则 |
+| `{constraints}` | string | ✅ | 约束条件 |
+| `{forbidden_actions}` | string | ✅ | 禁止行为 |
+
+**模板结构**：
+```
+## 行为准则
+
+### 核心原则
+{principles}
+
+### 约束条件
+{constraints}
+
+### 禁止行为
+{forbidden_actions}
+```
+
+**适用 Agent**：ConversationAgent, WorkflowAgent, CoordinatorAgent
+
+#### 25.2.3 工具使用规范模块 (Tool Usage)
+
+**文件位置**：`docs/prompt_templates/tool_usage.yaml`
+
+**功能**：定义可用工具及其使用方式
+
+**变量占位符**：
+
+| 变量名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `{allowed_tools}` | string | ✅ | 允许使用的工具列表 |
+| `{tool_descriptions}` | string | ✅ | 工具功能描述 |
+| `{usage_examples}` | string | ✅ | 使用示例 |
+
+**模板结构**：
+```
+## 工具使用规范
+
+### 可用工具
+{allowed_tools}
+
+### 工具说明
+{tool_descriptions}
+
+### 使用示例
+{usage_examples}
+```
+
+**适用 Agent**：ConversationAgent, WorkflowAgent
+
+#### 25.2.4 输出格式模块 (Output Format)
+
+**文件位置**：`docs/prompt_templates/output_format.yaml`
+
+**功能**：定义 Agent 输出的格式要求
+
+**变量占位符**：
+
+| 变量名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `{format_type}` | string | ✅ | 格式类型 (JSON/YAML/Markdown) |
+| `{output_schema}` | string | ✅ | 输出 Schema 定义 |
+| `{examples}` | string | ✅ | 输出示例 |
+
+**模板结构**：
+```
+## 输出格式
+
+### 格式类型
+{format_type}
+
+### 输出 Schema
+{output_schema}
+
+### 示例
+{examples}
+```
+
+**适用 Agent**：ConversationAgent, WorkflowAgent, CoordinatorAgent
+
+### 25.3 核心组件
+
+#### 25.3.1 PromptModule 数据结构
+
+```python
+@dataclass
+class PromptModule:
+    """提示词模块"""
+    name: str                      # 模块名称（唯一标识）
+    version: str                   # 版本号（语义化版本）
+    description: str               # 模块描述
+    template: str                  # 模板字符串，使用 {variable} 格式
+    variables: list[str]           # 声明的变量列表
+    applicable_agents: list[str]   # 适用的 Agent 类型
+    metadata: dict[str, Any]       # 额外元数据
+
+    def extract_variables(self) -> set[str]: ...
+    def validate_variables(self) -> bool: ...
+    def get_missing_variables(self) -> set[str]: ...
+    def render(self, **kwargs) -> str: ...
+```
+
+#### 25.3.2 PromptTemplateRegistry（模板注册表）
+
+```python
+class PromptTemplateRegistry:
+    """管理所有已注册的提示词模块"""
+
+    def register(self, module: PromptModule) -> None: ...
+    def load_builtin_modules(self) -> None: ...
+    def get_module(self, name: str, version: str = None) -> PromptModule: ...
+    def get_modules_for_agent(self, agent_type: str) -> list[PromptModule]: ...
+    def render_module(self, name: str, **kwargs) -> str: ...
+```
+
+#### 25.3.3 PromptTemplateComposer（模板组合器）
+
+```python
+class PromptTemplateComposer:
+    """将多个模块组合成完整的提示词"""
+
+    def compose(
+        self,
+        modules: list[str],
+        variables: dict[str, Any],
+        separator: str = "\n\n---\n\n"
+    ) -> str: ...
+
+    def generate_for_agent(
+        self,
+        agent_type: str,
+        variables: dict[str, Any]
+    ) -> str: ...
+```
+
+#### 25.3.4 PromptTemplateValidator（模板验证器）
+
+```python
+class PromptTemplateValidator:
+    """验证模板的语法和变量完整性"""
+
+    def validate_syntax(self, template: str) -> ValidationResult: ...
+    def validate_variables(self, module: PromptModule) -> ValidationResult: ...
+    def validate_module(self, module: PromptModule) -> ValidationResult: ...
+```
+
+### 25.4 使用示例
+
+#### 25.4.1 组合多个模块
+
+```python
+from src.domain.services.prompt_template_system import (
+    PromptTemplateRegistry,
+    PromptTemplateComposer,
+)
+
+# 1. 创建 registry 并加载内置模块
+registry = PromptTemplateRegistry()
+registry.load_builtin_modules()
+
+# 2. 创建 composer
+composer = PromptTemplateComposer(registry)
+
+# 3. 组合并渲染
+result = composer.compose(
+    modules=["role_definition", "behavior_guidelines", "output_format"],
+    variables={
+        # role_definition
+        "agent_name": "ConversationAgent",
+        "responsibility": "管理对话流程，理解用户意图并做出决策",
+        "capabilities": "意图分类、目标分解、ReAct循环",
+        # behavior_guidelines
+        "principles": "用户体验优先、安全第一",
+        "constraints": "ReAct 最多 10 次迭代",
+        "forbidden_actions": "泄露敏感信息",
+        # output_format
+        "format_type": "JSON",
+        "output_schema": '{"type": "object", ...}',
+        "examples": '{"decision_type": "respond", ...}',
+    }
+)
+
+print(result)
+```
+
+#### 25.4.2 为特定 Agent 生成提示词
+
+```python
+# 自动选择适用于该 Agent 的所有模块
+result = composer.generate_for_agent(
+    agent_type="WorkflowAgent",
+    variables={...}
+)
+```
+
+### 25.5 YAML 模板文件格式
+
+```yaml
+# 模板文件结构
+name: role_definition           # 模块名称（必填）
+version: "1.0.0"                # 版本号（必填，语义化版本）
+description: |                  # 模块描述（必填）
+  角色定义模块用于声明 Agent 的身份认同...
+
+variables:                      # 变量列表（必填）
+  - agent_name
+  - responsibility
+  - capabilities
+
+applicable_agents:              # 适用 Agent（必填）
+  - ConversationAgent
+  - WorkflowAgent
+
+template: |                     # 模板内容（必填）
+  ## 角色定义
+  你是一个 **{agent_name}**。
+  ...
+
+metadata:                       # 元数据（可选）
+  category: identity
+  priority: 1
+  author: system
+  changelog:
+    - version: "1.0.0"
+      date: "2025-12-07"
+      changes: "初始版本"
+
+variable_descriptions:          # 变量说明（可选）
+  agent_name:
+    type: string
+    required: true
+    description: "Agent 的名称"
+    examples:
+      - "智能任务规划助手"
+```
+
+### 25.6 校验脚本
+
+**脚本位置**：`scripts/validate_prompt_templates.py`
+
+**功能**：
+1. 验证 YAML 格式正确性
+2. 验证必需字段存在
+3. 验证变量声明与模板使用一致
+4. 生成校验报告
+
+**使用方式**：
+```bash
+# 基本校验
+python scripts/validate_prompt_templates.py
+
+# 详细输出
+python scripts/validate_prompt_templates.py --verbose
+
+# 导出 JSON 报告
+python scripts/validate_prompt_templates.py --report-json reports/template_validation.json
+
+# 严格模式（警告也视为失败）
+python scripts/validate_prompt_templates.py --strict
+```
+
+**校验结果示例**：
+```
+============================================================
+提示词模板校验报告
+============================================================
+
+总文件数: 4
+通过: 4
+失败: 0
+总问题数: 2 (错误: 0, 警告: 2)
+
+[PASS] behavior_guidelines (docs/prompt_templates/behavior_guidelines.yaml)
+[PASS] output_format (docs/prompt_templates/output_format.yaml)
+[PASS] role_definition (docs/prompt_templates/role_definition.yaml)
+[PASS] tool_usage (docs/prompt_templates/tool_usage.yaml)
+
+============================================================
+所有模板校验通过！
+```
+
+### 25.7 测试覆盖
+
+**测试文件**：`tests/unit/domain/services/test_prompt_template_system.py`
+
+| 测试类 | 测试数 | 覆盖功能 |
+|--------|--------|----------|
+| TestPromptModuleDataStructure | 4 | 数据结构、变量提取、变量验证 |
+| TestRoleDefinitionModule | 2 | 角色定义模块结构和渲染 |
+| TestBehaviorGuidelinesModule | 2 | 行为准则模块结构和渲染 |
+| TestToolUsageModule | 2 | 工具使用规范模块结构和渲染 |
+| TestOutputFormatModule | 2 | 输出格式模块结构和渲染 |
+| TestPromptTemplateComposition | 2 | 模块组合、四模块组合 |
+| TestYAMLTemplateLoader | 2 | YAML 加载、目录加载 |
+| TestPromptTemplateValidator | 4 | 语法验证、变量完整性、未声明变量检测 |
+| TestAgentApplicability | 2 | Agent 适用性、按 Agent 生成 |
+| TestTemplateVersioning | 2 | 版本管理、按版本获取 |
+| TestErrorHandling | 2 | 错误处理 |
+| TestPromptTemplateIntegration | 2 | 集成测试 |
+| **总计** | **28** | ✅ 全部通过 |
+
+### 25.8 文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/domain/services/prompt_template_system.py` | 核心实现 |
+| `docs/prompt_templates/role_definition.yaml` | 角色定义模块 |
+| `docs/prompt_templates/behavior_guidelines.yaml` | 行为准则模块 |
+| `docs/prompt_templates/tool_usage.yaml` | 工具使用规范模块 |
+| `docs/prompt_templates/output_format.yaml` | 输出格式模块 |
+| `scripts/validate_prompt_templates.py` | 模板校验脚本 |
+| `tests/unit/domain/services/test_prompt_template_system.py` | 单元测试 |
+
+---
+
+## 26. Prompt 版本管理
+
+本节描述 Prompt 版本控制流程，包括版本命名规则、变更审批流程、Coordinator 集成和回滚策略。
+
+### 26.1 版本命名规则
+
+采用 **语义化版本**（Semantic Versioning）规范：
+
+```
+MAJOR.MINOR.PATCH
+  │     │     └── 修订号：修复问题，无功能变更
+  │     └── 次版本号：添加新功能，向后兼容
+  └── 主版本号：不兼容的重大变更
+```
+
+**版本号示例**：
+| 版本 | 变更类型 | 说明 |
+|------|----------|------|
+| `1.0.0` | 初始版本 | 首次发布 |
+| `1.0.1` | patch | 修复格式问题 |
+| `1.1.0` | minor | 添加新变量支持 |
+| `2.0.0` | major | 重构模板结构 |
+
+**版本号验证**：
+```python
+import re
+
+VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
+
+def is_valid_version(version: str) -> bool:
+    return bool(VERSION_PATTERN.match(version))
+```
+
+### 26.2 变更流程图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Prompt 版本变更流程                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────┐
+    │  开发者提交   │
+    │  版本变更申请 │
+    └──────┬───────┘
+           │
+           ▼
+    ┌──────────────────────────────────────────────────────┐
+    │                  VersionChangeRecord                  │
+    │  ┌────────────────────────────────────────────────┐  │
+    │  │ from_version: "1.0.0"                          │  │
+    │  │ to_version: "1.1.0"                            │  │
+    │  │ change_type: "minor"                           │  │
+    │  │ reason: "添加新变量支持"                         │  │
+    │  │ author: "developer"                            │  │
+    │  │ status: "pending"                              │  │
+    │  └────────────────────────────────────────────────┘  │
+    └──────────────────────────┬───────────────────────────┘
+                               │
+                               ▼
+                    ┌───────────────────┐
+                    │  CoordinatorAgent │
+                    │    审批流程        │
+                    └─────────┬─────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              │                               │
+              ▼                               ▼
+    ┌─────────────────┐             ┌─────────────────┐
+    │   审批通过       │             │    审批拒绝      │
+    │  status:        │             │  status:        │
+    │  "approved"     │             │  "rejected"     │
+    └────────┬────────┘             └────────┬────────┘
+             │                               │
+             ▼                               ▼
+    ┌─────────────────┐             ┌─────────────────┐
+    │  激活新版本      │             │  记录拒绝原因    │
+    │  自动设置为      │             │  保留原版本      │
+    │  active_version │             │                 │
+    └────────┬────────┘             └─────────────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │   记录审计日志   │
+    │  AuditLog       │
+    └─────────────────┘
+```
+
+### 26.3 审批流程
+
+**审批权限**：
+- 只有 `coordinator`、`admin`、`system` 角色才能审批变更
+- 其他角色尝试审批会抛出 `ApprovalError`
+
+**审批状态流转**：
+```
+pending ──┬──> approved ──> (激活新版本)
+          │
+          └──> rejected ──> (保留原版本)
+```
+
+**代码示例**：
+```python
+from src.domain.services.prompt_version_manager import PromptVersionManager
+
+manager = PromptVersionManager()
+
+# 1. 提交变更申请
+record = manager.submit_change(
+    module_name="role_definition",
+    new_version="1.1.0",
+    template="新模板内容{agent_name}",
+    variables=["agent_name"],
+    reason="优化提示词表达",
+    author="developer",
+)
+
+# 2. Coordinator 审批
+# 审批通过
+result = manager.approve_change(
+    record_id=record.id,
+    approver="coordinator",
+    comment="审批通过，变更合理",
+)
+# result.status == "approved"
+# 新版本自动激活
+
+# 或审批拒绝
+result = manager.reject_change(
+    record_id=record.id,
+    approver="coordinator",
+    reason="变更不符合规范",
+)
+# result.status == "rejected"
+```
+
+### 26.4 回滚策略
+
+**回滚场景**：
+1. 新版本导致问题，需要紧急回退
+2. 测试发现兼容性问题
+3. 业务需求变更，需要使用旧版本
+
+**回滚流程图**：
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             版本回滚流程                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+当前状态：active_version = "1.2.0"
+版本历史：["1.0.0", "1.1.0", "1.2.0"]
+
+场景1：回滚到上一版本
+┌──────────────────┐
+│ rollback(        │
+│   module_name,   │
+│   reason="..."   │
+│ )                │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ 自动选择上一版本  │
+│ target = "1.1.0" │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ active_version   │
+│   = "1.1.0"      │
+└──────────────────┘
+
+场景2：回滚到指定版本
+┌──────────────────┐
+│ rollback(        │
+│   module_name,   │
+│   target="1.0.0",│
+│   reason="..."   │
+│ )                │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ 验证目标版本存在  │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ active_version   │
+│   = "1.0.0"      │
+└──────────────────┘
+```
+
+**回滚代码示例**：
+```python
+# 回滚到上一版本
+result = manager.rollback(
+    module_name="role_definition",
+    reason="发现兼容性问题",
+)
+# result.success == True
+# result.from_version == "1.2.0"
+# result.to_version == "1.1.0"
+
+# 回滚到指定版本
+result = manager.rollback(
+    module_name="role_definition",
+    target_version="1.0.0",
+    reason="需要稳定版本",
+)
+```
+
+**回滚历史记录**：
+```python
+rollback_history = manager.get_rollback_history("role_definition")
+# [
+#   RollbackHistory(
+#     from_version="1.2.0",
+#     to_version="1.1.0",
+#     reason="发现兼容性问题",
+#     timestamp=datetime(...)
+#   )
+# ]
+```
+
+### 26.5 Coordinator 集成
+
+**CoordinatorAgent 新增接口**：
+
+| 方法 | 说明 |
+|------|------|
+| `init_prompt_version_manager(config)` | 初始化版本管理器 |
+| `register_prompt_version(...)` | 注册新版本 |
+| `load_prompt_template(module, version)` | 加载模板 |
+| `switch_prompt_version(module, version)` | 切换版本 |
+| `rollback_prompt_version(module, target, reason)` | 回滚版本 |
+| `get_prompt_audit_logs(module)` | 获取审计日志 |
+| `get_prompt_version_history(module)` | 获取版本历史 |
+| `submit_prompt_change(...)` | 提交变更申请 |
+| `approve_prompt_change(record_id, comment)` | 审批通过 |
+| `reject_prompt_change(record_id, reason)` | 审批拒绝 |
+| `get_prompt_loading_logs()` | 获取加载日志 |
+
+**使用示例**：
+```python
+from src.domain.agents.coordinator_agent import CoordinatorAgent
+
+coordinator = CoordinatorAgent()
+
+# 初始化版本管理器（带配置）
+coordinator.init_prompt_version_manager({
+    "role_definition": "1.0.0",
+    "behavior_guidelines": "1.1.0",
+})
+
+# 注册新版本
+coordinator.register_prompt_version(
+    module_name="role_definition",
+    version="1.0.0",
+    template="你是一个{agent_name}",
+    variables=["agent_name"],
+    changelog="初始版本",
+)
+
+# 加载模板（使用配置版本）
+template = coordinator.load_prompt_template("role_definition")
+
+# 加载指定版本
+template_v1 = coordinator.load_prompt_template("role_definition", "1.0.0")
+
+# 运行时切换版本
+coordinator.switch_prompt_version("role_definition", "1.1.0")
+
+# 回滚版本
+result = coordinator.rollback_prompt_version(
+    "role_definition",
+    reason="发现问题",
+)
+
+# 获取审计日志
+logs = coordinator.get_prompt_audit_logs("role_definition")
+```
+
+### 26.6 配置驱动的版本控制
+
+**VersionConfig 结构**：
+```python
+config = VersionConfig.from_dict({
+    "role_definition": "1.0.0",      # 使用指定版本
+    "behavior_guidelines": "1.1.0",  # 使用指定版本
+    "tool_usage": "latest",          # 使用最新版本
+    "output_format": "1.0.0",        # 使用指定版本
+})
+```
+
+**配置优先级**：
+1. 显式指定的版本 > 配置版本 > 活跃版本
+2. `"latest"` 表示使用最新注册的版本
+
+### 26.7 审计日志
+
+**AuditLog 结构**：
+```python
+@dataclass
+class AuditLog:
+    action: str      # register, activate, rollback, approve, reject
+    module_name: str
+    version: str
+    actor: str
+    details: dict
+    timestamp: datetime
+```
+
+**审计操作类型**：
+| action | 说明 |
+|--------|------|
+| `register` | 注册新版本 |
+| `activate` | 激活版本 |
+| `rollback` | 回滚版本 |
+| `approve` | 审批通过 |
+| `reject` | 审批拒绝 |
+
+**日志查询**：
+```python
+logs = coordinator.get_prompt_audit_logs("role_definition")
+for log in logs:
+    print(f"[{log.timestamp}] {log.action}: {log.version} by {log.actor}")
+```
+
+### 26.8 并发安全
+
+**线程安全保证**：
+- 使用 `threading.RLock` 保护共享状态
+- 所有读写操作在锁保护下执行
+- 支持并发访问版本信息
+
+```python
+class PromptVersionManager:
+    def __init__(self):
+        self._lock = threading.RLock()
+
+    def get_version(self, module_name, version):
+        with self._lock:
+            # 线程安全的版本获取
+            ...
+```
+
+### 26.9 测试覆盖
+
+**测试文件**：`tests/unit/domain/services/test_prompt_version_manager.py`
+
+| 测试类 | 测试数 | 覆盖功能 |
+|--------|--------|----------|
+| TestPromptVersion | 3 | 数据结构、语义化版本验证、版本比较 |
+| TestVersionChangeRecord | 2 | 变更记录结构、变更类型 |
+| TestVersionApprovalWorkflow | 4 | 提交审批、审批通过、审批拒绝、权限控制 |
+| TestPromptVersionManager | 4 | 版本注册、版本历史、获取版本、活跃版本 |
+| TestVersionRollback | 3 | 回滚到上一版本、回滚到指定版本、回滚历史 |
+| TestCoordinatorPromptVersionIntegration | 4 | 加载版本、日志记录、运行时切换、默认版本 |
+| TestConfigDrivenVersionControl | 2 | 配置加载、配置应用 |
+| TestVersionAuditLog | 3 | 变更日志、激活日志、回滚日志 |
+| TestConcurrencySafety | 1 | 并发访问安全 |
+| **总计** | **26** | ✅ 全部通过 |
+
+### 26.10 文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/domain/services/prompt_version_manager.py` | 版本管理核心实现 |
+| `src/domain/agents/coordinator_agent.py` | CoordinatorAgent 集成 |
+| `tests/unit/domain/services/test_prompt_version_manager.py` | 单元测试 |
+
+---
+
+## 27. A/B 测试与灰度发布
+
+本节描述 A/B 测试系统和灰度发布机制，包括实验配置、用户分流、指标采集、灰度发布控制和 Coordinator 集成。
+
+### 27.1 系统架构
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           A/B 测试与灰度发布系统                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           ExperimentManager                                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ 实验管理：创建、启动、暂停、完成                                       │   │
+│  │ 用户分流：确定性哈希分配，保证同一用户获得相同变体                       │   │
+│  │ 多变体支持：支持 A/B/C/... 多变体实验                                 │   │
+│  │ 审计日志：记录实验状态变更                                            │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           MetricsCollector                                   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ 成功率：record_success(experiment_id, variant, user_id, success)     │   │
+│  │ 任务时长：record_duration(experiment_id, variant, user_id, ms)       │   │
+│  │ 满意度：record_satisfaction(experiment_id, variant, user_id, score)  │   │
+│  │ 汇总：get_metrics_summary(experiment_id) → 各变体指标汇总             │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      GradualRolloutController                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ 发布计划：canary → early_adopters → GA → full_rollout               │   │
+│  │ 阶段推进：检查指标达标后推进到下一阶段                                 │   │
+│  │ 回滚控制：指标不达标时自动触发回滚                                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    CoordinatorExperimentAdapter                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ 版本选择：get_version_for_user(module, user_id) → version           │   │
+│  │ 指标记录：record_interaction(module, user_id, success, duration)     │   │
+│  │ 报告生成：get_experiment_report(experiment_id) → 详细报告            │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 27.2 实验配置 Schema
+
+**ExperimentConfig 结构**：
+```python
+@dataclass
+class ExperimentConfig:
+    experiment_id: str         # 实验唯一标识
+    name: str                  # 实验名称
+    description: str           # 实验描述
+    module_name: str           # 模块名称（如 "intent_classifier"）
+    control_version: str       # 对照组版本号
+    treatment_version: str     # 实验组版本号
+    traffic_allocation: dict[str, int]  # 流量分配 {"control": 50, "treatment": 50}
+    status: ExperimentStatus   # draft → running → paused → completed
+    variants: dict[str, dict]  # 多变体配置（可选）
+    start_time: datetime       # 实验开始时间
+    end_time: datetime         # 实验结束时间
+```
+
+**实验状态流转**：
+```
+draft ──┬──> running ──┬──> paused ──> running
+        │              │
+        │              └──> completed
+        │
+        └──> (删除)
+```
+
+### 27.3 用户分流算法
+
+**确定性哈希分配**：
+```python
+def assign_variant(experiment_id: str, user_id: str) -> str:
+    """使用 MD5 哈希确保同一用户在同一实验中始终获得相同变体"""
+    hash_input = f"{experiment_id}:{user_id}"
+    hash_value = int(hashlib.md5(hash_input.encode()).hexdigest(), 16)
+    bucket = hash_value % 100  # 0-99 的分桶
+
+    # 根据流量分配确定变体
+    cumulative = 0
+    for variant, allocation in traffic_allocation.items():
+        cumulative += allocation
+        if bucket < cumulative:
+            return variant
+    return list(traffic_allocation.keys())[-1]
+```
+
+**分流特性**：
+- **确定性**：同一用户在同一实验中始终获得相同变体
+- **均匀分布**：大样本下各变体分布接近配置比例
+- **无状态**：不需要存储用户分配结果，可实时计算
+
+### 27.4 指标采集
+
+**核心指标**：
+| 指标 | 说明 | 计算方式 |
+|------|------|----------|
+| success_rate | 成功率 | 成功次数 / 总次数 |
+| avg_duration | 平均时长 | 总时长 / 记录数 |
+| avg_satisfaction | 平均满意度 | 总评分 / 评分数 |
+| sample_count | 样本量 | 记录总数 |
+
+**指标采集代码**：
+```python
+collector = MetricsCollector()
+
+# 记录成功/失败
+collector.record_success(experiment_id, variant, user_id, success=True)
+
+# 记录任务时长（毫秒）
+collector.record_duration(experiment_id, variant, user_id, duration_ms=250.0)
+
+# 记录满意度（0-5 分）
+collector.record_satisfaction(experiment_id, variant, user_id, score=4.5)
+
+# 获取指标汇总
+summary = collector.get_metrics_summary(experiment_id)
+# {
+#   "control": {"success_rate": 0.85, "avg_duration": 200.0, "avg_satisfaction": 4.0, "sample_count": 100},
+#   "treatment": {"success_rate": 0.92, "avg_duration": 180.0, "avg_satisfaction": 4.5, "sample_count": 100}
+# }
+```
+
+### 27.5 灰度发布流程
+
+**发布阶段配置**：
+```python
+stages = [
+    {"name": "canary", "percentage": 5, "duration_hours": 24, "metrics_threshold": {"success_rate": 0.90}},
+    {"name": "early_adopters", "percentage": 20, "duration_hours": 48, "metrics_threshold": {"success_rate": 0.92}},
+    {"name": "general_availability", "percentage": 50, "duration_hours": 72, "metrics_threshold": {"success_rate": 0.95}},
+    {"name": "full_rollout", "percentage": 100, "duration_hours": 0, "metrics_threshold": {"success_rate": 0.95}},
+]
+```
+
+**灰度流程图**：
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           灰度发布流程                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────┐
+    │   Canary     │  5% 流量
+    │  (金丝雀)    │  监控 24 小时
+    └──────┬───────┘
+           │ 指标达标？
+           ▼
+    ┌──────────────┐
+    │ Early        │  20% 流量
+    │ Adopters     │  监控 48 小时
+    └──────┬───────┘
+           │ 指标达标？
+           ▼
+    ┌──────────────┐
+    │ General      │  50% 流量
+    │ Availability │  监控 72 小时
+    └──────┬───────┘
+           │ 指标达标？
+           ▼
+    ┌──────────────┐
+    │ Full         │  100% 流量
+    │ Rollout      │  发布完成
+    └──────────────┘
+
+指标不达标时：
+    ┌──────────────┐
+    │  回滚        │ ← should_rollback() == True
+    │  Rollback    │
+    └──────────────┘
+```
+
+### 27.6 指标门槛检查
+
+**MetricsThresholdChecker**：
+```python
+checker = MetricsThresholdChecker()
+
+result = checker.check(
+    experiment_id="exp_001",
+    variant="treatment",
+    collector=metrics_collector,
+    threshold={"success_rate": 0.95, "avg_duration": 500},
+)
+
+# result.passed: bool - 是否达标
+# result.failed_metrics: list - 不达标的指标
+# result.details: dict - 详细检查结果
+```
+
+### 27.7 CoordinatorAgent 集成
+
+**新增接口**：
+| 方法 | 说明 |
+|------|------|
+| `create_experiment(...)` | 创建 A/B 实验 |
+| `create_multi_variant_experiment(...)` | 创建多变体实验 |
+| `start_experiment(experiment_id)` | 启动实验 |
+| `pause_experiment(experiment_id)` | 暂停实验 |
+| `complete_experiment(experiment_id)` | 完成实验 |
+| `get_experiment_variant(experiment_id, user_id)` | 获取用户变体 |
+| `get_prompt_version_for_experiment(module, user_id)` | 获取实验版本 |
+| `record_experiment_metrics(...)` | 记录实验指标 |
+| `get_experiment_report(experiment_id)` | 获取实验报告 |
+| `create_rollout_plan(...)` | 创建灰度发布计划 |
+| `advance_rollout_stage(experiment_id)` | 推进发布阶段 |
+| `rollback_rollout(experiment_id)` | 回滚发布 |
+| `should_rollback_rollout(experiment_id)` | 检查是否应回滚 |
+| `list_experiments(status)` | 列出实验 |
+| `get_experiment(experiment_id)` | 获取实验详情 |
+| `get_experiment_audit_logs(experiment_id)` | 获取审计日志 |
+| `check_experiment_metrics_threshold(...)` | 检查指标阈值 |
+
+**使用示例**：
+```python
+from src.domain.agents.coordinator_agent import CoordinatorAgent
+
+coordinator = CoordinatorAgent()
+
+# 1. 创建实验
+exp = coordinator.create_experiment(
+    experiment_id="intent_v2_test",
+    name="意图识别 v2 测试",
+    module_name="intent_classifier",
+    control_version="1.0.0",
+    treatment_version="2.0.0",
+    traffic_allocation={"control": 50, "treatment": 50},
+)
+
+# 2. 启动实验
+coordinator.start_experiment("intent_v2_test")
+
+# 3. 获取用户变体
+variant = coordinator.get_experiment_variant("intent_v2_test", "user_123")
+# "control" 或 "treatment"
+
+# 4. 记录指标
+coordinator.record_experiment_metrics(
+    module_name="intent_classifier",
+    user_id="user_123",
+    success=True,
+    duration_ms=200.0,
+    satisfaction=4.5,
+)
+
+# 5. 获取报告
+report = coordinator.get_experiment_report("intent_v2_test")
+
+# 6. 创建灰度发布计划
+plan = coordinator.create_rollout_plan(
+    experiment_id="rollout_intent_v3",
+    module_name="intent_classifier",
+    new_version="3.0.0",
+    stages=[
+        {"name": "canary", "percentage": 5, "success_threshold": 0.90},
+        {"name": "full", "percentage": 100, "success_threshold": 0.95},
+    ],
+)
+
+# 7. 推进发布阶段
+result = coordinator.advance_rollout_stage("rollout_intent_v3")
+# {"success": True, "message": "Advanced to next stage", "current_stage": 1}
+```
+
+### 27.8 实验报告结构
+
+**报告内容**：
+```python
+report = coordinator.get_experiment_report("exp_001")
+# {
+#   "experiment_id": "exp_001",
+#   "name": "意图识别 v2 测试",
+#   "status": "running",
+#   "variants": {
+#     "control": {
+#       "success_rate": 0.85,
+#       "avg_duration": 200.0,
+#       "avg_satisfaction": 4.0,
+#       "sample_count": 100
+#     },
+#     "treatment": {
+#       "success_rate": 0.92,
+#       "avg_duration": 180.0,
+#       "avg_satisfaction": 4.5,
+#       "sample_count": 100
+#     }
+#   },
+#   "winner": "treatment",  # 或 None（无显著差异）
+#   "inconclusive": False
+# }
+```
+
+### 27.9 审计日志
+
+**ExperimentAuditLog 结构**：
+```python
+@dataclass
+class ExperimentAuditLog:
+    action: str          # create, start, pause, resume, complete
+    experiment_id: str
+    actor: str           # system, admin, ...
+    details: dict
+    timestamp: datetime
+```
+
+**日志查询**：
+```python
+logs = coordinator.get_experiment_audit_logs("exp_001")
+# [
+#   {"timestamp": "...", "action": "create", "actor": "system", "details": {...}},
+#   {"timestamp": "...", "action": "start", "actor": "system", "details": {...}},
+#   {"timestamp": "...", "action": "complete", "actor": "system", "details": {...}},
+# ]
+```
+
+### 27.10 测试覆盖
+
+**测试文件**：
+- `tests/unit/domain/services/test_ab_testing_system.py` (28 个单元测试)
+- `tests/integration/test_ab_testing_integration.py` (12 个集成测试)
+
+| 测试类 | 测试数 | 覆盖功能 |
+|--------|--------|----------|
+| TestExperimentConfig | 3 | 配置结构、流量验证、状态流转 |
+| TestExperimentVariant | 1 | 变体数据结构 |
+| TestExperimentAssignment | 3 | 确定性分配、流量分布、版本获取 |
+| TestMetricsCollection | 4 | 成功率、时长、满意度、汇总 |
+| TestGradualRollout | 4 | 发布计划、阶段推进、回滚、完成 |
+| TestCoordinatorExperimentIntegration | 3 | 变体分配、指标记录、报告生成 |
+| TestMultiVariantExperiment | 2 | 多变体创建、多变体分配 |
+| TestExperimentPersistence | 2 | 导出/导入配置 |
+| TestMetricsThreshold | 2 | 阈值达标、阈值不达标 |
+| TestExperimentLifecycle | 2 | 时间控制、自动完成 |
+| TestExperimentAuditLog | 2 | 创建日志、状态变更日志 |
+| **单元测试总计** | **28** | ✅ 全部通过 |
+| TestEndToEndExperimentFlow | 2 | 完整生命周期、多变体实验 |
+| TestGradualRolloutFlow | 2 | 完整发布流程、回滚场景 |
+| TestCoordinatorAgentIntegration | 4 | Coordinator 完整流程 |
+| TestConcurrentExperimentAccess | 2 | 并发分配、并发指标记录 |
+| TestExperimentAdapterIntegration | 2 | 模块版本选择、报告生成 |
+| **集成测试总计** | **12** | ✅ 全部通过 |
+
+### 27.11 文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/domain/services/ab_testing_system.py` | A/B 测试系统核心实现 |
+| `src/domain/agents/coordinator_agent.py` | CoordinatorAgent 实验接口扩展 |
+| `tests/unit/domain/services/test_ab_testing_system.py` | 单元测试 (28 个) |
+| `tests/integration/test_ab_testing_integration.py` | 集成测试 (12 个) |
+
+---
+
+## 28. 场景提示词与 Task Prompt 注入
+
+### 28.1 概述
+
+场景提示词与 Task Prompt 注入系统为 Agent 提供了领域特定的提示词模板和子任务提示词生成能力。该系统支持：
+
+1. **场景提示词库** - 预定义的领域模板（金融分析、法律合规、技术支持等）
+2. **Task Prompt 生成器** - 为子任务生成专业化的提示词指导
+3. **模板组合与变量替换** - 灵活组合通用模板和场景模板
+4. **Schema 验证** - YAML/JSON 配置文件的结构验证
+
+### 28.2 架构图
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ConversationAgent                            │
+│                          │                                      │
+│    ┌─────────────────────▼─────────────────────┐               │
+│    │          SubtaskPromptService              │               │
+│    │   ┌─────────────────────────────────┐      │               │
+│    │   │     TaskPromptGenerator          │      │               │
+│    │   │   ┌───────────────────────────┐  │      │               │
+│    │   │   │  TaskTypeRegistry         │  │      │               │
+│    │   │   │  (data_analysis,          │  │      │               │
+│    │   │   │   summarization,          │  │      │               │
+│    │   │   │   code_generation, ...)   │  │      │               │
+│    │   │   └───────────────────────────┘  │      │               │
+│    │   └─────────────────────────────────┘      │               │
+│    │              │                              │               │
+│    │   ┌──────────▼──────────┐                  │               │
+│    │   │   ScenarioPrompt     │ ◄──── ScenarioRegistry          │
+│    │   │   (金融、法律、技术)  │                  │               │
+│    │   └─────────────────────┘                  │               │
+│    └───────────────────────────────────────────┘               │
+│                          │                                      │
+│    ┌─────────────────────▼─────────────────────┐               │
+│    │          TemplateComposer                  │               │
+│    │   - compose(generic, scenario)             │               │
+│    │   - substitute_variables()                 │               │
+│    └───────────────────────────────────────────┘               │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        ▼                  ▼                  ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│ YAML Config  │  │ JSON Config  │  │ Schema       │
+│ financial_   │  │ legal_       │  │ Validator    │
+│ analysis.yaml│  │ compliance   │  │              │
+└──────────────┘  └──────────────┘  └──────────────┘
+```
+
+### 28.3 核心组件
+
+#### 28.3.1 ScenarioPrompt - 场景提示词
+
+```python
+from src.domain.services.scenario_prompt_system import ScenarioPrompt
+
+# 定义场景提示词
+scenario = ScenarioPrompt(
+    scenario_id="financial_analysis",
+    name="金融分析场景",
+    description="专业金融数据分析与报告生成",
+    domain="finance",
+    system_prompt="你是一位专业的金融分析师，擅长财务报表分析和风险评估...",
+    guidelines=["使用专业术语", "引用数据来源", "提供量化分析"],
+    constraints=["不提供投资建议", "标注数据时效性"],
+    variables=["company_name", "analysis_period"],
+    examples=[{"input": "分析Q3财报", "output": "财务分析报告..."}],
+    tags=["金融", "财务分析"],
+)
+
+# 序列化/反序列化
+data = scenario.to_dict()
+restored = ScenarioPrompt.from_dict(data)
+```
+
+#### 28.3.2 TaskPrompt - 任务提示词
+
+```python
+from src.domain.services.scenario_prompt_system import TaskPrompt
+
+# 创建任务提示词
+task_prompt = TaskPrompt(
+    task_id="analysis_001",
+    task_type="data_analysis",
+    objective="分析公司Q3财务报表",
+    context="用户需要了解销售趋势和盈利能力",
+    instructions=["提取关键指标", "对比同期数据", "识别风险点"],
+    constraints=["确保数据准确性", "标注数据来源"],
+    expected_output="结构化分析报告",
+    scenario_id="financial_analysis",
+    scenario_context="金融分析场景下的专业分析任务",
+)
+
+# 渲染为完整提示词
+rendered = task_prompt.render()
+# ## 任务类型: data_analysis
+# ### 目标
+# 分析公司Q3财务报表
+# ### 指令
+# - 提取关键指标
+# - 对比同期数据
+# ...
+```
+
+#### 28.3.3 TaskPromptGenerator - 任务提示词生成器
+
+```python
+from src.domain.services.scenario_prompt_system import (
+    TaskPromptGenerator,
+    ScenarioPrompt,
+    TaskTypeConfig,
+)
+
+# 创建生成器
+generator = TaskPromptGenerator()
+
+# 设置场景上下文
+scenario = ScenarioPrompt(
+    scenario_id="finance",
+    name="金融场景",
+    domain="finance",
+    system_prompt="金融分析师...",
+    constraints=["不提供投资建议"],
+)
+generator.set_scenario(scenario)
+
+# 生成任务提示词
+prompt = generator.generate(
+    task_id="task_001",
+    task_type="data_analysis",
+    objective="分析销售数据趋势",
+    context={"data_source": "ERP系统", "time_range": "2024Q3"},
+)
+
+# prompt.scenario_id == "finance"
+# prompt.instructions 包含默认的数据分析指令
+# prompt.constraints 包含场景约束 "不提供投资建议"
+
+# 注册自定义任务类型
+generator.register_task_type(
+    TaskTypeConfig(
+        task_type="risk_assessment",
+        name="风险评估",
+        default_instructions=["识别风险因素", "评估风险等级", "提供缓解建议"],
+        default_constraints=["基于数据分析", "标注不确定性"],
+        expected_output_format="风险评估报告",
+    )
+)
+
+# 列出所有任务类型
+task_types = generator.list_task_types()
+# ["data_analysis", "summarization", "code_generation", "risk_assessment", ...]
+```
+
+### 28.4 场景加载与注册
+
+#### 28.4.1 ScenarioPromptLoader - 场景加载器
+
+```python
+from src.domain.services.scenario_prompt_system import (
+    ScenarioPromptLoader,
+    ScenarioSchemaError,
+)
+
+loader = ScenarioPromptLoader()
+
+# 从单个文件加载
+scenario = loader.load_from_file("config/scenarios/financial_analysis.yaml")
+
+# 从目录批量加载
+scenarios = loader.load_from_directory("config/scenarios/")
+# {"financial_analysis": ScenarioPrompt, "legal_compliance": ScenarioPrompt, ...}
+
+# Schema 验证
+result = loader.validate_schema({
+    "scenario_id": "test",
+    "name": "测试场景",
+    # 缺少必需字段...
+})
+# result.is_valid == False
+# result.errors == ["缺少必需字段: domain", "缺少必需字段: system_prompt"]
+```
+
+#### 28.4.2 ScenarioRegistry - 场景注册表
+
+```python
+from src.domain.services.scenario_prompt_system import ScenarioRegistry
+
+registry = ScenarioRegistry()
+
+# 注册场景
+registry.register(scenario1)  # domain="finance"
+registry.register(scenario2)  # domain="finance"
+registry.register(scenario3)  # domain="legal"
+
+# 按领域查询
+finance_scenarios = registry.list_by_domain("finance")  # [scenario1, scenario2]
+legal_scenarios = registry.list_by_domain("legal")      # [scenario3]
+
+# 获取特定场景
+scenario = registry.get("financial_analysis")
+
+# 列出所有领域
+domains = registry.list_domains()  # ["finance", "legal"]
+
+# 注销场景
+registry.unregister("financial_analysis")
+```
+
+### 28.5 模板组合与变量替换
+
+#### 28.5.1 TemplateComposer
+
+```python
+from src.domain.services.scenario_prompt_system import TemplateComposer
+
+composer = TemplateComposer()
+
+# 定义通用模板
+generic_template = """
+## 通用指南
+- 保持专业态度
+- 清晰表达
+{scenario_content}
+
+## 任务要求
+{task_content}
+"""
+
+# 组合模板
+composed = composer.compose(
+    generic_template=generic_template,
+    scenario=scenario,
+    task_content="分析Q3财报数据",
+)
+# 结果包含场景系统提示词、指南和任务要求
+
+# 变量替换
+template = "你是{company_name}的{role}，负责{responsibility}。"
+result = composer.substitute_variables(
+    template,
+    {"company_name": "科技公司", "role": "分析师", "responsibility": "数据分析"},
+)
+# "你是科技公司的分析师，负责数据分析。"
+
+# 带默认值的变量替换
+result = composer.substitute_variables(
+    "用户：{name}，角色：{role}",
+    {"name": "张三"},
+    default_value="[未指定]",
+)
+# "用户：张三，角色：[未指定]"
+```
+
+### 28.6 ConversationAgent 集成
+
+#### 28.6.1 SubtaskPromptService
+
+```python
+from src.domain.services.scenario_prompt_system import (
+    SubtaskPromptService,
+    ScenarioPrompt,
+)
+
+# 创建服务
+service = SubtaskPromptService()
+
+# 设置场景
+scenario = ScenarioPrompt(
+    scenario_id="customer_service",
+    name="客服场景",
+    domain="service",
+    system_prompt="专业客服代表...",
+    constraints=["不泄露隐私"],
+)
+service.set_scenario(scenario)
+
+# 模拟 ConversationAgent 拆解的子任务
+subtasks = [
+    {
+        "id": "understand",
+        "type": "data_analysis",
+        "description": "理解用户问题并分类",
+        "context": {"user_message": "我的订单还没收到"},
+    },
+    {
+        "id": "query",
+        "type": "code_generation",
+        "description": "查询订单物流信息",
+        "context": {"order_id": "ORD123456"},
+    },
+    {
+        "id": "respond",
+        "type": "summarization",
+        "description": "生成客服回复",
+        "context": {"tone": "友好"},
+    },
+]
+
+# 批量生成提示词
+prompts = service.generate_for_subtasks(subtasks)
+
+# 每个 prompt 都关联了客服场景
+for prompt in prompts:
+    assert prompt.scenario_id == "customer_service"
+    assert "不泄露隐私" in prompt.constraints
+```
+
+### 28.7 YAML 配置文件格式
+
+#### 28.7.1 场景配置 Schema
+
+```yaml
+# config/scenarios/financial_analysis.yaml
+scenario_id: financial_analysis      # 必需：唯一标识符
+name: 金融分析场景                    # 必需：显示名称
+description: 专业金融数据分析         # 可选：场景描述
+domain: finance                      # 必需：领域分类
+system_prompt: |                     # 必需：系统提示词
+  你是一位专业的金融分析师...
+guidelines:                          # 可选：指南列表
+  - 使用专业术语
+  - 引用数据来源
+constraints:                         # 可选：约束列表
+  - 不提供投资建议
+  - 标注数据时效性
+variables:                           # 可选：支持的变量
+  - company_name
+  - analysis_period
+examples:                            # 可选：示例列表
+  - input: 分析Q3财报
+    output: 财务分析报告...
+tags:                                # 可选：标签
+  - 金融
+  - 财务分析
+```
+
+#### 28.7.2 预定义场景
+
+| 场景 ID | 名称 | 领域 | 用途 |
+|---------|------|------|------|
+| `financial_analysis` | 金融分析场景 | finance | 财务报表分析、投资研究 |
+| `legal_compliance` | 法律合规场景 | legal | 合同审查、合规检查 |
+| `technical_support` | 技术支持场景 | technology | 问题诊断、技术咨询 |
+| `data_analysis` | 数据分析场景 | analytics | 数据洞察、统计分析 |
+
+### 28.8 默认任务类型
+
+| 任务类型 | 名称 | 默认指令 |
+|----------|------|----------|
+| `data_analysis` | 数据分析 | 深入分析数据、识别模式、提供建议 |
+| `summarization` | 内容摘要 | 提取要点、保持简洁、总结结论 |
+| `code_generation` | 代码生成 | 高质量代码、最佳实践、错误处理 |
+| `compliance_check` | 合规检查 | 检查完整性、标注风险、提供建议 |
+
+### 28.9 测试覆盖
+
+**测试文件**：
+- `tests/unit/domain/services/test_scenario_prompt_system.py` (27 个单元测试)
+- `tests/integration/test_scenario_prompt_integration.py` (12 个集成测试)
+
+| 测试类 | 测试数 | 覆盖功能 |
+|--------|--------|----------|
+| TestScenarioPromptDataStructure | 3 | 数据结构、变量支持、序列化 |
+| TestScenarioPromptLoader | 4 | YAML/JSON 加载、Schema 验证、目录加载 |
+| TestTaskPrompt | 3 | 数据结构、渲染、场景上下文 |
+| TestTaskPromptGenerator | 5 | 各类型生成、场景集成、差异验证 |
+| TestTemplateComposition | 3 | 模板组合、变量替换、默认值处理 |
+| TestTaskTypeRegistry | 2 | 注册自定义类型、列出类型 |
+| TestScenarioRegistry | 2 | 注册获取、按领域查询 |
+| TestConversationAgentIntegration | 2 | 子任务提示词生成 |
+| TestYamlSchemaValidation | 3 | Schema 校验、错误消息 |
+| **单元测试总计** | **27** | ✅ 全部通过 |
+| TestScenarioPromptFullWorkflow | 3 | 加载注册、生成提示词、服务工作流 |
+| TestTemplateCompositionIntegration | 3 | 完整组合渲染、变量替换 |
+| TestTaskTypeRegistration | 1 | 自定义类型注册使用 |
+| TestScenarioRegistryIntegration | 2 | 多领域管理、生命周期 |
+| TestEndToEndScenarioPromptWorkflow | 1 | 完整集成流程 |
+| TestYamlConfigValidation | 2 | 配置文件验证 |
+| **集成测试总计** | **12** | ✅ 全部通过 |
+
+### 28.10 文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/domain/services/scenario_prompt_system.py` | 场景提示词系统核心实现 |
+| `config/scenarios/financial_analysis.yaml` | 金融分析场景配置 |
+| `config/scenarios/legal_compliance.yaml` | 法律合规场景配置 |
+| `config/scenarios/technical_support.yaml` | 技术支持场景配置 |
+| `config/scenarios/data_analysis.yaml` | 数据分析场景配置 |
+| `tests/unit/domain/services/test_scenario_prompt_system.py` | 单元测试 (27 个) |
+| `tests/integration/test_scenario_prompt_integration.py` | 集成测试 (12 个) |
+
+---
+
+## 29. 上下文打包/解包协议 (Step 6)
+
+> 实现日期：2025-12-07
+> 模块位置：`src/domain/services/context_protocol.py`
+> 测试覆盖：34 单元测试 + 21 集成测试
+
+### 29.1 功能概述
+
+上下文打包/解包协议定义了父子 Agent 之间传递任务上下文的标准格式和流程，确保：
+
+1. **结构化传递** - 统一的 JSON 格式，包含任务描述、约束、知识、输入数据等
+2. **版本管理** - 支持提示词版本追踪，便于 A/B 测试和回滚
+3. **压缩策略** - 避免信息过载，自动压缩超限内容
+4. **记忆兼容** - 与短期/中期/长期记忆组件无缝集成
+
+### 29.2 架构图
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     父 Agent (Coordinator)                          │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                    ContextPacker                             │    │
+│  │  pack() → ContextPackage → to_json() → JSON 字符串           │    │
+│  │                                                              │    │
+│  │  支持方法:                                                    │    │
+│  │  - pack_with_short_term_memory()                             │    │
+│  │  - pack_with_mid_term_memory()                               │    │
+│  │  - pack_from_context_manager()                               │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└───────────────────────────────┼─────────────────────────────────────┘
+                                │ JSON 传输
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    ContextCompressor (可选)                         │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │  策略: TRUNCATE | PRIORITY | SUMMARIZE | NONE               │    │
+│  │  - estimate_tokens(): 估算 Token 数                          │    │
+│  │  - compress(): 压缩超限内容                                   │    │
+│  │  - compress_with_report(): 返回压缩报告                       │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└───────────────────────────────┼─────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     子 Agent (Worker)                               │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                    ContextUnpacker                           │    │
+│  │  from_json() → validate() → ContextPackage → unpack()        │    │
+│  │                              → UnpackedContext               │    │
+│  │                                                              │    │
+│  │  支持方法:                                                    │    │
+│  │  - unpack_from_json(): 从 JSON 解包并验证                     │    │
+│  │  - extract_for_memory(): 提取记忆存储数据                     │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 29.3 上下文包 JSON Schema
+
+#### 29.3.1 完整字段定义
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContextPackage",
+  "description": "父子 Agent 上下文传递包",
+  "type": "object",
+  "required": ["package_id", "task_description"],
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "包唯一标识符，格式：ctx_{uuid12}",
+      "pattern": "^ctx_[a-f0-9]{12}$"
+    },
+    "task_description": {
+      "type": "string",
+      "description": "任务描述，必填且不能为空",
+      "minLength": 1
+    },
+    "prompt_version": {
+      "type": "string",
+      "description": "提示词版本号，默认 1.0.0",
+      "default": "1.0.0"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "约束条件列表",
+      "default": []
+    },
+    "relevant_knowledge": {
+      "type": "object",
+      "description": "相关知识（场景信息、领域知识等）",
+      "default": {}
+    },
+    "input_data": {
+      "type": "object",
+      "description": "任务输入数据",
+      "default": {}
+    },
+    "parent_agent_id": {
+      "type": ["string", "null"],
+      "description": "父 Agent ID"
+    },
+    "target_agent_id": {
+      "type": ["string", "null"],
+      "description": "目标子 Agent ID"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "description": "优先级 (0-10, 0 最低)",
+      "default": 0
+    },
+    "max_tokens": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "description": "最大 Token 数限制，触发压缩"
+    },
+    "short_term_context": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "短期上下文（最近对话）",
+      "default": []
+    },
+    "mid_term_context": {
+      "type": "object",
+      "description": "中期上下文（会话摘要）",
+      "default": {}
+    },
+    "long_term_references": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "长期知识引用 ID 列表",
+      "default": []
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "创建时间 ISO 格式"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "其他元数据",
+      "default": {}
+    }
+  }
+}
+```
+
+#### 29.3.2 示例 JSON
+
+```json
+{
+  "package_id": "ctx_a1b2c3d4e5f6",
+  "task_description": "分析公司Q3财务报表并生成摘要",
+  "prompt_version": "2.1.0",
+  "constraints": [
+    "使用中文回复",
+    "保护敏感财务数据",
+    "引用数据来源"
+  ],
+  "relevant_knowledge": {
+    "scenario_id": "financial_analysis",
+    "domain": "finance",
+    "analysis_type": "quarterly_report"
+  },
+  "input_data": {
+    "company": "示例公司",
+    "period": "2024Q3",
+    "metrics": ["revenue", "profit", "growth_rate"]
+  },
+  "parent_agent_id": "coordinator",
+  "target_agent_id": "financial_analyzer",
+  "priority": 7,
+  "max_tokens": 4000,
+  "short_term_context": [
+    "user: 帮我分析一下公司Q3的财务情况",
+    "assistant: 好的，正在为您分析Q3财务报表..."
+  ],
+  "mid_term_context": {
+    "session_goal": "完成季度财务分析",
+    "progress": 0.3,
+    "identified_areas": ["收入分析", "成本控制", "盈利预测"]
+  },
+  "long_term_references": ["kb_finance_001", "kb_company_profile"],
+  "created_at": "2024-12-07T10:30:00Z",
+  "metadata": {
+    "request_id": "req_123",
+    "source": "web_interface"
+  }
+}
+```
+
+### 29.4 核心类 API
+
+#### 29.4.1 ContextPackage 数据类
+
+```python
+from dataclasses import dataclass, field
+from typing import Any
+
+@dataclass
+class ContextPackage:
+    """上下文包数据结构"""
+
+    # 必需字段
+    package_id: str
+    task_description: str
+
+    # 可选字段（带默认值）
+    prompt_version: str = "1.0.0"
+    constraints: list[str] = field(default_factory=list)
+    relevant_knowledge: dict[str, Any] = field(default_factory=dict)
+    input_data: dict[str, Any] = field(default_factory=dict)
+    parent_agent_id: str | None = None
+    target_agent_id: str | None = None
+    priority: int = 0
+    max_tokens: int | None = None
+    short_term_context: list[str] = field(default_factory=list)
+    mid_term_context: dict[str, Any] = field(default_factory=dict)
+    long_term_references: list[str] = field(default_factory=list)
+    created_at: str = field(default_factory=...)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    # 方法
+    def to_dict(self) -> dict[str, Any]: ...
+    def to_json(self) -> str: ...
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ContextPackage": ...
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "ContextPackage": ...
+```
+
+#### 29.4.2 ContextPacker 打包器
+
+```python
+class ContextPacker:
+    """父 Agent 上下文打包器"""
+
+    def __init__(
+        self,
+        agent_id: str | None = None,
+        default_prompt_version: str = "1.0.0",
+    ): ...
+
+    def pack(
+        self,
+        task_description: str,
+        constraints: list[str] | None = None,
+        relevant_knowledge: dict[str, Any] | None = None,
+        input_data: dict[str, Any] | None = None,
+        prompt_version: str | None = None,
+        target_agent_id: str | None = None,
+        priority: int = 0,
+        max_tokens: int | None = None,
+        short_term_context: list[str] | None = None,
+        mid_term_context: dict[str, Any] | None = None,
+        long_term_references: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ContextPackage: ...
+
+    def pack_with_short_term_memory(
+        self,
+        task_description: str,
+        short_term_memory: dict[str, Any],
+        **kwargs,
+    ) -> ContextPackage: ...
+
+    def pack_with_mid_term_memory(
+        self,
+        task_description: str,
+        mid_term_memory: dict[str, Any],
+        **kwargs,
+    ) -> ContextPackage: ...
+
+    def pack_from_context_manager(
+        self,
+        task_description: str,
+        context_data: dict[str, Any],
+        **kwargs,
+    ) -> ContextPackage: ...
+```
+
+#### 29.4.3 ContextUnpacker 解包器
+
+```python
+@dataclass
+class UnpackedContext:
+    """解包后的上下文"""
+    task_description: str
+    constraints: list[str]
+    knowledge: dict[str, Any]
+    input_data: dict[str, Any]
+    short_term: list[str]
+    mid_term: dict[str, Any]
+    source_agent: str | None
+    prompt_version: str
+    priority: int
+    metadata: dict[str, Any]
+
+
+class ContextUnpacker:
+    """子 Agent 上下文解包器"""
+
+    def __init__(self, agent_id: str | None = None): ...
+
+    def unpack(self, package: ContextPackage) -> UnpackedContext: ...
+
+    def unpack_from_json(self, json_str: str) -> UnpackedContext:
+        """从 JSON 解包，包含验证"""
+        # 验证失败抛出 ContextValidationError
+        ...
+
+    def extract_for_memory(self, package: ContextPackage) -> dict[str, Any]:
+        """提取用于记忆存储的数据"""
+        ...
+```
+
+#### 29.4.4 ContextCompressor 压缩器
+
+```python
+class CompressionStrategy(str, Enum):
+    NONE = "none"           # 不压缩
+    TRUNCATE = "truncate"   # 截断（保留最近内容）
+    PRIORITY = "priority"   # 优先级筛选
+    SUMMARIZE = "summarize" # 摘要（需要 LLM）
+
+
+class ContextCompressor:
+    """上下文压缩器"""
+
+    def __init__(
+        self,
+        strategy: CompressionStrategy = CompressionStrategy.TRUNCATE
+    ): ...
+
+    def estimate_tokens(self, text: str) -> int:
+        """估算 Token 数（中文约 2 字符/token，英文约 4 字符/token）"""
+        ...
+
+    def compress(self, package: ContextPackage) -> ContextPackage:
+        """压缩上下文包，仅当超过 max_tokens 时触发"""
+        ...
+
+    def compress_with_report(
+        self, package: ContextPackage
+    ) -> tuple[ContextPackage, dict[str, Any]]:
+        """压缩并返回报告"""
+        # 返回: (压缩后的包, {
+        #     "original_tokens": 原始 Token 数,
+        #     "compressed_tokens": 压缩后 Token 数,
+        #     "compression_ratio": 压缩比,
+        #     "truncated_fields": 被截断的字段列表,
+        #     "strategy_used": 使用的策略
+        # })
+        ...
+```
+
+### 29.5 使用示例
+
+#### 29.5.1 基本打包解包
+
+```python
+from src.domain.services.context_protocol import (
+    ContextPacker,
+    ContextUnpacker,
+)
+
+# 父 Agent 打包
+packer = ContextPacker(agent_id="coordinator")
+package = packer.pack(
+    task_description="分析销售数据趋势",
+    constraints=["使用中文回复", "数据脱敏"],
+    input_data={"period": "Q3", "metrics": ["revenue"]},
+)
+
+# 序列化传输
+json_str = package.to_json()
+
+# 子 Agent 解包
+unpacker = ContextUnpacker(agent_id="data_analyzer")
+context = unpacker.unpack_from_json(json_str)
+
+# 使用上下文
+print(context.task_description)  # "分析销售数据趋势"
+print(context.source_agent)      # "coordinator"
+```
+
+#### 29.5.2 集成短期记忆
+
+```python
+# 模拟 ShortTermBuffer 数据
+short_term_buffer = {
+    "recent_messages": [
+        {"role": "user", "content": "查询订单"},
+        {"role": "assistant", "content": "请提供订单号"},
+    ]
+}
+
+packer = ContextPacker(agent_id="conversation_agent")
+package = packer.pack_with_short_term_memory(
+    task_description="处理订单查询",
+    short_term_memory=short_term_buffer,
+)
+
+# short_term_context 自动转换为字符串列表
+assert "user: 查询订单" in package.short_term_context[0]
+```
+
+#### 29.5.3 压缩超限内容
+
+```python
+from src.domain.services.context_protocol import (
+    ContextCompressor,
+    CompressionStrategy,
+)
+
+# 创建大量对话历史
+long_history = [f"消息{i}" * 100 for i in range(100)]
+
+packer = ContextPacker()
+package = packer.pack(
+    task_description="继续对话",
+    short_term_context=long_history,
+    max_tokens=1000,  # 限制 Token 数
+)
+
+# 压缩
+compressor = ContextCompressor(strategy=CompressionStrategy.TRUNCATE)
+compressed, report = compressor.compress_with_report(package)
+
+print(f"原始 Token: {report['original_tokens']}")
+print(f"压缩后 Token: {report['compressed_tokens']}")
+print(f"压缩比: {report['compression_ratio']:.2%}")
+print(f"被截断字段: {report['truncated_fields']}")
+```
+
+#### 29.5.4 多级 Agent 上下文传递
+
+```python
+# Level 0: 根协调器
+root_packer = ContextPacker(agent_id="root_coordinator")
+root_package = root_packer.pack(
+    task_description="复杂分析任务",
+    constraints=["全局约束1", "全局约束2"],
+    relevant_knowledge={"global_config": {"timeout": 30}},
+)
+
+# Level 1: 子协调器继承并扩展
+sub_unpacker = ContextUnpacker(agent_id="sub_coordinator")
+sub_context = sub_unpacker.unpack(root_package)
+
+sub_packer = ContextPacker(agent_id="sub_coordinator")
+sub_package = sub_packer.pack(
+    task_description="子分析任务",
+    constraints=sub_context.constraints + ["局部约束"],  # 继承 + 扩展
+    relevant_knowledge={
+        **sub_context.knowledge,
+        "local_config": {"batch_size": 100},
+    },
+)
+
+# Level 2: 执行器接收完整上下文
+executor_unpacker = ContextUnpacker(agent_id="executor")
+executor_context = executor_unpacker.unpack(sub_package)
+
+# 验证约束继承
+assert "全局约束1" in executor_context.constraints
+assert "局部约束" in executor_context.constraints
+```
+
+### 29.6 验证规则
+
+#### 29.6.1 必需字段验证
+
+| 字段 | 验证规则 | 错误消息 |
+|------|---------|----------|
+| `package_id` | 不能为空 | "package_id 不能为空" |
+| `task_description` | 不能为空 | "task_description 不能为空" |
+
+#### 29.6.2 类型验证
+
+| 字段 | 期望类型 | 说明 |
+|------|---------|------|
+| `constraints` | `list` | 字符串列表 |
+| `relevant_knowledge` | `dict` | 任意字典 |
+| `input_data` | `dict` | 任意字典 |
+| `priority` | `int` | 0-10 之间 |
+| `max_tokens` | `int | None` | 必须 > 0 |
+
+#### 29.6.3 范围验证
+
+```python
+# 优先级范围检查
+if priority < 0 or priority > 10:
+    errors.append("priority 必须在 0-10 之间")
+
+# max_tokens 正数检查
+if max_tokens is not None and max_tokens <= 0:
+    errors.append("max_tokens 必须大于 0")
+```
+
+### 29.7 压缩策略详解
+
+#### 29.7.1 TRUNCATE 策略（默认）
+
+- **原理**：截断超限内容，优先保留最近的上下文
+- **预算分配**：
+  - `task_description`: min(200, max_tokens/4) tokens
+  - `constraints`: min(100, max_tokens/8) tokens, 最多 5 个
+  - `short_term_context`: 剩余预算，从最近向前保留
+  - `long_term_references`: 最多 3 个
+- **适用场景**：一般任务，对话历史较长
+
+#### 29.7.2 PRIORITY 策略
+
+- **原理**：基于优先级筛选内容（当前实现与 TRUNCATE 相同）
+- **适用场景**：需要保留高优先级信息
+
+#### 29.7.3 SUMMARIZE 策略
+
+- **原理**：使用 LLM 生成摘要（需要外部 LLM 支持）
+- **当前状态**：保留接口，回退到 TRUNCATE
+
+### 29.8 与记忆组件集成
+
+#### 29.8.1 短期记忆格式
+
+```python
+# ShortTermBuffer 输出格式
+short_term_buffer = {
+    "recent_messages": [
+        {"role": "user", "content": "消息内容", "timestamp": "..."},
+        {"role": "assistant", "content": "回复内容", "timestamp": "..."},
+    ],
+    "buffer_size": 10,
+    "max_size": 20,
+}
+
+# 自动转换为 short_term_context
+# ["user: 消息内容", "assistant: 回复内容"]
+```
+
+#### 29.8.2 中期记忆格式
+
+```python
+# MidTermContext 输出格式
+mid_term_summary = {
+    "conversation_summary": "对话摘要",
+    "key_entities": ["实体1", "实体2"],
+    "user_preferences": {"language": "zh"},
+    "conversation_progress": 0.5,
+    "identified_intents": ["intent1", "intent2"],
+}
+
+# 直接存入 mid_term_context
+```
+
+#### 29.8.3 从 ContextManager 集成
+
+```python
+# ContextManager 提供的数据格式
+context_manager_data = {
+    "short_term": ["消息1", "消息2"],
+    "mid_term": {"goal": "完成任务"},
+    "long_term_refs": ["kb_001", "kb_002"],
+}
+
+# 使用 pack_from_context_manager 一键打包
+package = packer.pack_from_context_manager(
+    task_description="任务描述",
+    context_data=context_manager_data,
+)
+```
+
+### 29.9 测试覆盖
+
+**测试文件**：
+- `tests/unit/domain/services/test_context_protocol.py` (34 个单元测试)
+- `tests/integration/test_context_protocol_integration.py` (21 个集成测试)
+
+| 测试类 | 测试数 | 覆盖功能 |
+|--------|--------|----------|
+| TestContextPackageDataStructure | 5 | 必需字段、可选字段、序列化 |
+| TestContextPacker | 5 | 基本打包、知识打包、记忆打包、版本管理、唯一 ID |
+| TestContextUnpacker | 4 | 基本解包、JSON 解包、验证、默认值 |
+| TestMissingFieldHandling | 4 | 默认值、必需字段错误、包完整性、空字段检测 |
+| TestCompressionStrategy | 6 | Token 估算、未超限、截断、优先级、策略选项、报告 |
+| TestMemoryCompatibility | 4 | 短期记忆、中期记忆、ContextManager、记忆提取 |
+| TestContextProtocolIntegration | 3 | 完整循环、压缩循环、父子传递 |
+| TestContextSchemaValidation | 3 | 有效 Schema、无效 Schema、版本兼容 |
+| **单元测试总计** | **34** | ✅ 全部通过 |
+| TestContextProtocolWithScenarioPrompt | 2 | 场景元数据打包、场景上下文提取 |
+| TestContextProtocolWithConversationAgent | 2 | 对话历史打包、子任务上下文传播 |
+| TestParentChildAgentCommunication | 2 | 完整层级流转、多级上下文继承 |
+| TestCompressionWithRealData | 3 | 大量对话压缩、优先级策略、关键字段保留 |
+| TestMemoryComponentCompatibility | 3 | 短期记忆格式、中期记忆格式、记忆提取 |
+| TestContextValidationScenarios | 4 | 格式错误、多字段缺失、类型不匹配、边界值 |
+| TestContextProtocolRealWorldScenarios | 3 | 客服场景、数据分析流水线、代码审查 |
+| TestFactoryFunctions | 2 | 快捷创建、默认值创建 |
+| **集成测试总计** | **21** | ✅ 全部通过 |
+
+### 29.10 文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/domain/services/context_protocol.py` | 上下文协议核心实现 (~760 行) |
+| `tests/unit/domain/services/test_context_protocol.py` | 单元测试 (34 个) |
+| `tests/integration/test_context_protocol_integration.py` | 集成测试 (21 个) |
+
+---
+
+## 30. 子 Agent 上下文传递 (Step 7)
+
+### 30.1 功能概述
+
+Step 7 实现父子 Agent 之间的上下文传递与结果回收机制：
+
+1. **上下文注入**: 父 Agent 创建上下文包并注入给子 Agent
+2. **工作记忆加载**: 子 Agent 启动时自动加载上下文到工作记忆
+3. **结果打包**: 子 Agent 完成任务后打包结果（输出、日志、知识）返回父 Agent
+4. **日志追踪**: 全流程可追踪上下文 ID 和结果包 ID
+
+### 30.2 父子 Agent 上下文传递流程图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           父 Agent (协调器)                                  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │ 1. ContextPacker.pack() 创建上下文包                                   │  │
+│  │    - 任务描述、约束、输入数据、知识                                     │  │
+│  │    - 生成唯一 package_id (ctx_xxx)                                    │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    │ ContextPackage
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        SubAgentContextBridge                                 │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │ 2. inject_context() 验证并转换上下文                                    │  │
+│  │    - 验证 task_description 非空                                        │  │
+│  │    - 验证 target_agent_id 有效                                         │  │
+│  │    - 返回子 Agent 初始化配置                                            │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │ 3. build_system_prompt() 生成系统提示词                                 │  │
+│  │    - 格式化任务、约束、知识、输入                                        │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │ 4. load_to_working_memory() 构建工作记忆                               │  │
+│  │    - 包含 context_id, task, constraints, input, knowledge             │  │
+│  │    - 包含 short_term, mid_term 记忆层                                  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    │ SubAgentConfig + WorkingMemory
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      ContextAwareSubAgent (子 Agent)                         │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │ 5. __init__() 启动时加载上下文                                          │  │
+│  │    - 自动调用 load_to_working_memory()                                 │  │
+│  │    - 初始化 ContextTracingLogger                                       │  │
+│  │    - 设置执行日志收集器                                                  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │ 6. start_execution() + log() 执行任务并记录                             │  │
+│  │    - 记录开始时间                                                       │  │
+│  │    - 收集执行日志                                                       │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │ 7. complete_task() / fail_task() 打包结果                              │  │
+│  │    - 生成唯一 result_id (res_xxx)                                      │  │
+│  │    - 包含输出数据、执行日志、知识更新                                     │  │
+│  │    - 记录执行时间 (execution_time_ms)                                  │  │
+│  │    - 关联原始 context_package_id                                       │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    │ ResultPackage
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           父 Agent (协调器)                                  │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │ 8. 接收并处理结果                                                       │  │
+│  │    - 验证 result_id 和 context_package_id                              │  │
+│  │    - 提取 output_data 和 knowledge_updates                             │  │
+│  │    - 处理失败情况 (status=failed)                                       │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 30.3 结果包 JSON Schema
+
+#### 30.3.1 完整字段定义
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `result_id` | string | 是 | 结果包唯一标识符 (res_xxx) |
+| `context_package_id` | string | 是 | 关联的上下文包 ID |
+| `agent_id` | string | 是 | 执行任务的 Agent ID |
+| `status` | string | 是 | 执行状态: completed/failed/cancelled |
+| `output_data` | object | 是 | 输出数据 |
+| `execution_logs` | array | 否 | 执行日志列表 |
+| `knowledge_updates` | object | 否 | 知识更新 |
+| `error_message` | string | 否 | 错误消息（失败时） |
+| `error_code` | string | 否 | 错误代码（失败时） |
+| `execution_time_ms` | integer | 否 | 执行时间（毫秒） |
+| `started_at` | string | 否 | 开始时间 ISO 格式 |
+| `completed_at` | string | 否 | 完成时间 ISO 格式 |
+
+#### 30.3.2 示例 JSON
+
+```json
+{
+  "result_id": "res_a1b2c3d4e5f6",
+  "context_package_id": "ctx_001122334455",
+  "agent_id": "data_analyzer",
+  "status": "completed",
+  "output_data": {
+    "analysis_result": {
+      "revenue_growth_rate": "20.00%",
+      "conclusion": "Q3 销售表现良好"
+    }
+  },
+  "execution_logs": [
+    {"timestamp": "2024-01-01T10:00:00", "level": "INFO", "message": "开始分析", "context_id": "ctx_001122334455"},
+    {"timestamp": "2024-01-01T10:00:05", "level": "INFO", "message": "执行完成", "context_id": "ctx_001122334455"}
+  ],
+  "knowledge_updates": {
+    "growth_trend": "upward",
+    "period": "Q3 2024"
+  },
+  "execution_time_ms": 5000,
+  "started_at": "2024-01-01T10:00:00",
+  "completed_at": "2024-01-01T10:00:05"
+}
+```
+
+### 30.4 核心类 API
+
+#### 30.4.1 ResultPackage 数据类
+
+```python
+@dataclass
+class ResultPackage:
+    result_id: str                                    # 结果包 ID
+    context_package_id: str                           # 关联上下文包 ID
+    agent_id: str                                     # Agent ID
+    status: str                                       # 状态
+    output_data: dict[str, Any]                       # 输出数据
+    execution_logs: list[dict[str, Any]]              # 执行日志
+    knowledge_updates: dict[str, Any]                 # 知识更新
+    error_message: str | None                         # 错误消息
+    error_code: str | None                            # 错误代码
+    execution_time_ms: int                            # 执行时间
+    started_at: datetime | None                       # 开始时间
+    completed_at: datetime | None                     # 完成时间
+
+    def to_dict(self) -> dict[str, Any]: ...
+    def to_json(self) -> str: ...
+    @classmethod
+    def from_dict(cls, data: dict) -> ResultPackage: ...
+    @classmethod
+    def from_json(cls, json_str: str) -> ResultPackage: ...
+```
+
+#### 30.4.2 SubAgentContextBridge 桥接器
+
+```python
+class SubAgentContextBridge:
+    def __init__(self, parent_agent_id: str):
+        """初始化桥接器"""
+
+    def inject_context(
+        self,
+        context_package: ContextPackage,
+        target_agent_id: str,
+    ) -> dict[str, Any]:
+        """注入上下文到子 Agent 配置"""
+
+    def build_system_prompt(
+        self,
+        context_package: ContextPackage,
+    ) -> str:
+        """构建系统提示词"""
+
+    def load_to_working_memory(
+        self,
+        context_package: ContextPackage,
+    ) -> dict[str, Any]:
+        """加载上下文到工作记忆"""
+
+    def create_result_package(
+        self,
+        context_package_id: str,
+        agent_id: str,
+        output_data: dict,
+        status: str = "completed",
+        **kwargs,
+    ) -> ResultPackage:
+        """创建结果包"""
+```
+
+#### 30.4.3 ContextAwareSubAgent 上下文感知子 Agent
+
+```python
+class ContextAwareSubAgent:
+    def __init__(
+        self,
+        agent_id: str,
+        context_package: ContextPackage,
+    ):
+        """启动时自动加载上下文"""
+
+    @property
+    def context_package_id(self) -> str: ...
+    @property
+    def task_description(self) -> str: ...
+    @property
+    def constraints(self) -> list[str]: ...
+
+    def get_working_memory(self) -> dict[str, Any]:
+        """获取工作记忆"""
+
+    def log(self, message: str, level: str = "INFO") -> None:
+        """添加执行日志"""
+
+    def start_execution(self) -> None:
+        """标记执行开始"""
+
+    async def complete_task(
+        self,
+        output_data: dict,
+        knowledge_updates: dict | None = None,
+    ) -> ResultPackage:
+        """完成任务并打包结果"""
+
+    async def fail_task(
+        self,
+        error_message: str,
+        error_code: str | None = None,
+    ) -> ResultPackage:
+        """任务失败并打包结果"""
+```
+
+#### 30.4.4 ContextTracingLogger 日志追踪器
+
+```python
+class ContextTracingLogger:
+    def __init__(
+        self,
+        context_id: str,
+        result_id: str | None = None,
+    ):
+        """初始化日志器"""
+
+    def debug(self, message: str) -> dict[str, Any]: ...
+    def info(self, message: str) -> dict[str, Any]: ...
+    def warning(self, message: str) -> dict[str, Any]: ...
+    def error(self, message: str) -> dict[str, Any]: ...
+
+    def get_logs(self) -> list[dict[str, Any]]:
+        """获取所有日志"""
+```
+
+### 30.5 使用示例
+
+#### 30.5.1 完整的父→子→父循环
+
+```python
+from src.domain.services.context_protocol import ContextPacker
+from src.domain.services.subagent_context_bridge import (
+    SubAgentContextBridge,
+    ContextAwareSubAgent,
+)
+
+# 1. 父 Agent 创建上下文包
+packer = ContextPacker(agent_id="coordinator")
+context_pkg = packer.pack(
+    task_description="分析销售数据",
+    constraints=["使用中文", "保留两位小数"],
+    input_data={"sales": [100, 200, 300]},
+    target_agent_id="analyzer",
+)
+
+# 2. 桥接器注入上下文
+bridge = SubAgentContextBridge(parent_agent_id="coordinator")
+config = bridge.inject_context(context_pkg, "analyzer")
+
+# 3. 子 Agent 启动并加载上下文
+child = ContextAwareSubAgent(
+    agent_id="analyzer",
+    context_package=context_pkg,
+)
+
+# 4. 子 Agent 执行任务
+child.start_execution()
+child.log("开始分析数据")
+# ... 执行分析逻辑 ...
+child.log("分析完成")
+
+# 5. 子 Agent 返回结果
+result = await child.complete_task(
+    output_data={"total": 600, "average": 200},
+    knowledge_updates={"trend": "上升"},
+)
+
+# 6. 父 Agent 接收结果
+print(f"结果 ID: {result.result_id}")
+print(f"关联上下文: {result.context_package_id}")
+print(f"输出: {result.output_data}")
+```
+
+#### 30.5.2 多子 Agent 并行执行
+
+```python
+import asyncio
+
+# 创建多个子任务上下文
+contexts = [
+    packer.pack(task_description=f"子任务 {i+1}", input_data={"num": i})
+    for i in range(3)
+]
+
+# 创建多个子 Agent
+children = [
+    ContextAwareSubAgent(agent_id=f"worker_{i}", context_package=ctx)
+    for i, ctx in enumerate(contexts)
+]
+
+# 并行执行
+results = await asyncio.gather(*[
+    child.complete_task(output_data={"done": True})
+    for child in children
+])
+
+# 收集所有结果
+for result in results:
+    print(f"{result.agent_id}: {result.status}")
+```
+
+#### 30.5.3 层级上下文继承
+
+```python
+# Level 0: 根协调器
+root_context = root_packer.pack(
+    task_description="复杂任务",
+    constraints=["全局超时 30s"],
+    relevant_knowledge={"config": {"timeout": 30}},
+)
+
+# Level 1: 子协调器 - 继承并扩展上下文
+sub_coordinator = ContextAwareSubAgent("sub_coordinator", root_context)
+inherited_constraints = sub_coordinator.constraints + ["子级超时 10s"]
+inherited_knowledge = {
+    **root_context.relevant_knowledge,
+    "sub_config": {"batch_size": 100},
+}
+
+sub_context = sub_packer.pack(
+    task_description="子任务",
+    constraints=inherited_constraints,
+    relevant_knowledge=inherited_knowledge,
+)
+
+# Level 2: 执行器 - 拥有完整继承链
+executor = ContextAwareSubAgent("executor", sub_context)
+assert "全局超时 30s" in executor.constraints  # 继承根约束
+assert "子级超时 10s" in executor.constraints  # 继承子约束
+```
+
+### 30.6 验证规则
+
+#### 30.6.1 上下文注入验证
+
+```python
+# 验证任务描述非空
+if not context_package.task_description:
+    raise ContextInjectionError("task_description 不能为空")
+
+# 验证目标 Agent ID
+if not target_agent_id:
+    raise ContextInjectionError("target_agent_id 不能为空")
+```
+
+#### 30.6.2 结果包验证
+
+```python
+VALID_STATUSES = {"completed", "failed", "cancelled", "in_progress"}
+
+def validate_result_package(package: ResultPackage) -> tuple[bool, list[str]]:
+    errors = []
+
+    if not package.result_id:
+        errors.append("result_id 不能为空")
+    if not package.context_package_id:
+        errors.append("context_package_id 不能为空")
+    if package.status not in VALID_STATUSES:
+        errors.append(f"无效的 status: {package.status}")
+    if package.status == "failed" and not package.error_message:
+        errors.append("失败状态需要 error_message")
+
+    return len(errors) == 0, errors
+```
+
+### 30.7 日志追踪格式
+
+每条日志包含以下字段：
+
+```json
+{
+  "timestamp": "2024-01-01T10:00:00.000000",
+  "level": "INFO",
+  "message": "执行操作",
+  "context_id": "ctx_001122334455",
+  "result_id": "res_a1b2c3d4e5f6"  // 可选，完成后才有
+}
+```
+
+支持的日志级别：
+- `DEBUG`: 调试信息
+- `INFO`: 普通信息
+- `WARNING`: 警告信息
+- `ERROR`: 错误信息
+
+### 30.8 测试覆盖
+
+| 测试类别 | 测试数量 | 覆盖内容 |
+|----------|----------|----------|
+| ResultPackage 数据结构 | 6 | 字段验证、序列化 |
+| SubAgentContextBridge | 6 | 注入、提示词、工作记忆、结果包 |
+| 父 Agent 上下文注入 | 2 | 创建上下文、传递记忆 |
+| 子 Agent 上下文加载 | 2 | 启动加载、工作记忆初始化 |
+| 子 Agent 结果打包 | 3 | 完成/失败、日志包含 |
+| 日志追踪 | 4 | ID 追踪、级别捕获 |
+| 父子通信循环 | 3 | 完整循环、并行、层级 |
+| 验证测试 | 4 | 上下文验证、结果验证 |
+| 执行时间测量 | 2 | 时间记录、时间戳 |
+| **单元测试总计** | **33** | |
+| **集成测试总计** | **13** | 端到端场景、错误处理、追踪 |
+
+### 30.9 文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/domain/services/subagent_context_bridge.py` | 子 Agent 上下文桥接器核心实现 (~450 行) |
+| `tests/unit/domain/services/test_subagent_context_bridge.py` | 单元测试 (33 个) |
+| `tests/integration/test_subagent_context_bridge_integration.py` | 集成测试 (13 个) |
+
+---
+
+
+## 31. 结果包与记忆更新 (Step 8)
+
+### 31.1 功能概述
+
+Step 8 实现了子 Agent 结果包的完整处理流程：
+- 定义标准化的结果包 Schema（output、logs、new_knowledge、status、errors）
+- 父 Agent 解包结果并更新中期/长期记忆
+- 将新知识写入知识库供后续任务复用
+- 协调者监控全流程并提供追踪 ID
+
+### 31.2 结果包处理流程图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        结果包处理完整流程                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  子 Agent 完成任务                                                           │
+│       │                                                                     │
+│       ▼                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │                    ResultPackage                             │           │
+│  │  ┌─────────────────────────────────────────────────────┐    │           │
+│  │  │ result_id: "res_xxx"                                │    │           │
+│  │  │ context_package_id: "ctx_xxx"                       │    │           │
+│  │  │ agent_id: "child_agent"                             │    │           │
+│  │  │ status: "completed" | "failed"                      │    │           │
+│  │  │ output_data: {...}                                  │    │           │
+│  │  │ execution_logs: [...]                               │    │           │
+│  │  │ knowledge_updates: {...}                            │    │           │
+│  │  │ errors: [...]                                       │    │           │
+│  │  └─────────────────────────────────────────────────────┘    │           │
+│  └──────────────────────────┬──────────────────────────────────┘           │
+│                             │                                               │
+│                             ▼                                               │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │                ResultProcessingPipeline                      │           │
+│  │  ┌─────────────────────────────────────────────────────┐    │           │
+│  │  │ 1. ResultUnpacker.unpack()                          │    │           │
+│  │  │    - 提取字段到 UnpackedResult                       │    │           │
+│  │  │    - 验证 Schema 完整性                              │    │           │
+│  │  │                                                      │    │           │
+│  │  │ 2. CoordinatorResultMonitor.log_result_received()   │    │           │
+│  │  │    - 生成 tracking_id                               │    │           │
+│  │  │    - 记录审计日志                                    │    │           │
+│  │  │                                                      │    │           │
+│  │  │ 3. MemoryUpdater.prepare_mid_term_update()          │    │           │
+│  │  │    - 准备中期记忆更新                                │    │           │
+│  │  │    - 支持 INCREMENTAL / REPLACE 策略                │    │           │
+│  │  │                                                      │    │           │
+│  │  │ 4. KnowledgeWriter.write_from_result()              │    │           │
+│  │  │    - 提取 new_knowledge                             │    │           │
+│  │  │    - 写入 KnowledgeManager                          │    │           │
+│  │  │    - 返回 knowledge_entry_ids                       │    │           │
+│  │  └─────────────────────────────────────────────────────┘    │           │
+│  └──────────────────────────┬──────────────────────────────────┘           │
+│                             │                                               │
+│                             ▼                                               │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │                    ProcessingResult                          │           │
+│  │  ┌─────────────────────────────────────────────────────┐    │           │
+│  │  │ success: True                                        │    │           │
+│  │  │ result_id: "res_xxx"                                │    │           │
+│  │  │ tracking_id: "track_xxx"                            │    │           │
+│  │  │ mid_term_updated: True                              │    │           │
+│  │  │ long_term_updated: False                            │    │           │
+│  │  │ knowledge_entry_ids: ["kb_001", "kb_002"]           │    │           │
+│  │  │ errors: []                                          │    │           │
+│  │  └─────────────────────────────────────────────────────┘    │           │
+│  └─────────────────────────────────────────────────────────────┘           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 31.3 结果包 Schema 定义
+
+#### 31.3.1 JSON Schema
+
+```python
+RESULT_PACKAGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "result_id": {"type": "string"},
+        "context_package_id": {"type": "string"},
+        "agent_id": {"type": "string"},
+        "status": {
+            "type": "string",
+            "enum": ["completed", "failed", "cancelled", "in_progress"]
+        },
+        "output": {"type": "object"},
+        "logs": {
+            "type": "array",
+            "items": {"type": "object"}
+        },
+        "new_knowledge": {"type": "object"},
+        "errors": {
+            "type": "array",
+            "items": {"type": "object"}
+        },
+    },
+    "required": [
+        "result_id",
+        "context_package_id",
+        "agent_id",
+        "status",
+        "output"
+    ],
+}
+```
+
+#### 31.3.2 字段说明
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `result_id` | string | 是 | 结果包唯一标识 |
+| `context_package_id` | string | 是 | 关联的上下文包 ID |
+| `agent_id` | string | 是 | 执行任务的 Agent ID |
+| `status` | string | 是 | 执行状态：completed/failed/cancelled/in_progress |
+| `output` | object | 是 | 任务输出数据 |
+| `logs` | array | 否 | 执行日志列表 |
+| `new_knowledge` | object | 否 | 新发现的知识 |
+| `errors` | array | 否 | 错误信息列表 |
+
+#### 31.3.3 状态说明
+
+| 状态 | 说明 | 后续处理 |
+|------|------|----------|
+| `completed` | 任务成功完成 | 更新记忆、写入知识 |
+| `failed` | 任务执行失败 | 记录错误、不写知识 |
+| `cancelled` | 任务被取消 | 清理资源 |
+| `in_progress` | 任务进行中 | 等待完成 |
+
+### 31.4 核心类 API
+
+#### 31.4.1 UnpackedResult 数据类
+
+```python
+@dataclass
+class UnpackedResult:
+    """解包后的结果"""
+    result_id: str
+    context_package_id: str
+    agent_id: str
+    status: str
+    output: dict[str, Any]
+    logs: list[dict[str, Any]]
+    new_knowledge: dict[str, Any]
+    errors: list[dict[str, Any]]
+```
+
+#### 31.4.2 ProcessingResult 数据类
+
+```python
+@dataclass
+class ProcessingResult:
+    """处理结果"""
+    success: bool
+    result_id: str
+    tracking_id: str
+    mid_term_updated: bool
+    long_term_updated: bool
+    knowledge_entry_ids: list[str]
+    errors: list[str]
+```
+
+#### 31.4.3 ResultUnpacker 解包器
+
+```python
+class ResultUnpacker:
+    """结果包解包器"""
+
+    def unpack(self, result_pkg: ResultPackage) -> UnpackedResult:
+        """解包结果到 UnpackedResult"""
+
+    def extract_for_memory(self, result_pkg: ResultPackage) -> dict:
+        """提取用于记忆更新的数据"""
+
+    def extract_errors(self, result_pkg: ResultPackage) -> list[dict]:
+        """提取错误信息"""
+```
+
+#### 31.4.4 MemoryUpdater 记忆更新器
+
+```python
+class UpdateStrategy(str, Enum):
+    INCREMENTAL = "incremental"  # 增量更新
+    REPLACE = "replace"          # 完全替换
+
+class MemoryUpdater:
+    """记忆更新器"""
+
+    def __init__(self, strategy: UpdateStrategy = UpdateStrategy.INCREMENTAL):
+        self.strategy = strategy
+
+    def prepare_mid_term_update(self, unpacked: UnpackedResult) -> dict:
+        """准备中期记忆更新"""
+
+    def prepare_long_term_updates(self, unpacked: UnpackedResult) -> list[dict]:
+        """准备长期记忆更新"""
+```
+
+#### 31.4.5 KnowledgeWriter 知识写入器
+
+```python
+class KnowledgeWriter:
+    """知识写入器"""
+
+    def __init__(self, knowledge_manager: KnowledgeManager):
+        self.knowledge_manager = knowledge_manager
+
+    def write_from_result(
+        self,
+        unpacked: UnpackedResult,
+        tags: list[str] | None = None,
+    ) -> list[str]:
+        """从结果写入知识，返回 entry_ids"""
+```
+
+#### 31.4.6 CoordinatorResultMonitor 监控器
+
+```python
+class CoordinatorResultMonitor:
+    """协调者结果监控器"""
+
+    def __init__(self, coordinator_id: str):
+        self.coordinator_id = coordinator_id
+
+    def generate_tracking_id(self, result_id: str) -> str:
+        """生成追踪 ID"""
+
+    def log_result_received(self, result_pkg: ResultPackage) -> dict:
+        """记录结果接收日志"""
+
+    def log_memory_updated(
+        self,
+        result_id: str,
+        tracking_id: str,
+        update_type: str,
+    ) -> dict:
+        """记录记忆更新日志"""
+
+    def log_knowledge_written(
+        self,
+        result_id: str,
+        tracking_id: str,
+        entry_ids: list[str],
+    ) -> dict:
+        """记录知识写入日志"""
+
+    def get_processing_trace(self, result_id: str) -> list[dict]:
+        """获取完整处理追踪"""
+
+    def get_tracking_id(self, result_id: str) -> str | None:
+        """获取追踪 ID"""
+```
+
+#### 31.4.7 ResultProcessingPipeline 处理管道
+
+```python
+class ResultProcessingPipeline:
+    """结果处理管道"""
+
+    def __init__(
+        self,
+        coordinator_id: str,
+        knowledge_manager: KnowledgeManager,
+    ):
+        self.coordinator_id = coordinator_id
+        self.monitor = CoordinatorResultMonitor(coordinator_id)
+        self.unpacker = ResultUnpacker()
+        self.memory_updater = MemoryUpdater()
+        self.knowledge_writer = KnowledgeWriter(knowledge_manager)
+
+    def process(self, result_pkg: ResultPackage) -> ProcessingResult:
+        """处理结果包的完整流程"""
+
+    def get_audit_log(self, result_id: str) -> list[dict]:
+        """获取审计日志"""
+```
+
+### 31.5 使用示例
+
+#### 31.5.1 完整处理流程
+
+```python
+from src.domain.services.context_protocol import ContextPacker
+from src.domain.services.knowledge_manager import KnowledgeManager
+from src.domain.services.result_memory_integration import (
+    ResultProcessingPipeline,
+)
+from src.domain.services.subagent_context_bridge import (
+    ContextAwareSubAgent,
+)
+
+# 1. 创建上下文
+packer = ContextPacker(agent_id="coordinator")
+context_pkg = packer.pack(
+    task_description="分析销售数据",
+    input_data={"sales": [100, 200, 300]},
+)
+
+# 2. 子 Agent 执行任务
+child = ContextAwareSubAgent(
+    agent_id="analyzer",
+    context_package=context_pkg,
+)
+child.start_execution()
+child.log("开始分析")
+
+result_pkg = await child.complete_task(
+    output_data={"trend": "上升", "rate": "50%"},
+    knowledge_updates={
+        "facts": ["Q3 销售增长显著"],
+        "insights": "新客户开发策略有效",
+    },
+)
+
+# 3. 父 Agent 处理结果
+knowledge_manager = KnowledgeManager()
+pipeline = ResultProcessingPipeline(
+    coordinator_id="coordinator",
+    knowledge_manager=knowledge_manager,
+)
+
+processing_result = pipeline.process(result_pkg)
+
+# 4. 验证处理结果
+assert processing_result.success
+assert processing_result.tracking_id is not None
+assert processing_result.mid_term_updated
+assert len(processing_result.knowledge_entry_ids) > 0
+
+# 5. 查询审计日志
+audit_log = pipeline.get_audit_log(result_pkg.result_id)
+print(f"处理事件数: {len(audit_log)}")
+```
+
+#### 31.5.2 多子 Agent 并行处理
+
+```python
+import asyncio
+
+# 并行执行多个子任务
+tasks = [
+    ("data_fetcher", "获取数据", {"source": "db"}),
+    ("data_cleaner", "清洗数据", {"rules": ["remove_nulls"]}),
+    ("analyzer", "分析数据", {"method": "statistical"}),
+]
+
+async def execute_subtask(agent_id, desc, data):
+    ctx = packer.pack(task_description=desc, input_data=data)
+    child = ContextAwareSubAgent(agent_id=agent_id, context_package=ctx)
+    child.start_execution()
+    return await child.complete_task(
+        output_data={"result": f"{agent_id}_done"},
+        knowledge_updates={"task": agent_id, "status": "completed"},
+    )
+
+results = await asyncio.gather(*[
+    execute_subtask(agent_id, desc, data)
+    for agent_id, desc, data in tasks
+])
+
+# 处理所有结果
+all_tracking_ids = []
+for result_pkg in results:
+    processing_result = pipeline.process(result_pkg)
+    all_tracking_ids.append(processing_result.tracking_id)
+
+# 每个结果都有唯一的追踪 ID
+assert len(set(all_tracking_ids)) == 3
+```
+
+#### 31.5.3 失败结果处理
+
+```python
+# 子 Agent 执行失败
+result_pkg = await child.fail_task(
+    error_message="资源配额不足",
+    error_code="QUOTA_EXCEEDED",
+)
+
+# 处理失败结果
+processing_result = pipeline.process(result_pkg)
+
+# 失败结果也被追踪，但不写入知识
+assert processing_result.tracking_id is not None
+assert len(processing_result.knowledge_entry_ids) == 0  # 不写知识
+```
+
+### 31.6 追踪 ID 机制
+
+#### 31.6.1 ID 链追踪
+
+```
+context_package_id ──▶ result_id ──▶ tracking_id ──▶ knowledge_entry_ids
+       │                    │              │                  │
+       │                    │              │                  │
+   "ctx_001"           "res_002"      "track_003"       ["kb_004", "kb_005"]
+```
+
+#### 31.6.2 审计日志格式
+
+```json
+{
+  "event": "result_received",
+  "timestamp": "2024-01-01T10:00:00.000000",
+  "result_id": "res_a1b2c3",
+  "tracking_id": "track_d4e5f6",
+  "agent_id": "analyzer",
+  "status": "completed",
+  "coordinator_id": "coordinator"
+}
+```
+
+#### 31.6.3 支持的事件类型
+
+| 事件 | 说明 |
+|------|------|
+| `result_received` | 结果包接收 |
+| `mid_term_memory_updated` | 中期记忆更新 |
+| `long_term_memory_updated` | 长期记忆更新 |
+| `knowledge_written` | 知识写入 |
+
+### 31.7 记忆更新策略
+
+#### 31.7.1 增量策略 (INCREMENTAL)
+
+```python
+updater = MemoryUpdater(strategy=UpdateStrategy.INCREMENTAL)
+update = updater.prepare_mid_term_update(unpacked)
+# update["strategy"] == "incremental"
+# 保留现有记忆，追加新内容
+```
+
+#### 31.7.2 替换策略 (REPLACE)
+
+```python
+updater = MemoryUpdater(strategy=UpdateStrategy.REPLACE)
+update = updater.prepare_mid_term_update(unpacked)
+# update["strategy"] == "replace"
+# 完全替换现有记忆
+```
+
+### 31.8 知识库集成
+
+#### 31.8.1 知识写入
+
+```python
+writer = KnowledgeWriter(knowledge_manager)
+
+entry_ids = writer.write_from_result(
+    unpacked,
+    tags=["important", "verified"],
+)
+
+# 每个条目包含：
+# - content: 知识内容
+# - tags: ["important", "verified", "agent_id"]
+# - metadata: {
+#     "source_result_id": "res_xxx",
+#     "source_context_id": "ctx_xxx",
+#   }
+```
+
+#### 31.8.2 知识检索
+
+```python
+# 按关键词搜索
+results = knowledge_manager.search("asyncio")
+
+# 按标签过滤
+results = knowledge_manager.search("", tags=["important"])
+```
+
+### 31.9 测试覆盖
+
+| 测试类别 | 测试数量 | 覆盖内容 |
+|----------|----------|----------|
+| Schema 验证 | 5 | 完整/最小/缺失字段验证 |
+| ResultUnpacker | 4 | 解包、提取、错误处理 |
+| MemoryUpdater | 4 | 中期/长期记忆更新准备 |
+| KnowledgeWriter | 4 | 知识写入、标签、空知识处理 |
+| CoordinatorResultMonitor | 6 | 追踪 ID、日志、审计追踪 |
+| ResultProcessingPipeline | 3 | 完整流程、失败处理、空知识 |
+| UpdateStrategy | 2 | 增量/替换策略 |
+| UnpackedResult | 3 | 数据类字段 |
+| ProcessingResult | 2 | 数据类字段 |
+| **单元测试总计** | **33** | |
+| 端到端流程 | 3 | 完整循环、并行、失败处理 |
+| 知识库集成 | 2 | 搜索、标签 |
+| 追踪一致性 | 2 | ID 一致性、多结果追踪 |
+| 策略差异 | 1 | 增量 vs 替换 |
+| Schema 边界 | 3 | 完整/最小/缺失字段 |
+| ID 链追踪 | 1 | 上下文→结果→知识 |
+| **集成测试总计** | **12** | |
+
+### 31.10 文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/domain/services/result_memory_integration.py` | 结果包与记忆更新核心实现 (~600 行) |
+| `tests/unit/domain/services/test_result_memory_integration.py` | 单元测试 (33 个) |
+| `tests/integration/test_result_memory_integration.py` | 集成测试 (12 个) |
+
+---
+
+
+## 32. 提示词稳定性监控与审计 (Step 9)
+
+### 32.1 功能概述
+
+Step 9 实现了提示词使用的完整监控与审计系统：
+- 建立提示词使用日志，记录版本、模块组合、场景、Task Prompt
+- 检测提示漂移（版本、模块、场景、输出格式）
+- 验证输出格式符合预期模板
+- 协调者定期审计并触发警报
+- 生成提示词使用报表
+
+### 32.2 提示词监控架构图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        提示词稳定性监控架构                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  会话请求                                                                    │
+│       │                                                                     │
+│       ▼                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │                    PromptUsageLogger                         │           │
+│  │  ┌─────────────────────────────────────────────────────┐    │           │
+│  │  │ 记录提示词使用：                                      │    │           │
+│  │  │ - session_id: 会话标识                               │    │           │
+│  │  │ - prompt_version: 提示词版本                         │    │           │
+│  │  │ - module_combination: 模块组合                       │    │           │
+│  │  │ - scenario: 使用场景                                 │    │           │
+│  │  │ - task_prompt: 任务提示词                            │    │           │
+│  │  │ - expected_output_format: 期望输出格式               │    │           │
+│  │  └─────────────────────────────────────────────────────┘    │           │
+│  └──────────────────────────┬──────────────────────────────────┘           │
+│                             │                                               │
+│            ┌────────────────┼────────────────┐                              │
+│            ▼                ▼                ▼                              │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐               │
+│  │ PromptDrift     │ │ OutputFormat    │ │ PromptStability │               │
+│  │ Detector        │ │ Validator       │ │ Monitor         │               │
+│  ├─────────────────┤ ├─────────────────┤ ├─────────────────┤               │
+│  │ • 版本漂移检测  │ │ • JSON格式验证  │ │ • 稳定性检查    │               │
+│  │ • 模块漂移检测  │ │ • 模板对比验证  │ │ • 趋势分析      │               │
+│  │ • 场景漂移检测  │ │ • 结构深度检查  │ │ • 指标计算      │               │
+│  │ • 格式漂移检测  │ │ • 大小限制检查  │ │                 │               │
+│  └────────┬────────┘ └────────┬────────┘ └────────┬────────┘               │
+│           │                   │                   │                         │
+│           └───────────────────┼───────────────────┘                         │
+│                               ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │                PromptAuditCoordinator                        │           │
+│  │  ┌─────────────────────────────────────────────────────┐    │           │
+│  │  │ • 运行综合审计                                       │    │           │
+│  │  │ • 触发警报 (INFO/WARNING/ERROR/CRITICAL)            │    │           │
+│  │  │ • 生成使用报表                                       │    │           │
+│  │  │ • 管理警报回调                                       │    │           │
+│  │  └─────────────────────────────────────────────────────┘    │           │
+│  └──────────────────────────┬──────────────────────────────────┘           │
+│                             │                                               │
+│                             ▼                                               │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │                      AuditResult                             │           │
+│  │  ┌─────────────────────────────────────────────────────┐    │           │
+│  │  │ logs_analyzed: 100                                   │    │           │
+│  │  │ drifts_detected: 3                                   │    │           │
+│  │  │ format_violations: 2                                 │    │           │
+│  │  │ stability_metrics: {status: "stable", ...}           │    │           │
+│  │  │ alerts: [AuditAlert, ...]                            │    │           │
+│  │  └─────────────────────────────────────────────────────┘    │           │
+│  └─────────────────────────────────────────────────────────────┘           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 32.3 核心枚举类型
+
+#### 32.3.1 漂移类型 (DriftType)
+
+| 类型 | 值 | 说明 |
+|------|-----|------|
+| VERSION | `version` | 提示词版本漂移 |
+| MODULE | `module` | 模块组合漂移 |
+| SCENARIO | `scenario` | 使用场景漂移 |
+| OUTPUT_FORMAT | `output_format` | 输出格式漂移 |
+
+#### 32.3.2 警报级别 (AlertLevel)
+
+| 级别 | 值 | 说明 |
+|------|-----|------|
+| INFO | `info` | 信息级别，仅记录 |
+| WARNING | `warning` | 警告级别，需关注 |
+| ERROR | `error` | 错误级别，需处理 |
+| CRITICAL | `critical` | 严重级别，立即处理 |
+
+#### 32.3.3 稳定性状态 (StabilityStatus)
+
+| 状态 | 值 | 说明 |
+|------|-----|------|
+| STABLE | `stable` | 稳定（平均分 >= 0.9） |
+| DEGRADED | `degraded` | 退化（平均分 >= 0.7） |
+| UNSTABLE | `unstable` | 不稳定（平均分 < 0.7） |
+| UNKNOWN | `unknown` | 未知（无数据） |
+
+### 32.4 核心类 API
+
+#### 32.4.1 PromptUsageLog 数据类
+
+```python
+@dataclass
+class PromptUsageLog:
+    """提示词使用日志"""
+    session_id: str              # 会话ID
+    prompt_version: str          # 提示词版本
+    module_combination: list[str]  # 模块组合
+    scenario: str                # 使用场景
+    task_prompt: str             # 任务提示词
+    expected_output_format: str  # 期望输出格式
+    log_id: str                  # 日志ID（自动生成）
+    timestamp: datetime          # 时间戳（自动生成）
+    actual_output: str | None    # 实际输出
+    output_valid: bool | None    # 输出是否有效
+```
+
+#### 32.4.2 PromptUsageLogger 日志记录器
+
+```python
+class PromptUsageLogger:
+    """提示词使用日志记录器"""
+
+    def log_prompt_usage(
+        session_id: str,
+        prompt_version: str,
+        module_combination: list[str],
+        scenario: str,
+        task_prompt: str,
+        expected_output_format: str,
+    ) -> str:
+        """记录提示词使用，返回 log_id"""
+
+    def update_actual_output(
+        log_id: str,
+        actual_output: str,
+        output_valid: bool,
+    ) -> None:
+        """更新实际输出"""
+
+    def get_usage_history() -> list[PromptUsageLog]:
+        """获取使用历史"""
+
+    def get_usage_by_session(session_id: str) -> list[PromptUsageLog]:
+        """按会话获取"""
+
+    def get_usage_by_version(version: str) -> list[PromptUsageLog]:
+        """按版本获取"""
+
+    def get_usage_statistics() -> dict:
+        """获取使用统计"""
+```
+
+#### 32.4.3 PromptDriftDetector 漂移检测器
+
+```python
+class PromptDriftDetector:
+    """提示漂移检测器"""
+
+    def detect_version_drift(logs: list[PromptUsageLog]) -> DriftDetectionResult:
+        """检测版本漂移"""
+
+    def detect_module_drift(
+        logs: list[PromptUsageLog],
+        expected_modules: list[str] | None = None,
+    ) -> DriftDetectionResult:
+        """检测模块组合漂移"""
+
+    def detect_output_format_drift(logs: list[PromptUsageLog]) -> DriftDetectionResult:
+        """检测输出格式漂移"""
+
+    def detect_scenario_drift(
+        logs: list[PromptUsageLog],
+        allowed_scenarios: list[str] | None = None,
+    ) -> DriftDetectionResult:
+        """检测场景漂移"""
+
+    def detect_all_drifts(
+        logs: list[PromptUsageLog],
+        expected_modules: list[str] | None = None,
+        allowed_scenarios: list[str] | None = None,
+    ) -> list[DriftDetectionResult]:
+        """检测所有类型漂移"""
+```
+
+#### 32.4.4 OutputFormatValidator 输出格式验证器
+
+```python
+class OutputFormatValidator:
+    """输出格式验证器"""
+
+    def __init__(
+        max_depth: int = 10,
+        max_output_size: int = 1000000,
+    ):
+        pass
+
+    def validate_json_format(output: str) -> OutputValidationResult:
+        """验证 JSON 格式"""
+
+    def validate_against_template(
+        output: str,
+        template: dict,
+    ) -> OutputValidationResult:
+        """对比模板验证"""
+
+    def validate_expected_keys(
+        output: str,
+        expected_keys: list[str],
+    ) -> OutputValidationResult:
+        """验证期望的键"""
+```
+
+#### 32.4.5 PromptAuditCoordinator 审计协调者
+
+```python
+class PromptAuditCoordinator:
+    """提示词审计协调者"""
+
+    def __init__(
+        logger: PromptUsageLogger,
+        expected_modules: list[str] | None = None,
+        allowed_scenarios: list[str] | None = None,
+    ):
+        pass
+
+    def run_audit() -> AuditResult:
+        """运行审计"""
+
+    def generate_report() -> dict:
+        """生成报表"""
+
+    def trigger_alert(
+        alert_type: AlertType,
+        alert_level: AlertLevel,
+        message: str,
+        details: dict,
+    ) -> AuditAlert:
+        """触发警报"""
+
+    def register_alert_callback(callback: Callable[[AuditAlert], None]) -> None:
+        """注册警报回调"""
+
+    def get_alert_history() -> list[AuditAlert]:
+        """获取警报历史"""
+
+    def get_alerts_by_level(level: AlertLevel) -> list[AuditAlert]:
+        """按级别获取警报"""
+```
+
+#### 32.4.6 PromptStabilityMonitor 稳定性监控器
+
+```python
+class PromptStabilityMonitor:
+    """提示词稳定性监控器"""
+
+    def __init__(
+        logger: PromptUsageLogger,
+        expected_modules: list[str] | None = None,
+        allowed_scenarios: list[str] | None = None,
+    ):
+        pass
+
+    def check_stability() -> StabilityMetrics:
+        """检查稳定性"""
+
+    def get_stability_metrics() -> StabilityMetrics:
+        """获取稳定性指标"""
+
+    def analyze_stability_trend(window_size: int = 10) -> dict:
+        """分析稳定性趋势"""
+```
+
+### 32.5 使用示例
+
+#### 32.5.1 完整监控流程
+
+```python
+from src.domain.services.prompt_stability_monitor import (
+    PromptUsageLogger,
+    PromptStabilityMonitor,
+    PromptAuditCoordinator,
+    AlertLevel,
+)
+
+# 1. 创建日志记录器
+logger = PromptUsageLogger()
+
+# 2. 记录提示词使用
+log_id = logger.log_prompt_usage(
+    session_id="session_001",
+    prompt_version="v1.0.0",
+    module_combination=["system", "task", "output_format"],
+    scenario="data_analysis",
+    task_prompt="分析Q3销售数据",
+    expected_output_format="json",
+)
+
+# 3. 更新实际输出
+logger.update_actual_output(
+    log_id=log_id,
+    actual_output='{"trend": "up", "rate": "15%"}',
+    output_valid=True,
+)
+
+# 4. 检查稳定性
+monitor = PromptStabilityMonitor(
+    logger=logger,
+    expected_modules=["system", "task", "output_format"],
+    allowed_scenarios=["data_analysis", "qa", "summarization"],
+)
+metrics = monitor.check_stability()
+print(f"稳定性状态: {metrics.status}")
+
+# 5. 生成报表
+coordinator = PromptAuditCoordinator(logger=logger)
+report = coordinator.generate_report()
+print(f"总日志数: {report['total_logs']}")
+print(f"版本分布: {report['version_distribution']}")
+```
+
+#### 32.5.2 漂移检测与警报
+
+```python
+# 注册警报回调
+def handle_alert(alert):
+    if alert.alert_level == AlertLevel.ERROR:
+        print(f"[ERROR] {alert.message}")
+    elif alert.alert_level == AlertLevel.WARNING:
+        print(f"[WARN] {alert.message}")
+
+coordinator.register_alert_callback(handle_alert)
+
+# 运行审计（自动检测漂移并触发警报）
+result = coordinator.run_audit()
+
+print(f"检测到 {result.drifts_detected} 个漂移")
+print(f"格式违规: {result.format_violations}")
+```
+
+#### 32.5.3 输出格式验证
+
+```python
+from src.domain.services.prompt_stability_monitor import OutputFormatValidator
+
+validator = OutputFormatValidator(max_depth=5, max_output_size=10000)
+
+# 验证 JSON 格式
+result = validator.validate_json_format('{"status": "ok"}')
+if result.is_valid:
+    print("JSON 格式有效")
+else:
+    for error in result.errors:
+        print(f"错误: {error.message}")
+
+# 对比模板验证
+template = {
+    "type": "object",
+    "required": ["status", "data"],
+    "properties": {
+        "status": {"type": "string"},
+        "data": {"type": "object"},
+    },
+}
+result = validator.validate_against_template(output, template)
+```
+
+### 32.6 审计流程文档
+
+#### 32.6.1 审计流程图
+
+```
+┌──────────────────┐
+│   触发审计       │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ 获取使用历史日志 │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐     ┌──────────────────┐
+│ 检测版本漂移     │────▶│ 版本不一致？     │
+└────────┬─────────┘     └────────┬─────────┘
+         │                        │ Yes
+         │                        ▼
+         │               ┌──────────────────┐
+         │               │ 触发警报         │
+         │               └──────────────────┘
+         ▼
+┌──────────────────┐     ┌──────────────────┐
+│ 检测模块漂移     │────▶│ 模块组合变化？   │
+└────────┬─────────┘     └────────┬─────────┘
+         │                        │ Yes
+         │                        ▼
+         │               ┌──────────────────┐
+         │               │ 触发警报         │
+         │               └──────────────────┘
+         ▼
+┌──────────────────┐     ┌──────────────────┐
+│ 检测场景漂移     │────▶│ 未知场景？       │
+└────────┬─────────┘     └────────┬─────────┘
+         │                        │ Yes
+         │                        ▼
+         │               ┌──────────────────┐
+         │               │ 触发警报         │
+         │               └──────────────────┘
+         ▼
+┌──────────────────┐     ┌──────────────────┐
+│ 检测格式漂移     │────▶│ 输出无效？       │
+└────────┬─────────┘     └────────┬─────────┘
+         │                        │ Yes
+         │                        ▼
+         │               ┌──────────────────┐
+         │               │ 触发警报         │
+         │               └──────────────────┘
+         ▼
+┌──────────────────┐
+│ 计算稳定性指标   │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ 生成审计结果     │
+└──────────────────┘
+```
+
+#### 32.6.2 异常处理
+
+| 异常类型 | 检测条件 | 警报级别 | 处理建议 |
+|----------|----------|----------|----------|
+| 版本漂移 | 多个版本同时使用 | WARNING | 检查版本升级流程 |
+| 模块漂移 | 模块组合与预期不符 | WARNING | 检查模块配置 |
+| 场景漂移 | 出现未定义场景 | WARNING | 更新场景配置或审查使用 |
+| 格式违规 | 输出不符合JSON模板 | ERROR | 检查提示词或LLM配置 |
+| 稳定性下降 | 稳定性指标低于阈值 | ERROR | 全面审查系统配置 |
+
+### 32.7 稳定性指标计算
+
+稳定性指标由以下四个维度计算：
+
+```
+稳定性分数 = (版本一致性 + 模块一致性 + 输出有效率 + 场景合规率) / 4
+
+其中：
+- 版本一致性 = 最常用版本数量 / 总日志数
+- 模块一致性 = 最常用模块组合数量 / 总日志数
+- 输出有效率 = 有效输出数量 / 有输出的日志数
+- 场景合规率 = 合规场景数量 / 总日志数
+
+状态判定：
+- STABLE: 分数 >= 0.9
+- DEGRADED: 0.7 <= 分数 < 0.9
+- UNSTABLE: 分数 < 0.7
+```
+
+### 32.8 报表格式
+
+```json
+{
+  "total_logs": 100,
+  "unique_sessions": 45,
+  "version_distribution": {
+    "v1.0.0": 85,
+    "v1.1.0": 15
+  },
+  "scenario_distribution": {
+    "data_analysis": 40,
+    "qa": 35,
+    "summarization": 25
+  },
+  "audit_summary": {
+    "audit_id": "audit_xxx",
+    "timestamp": "2024-01-01T00:00:00",
+    "logs_analyzed": 100,
+    "drifts_detected": 2,
+    "format_violations": 3,
+    "alert_count": 5,
+    "stability_status": "degraded"
+  },
+  "stability_metrics": {
+    "status": "degraded",
+    "version_consistency": 0.85,
+    "module_consistency": 0.90,
+    "output_validity_rate": 0.97,
+    "scenario_compliance": 1.0
+  },
+  "generated_at": "2024-01-01T00:00:00"
+}
+```
+
+### 32.9 测试覆盖
+
+| 测试类别 | 测试数量 | 覆盖内容 |
+|----------|----------|----------|
+| PromptUsageLog | 4 | 创建、转换、序列化 |
+| PromptUsageLogger | 5 | 记录、查询、统计 |
+| PromptDriftDetector | 6 | 版本/模块/场景/格式漂移检测 |
+| OutputFormatValidator | 5 | JSON/模板/结构验证 |
+| AuditAlert | 2 | 创建、序列化 |
+| PromptAuditCoordinator | 6 | 审计、报表、警报 |
+| PromptStabilityMonitor | 4 | 稳定性检查、趋势分析 |
+| 数据类/枚举 | 12 | 类型定义验证 |
+| **单元测试总计** | **44** | |
+| 端到端监控 | 3 | 完整流程、漂移检测、格式违规 |
+| 报表生成 | 2 | 综合报表、趋势分析 |
+| 警报管理 | 2 | 回调系统、级别过滤 |
+| 输出验证 | 2 | 模板验证、嵌套验证 |
+| 场景漂移 | 1 | 未知场景检测 |
+| 多会话追踪 | 2 | 会话追踪、隔离 |
+| 审计文档 | 1 | 结果文档化 |
+| **集成测试总计** | **13** | |
+
+### 32.10 文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/domain/services/prompt_stability_monitor.py` | 提示词稳定性监控核心实现 (~700 行) |
+| `tests/unit/domain/services/test_prompt_stability_monitor.py` | 单元测试 (44 个) |
+| `tests/integration/test_prompt_stability_monitor_e2e.py` | 集成测试 (13 个) |
+
+---
+
+## 33. 运维手册与回归测试 (Step 10)
+
+> 创建日期：2025-12-07
+> 模块：coordinator_runbook.py
+> 测试覆盖：78 单元 + 15 集成 = 93 测试
+
+### 33.1 概述
+
+运维手册与回归测试模块提供完整的 Prompt & Context 运维能力：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Coordinator Runbook System                        │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐     │
+│  │ TemplateUpdate  │  │ VersionSwitch   │  │   ABTest        │     │
+│  │   Operation     │  │   Operation     │  │   Operation     │     │
+│  │                 │  │                 │  │                 │     │
+│  │ • prepare()     │  │ • plan()        │  │ • create()      │     │
+│  │ • validate()    │  │ • execute()     │  │ • start()       │     │
+│  │ • execute()     │  │ • rollback()    │  │ • assign()      │     │
+│  │ • rollback()    │  │ • monitor()     │  │ • conclude()    │     │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘     │
+│           │                    │                    │               │
+│           └────────────────────┼────────────────────┘               │
+│                                ▼                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │                   OperationRecorder                          │   │
+│  │  记录所有运维操作，生成日报和审计报表                            │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                │                                     │
+│                                ▼                                     │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐     │
+│  │ ContextDebug    │  │ ExceptionCase   │  │  Coordinator    │     │
+│  │   Operation     │  │   Manager       │  │    Runbook      │     │
+│  │                 │  │                 │  │                 │     │
+│  │ • start()       │  │ • add_case()    │  │ • add_entry()   │     │
+│  │ • snapshot()    │  │ • search()      │  │ • execute()     │     │
+│  │ • trace()       │  │ • guide()       │  │ • document()    │     │
+│  │ • inspect()     │  │                 │  │                 │     │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 33.2 核心枚举类型
+
+```python
+class OperationType(str, Enum):
+    """操作类型"""
+    TEMPLATE_UPDATE = "template_update"  # 模板更新
+    VERSION_SWITCH = "version_switch"    # 版本切换
+    AB_TEST = "ab_test"                  # A/B 测试
+    CONTEXT_DEBUG = "context_debug"      # 上下文调试
+
+class OperationStatus(str, Enum):
+    """操作状态"""
+    PENDING = "pending"           # 待处理
+    IN_PROGRESS = "in_progress"   # 进行中
+    COMPLETED = "completed"       # 已完成
+    FAILED = "failed"             # 失败
+    ROLLED_BACK = "rolled_back"   # 已回滚
+
+class RollbackStrategy(str, Enum):
+    """回滚策略"""
+    IMMEDIATE = "immediate"  # 立即回滚
+    GRADUAL = "gradual"      # 渐进回滚
+    MANUAL = "manual"        # 手动回滚
+
+class ABTestStrategy(str, Enum):
+    """A/B 测试策略"""
+    RANDOM = "random"            # 随机分配
+    ROUND_ROBIN = "round_robin"  # 轮询分配
+    WEIGHTED = "weighted"        # 加权分配
+    USER_SEGMENT = "user_segment"# 用户分组
+
+class DebugLevel(str, Enum):
+    """调试级别"""
+    BASIC = "basic"        # 基础
+    DETAILED = "detailed"  # 详细
+    VERBOSE = "verbose"    # 冗长
+    TRACE = "trace"        # 追踪
+```
+
+### 33.3 运维操作 API
+
+#### 33.3.1 模板更新操作
+
+```python
+template_op = TemplateUpdateOperation()
+
+# 1. 准备更新
+change = template_op.prepare_update(
+    template_id="tpl-system-001",
+    module_name="system_prompt",
+    new_content="You are an expert assistant.",
+    reason="Improve expertise",
+)
+
+# 2. 验证模板
+validation = template_op.validate_template(
+    content=change.new_content,
+    required_variables=["role", "task"],
+)
+
+# 3. 执行更新
+record = template_op.execute_update(change, operator="admin")
+
+# 4. 回滚（如需要）
+rollback = template_op.rollback(record.record_id, reason="Issue found")
+```
+
+#### 33.3.2 版本切换操作
+
+```python
+version_op = VersionSwitchOperation()
+
+# 1. 计划切换
+switch = version_op.plan_switch(
+    from_version="1.0.0",
+    to_version="2.0.0",
+    modules=["system_prompt", "task_prompt"],
+    strategy=RollbackStrategy.GRADUAL,
+)
+
+# 2. 获取发布阶段
+stages = version_op.get_rollout_stages(switch)
+# [Stage(10%, 15min), Stage(50%, 30min), Stage(100%, 60min)]
+
+# 3. 执行切换
+record = version_op.execute_switch(switch, operator="devops")
+
+# 4. 报告指标
+version_op.report_metrics(switch.switch_id, error_rate=0.01, latency_ms=100)
+
+# 5. 检查状态（自动回滚检查）
+status = version_op.get_switch_status(switch.switch_id)
+```
+
+#### 33.3.3 A/B 测试操作
+
+```python
+ab_op = ABTestOperation()
+
+# 1. 创建测试
+config = ab_op.create_test(
+    name="Prompt Quality Test",
+    variant_a={"prompt": "You are helpful.", "version": "1.0"},
+    variant_b={"prompt": "You are an expert.", "version": "2.0"},
+    strategy=ABTestStrategy.RANDOM,
+    traffic_split=0.5,
+)
+
+# 2. 启动测试
+ab_op.start_test(config)
+
+# 3. 分配变体
+variant = ab_op.assign_variant(config.test_id, session_id="sess-001")
+
+# 4. 记录指标
+ab_op.record_metric(config.test_id, variant, "success", 0.97)
+
+# 5. 结束测试
+result = ab_op.conclude_test(config.test_id)
+print(f"Winner: {result.winner}, Confidence: {result.confidence_level}")
+```
+
+#### 33.3.4 上下文调试操作
+
+```python
+debug_op = ContextDebugOperation()
+
+# 1. 启动调试会话
+session = debug_op.start_session(
+    target_session_id="production-sess-001",
+    debug_level=DebugLevel.VERBOSE,
+    breakpoints=["context_load", "prompt_build"],
+)
+
+# 2. 设置上下文数据
+debug_op.set_context_data(session.session_id, {"task_id": "task-001"})
+
+# 3. 捕获快照
+snapshot = debug_op.capture_snapshot(
+    session_id=session.session_id,
+    checkpoint="context_load",
+    context_state={"modules": 3},
+    prompt_state={"length": 500},
+)
+
+# 4. 添加追踪事件
+debug_op.add_trace_event(session.session_id, "llm_invoked", {"model": "gpt-4"})
+
+# 5. 检查上下文
+inspection = debug_op.inspect_context(session.session_id)
+
+# 6. 获取追踪
+trace = debug_op.get_trace(session.session_id)
+
+# 7. 结束会话
+report = debug_op.end_session(session.session_id)
+```
+
+### 33.4 日常操作记录
+
+#### 33.4.1 操作记录器
+
+```python
+recorder = OperationRecorder()
+
+# 记录操作
+record = recorder.record(
+    operation_type=OperationType.TEMPLATE_UPDATE,
+    operator="admin",
+    description="Update system prompt",
+    details={"template_id": "tpl-001"},
+    result={"success": True},
+)
+
+# 查询记录
+updates = recorder.query(operation_type=OperationType.TEMPLATE_UPDATE)
+admin_ops = recorder.query(operator="admin")
+
+# 获取最近记录
+recent = recorder.get_recent(limit=10)
+
+# 生成日报
+report = recorder.generate_daily_report()
+```
+
+#### 33.4.2 日报格式
+
+```json
+{
+  "date": "2024-01-01",
+  "total_operations": 15,
+  "by_type": {
+    "template_update": 5,
+    "version_switch": 3,
+    "ab_test": 4,
+    "context_debug": 3
+  },
+  "by_operator": {
+    "admin": 8,
+    "devops": 5,
+    "analyst": 2
+  },
+  "records": [...]
+}
+```
+
+### 33.5 异常处置案例
+
+#### 33.5.1 异常案例管理
+
+```python
+manager = ExceptionCaseManager()
+
+# 添加异常案例
+case = manager.add_case(
+    title="Context Overflow Error",
+    description="Context package exceeds maximum size limit",
+    symptoms=["Memory spike", "Timeout errors"],
+    root_cause="Large document attachment without compression",
+    resolution_steps=[
+        "1. Check context package size",
+        "2. Enable compression",
+        "3. Remove unnecessary attachments",
+    ],
+    prevention_measures=[
+        "Set max size validation",
+        "Auto-compress large contexts",
+    ],
+)
+
+# 搜索案例
+results = manager.search_by_symptom("Memory")
+
+# 获取解决指南
+guide = manager.get_resolution_guide(case.case_id)
+```
+
+#### 33.5.2 常见异常案例
+
+| 异常类型 | 症状 | 根因 | 处置步骤 |
+|----------|------|------|----------|
+| Context Overflow | 内存飙升、超时 | 大附件未压缩 | 启用压缩、限制大小 |
+| Version Mismatch | JSON 解析错误 | 版本升级未迁移 | 回滚、计划迁移 |
+| Prompt Drift | 输出格式不一致 | 模块组合变化 | 检查模块配置 |
+| Schema Violation | 验证失败 | 输出不符合模板 | 修正提示词 |
+
+### 33.6 Runbook 流程
+
+#### 33.6.1 运维 Runbook
+
+```python
+runbook = CoordinatorRunbook()
+
+# 添加流程
+entry = runbook.add_entry(
+    title="Daily Health Check",
+    category="maintenance",
+    procedure=[
+        "1. Check template validation status",
+        "2. Review prompt version consistency",
+        "3. Analyze error rate trends",
+        "4. Generate health report",
+    ],
+    estimated_duration_minutes=15,
+    required_permissions=["admin", "devops"],
+)
+
+# 执行流程
+log = runbook.execute_procedure(
+    entry_id=entry.entry_id,
+    operator="ops-team",
+    parameters={"date": "2024-01-01"},
+)
+
+# 生成文档
+document = runbook.generate_document()
+```
+
+#### 33.6.2 标准运维流程
+
+| 流程名称 | 类别 | 预估时间 | 权限要求 |
+|----------|------|----------|----------|
+| Daily Health Check | maintenance | 15 分钟 | admin |
+| Template Update | update | 30 分钟 | admin |
+| Version Switch | update | 45 分钟 | admin, devops |
+| Emergency Rollback | emergency | 10 分钟 | admin, devops |
+| A/B Test Setup | experiment | 20 分钟 | analyst |
+| Context Debug | debug | 30 分钟 | developer |
+
+### 33.7 回归测试套件
+
+#### 33.7.1 覆盖范围
+
+| 测试类别 | 测试项目 | 覆盖模块 |
+|----------|----------|----------|
+| 模块化拼接 | 3 | PromptModule, PromptTemplateRegistry |
+| 版本切换 | 3 | PromptVersionManager |
+| 上下文传递 | 3 | ContextPackage, SubAgentContextBridge |
+| 结果回写 | 4 | ResultPackage, ResultUnpacker, MemoryUpdater |
+
+#### 33.7.2 CI 集成
+
+```yaml
+# .github/workflows/regression.yml
+name: Regression Tests
+
+on:
+  push:
+    paths:
+      - 'src/domain/services/prompt_*.py'
+      - 'src/domain/services/context_*.py'
+      - 'src/domain/services/result_*.py'
+      - 'src/domain/services/coordinator_runbook.py'
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Regression Tests
+        run: |
+          pytest tests/unit/domain/services/test_coordinator_runbook.py -v
+          pytest tests/integration/test_coordinator_runbook_integration.py -v
+```
+
+### 33.8 测试覆盖
+
+| 测试类别 | 测试数量 | 覆盖内容 |
+|----------|----------|----------|
+| 枚举测试 | 10 | OperationType, OperationStatus, RollbackStrategy, ABTestStrategy, DebugLevel |
+| 数据类测试 | 16 | OperationRecord, TemplateChange, VersionSwitch, ABTestConfig, DebugSession 等 |
+| 运维操作测试 | 27 | TemplateUpdateOperation, VersionSwitchOperation, ABTestOperation, ContextDebugOperation |
+| 记录器测试 | 9 | OperationRecorder, ExceptionCaseManager, CoordinatorRunbook |
+| 场景测试 | 4 | 完整工作流场景 |
+| 回归测试 | 12 | 模块化拼接、版本切换、上下文传递、结果回写 |
+| **单元测试总计** | **78** | |
+| 模板更新工作流 | 3 | 完整周期、验证失败、回滚 |
+| 版本切换工作流 | 2 | 渐进发布、自动回滚 |
+| A/B 测试工作流 | 2 | 完整生命周期、加权分配 |
+| 上下文调试工作流 | 1 | 完整调试会话 |
+| 日常运维 | 2 | 健康检查、模板更新流程 |
+| 异常处置 | 1 | 案例管理 |
+| 文档生成 | 1 | Runbook 文档 |
+| 操作记录 | 1 | 综合记录 |
+| CI 集成 | 2 | 完整性、跨模块集成 |
+| **集成测试总计** | **15** | |
+
+### 33.9 文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `src/domain/services/coordinator_runbook.py` | 运维手册核心实现 (~700 行) |
+| `tests/unit/domain/services/test_coordinator_runbook.py` | 单元测试 (78 个) |
+| `tests/integration/test_coordinator_runbook_integration.py` | 集成测试 (15 个) |
+
+---

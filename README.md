@@ -144,6 +144,7 @@ agent_data/
 - 📋 [Coordinator 运维 Runbook](docs/architecture/current_agents.md#23-coordinator-运维-runbook) - 模块配置、指标观测、异常干预、知识库维护、告警追溯
 - 📄 [通用节点 YAML 规范](docs/architecture/current_agents.md#14-通用节点-yaml-规范node-definition-specification) - 自描述节点定义、Schema 校验、示例模板
 - 📊 [动态节点运维 Runbook](docs/operations/dynamic_node_runbook.md) - 监控指标、回滚流程、健康检查、故障排查
+- 📝 [Prompt & Context 运维 Runbook](docs/architecture/current_agents.md#33-运维手册与回归测试-step-10) - 模板更新、版本切换、A/B 测试、上下文调试、回归测试
 
 ### 其他文档
 - [前端架构总结](docs/frontend_architecture_summary.md)

@@ -380,6 +380,33 @@ class CoordinatorAgent:
         self.efficiency_monitor = self._supervision_coordinator.efficiency_monitor
         self.strategy_repository = self._supervision_coordinator.strategy_repository
 
+        # ==================== 提示词版本管理 ====================
+        from src.domain.services.prompt_version_manager import (
+            CoordinatorPromptLoader,
+            PromptVersionManager,
+            VersionConfig,
+        )
+
+        self._prompt_version_manager: PromptVersionManager | None = None
+        self._prompt_loader: CoordinatorPromptLoader | None = None
+        self._prompt_version_config: VersionConfig | None = None
+
+        # ==================== A/B 测试与实验管理 ====================
+        from src.domain.services.ab_testing_system import (
+            CoordinatorExperimentAdapter,
+            ExperimentManager,
+            GradualRolloutController,
+            MetricsCollector,
+        )
+
+        self._experiment_manager = ExperimentManager()
+        self._metrics_collector = MetricsCollector()
+        self._rollout_controller = GradualRolloutController()
+        self._experiment_adapter = CoordinatorExperimentAdapter(
+            self._experiment_manager,
+            self._metrics_collector,
+        )
+
     # ==================== Phase 1: 上下文服务 ====================
 
     @property
@@ -748,6 +775,330 @@ class CoordinatorAgent:
             )
 
         return ValidationResult(is_valid=is_valid, errors=errors, correction=correction)
+
+    # ==================== 提示词版本管理接口 ====================
+
+    def init_prompt_version_manager(
+        self,
+        config: dict[str, str] | None = None,
+    ) -> None:
+        """初始化提示词版本管理器
+
+        参数：
+            config: 版本配置字典 {module_name: version}
+        """
+        from src.domain.services.prompt_version_manager import (
+            CoordinatorPromptLoader,
+            PromptVersionManager,
+            VersionConfig,
+        )
+
+        self._prompt_version_manager = PromptVersionManager()
+        self._prompt_loader = CoordinatorPromptLoader(self._prompt_version_manager)
+
+        if config:
+            self._prompt_version_config = VersionConfig.from_dict(config)
+            self._prompt_loader.apply_config(self._prompt_version_config)
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            "提示词版本管理器已初始化",
+            {"config": config or {}},
+        )
+
+    @property
+    def prompt_version_manager(self) -> Any:
+        """获取提示词版本管理器"""
+        return self._prompt_version_manager
+
+    def register_prompt_version(
+        self,
+        module_name: str,
+        version: str,
+        template: str,
+        variables: list[str],
+        changelog: str,
+        author: str = "system",
+    ) -> Any:
+        """注册新的提示词版本
+
+        参数：
+            module_name: 模块名称
+            version: 版本号 (语义化版本 x.y.z)
+            template: 模板内容
+            variables: 变量列表
+            changelog: 变更说明
+            author: 作者
+
+        返回：
+            PromptVersion 对象
+        """
+        if self._prompt_version_manager is None:
+            self.init_prompt_version_manager()
+
+        assert self._prompt_version_manager is not None
+        prompt_version = self._prompt_version_manager.register_version(
+            module_name=module_name,
+            version=version,
+            template=template,
+            variables=variables,
+            changelog=changelog,
+            author=author,
+        )
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"已注册提示词版本: {module_name}@{version}",
+            {"module_name": module_name, "version": version, "author": author},
+        )
+
+        return prompt_version
+
+    def load_prompt_template(
+        self,
+        module_name: str,
+        version: str | None = None,
+    ) -> str:
+        """加载提示词模板
+
+        参数：
+            module_name: 模块名称
+            version: 版本号（不指定则使用活跃版本）
+
+        返回：
+            模板内容
+        """
+        if self._prompt_loader is None:
+            self.init_prompt_version_manager()
+
+        assert self._prompt_loader is not None
+        template = self._prompt_loader.load_template(module_name, version)
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"已加载提示词模板: {module_name}@{version or 'active'}",
+            {"module_name": module_name, "version": version},
+        )
+
+        return template
+
+    def switch_prompt_version(
+        self,
+        module_name: str,
+        version: str,
+    ) -> None:
+        """切换提示词版本
+
+        参数：
+            module_name: 模块名称
+            version: 目标版本号
+        """
+        if self._prompt_version_manager is None:
+            self.init_prompt_version_manager()
+
+        assert self._prompt_version_manager is not None
+        self._prompt_version_manager.set_active_version(module_name, version)
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"已切换提示词版本: {module_name} -> {version}",
+            {"module_name": module_name, "version": version},
+        )
+
+    def rollback_prompt_version(
+        self,
+        module_name: str,
+        target_version: str | None = None,
+        reason: str = "",
+    ) -> Any:
+        """回滚提示词版本
+
+        参数：
+            module_name: 模块名称
+            target_version: 目标版本（不指定则回滚到上一版本）
+            reason: 回滚原因
+
+        返回：
+            RollbackResult 对象
+        """
+        if not self._prompt_version_manager:
+            raise ValueError("提示词版本管理器未初始化")
+
+        result = self._prompt_version_manager.rollback(
+            module_name=module_name,
+            target_version=target_version,
+            reason=reason,
+        )
+
+        if result.success:
+            self.log_collector.warning(
+                "CoordinatorAgent",
+                f"已回滚提示词版本: {module_name} {result.from_version} -> {result.to_version}",
+                {
+                    "module_name": module_name,
+                    "from_version": result.from_version,
+                    "to_version": result.to_version,
+                    "reason": reason,
+                },
+            )
+        else:
+            self.log_collector.error(
+                "CoordinatorAgent",
+                f"提示词版本回滚失败: {module_name}",
+                {"reason": result.reason},
+            )
+
+        return result
+
+    def get_prompt_audit_logs(
+        self,
+        module_name: str,
+    ) -> list[Any]:
+        """获取提示词版本审计日志
+
+        参数：
+            module_name: 模块名称
+
+        返回：
+            审计日志列表
+        """
+        if not self._prompt_version_manager:
+            return []
+
+        return self._prompt_version_manager.get_audit_logs(module_name)
+
+    def get_prompt_version_history(
+        self,
+        module_name: str,
+    ) -> list[Any]:
+        """获取提示词版本历史
+
+        参数：
+            module_name: 模块名称
+
+        返回：
+            版本历史列表
+        """
+        if not self._prompt_version_manager:
+            return []
+
+        return self._prompt_version_manager.get_version_history(module_name)
+
+    def submit_prompt_change(
+        self,
+        module_name: str,
+        new_version: str,
+        template: str,
+        variables: list[str],
+        reason: str,
+        author: str,
+    ) -> Any:
+        """提交提示词变更申请
+
+        参数：
+            module_name: 模块名称
+            new_version: 新版本号
+            template: 新模板内容
+            variables: 变量列表
+            reason: 变更原因
+            author: 提交者
+
+        返回：
+            VersionChangeRecord 对象
+        """
+        if self._prompt_version_manager is None:
+            self.init_prompt_version_manager()
+
+        assert self._prompt_version_manager is not None
+        record = self._prompt_version_manager.submit_change(
+            module_name=module_name,
+            new_version=new_version,
+            template=template,
+            variables=variables,
+            reason=reason,
+            author=author,
+        )
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"已提交提示词变更申请: {module_name}@{new_version}",
+            {"record_id": record.id, "author": author, "reason": reason},
+        )
+
+        return record
+
+    def approve_prompt_change(
+        self,
+        record_id: str,
+        comment: str = "",
+    ) -> Any:
+        """审批通过提示词变更
+
+        参数：
+            record_id: 变更记录ID
+            comment: 审批意见
+
+        返回：
+            更新后的 VersionChangeRecord 对象
+        """
+        if not self._prompt_version_manager:
+            raise ValueError("提示词版本管理器未初始化")
+
+        result = self._prompt_version_manager.approve_change(
+            record_id=record_id,
+            approver="coordinator",  # Coordinator 作为审批者
+            comment=comment,
+        )
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"已审批提示词变更: {result.module_name}@{result.to_version}",
+            {"record_id": record_id, "comment": comment},
+        )
+
+        return result
+
+    def reject_prompt_change(
+        self,
+        record_id: str,
+        reason: str,
+    ) -> Any:
+        """拒绝提示词变更
+
+        参数：
+            record_id: 变更记录ID
+            reason: 拒绝原因
+
+        返回：
+            更新后的 VersionChangeRecord 对象
+        """
+        if not self._prompt_version_manager:
+            raise ValueError("提示词版本管理器未初始化")
+
+        result = self._prompt_version_manager.reject_change(
+            record_id=record_id,
+            approver="coordinator",
+            reason=reason,
+        )
+
+        self.log_collector.warning(
+            "CoordinatorAgent",
+            f"已拒绝提示词变更: {result.module_name}@{result.to_version}",
+            {"record_id": record_id, "reason": reason},
+        )
+
+        return result
+
+    def get_prompt_loading_logs(self) -> list[Any]:
+        """获取提示词加载日志
+
+        返回：
+            加载日志列表
+        """
+        if not self._prompt_loader:
+            return []
+
+        return self._prompt_loader.get_loading_logs()
 
     # ==================== Phase 8.4: Payload 和 DAG 验证方法 ====================
 
@@ -3537,6 +3888,457 @@ class CoordinatorAgent:
             }
             for e in events
         ]
+
+    # ==================== Section 27: A/B 测试与实验管理 ====================
+
+    def create_experiment(
+        self,
+        experiment_id: str,
+        name: str,
+        module_name: str,
+        control_version: str,
+        treatment_version: str,
+        traffic_allocation: dict[str, int] | None = None,
+        description: str = "",
+    ) -> dict[str, Any]:
+        """创建 A/B 测试实验
+
+        参数：
+            experiment_id: 实验唯一标识
+            name: 实验名称
+            module_name: 模块名称（如 "intent_classifier"）
+            control_version: 对照组版本号
+            treatment_version: 实验组版本号
+            traffic_allocation: 流量分配 {"control": 50, "treatment": 50}
+            description: 实验描述
+
+        返回：
+            实验配置字典
+        """
+        config = self._experiment_manager.create_experiment(
+            experiment_id=experiment_id,
+            name=name,
+            module_name=module_name,
+            control_version=control_version,
+            treatment_version=treatment_version,
+            traffic_allocation=traffic_allocation or {"control": 50, "treatment": 50},
+            description=description,
+        )
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"创建A/B实验: {name}",
+            {
+                "experiment_id": experiment_id,
+                "module_name": module_name,
+                "control_version": control_version,
+                "treatment_version": treatment_version,
+            },
+        )
+
+        return config.to_dict()
+
+    def create_multi_variant_experiment(
+        self,
+        experiment_id: str,
+        name: str,
+        module_name: str,
+        variants: dict[str, dict[str, Any]],
+        description: str = "",
+    ) -> dict[str, Any]:
+        """创建多变体实验
+
+        参数：
+            experiment_id: 实验唯一标识
+            name: 实验名称
+            module_name: 模块名称
+            variants: 变体配置 {"v1": {"version": "1.0", "allocation": 33}, ...}
+            description: 实验描述
+
+        返回：
+            实验配置字典
+        """
+        config = self._experiment_manager.create_multi_variant_experiment(
+            experiment_id=experiment_id,
+            name=name,
+            module_name=module_name,
+            variants=variants,
+            description=description,
+        )
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"创建多变体实验: {name}",
+            {
+                "experiment_id": experiment_id,
+                "module_name": module_name,
+                "variant_count": len(variants),
+            },
+        )
+
+        return config.to_dict()
+
+    def start_experiment(self, experiment_id: str) -> bool:
+        """启动实验
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            是否成功启动
+        """
+        try:
+            self._experiment_manager.start_experiment(experiment_id)
+            self.log_collector.info(
+                "CoordinatorAgent",
+                f"启动实验: {experiment_id}",
+                {"experiment_id": experiment_id},
+            )
+            return True
+        except Exception as e:
+            self.log_collector.error(
+                "CoordinatorAgent",
+                f"启动实验失败: {experiment_id}",
+                {"error": str(e)},
+            )
+            return False
+
+    def pause_experiment(self, experiment_id: str) -> bool:
+        """暂停实验
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            是否成功暂停
+        """
+        try:
+            self._experiment_manager.pause_experiment(experiment_id)
+            self.log_collector.info(
+                "CoordinatorAgent",
+                f"暂停实验: {experiment_id}",
+                {"experiment_id": experiment_id},
+            )
+            return True
+        except Exception as e:
+            self.log_collector.error(
+                "CoordinatorAgent",
+                f"暂停实验失败: {experiment_id}",
+                {"error": str(e)},
+            )
+            return False
+
+    def complete_experiment(self, experiment_id: str) -> bool:
+        """完成实验
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            是否成功完成
+        """
+        try:
+            self._experiment_manager.complete_experiment(experiment_id)
+            self.log_collector.info(
+                "CoordinatorAgent",
+                f"完成实验: {experiment_id}",
+                {"experiment_id": experiment_id},
+            )
+            return True
+        except Exception as e:
+            self.log_collector.error(
+                "CoordinatorAgent",
+                f"完成实验失败: {experiment_id}",
+                {"error": str(e)},
+            )
+            return False
+
+    def get_experiment_variant(self, experiment_id: str, user_id: str) -> str | None:
+        """获取用户的实验变体
+
+        根据确定性哈希分配用户到实验变体，确保同一用户
+        在同一实验中始终获得相同的变体。
+
+        参数：
+            experiment_id: 实验ID
+            user_id: 用户ID
+
+        返回：
+            变体名称 (如 "control", "treatment") 或 None（实验未运行）
+        """
+        try:
+            return self._experiment_manager.assign_variant(experiment_id, user_id)
+        except Exception:
+            return None
+
+    def get_prompt_version_for_experiment(
+        self,
+        module_name: str,
+        user_id: str,
+    ) -> str | None:
+        """获取用户在模块实验中应使用的提示词版本
+
+        参数：
+            module_name: 模块名称
+            user_id: 用户ID
+
+        返回：
+            提示词版本号，如 "1.0.0"
+        """
+        return self._experiment_adapter.get_version_for_user(module_name, user_id)
+
+    def record_experiment_metrics(
+        self,
+        module_name: str,
+        user_id: str,
+        success: bool,
+        duration_ms: int = 0,
+        satisfaction: int = 0,
+    ) -> None:
+        """记录实验指标
+
+        参数：
+            module_name: 模块名称
+            user_id: 用户ID
+            success: 是否成功
+            duration_ms: 任务时长（毫秒）
+            satisfaction: 满意度评分 (0-5)
+        """
+        self._experiment_adapter.record_interaction(
+            module_name=module_name,
+            user_id=user_id,
+            success=success,
+            duration_ms=duration_ms,
+            satisfaction=satisfaction,
+        )
+
+    def get_experiment_report(self, experiment_id: str) -> dict[str, Any]:
+        """获取实验报告
+
+        包含各变体的指标统计：成功率、平均时长、平均满意度。
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            实验报告字典
+        """
+        return self._experiment_adapter.get_experiment_report(experiment_id)
+
+    def get_experiment_metrics_summary(self, experiment_id: str) -> dict[str, Any]:
+        """获取实验指标汇总
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            指标汇总字典，包含各变体的详细指标
+        """
+        return self._metrics_collector.get_metrics_summary(experiment_id)
+
+    def create_rollout_plan(
+        self,
+        experiment_id: str,
+        module_name: str,
+        new_version: str,
+        stages: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """创建灰度发布计划
+
+        参数：
+            experiment_id: 实验ID（用于跟踪）
+            module_name: 模块名称
+            new_version: 新版本号
+            stages: 发布阶段列表 [{"name": "canary", "percentage": 5}, ...]
+
+        返回：
+            发布计划字典
+        """
+        # 转换为 controller 期望的格式
+        rollout_stages = [
+            {
+                "name": s.get("name", f"stage_{i}"),
+                "percentage": s["percentage"],
+                "duration_hours": s.get("min_duration_hours", s.get("duration_hours", 24)),
+                "metrics_threshold": {"success_rate": s.get("success_threshold", 0.95)},
+            }
+            for i, s in enumerate(stages)
+        ]
+
+        plan = self._rollout_controller.create_rollout_plan(
+            experiment_id=experiment_id,
+            module_name=module_name,
+            new_version=new_version,
+            stages=rollout_stages,
+        )
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"创建灰度发布计划: {module_name}",
+            {
+                "experiment_id": experiment_id,
+                "new_version": new_version,
+                "stage_count": len(stages),
+            },
+        )
+
+        return {
+            "experiment_id": plan.experiment_id,
+            "module_name": plan.module_name,
+            "new_version": plan.new_version,
+            "current_stage": plan.current_stage,
+            "stages": plan.stages,
+        }
+
+    def advance_rollout_stage(self, experiment_id: str) -> dict[str, Any]:
+        """推进灰度发布阶段
+
+        检查当前阶段指标是否达标，如果达标则推进到下一阶段。
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            推进结果 {"success": bool, "message": str, "current_stage": int}
+        """
+        result = self._rollout_controller.advance_stage(
+            experiment_id=experiment_id,
+            collector=self._metrics_collector,
+        )
+
+        # 获取当前阶段
+        plan = self._rollout_controller.get_plan(experiment_id)
+        current_stage = plan.current_stage if plan else 0
+
+        self.log_collector.info(
+            "CoordinatorAgent",
+            f"灰度发布推进: {experiment_id}",
+            {"success": result.success, "message": result.message},
+        )
+
+        return {
+            "success": result.success,
+            "message": result.message,
+            "current_stage": current_stage,
+        }
+
+    def rollback_rollout(self, experiment_id: str) -> dict[str, Any]:
+        """回滚灰度发布
+
+        当指标不达标时回滚到上一版本。
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            回滚结果 {"success": bool, "message": str}
+        """
+        result = self._rollout_controller.rollback(experiment_id)
+
+        # 获取当前阶段
+        plan = self._rollout_controller.get_plan(experiment_id)
+        current_stage = plan.current_stage if plan else 0
+
+        self.log_collector.warning(
+            "CoordinatorAgent",
+            f"灰度发布回滚: {experiment_id}",
+            {"success": result.success, "message": result.message},
+        )
+
+        return {
+            "success": result.success,
+            "message": result.message,
+            "current_stage": current_stage,
+        }
+
+    def should_rollback_rollout(self, experiment_id: str) -> bool:
+        """检查是否应该回滚
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            是否应该回滚
+        """
+        return self._rollout_controller.should_rollback(
+            experiment_id=experiment_id,
+            collector=self._metrics_collector,
+        )
+
+    def get_experiment_audit_logs(self, experiment_id: str) -> list[dict[str, Any]]:
+        """获取实验审计日志
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            审计日志列表
+        """
+        logs = self._experiment_manager.get_audit_logs(experiment_id)
+        return [
+            {
+                "timestamp": log.timestamp.isoformat(),
+                "action": log.action,
+                "actor": log.actor,
+                "details": log.details,
+            }
+            for log in logs
+        ]
+
+    def list_experiments(self, status: str | None = None) -> list[dict[str, Any]]:
+        """列出所有实验
+
+        参数：
+            status: 可选的状态过滤 ("draft", "running", "paused", "completed")
+
+        返回：
+            实验列表
+        """
+        experiments = self._experiment_manager.list_experiments(status=status)
+        return [exp.to_dict() for exp in experiments]
+
+    def get_experiment(self, experiment_id: str) -> dict[str, Any] | None:
+        """获取实验详情
+
+        参数：
+            experiment_id: 实验ID
+
+        返回：
+            实验配置字典或 None
+        """
+        config = self._experiment_manager.get_experiment(experiment_id)
+        return config.to_dict() if config else None
+
+    def check_experiment_metrics_threshold(
+        self,
+        experiment_id: str,
+        variant: str,
+        thresholds: dict[str, float],
+    ) -> dict[str, Any]:
+        """检查实验指标是否达到阈值
+
+        参数：
+            experiment_id: 实验ID
+            variant: 变体名称
+            thresholds: 阈值配置 {"success_rate": 0.95, "avg_duration": 5000}
+
+        返回：
+            检查结果 {"passed": bool, "details": {...}}
+        """
+        from src.domain.services.ab_testing_system import MetricsThresholdChecker
+
+        checker = MetricsThresholdChecker()
+        result = checker.check(
+            experiment_id=experiment_id,
+            variant=variant,
+            collector=self._metrics_collector,
+            threshold=thresholds,
+        )
+
+        return {
+            "passed": result.passed,
+            "details": result.details,
+        }
 
 
 # 导出

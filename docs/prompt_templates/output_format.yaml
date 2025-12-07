@@ -1,0 +1,213 @@
+# 输出格式模块 (Output Format Module)
+#
+# 功能：定义 Agent 输出的格式要求
+# 适用场景：需要规范 Agent 输出格式的提示词
+# 版本：1.0.0
+# 创建日期：2025-12-07
+
+name: output_format
+version: "1.0.0"
+description: |
+  输出格式模块用于声明 Agent 输出的格式类型、Schema 规范和示例。
+  确保 Agent 输出结构化、可解析的结果。
+
+# 变量定义
+variables:
+  - format_type     # 格式类型（JSON、YAML、Markdown 等）
+  - output_schema   # 输出 Schema 定义
+  - examples        # 输出示例
+
+# 适用的 Agent 类型
+applicable_agents:
+  - ConversationAgent
+  - WorkflowAgent
+  - CoordinatorAgent
+
+# 模板内容
+template: |
+  ## 输出格式
+
+  ### 格式类型
+  {format_type}
+
+  ### 输出 Schema
+  ```json
+  {output_schema}
+  ```
+
+  ### 示例
+  ```json
+  {examples}
+  ```
+
+# 元数据
+metadata:
+  category: output
+  priority: 4
+  author: system
+  changelog:
+    - version: "1.0.0"
+      date: "2025-12-07"
+      changes: "初始版本"
+
+# 变量说明
+variable_descriptions:
+  format_type:
+    type: string
+    required: true
+    description: "输出的格式类型"
+    allowed_values:
+      - "JSON"
+      - "YAML"
+      - "Markdown"
+      - "Plain Text"
+    examples:
+      - "JSON - 结构化数据格式，便于解析"
+      - "Markdown - 富文本格式，便于阅读"
+
+  output_schema:
+    type: string
+    required: true
+    description: "输出数据的 JSON Schema 定义"
+    examples:
+      - |
+        {
+          "type": "object",
+          "required": ["type", "reasoning"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["reason", "execute_node", "wait", "finish", "error_recovery"]
+            },
+            "reasoning": {
+              "type": "string",
+              "description": "决策推理过程"
+            },
+            "node_id": {
+              "type": "string",
+              "description": "要执行的节点ID（execute_node/error_recovery 时必填）"
+            }
+          }
+        }
+
+  examples:
+    type: string
+    required: true
+    description: "输出格式的具体示例"
+    examples:
+      - |
+        {
+          "type": "execute_node",
+          "node_id": "fetch_data",
+          "reasoning": "需要先获取数据才能进行分析"
+        }
+
+# 使用示例
+usage_examples_section:
+  - name: "ConversationAgent 输出格式"
+    variables:
+      format_type: |
+        JSON - 所有决策必须以 JSON 格式输出
+        - 使用双引号
+        - 不要有尾随逗号
+        - 确保 JSON 有效性
+      output_schema: |
+        {
+          "type": "object",
+          "required": ["decision_type", "payload"],
+          "properties": {
+            "decision_type": {
+              "type": "string",
+              "enum": ["create_node", "execute_workflow", "respond"],
+              "description": "决策类型"
+            },
+            "payload": {
+              "type": "object",
+              "description": "决策详情"
+            },
+            "reasoning": {
+              "type": "string",
+              "description": "决策理由"
+            }
+          }
+        }
+      examples: |
+        {
+          "decision_type": "respond",
+          "payload": {
+            "content": "您好！我是智能助手，很高兴为您服务。"
+          },
+          "reasoning": "用户发送了问候语，应该礼貌回应"
+        }
+
+  - name: "WorkflowAgent 输出格式"
+    variables:
+      format_type: |
+        JSON - 工作流动作必须以 JSON 格式输出
+      output_schema: |
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["reason", "execute_node", "wait", "finish", "error_recovery"]
+            },
+            "node_id": {
+              "type": "string"
+            },
+            "reasoning": {
+              "type": "string"
+            },
+            "params": {
+              "type": "object"
+            }
+          }
+        }
+      examples: |
+        {
+          "type": "execute_node",
+          "node_id": "process_data",
+          "reasoning": "数据已获取，现在执行数据处理节点",
+          "params": {
+            "format": "csv"
+          }
+        }
+
+  - name: "CoordinatorAgent 输出格式"
+    variables:
+      format_type: |
+        JSON - 验证结果必须以 JSON 格式输出
+      output_schema: |
+        {
+          "type": "object",
+          "required": ["is_valid", "decision_id"],
+          "properties": {
+            "is_valid": {
+              "type": "boolean",
+              "description": "验证是否通过"
+            },
+            "decision_id": {
+              "type": "string",
+              "description": "决策ID"
+            },
+            "errors": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "验证错误列表"
+            },
+            "corrections": {
+              "type": "object",
+              "description": "建议的修正"
+            }
+          }
+        }
+      examples: |
+        {
+          "is_valid": false,
+          "decision_id": "dec_001",
+          "errors": ["节点类型不在允许列表中"],
+          "corrections": {
+            "node_type": "LLM"
+          }
+        }
