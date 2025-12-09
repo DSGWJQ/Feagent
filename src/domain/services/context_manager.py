@@ -554,6 +554,9 @@ class WorkflowContext:
     # 执行历史
     execution_history: list[dict[str, Any]] = field(default_factory=list)
 
+    # 边条件求值结果: edge_id -> {result, expression, evaluated_at, error?}
+    edge_conditions: dict[str, dict[str, Any]] = field(default_factory=dict)
+
     def set_node_output(self, node_id: str, outputs: dict[str, Any]) -> None:
         """设置节点输出
 
