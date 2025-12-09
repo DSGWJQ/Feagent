@@ -36,7 +36,10 @@ from src.domain.services.execution_result import (
 from src.domain.services.execution_result import (
     WorkflowExecutionResult as LegacyWorkflowExecutionResult,
 )
-from src.domain.services.expression_evaluator import ExpressionEvaluator
+from src.domain.services.expression_evaluator import (
+    ExpressionEvaluator,
+    UnsafeExpressionError,
+)
 from src.domain.services.node_hierarchy_service import NodeHierarchyService
 from src.domain.services.node_registry import Node, NodeFactory, NodeType
 
@@ -1325,13 +1328,16 @@ class WorkflowAgent:
                     incoming_edges[edge.target_id] = []
                 incoming_edges[edge.target_id].append(edge)
 
-            # 识别Loop节点的子节点（这些节点会在Loop内部执行，不应在主执行流程中执行）
+            # 识别Loop节点的子节点（只有for_each类型会在Loop内部执行子节点）
             loop_child_nodes = set()
             for node_id, node in self._nodes.items():
                 if node.type == NodeType.LOOP:
-                    for edge in self._edges:
-                        if edge.source_id == node_id:
-                            loop_child_nodes.add(edge.target_id)
+                    loop_type = node.config.get("loop_type", "for_each")
+                    # 只有for_each循环才在内部执行子节点
+                    if loop_type == "for_each":
+                        for edge in self._edges:
+                            if edge.source_id == node_id:
+                                loop_child_nodes.add(edge.target_id)
 
             results = {}
             skipped_nodes = []
@@ -1363,10 +1369,27 @@ class WorkflowAgent:
                         node=node, results=results, evaluator=evaluator
                     )
                     results[node_id] = result
+                    # 写回WorkflowContext
+                    if self.workflow_context:
+                        self.workflow_context.set_node_output(node_id, result)
+
+                    # 检查集合操作是否失败（如不安全表达式）
+                    if not result.get("success", True):
+                        self._execution_status = ExecutionStatus.FAILED
+                        error_msg = result.get("metadata", {}).get("error", "Collection operation failed")
+                        return {
+                            "status": "failed",
+                            "error": error_msg,
+                            "failed_node": node_id,
+                            "results": results,
+                            "skipped_nodes": skipped_nodes,
+                        }
                 else:
                     # 普通节点执行
                     result = await self.execute_node(node_id)
                     results[node_id] = result
+                    if self.workflow_context:
+                        self.workflow_context.set_node_output(node_id, result)
 
             self._execution_status = ExecutionStatus.COMPLETED
 
@@ -1416,7 +1439,14 @@ class WorkflowAgent:
 
             logger = logging.getLogger(__name__)
             logger.warning(f"Loop节点 {node.id} 缺少 collection_field 配置")
-            return {"status": "error", "message": "Missing collection_field"}
+            return {
+                "success": False,
+                "output": {},
+                "metadata": {
+                    "operation_type": loop_type,
+                    "error": "Missing collection_field",
+                },
+            }
 
         # 从上游节点输出中提取集合
         collection = self._extract_collection_from_results(
@@ -1424,23 +1454,48 @@ class WorkflowAgent:
         )
 
         if collection is None:
-            return {"status": "success", "message": "Collection not found"}
+            return {
+                "success": True,
+                "output": {"collection": []},
+                "metadata": {
+                    "operation_type": loop_type,
+                    "total_items": 0,
+                    "message": "Collection not found",
+                },
+            }
 
         if not isinstance(collection, list):
             return {
-                "status": "error",
-                "message": f"Collection field '{collection_field}' is not a list",
+                "success": False,
+                "output": {},
+                "metadata": {
+                    "operation_type": loop_type,
+                    "error": f"Collection field '{collection_field}' is not a list",
+                },
             }
 
         # 根据loop_type执行不同逻辑
         if loop_type == "for_each":
-            return await self._execute_for_each_loop(node, collection, results)
+            result = await self._execute_for_each_loop(node, collection, results)
         elif loop_type == "map":
-            return await self._execute_map_operation(node, collection, evaluator)
+            result = await self._execute_map_operation(node, collection, evaluator)
         elif loop_type == "filter":
-            return await self._execute_filter_operation(node, collection, evaluator)
+            result = await self._execute_filter_operation(node, collection, evaluator)
         else:
-            return {"status": "error", "message": f"Unknown loop_type: {loop_type}"}
+            result = {
+                "success": False,
+                "output": {},
+                "metadata": {
+                    "operation_type": loop_type,
+                    "error": f"Unknown loop_type: {loop_type}",
+                },
+            }
+
+        # 写回WorkflowContext（确保集合操作结果可被后续节点访问）
+        if self.workflow_context:
+            self.workflow_context.set_node_output(node.id, result)
+
+        return result
 
     def _extract_collection_from_results(
         self, node_id: str, collection_field: str, results: dict[str, Any]
@@ -1521,9 +1576,16 @@ class WorkflowAgent:
                 aggregated_results.append(child_result)
 
         return {
-            "status": "success",
-            "aggregated_results": aggregated_results,
-            "iteration_count": len(collection),
+            "success": True,
+            "output": {
+                "collection": aggregated_results,
+            },
+            "metadata": {
+                "operation_type": "for_each",
+                "total_items": len(collection),
+                "iteration_count": len(collection),
+                "processed_items": len(aggregated_results),
+            },
         }
 
     async def _execute_map_operation(
@@ -1544,9 +1606,17 @@ class WorkflowAgent:
         transform_expression = map_node.config.get("transform_expression")
 
         if not transform_expression:
-            return {"status": "error", "message": "Missing transform_expression for map operation"}
+            return {
+                "success": False,
+                "output": {},
+                "metadata": {
+                    "operation_type": "map",
+                    "error": "Missing transform_expression for map operation",
+                },
+            }
 
         transformed_collection = []
+        failed_count = 0  # 跟踪失败的元素数量
 
         for item in collection:
             # 构建求值上下文
@@ -1560,14 +1630,13 @@ class WorkflowAgent:
                     context[key] = item
 
             try:
-                # 对于map操作，我们需要计算表达式的值（不是布尔值）
-                # 这里直接使用eval，在受限的上下文中
-                import ast
-
-                tree = ast.parse(transform_expression, mode="eval")
-
-                safe_globals = {"__builtins__": {}}
-                result_value = eval(compile(tree, "<expression>", "eval"), safe_globals, context)
+                # 使用安全的表达式求值器计算转换结果
+                result_value = evaluator.evaluate_expression(
+                    transform_expression,
+                    context,
+                    item=item,
+                    mode="advanced",
+                )
 
                 # 保持原对象结构，更新转换字段
                 if isinstance(item, dict):
@@ -1585,6 +1654,22 @@ class WorkflowAgent:
                 else:
                     # 简单值，直接替换
                     transformed_collection.append(result_value)
+            except UnsafeExpressionError as e:
+                # 不安全表达式，立即终止Map操作
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.error(
+                    f"Map操作中止（不安全表达式）: expression={transform_expression}, error={e}"
+                )
+                return {
+                    "success": False,
+                    "output": {},
+                    "metadata": {
+                        "operation_type": "map",
+                        "error": f"Unsafe transform_expression: {e}",
+                    },
+                }
             except Exception as e:
                 import logging
 
@@ -1594,8 +1679,22 @@ class WorkflowAgent:
                 )
                 # 转换失败，保留原值
                 transformed_collection.append(item)
+                failed_count += 1
 
-        return {"status": "success", "transformed_collection": transformed_collection}
+        # 构建返回结果，包含部分失败信息
+        return {
+            "success": True,
+            "output": {
+                "collection": transformed_collection,
+            },
+            "metadata": {
+                "operation_type": "map",
+                "total_items": len(collection),
+                "processed_items": len(transformed_collection),
+                "failed_items": failed_count,
+                "partial_failure": failed_count > 0,
+            },
+        }
 
     async def _execute_filter_operation(
         self, filter_node: Node, collection: list, evaluator: ExpressionEvaluator
@@ -1615,9 +1714,17 @@ class WorkflowAgent:
         filter_condition = filter_node.config.get("filter_condition")
 
         if not filter_condition:
-            return {"status": "error", "message": "Missing filter_condition for filter operation"}
+            return {
+                "success": False,
+                "output": {},
+                "metadata": {
+                    "operation_type": "filter",
+                    "error": "Missing filter_condition for filter operation",
+                },
+            }
 
         filtered_collection = []
+        evaluation_failed_count = 0  # 跟踪条件评估失败的元素数量
 
         for item in collection:
             # 构建求值上下文
@@ -1640,9 +1747,24 @@ class WorkflowAgent:
                     f"Filter评估失败: item={item}, condition={filter_condition}, error={e}"
                 )
                 # 评估失败，跳过该元素
+                evaluation_failed_count += 1
                 continue
 
-        return {"status": "success", "filtered_collection": filtered_collection}
+        # 构建返回结果，包含评估失败信息
+        return {
+            "success": True,
+            "output": {
+                "collection": filtered_collection,
+            },
+            "metadata": {
+                "operation_type": "filter",
+                "total_items": len(collection),
+                "processed_items": len(filtered_collection),
+                "filtered_out": len(collection) - len(filtered_collection) - evaluation_failed_count,
+                "evaluation_failed": evaluation_failed_count,
+                "partial_failure": evaluation_failed_count > 0,
+            },
+        }
 
     # ==================== Phase 8.4: 进度事件相关方法 ====================
 
