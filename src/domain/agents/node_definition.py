@@ -97,6 +97,11 @@ class NodeDefinition:
     container_config: dict[str, Any] = field(default_factory=dict)
     # Phase 4: 内部深度跟踪（用于深度限制检查）
     _depth: int = 0
+    # Phase 8.2: 错误策略
+    error_strategy: dict[str, Any] | None = None
+    # Phase 9: 父节点策略继承字段
+    resource_limits: dict[str, Any] = field(default_factory=dict)
+    inherited_strategy: bool = False
 
     def validate(self) -> list[str]:
         """验证节点定义完整性
@@ -132,6 +137,14 @@ class NodeDefinition:
                 errors.append("Container 节点需要 code 字段")
 
         # GENERIC、CONDITION、LOOP、PARALLEL 类型无特殊要求
+
+        # Phase 9: 父节点策略验证
+        # 父节点（GENERIC 类型且有子节点）必须定义 error_strategy 和 resource_limits
+        if self.node_type == NodeType.GENERIC and self.children:
+            if not self.error_strategy:
+                errors.append("父节点必须定义 error_strategy")
+            if not self.resource_limits:
+                errors.append("父节点必须定义 resource_limits")
 
         return errors
 
@@ -225,6 +238,257 @@ class NodeDefinition:
         """切换折叠状态"""
         self.collapsed = not self.collapsed
 
+    # === Phase 9: 策略传播方法 ===
+
+    def propagate_strategy_to_children(self) -> None:
+        """将策略传播给所有子节点（递归）
+
+        将父节点的 error_strategy 和 resource_limits 强制传播给所有子节点。
+        子节点的 inherited_strategy 标志会被设置为 True。
+        策略会递归传播到所有后代节点。
+        """
+        if not self.children:
+            return
+
+        for child in self.children:
+            # 强制覆盖子节点策略
+            child.error_strategy = self.error_strategy
+            child.resource_limits = self.resource_limits.copy()  # 深拷贝
+            child.inherited_strategy = True
+
+            # 递归传播到子节点的子节点
+            child.propagate_strategy_to_children()
+
+    # === 父节点 Schema 加载方法 ===
+
+    @classmethod
+    def from_parent_schema(
+        cls,
+        schema: dict[str, Any],
+        registry: dict[str, "NodeDefinition"] | None = None,
+        validator: Any | None = None,
+    ) -> "NodeDefinition":
+        """从父节点 Schema 创建 NodeDefinition
+
+        参数:
+            schema: 父节点 schema 字典
+            registry: 子节点注册表 (ref -> NodeDefinition)
+            validator: 可选的验证器实例
+
+        返回:
+            NodeDefinition 实例
+        """
+        if validator is None:
+            from src.domain.services.parent_node_schema import ParentNodeValidator
+
+            validator = ParentNodeValidator()
+
+        # 验证 schema
+        validation_result = validator.validate(schema)
+        # 检查是否为ValidationResult对象
+        if hasattr(validation_result, "is_valid"):
+            if not validation_result.is_valid:
+                raise ValueError(f"Invalid parent schema: {validation_result.errors}")
+        elif validation_result:  # 如果是简单的错误列表
+            raise ValueError(f"Invalid parent schema: {validation_result}")
+
+        # 如果有 inherit_from，解析继承链
+        if "inherit_from" in schema:
+            # 需要schema的name作为node_id
+            node_id = schema.get("name", "unknown")
+            # 先将schema注册到validator的registry中
+            if node_id not in validator.registry:
+                validator.registry[node_id] = schema
+            # 解析继承得到完整schema
+            resolved_schema = validator.resolve_inheritance(node_id)
+            # 清理临时注册
+            if node_id in validator.registry and validator.registry[node_id] == schema:
+                del validator.registry[node_id]
+        else:
+            resolved_schema = schema
+
+        # 创建父节点
+        parent = cls(
+            node_type=NodeType.GENERIC,
+            name=resolved_schema.get("name", ""),
+            description=resolved_schema.get("description", ""),
+        )
+
+        # 应用继承配置（优先从 resolved_schema 读取，已经过继承合并）
+        inherit = resolved_schema.get("inherit", {})
+        if inherit:
+            parent.error_strategy = inherit.get("error_strategy")
+            parent.resource_limits = inherit.get("resources", {})
+
+            # 同时设置 config["resources"] 以兼容旧代码
+            if "resources" in inherit:
+                parent.config["resources"] = inherit["resources"]
+
+            # 保存参数和返回值到 input/output schema
+            if "parameters" in inherit:
+                parent.config["parameters"] = inherit["parameters"]
+                # 转换为 input_schema
+                for param_name, param_def in inherit["parameters"].items():
+                    if isinstance(param_def, dict):
+                        parent.input_schema[param_name] = param_def.get("type", "any")
+
+            if "returns" in inherit:
+                parent.config["returns"] = inherit["returns"]
+                # 转换为 output_schema
+                if isinstance(inherit["returns"], dict):
+                    for return_name, return_def in inherit["returns"].items():
+                        # 如果 return_def 是字典，提取 type 字段；否则直接使用
+                        if isinstance(return_def, dict):
+                            parent.output_schema[return_name] = return_def.get("type", "any")
+                        else:
+                            parent.output_schema[return_name] = return_def
+
+            if "tags" in inherit:
+                parent.config["tags"] = inherit["tags"]
+        else:
+            # 如果没有 inherit 块，直接从 resolved_schema 读取策略和资源
+            if "error_strategy" in resolved_schema:
+                parent.error_strategy = resolved_schema["error_strategy"]
+            if "resources" in resolved_schema:
+                parent.resource_limits = resolved_schema["resources"]
+                parent.config["resources"] = resolved_schema["resources"]
+
+        # 展开子节点
+        if "children" in resolved_schema and registry:
+            parent._expand_children_from_schema(resolved_schema["children"], registry)
+
+        return parent
+
+    def _expand_children_from_schema(
+        self, children_config: list[dict], registry: dict[str, "NodeDefinition"], depth: int = 0
+    ) -> None:
+        """从 schema 中展开子节点"""
+        for child_spec in children_config:
+            ref = child_spec.get("ref")
+            if not ref:
+                raise ValueError("Child spec must have 'ref' field")
+
+            if ref not in registry:
+                raise KeyError(f"Child ref '{ref}' not found in registry")
+
+            # 检查深度限制
+            if depth + 1 > MAX_NODE_DEFINITION_DEPTH:
+                raise ValueError(f"Max depth ({MAX_NODE_DEFINITION_DEPTH}) exceeded")
+
+            # 复制子节点
+            child_template = registry[ref]
+            child = NodeDefinition.from_dict(child_template.to_dict())
+
+            # 设置深度
+            child._depth = depth + 1
+
+            # 应用 override
+            if "override" in child_spec:
+                override = child_spec["override"]
+                if "resources" in override:
+                    child.config.setdefault("resources", {}).update(override["resources"])
+                if "error_strategy" in override:
+                    if not child.error_strategy:
+                        child.error_strategy = override["error_strategy"]
+                    else:
+                        # 合并 error_strategy（override 优先）
+                        child.error_strategy.update(override["error_strategy"])
+
+            # 设置 alias
+            if "alias" in child_spec:
+                child.config["alias"] = child_spec["alias"]
+
+            # 添加子节点
+            self.children.append(child)
+            child.parent_id = self.id
+
+    def expand_children(
+        self, registry: dict[str, "NodeDefinition"], depth: int | None = None
+    ) -> list["NodeDefinition"]:
+        """展开子节点（从配置中的 ref 引用展开为实际 NodeDefinition）
+
+        参数:
+            registry: 子节点注册表 (ref -> NodeDefinition)
+            depth: 当前深度（用于深度限制）
+
+        返回:
+            展开后的子节点列表
+        """
+        children_config = self.config.get("children", [])
+        if not children_config:
+            return []
+
+        if depth is None:
+            depth = self._depth
+
+        self.children = []  # 清空现有子节点
+        self._expand_children_from_schema(children_config, registry, depth)
+        return self.children
+
+    def apply_inherited_strategy(
+        self, parent_strategy: dict[str, Any] | None = None, parent_resources: dict[str, Any] | None = None
+    ) -> None:
+        """应用继承的策略（合并父节点和子节点配置）
+
+        参数:
+            parent_strategy: 父节点的错误策略
+            parent_resources: 父节点的资源配置
+        """
+        # 首先从config中读取子节点自己的策略和资源（如果存在）
+        if not self.error_strategy and self.config.get("error_strategy"):
+            self.error_strategy = self.config["error_strategy"]
+
+        if not self.resource_limits and self.config.get("resources"):
+            self.resource_limits = self.config["resources"]
+
+        # 合并错误策略（子节点优先，父节点补充）
+        if parent_strategy:
+            if not self.error_strategy:
+                # 没有子节点策略，直接使用父策略
+                self.error_strategy = parent_strategy.copy()
+            else:
+                # 有子节点策略，合并父子策略（子节点字段优先）
+                # 先复制父策略，再用子策略覆盖
+                merged_strategy = {}
+                merged_strategy.update(parent_strategy)
+                merged_strategy.update(self.error_strategy)
+                self.error_strategy = merged_strategy
+
+        # 合并资源配置（子节点优先，父节点补充）
+        if parent_resources:
+            if not self.resource_limits:
+                # 没有子节点资源，直接使用父资源
+                self.resource_limits = parent_resources.copy()
+            else:
+                # 有子节点资源，合并父子资源（子节点字段优先）
+                # 先复制父资源，再用子资源覆盖
+                merged_resources = {}
+                merged_resources.update(parent_resources)
+                merged_resources.update(self.resource_limits)
+                self.resource_limits = merged_resources
+
+    def get_inherited_error_strategy(self) -> dict[str, Any]:
+        """获取继承的错误策略"""
+        return self.error_strategy or {}
+
+    def get_inherited_resources(self) -> dict[str, Any]:
+        """获取继承的资源配置"""
+        return self.resource_limits or self.config.get("resources", {})
+
+    def get_child_by_name(self, name: str) -> "NodeDefinition | None":
+        """按名称查找子节点"""
+        for child in self.children:
+            if child.name == name:
+                return child
+        return None
+
+    def get_child_by_alias(self, alias: str) -> "NodeDefinition | None":
+        """按别名查找子节点"""
+        for child in self.children:
+            if child.config.get("alias") == alias:
+                return child
+        return None
+
     def get_visible_children(self) -> list["NodeDefinition"]:
         """获取可见的子节点
 
@@ -254,7 +518,7 @@ class NodeDefinition:
     def to_dict(self) -> dict[str, Any]:
         """序列化为字典
 
-        返回：
+        返回:
             包含所有字段的字典（包含层次化信息）
         """
         return {
@@ -276,6 +540,11 @@ class NodeDefinition:
             "collapsed": self.collapsed,
             "is_container": self.is_container,
             "container_config": self.container_config,
+            # Phase 8.2: 错误策略
+            "error_strategy": self.error_strategy,
+            # Phase 9: 策略继承字段
+            "resource_limits": self.resource_limits,
+            "inherited_strategy": self.inherited_strategy,
         }
 
     @classmethod
@@ -313,6 +582,11 @@ class NodeDefinition:
             collapsed=data.get("collapsed", True),
             is_container=data.get("is_container", False),
             container_config=data.get("container_config", {}),
+            # Phase 8.2: 错误策略
+            error_strategy=data.get("error_strategy"),
+            # Phase 9: 策略继承字段
+            resource_limits=data.get("resource_limits", {}),
+            inherited_strategy=data.get("inherited_strategy", False),
         )
 
         # Phase 4: 递归恢复子节点

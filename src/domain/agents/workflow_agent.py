@@ -1376,7 +1376,9 @@ class WorkflowAgent:
                     # 检查集合操作是否失败（如不安全表达式）
                     if not result.get("success", True):
                         self._execution_status = ExecutionStatus.FAILED
-                        error_msg = result.get("metadata", {}).get("error", "Collection operation failed")
+                        error_msg = result.get("metadata", {}).get(
+                            "error", "Collection operation failed"
+                        )
                         return {
                             "status": "failed",
                             "error": error_msg,
@@ -1511,13 +1513,28 @@ class WorkflowAgent:
             集合列表或None
         """
         # 查找所有指向当前节点的边
-        source_ids = []
+        valid_source_ids = []
         for edge in self._edges:
             if edge.target_id == node_id:
-                source_ids.append(edge.source_id)
+                # 检查边的条件是否满足
+                if edge.condition:
+                    # 如果有条件，检查条件评估记录
+                    if self.workflow_context and hasattr(self.workflow_context, "edge_conditions"):
+                        edge_condition = self.workflow_context.edge_conditions.get(edge.id)
+                        if edge_condition and edge_condition.get("result") is True:
+                            # 条件满足，且源节点已执行
+                            if edge.source_id in results:
+                                valid_source_ids.append(edge.source_id)
+                    # 如果没有条件记录，检查源节点是否在results中
+                    elif edge.source_id in results:
+                        valid_source_ids.append(edge.source_id)
+                else:
+                    # 无条件边，只要源节点已执行就有效
+                    if edge.source_id in results:
+                        valid_source_ids.append(edge.source_id)
 
-        # 尝试从source节点输出中提取集合
-        for source_id in source_ids:
+        # 按执行顺序的逆序查找（优先使用最近执行的节点）
+        for source_id in reversed(valid_source_ids):
             source_output = results.get(source_id, {})
 
             # 如果输出包含output字段，先解包
@@ -1760,7 +1777,9 @@ class WorkflowAgent:
                 "operation_type": "filter",
                 "total_items": len(collection),
                 "processed_items": len(filtered_collection),
-                "filtered_out": len(collection) - len(filtered_collection) - evaluation_failed_count,
+                "filtered_out": len(collection)
+                - len(filtered_collection)
+                - evaluation_failed_count,
                 "evaluation_failed": evaluation_failed_count,
                 "partial_failure": evaluation_failed_count > 0,
             },

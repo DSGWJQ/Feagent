@@ -19,6 +19,7 @@
 - 流量监控：监控Agent间的事件流量
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -26,6 +27,8 @@ from enum import Enum
 from typing import Any
 
 from src.domain.services.event_bus import Event, EventBus
+
+logger = logging.getLogger(__name__)
 
 
 class FailureHandlingStrategy(str, Enum):
@@ -344,6 +347,11 @@ class CoordinatorAgent:
         self.container_logs: dict[str, list[dict[str, Any]]] = {}  # container_id -> logs
         self._is_listening_container_events = False
 
+        # GAP-004: 代码自动修复
+        self._auto_repair_enabled = False
+        self._max_repair_attempts = 3
+        self._code_repair_service: Any | None = None
+
         # Phase 5 阶段2: 知识库集成
         self.knowledge_retriever = knowledge_retriever
         self._knowledge_cache: dict[str, Any] = {}  # workflow_id -> KnowledgeReferences
@@ -407,6 +415,947 @@ class CoordinatorAgent:
             self._metrics_collector,
         )
 
+        # ==================== Phase 34: 保存请求通道 ====================
+        from src.domain.services.save_request_channel import (
+            SaveRequestQueueManager,
+        )
+
+        self._save_request_queue = SaveRequestQueueManager()
+        self._save_request_handler_enabled = False
+        self._is_listening_save_requests = False
+
+        # ==================== Phase 34.3: 上下文注入 ====================
+        from src.domain.services.context_injection import (
+            ContextInjectionManager,
+            InjectionLogger,
+        )
+
+        self._injection_logger = InjectionLogger()
+        self.injection_manager = ContextInjectionManager(logger=self._injection_logger)
+
+        # ==================== Phase 34.4: 监督模块 ====================
+        from src.domain.services.supervision_module import (
+            SupervisionModule,
+            SupervisionLogger as SupLogger,
+        )
+
+        self._supervision_logger = SupLogger()
+        self.supervision_module = SupervisionModule(
+            logger=self._supervision_logger,
+            use_builtin_rules=True,
+        )
+
+        # ==================== Phase 34.5: 干预系统 ====================
+        from src.domain.services.intervention_system import (
+            InterventionCoordinator,
+            WorkflowModifier,
+            TaskTerminator,
+            InterventionLogger,
+        )
+
+        self._intervention_logger = InterventionLogger()
+        self.workflow_modifier = WorkflowModifier(logger=self._intervention_logger)
+        self.task_terminator = TaskTerminator(logger=self._intervention_logger)
+        self.intervention_coordinator = InterventionCoordinator(
+            workflow_modifier=self.workflow_modifier,
+            task_terminator=self.task_terminator,
+            logger=self._intervention_logger,
+        )
+
+        # ==================== Phase 34.6: 结果回执系统 ====================
+        from src.domain.services.save_request_receipt import (
+            SaveResultReceiptSystem,
+            ReceiptLogger as SaveReceiptLogger,
+        )
+
+        self._save_receipt_logger = SaveReceiptLogger()
+        self.save_receipt_system = SaveResultReceiptSystem(
+            knowledge_manager=self.knowledge_manager,
+            short_term_limit=10,
+        )
+
+    # ==================== Phase 34: 保存请求处理 ====================
+
+    def enable_save_request_handler(self) -> None:
+        """启用保存请求处理器
+
+        启用后，Coordinator 将订阅 SaveRequest 事件并管理请求队列。
+        """
+        from src.domain.services.save_request_channel import SaveRequest
+
+        self._save_request_handler_enabled = True
+
+        # 订阅 SaveRequest 事件（使用类型）
+        if self.event_bus and not self._is_listening_save_requests:
+            self.event_bus.subscribe(SaveRequest, self._handle_save_request)
+            self._is_listening_save_requests = True
+
+    def disable_save_request_handler(self) -> None:
+        """禁用保存请求处理器"""
+        self._save_request_handler_enabled = False
+
+    def _handle_save_request(self, event: Any) -> None:
+        """处理 SaveRequest 事件
+
+        参数：
+            event: SaveRequest 事件
+        """
+        from src.domain.services.save_request_channel import (
+            SaveRequest,
+            SaveRequestReceivedEvent,
+            SaveRequestStatus,
+        )
+
+        if not isinstance(event, SaveRequest):
+            return
+
+        # 入队
+        queue_position = self._save_request_queue.enqueue(event)
+
+        # 发布接收确认事件
+        if self.event_bus:
+            received_event = SaveRequestReceivedEvent(
+                request_id=event.request_id,
+                queue_position=queue_position,
+            )
+            self.event_bus.publish(received_event)
+
+    def has_pending_save_requests(self) -> bool:
+        """检查是否有待处理的保存请求
+
+        返回：
+            True 如果有待处理请求
+        """
+        return not self._save_request_queue.is_empty()
+
+    def get_pending_save_request_count(self) -> int:
+        """获取待处理保存请求数量
+
+        返回：
+            待处理请求数量
+        """
+        return self._save_request_queue.queue_size()
+
+    def get_save_request_queue(self) -> list[Any]:
+        """获取保存请求队列（按优先级排序）
+
+        返回：
+            排序后的 SaveRequest 列表
+        """
+        return self._save_request_queue.get_all_sorted()
+
+    def get_save_request_status(self, request_id: str) -> Any:
+        """获取保存请求状态
+
+        参数：
+            request_id: 请求 ID
+
+        返回：
+            SaveRequestStatus 或 None
+        """
+        from src.domain.services.save_request_channel import SaveRequestStatus
+
+        status = self._save_request_queue.get_status(request_id)
+        return status if status else SaveRequestStatus.PENDING
+
+    def get_save_requests_by_session(self, session_id: str) -> list[Any]:
+        """获取特定会话的保存请求
+
+        参数：
+            session_id: 会话 ID
+
+        返回：
+            该会话的 SaveRequest 列表
+        """
+        return self._save_request_queue.get_by_session(session_id)
+
+    def dequeue_save_request(self) -> Any | None:
+        """从队列中取出最高优先级的保存请求
+
+        返回：
+            SaveRequest 或 None
+        """
+        return self._save_request_queue.dequeue()
+
+    # ==================== Phase 34.2: 审核与执行 ====================
+
+    def configure_save_auditor(
+        self,
+        path_whitelist: list[str] | None = None,
+        path_blacklist: list[str] | None = None,
+        max_content_size: int = 10 * 1024 * 1024,
+        enable_rate_limit: bool = True,
+        enable_sensitive_check: bool = True,
+    ) -> None:
+        """配置保存请求审核器
+
+        参数：
+            path_whitelist: 路径白名单（如果提供，只允许这些路径）
+            path_blacklist: 路径黑名单
+            max_content_size: 最大内容大小（字节）
+            enable_rate_limit: 是否启用频率限制
+            enable_sensitive_check: 是否启用敏感内容检查
+        """
+        from src.domain.services.save_request_audit import (
+            AuditLogger,
+            ContentSizeRule,
+            PathBlacklistRule,
+            PathWhitelistRule,
+            RateLimitRule,
+            SaveExecutor,
+            SaveRequestAuditor,
+            SensitiveContentRule,
+        )
+
+        rules = []
+
+        # 路径黑名单规则（优先）
+        if path_blacklist:
+            rules.append(PathBlacklistRule(blacklist=path_blacklist))
+
+        # 路径白名单规则
+        if path_whitelist:
+            rules.append(PathWhitelistRule(whitelist=path_whitelist))
+
+        # 内容大小规则
+        rules.append(ContentSizeRule(max_size_bytes=max_content_size))
+
+        # 频率限制规则
+        if enable_rate_limit:
+            rules.append(RateLimitRule())
+
+        # 敏感内容检查规则
+        if enable_sensitive_check:
+            rules.append(SensitiveContentRule())
+
+        self._save_auditor = SaveRequestAuditor(rules=rules)
+        self._save_executor = SaveExecutor()
+        self._save_audit_logger = AuditLogger()
+
+    def process_next_save_request(self) -> Any | None:
+        """处理下一个保存请求
+
+        流程：
+        1. 从队列取出请求
+        2. 执行审核
+        3. 如果通过，执行写操作
+        4. 记录审计日志
+        5. 发布完成事件
+
+        返回：
+            ProcessResult 或 None（队列为空时）
+        """
+        from src.domain.services.save_request_audit import (
+            AuditStatus,
+            ProcessResult,
+            SaveRequestCompletedEvent,
+        )
+
+        # 确保审核器已初始化
+        if not hasattr(self, "_save_auditor") or self._save_auditor is None:
+            self.configure_save_auditor()
+
+        # 从队列取出请求
+        request = self.dequeue_save_request()
+        if request is None:
+            return None
+
+        request_id = request.request_id
+
+        # 执行审核
+        audit_result = self._save_auditor.audit(request)
+        self._save_audit_logger.log_audit(request, audit_result)
+
+        # 如果审核未通过
+        if audit_result.status != AuditStatus.APPROVED:
+            result = ProcessResult(
+                request_id=request_id,
+                success=False,
+                audit_status=audit_result.status,
+                error_message=audit_result.reason,
+            )
+
+            # 发布完成事件
+            if self.event_bus:
+                self.event_bus.publish(SaveRequestCompletedEvent(
+                    request_id=request_id,
+                    success=False,
+                    audit_status=audit_result.status.value,
+                    error_message=audit_result.reason,
+                ))
+
+            return result
+
+        # 执行写操作
+        exec_result = self._save_executor.execute(request)
+        self._save_audit_logger.log_execution(exec_result)
+
+        result = ProcessResult(
+            request_id=request_id,
+            success=exec_result.success,
+            audit_status=AuditStatus.APPROVED,
+            error_message=exec_result.error_message,
+            bytes_written=exec_result.bytes_written,
+        )
+
+        # 发布完成事件
+        if self.event_bus:
+            self.event_bus.publish(SaveRequestCompletedEvent(
+                request_id=request_id,
+                success=exec_result.success,
+                audit_status=AuditStatus.APPROVED.value,
+                error_message=exec_result.error_message,
+                bytes_written=exec_result.bytes_written,
+            ))
+
+        return result
+
+    def get_save_audit_logs(self) -> list[dict]:
+        """获取保存审计日志
+
+        返回：
+            审计日志列表
+        """
+        if not hasattr(self, "_save_audit_logger") or self._save_audit_logger is None:
+            return []
+        return self._save_audit_logger.get_logs()
+
+    def get_save_audit_logs_by_session(self, session_id: str) -> list[dict]:
+        """获取特定会话的保存审计日志
+
+        参数：
+            session_id: 会话 ID
+
+        返回：
+            该会话的审计日志列表
+        """
+        if not hasattr(self, "_save_audit_logger") or self._save_audit_logger is None:
+            return []
+        return self._save_audit_logger.get_logs_by_session(session_id)
+
+    # ==================== Phase 34.3: 上下文注入 ====================
+
+    def inject_context(
+        self,
+        session_id: str,
+        injection_type: Any,
+        content: str,
+        reason: str,
+        priority: int = 30,
+    ) -> Any:
+        """向会话注入上下文
+
+        参数：
+            session_id: 会话 ID
+            injection_type: 注入类型（InjectionType 枚举）
+            content: 注入内容
+            reason: 注入原因
+            priority: 优先级
+
+        返回：
+            创建的 ContextInjection
+        """
+        from src.domain.services.context_injection import (
+            ContextInjection,
+            InjectionPoint,
+            InjectionType,
+        )
+
+        # 根据类型确定注入点
+        injection_point = InjectionPoint.PRE_LOOP
+        if injection_type == InjectionType.WARNING:
+            injection_point = InjectionPoint.PRE_THINKING
+        elif injection_type == InjectionType.INTERVENTION:
+            injection_point = InjectionPoint.INTERVENTION
+
+        injection = ContextInjection(
+            session_id=session_id,
+            injection_type=injection_type,
+            injection_point=injection_point,
+            content=content,
+            source="coordinator",
+            reason=reason,
+            priority=priority,
+        )
+
+        self.injection_manager.add_injection(injection)
+        return injection
+
+    def inject_warning(
+        self,
+        session_id: str,
+        warning_message: str,
+        rule_id: str | None = None,
+    ) -> Any:
+        """注入警告信息
+
+        当规则违反或检测到风险时调用。
+
+        参数：
+            session_id: 会话 ID
+            warning_message: 警告消息
+            rule_id: 触发警告的规则 ID
+
+        返回：
+            创建的 ContextInjection
+        """
+        reason = f"规则 {rule_id} 触发" if rule_id else "安全检测"
+        return self.injection_manager.inject_warning(
+            session_id=session_id,
+            content=warning_message,
+            source="coordinator",
+            reason=reason,
+        )
+
+    def inject_intervention(
+        self,
+        session_id: str,
+        intervention_message: str,
+        reason: str = "需要干预",
+    ) -> Any:
+        """注入干预指令
+
+        当需要暂停或干预执行时调用。
+
+        参数：
+            session_id: 会话 ID
+            intervention_message: 干预消息
+            reason: 干预原因
+
+        返回：
+            创建的 ContextInjection
+        """
+        return self.injection_manager.inject_intervention(
+            session_id=session_id,
+            content=intervention_message,
+            source="coordinator",
+            reason=reason,
+        )
+
+    def inject_memory(
+        self,
+        session_id: str,
+        memory_content: str,
+        relevance_score: float = 0.0,
+    ) -> Any:
+        """注入长期记忆
+
+        参数：
+            session_id: 会话 ID
+            memory_content: 记忆内容
+            relevance_score: 相关性分数
+
+        返回：
+            创建的 ContextInjection
+        """
+        return self.injection_manager.inject_memory(
+            session_id=session_id,
+            content=memory_content,
+            source="memory_system",
+            relevance_score=relevance_score,
+        )
+
+    def inject_observation(
+        self,
+        session_id: str,
+        observation: str,
+        source: str = "monitor",
+    ) -> Any:
+        """注入观察信息
+
+        参数：
+            session_id: 会话 ID
+            observation: 观察内容
+            source: 来源
+
+        返回：
+            创建的 ContextInjection
+        """
+        return self.injection_manager.inject_observation(
+            session_id=session_id,
+            content=observation,
+            source=source,
+        )
+
+    def get_injection_logs(self) -> list[dict[str, Any]]:
+        """获取所有注入日志"""
+        return self._injection_logger.get_logs()
+
+    def get_injection_logs_by_session(self, session_id: str) -> list[dict[str, Any]]:
+        """获取指定会话的注入日志"""
+        return self._injection_logger.get_logs_by_session(session_id)
+
+    # ==================== Phase 34.4: 监督模块 ====================
+
+    def supervise_context(self, context: dict[str, Any]) -> list[Any]:
+        """监督上下文
+
+        分析上下文数据，判断是否需要干预。
+
+        参数：
+            context: 上下文数据
+
+        返回：
+            触发的 SupervisionInfo 列表
+        """
+        return self.supervision_module.analyze_context(context)
+
+    def supervise_save_request(self, request: dict[str, Any]) -> list[Any]:
+        """监督保存请求
+
+        分析保存请求，判断是否需要干预。
+
+        参数：
+            request: 保存请求数据
+
+        返回：
+            触发的 SupervisionInfo 列表
+        """
+        return self.supervision_module.analyze_save_request(request)
+
+    def supervise_decision_chain(
+        self,
+        decisions: list[dict[str, Any]],
+        session_id: str,
+    ) -> list[Any]:
+        """监督决策链路
+
+        分析决策链路，判断是否需要干预。
+
+        参数：
+            decisions: 决策列表
+            session_id: 会话 ID
+
+        返回：
+            触发的 SupervisionInfo 列表
+        """
+        return self.supervision_module.analyze_decision_chain(decisions, session_id)
+
+    def execute_intervention(self, supervision_info: Any) -> dict[str, Any]:
+        """执行干预
+
+        根据监督信息执行相应的干预动作。
+
+        参数：
+            supervision_info: 监督信息
+
+        返回：
+            干预结果
+        """
+        from src.domain.services.supervision_module import SupervisionAction
+        from src.domain.services.context_injection import InjectionType, InjectionPoint
+
+        action = supervision_info.action
+        session_id = supervision_info.session_id
+        result = {"success": True, "action": action.value}
+
+        if action == SupervisionAction.WARNING:
+            # 注入警告
+            self.inject_warning(
+                session_id=session_id,
+                warning_message=supervision_info.content,
+                rule_id=supervision_info.trigger_rule,
+            )
+            result["intervention_type"] = "warning_injected"
+
+        elif action == SupervisionAction.REPLACE:
+            # 替换内容 - 通过注入 SUPPLEMENT 类型信息
+            replacement = supervision_info.metadata.get("replacement_content", "[REDACTED]")
+            self.injection_manager.add_injection(
+                self.injection_manager._create_injection(
+                    session_id=session_id,
+                    injection_type=InjectionType.SUPPLEMENT,
+                    injection_point=InjectionPoint.PRE_THINKING,
+                    content=f"内容已被替换为: {replacement}",
+                    source="supervisor",
+                    reason=supervision_info.trigger_condition,
+                ) if hasattr(self.injection_manager, '_create_injection') else
+                self._create_supplement_injection(session_id, replacement, supervision_info)
+            )
+            result["intervention_type"] = "content_replaced"
+            result["replacement"] = replacement
+
+        elif action == SupervisionAction.TERMINATE:
+            # 注入干预指令
+            self.inject_intervention(
+                session_id=session_id,
+                intervention_message=f"任务已终止: {supervision_info.content}",
+                reason=supervision_info.trigger_condition,
+            )
+            result["intervention_type"] = "task_terminated"
+
+        # 记录干预日志
+        self._supervision_logger.log_intervention(
+            supervision_info,
+            result=result.get("intervention_type", "unknown"),
+        )
+
+        return result
+
+    def _create_supplement_injection(
+        self,
+        session_id: str,
+        replacement: str,
+        supervision_info: Any,
+    ) -> Any:
+        """创建补充注入（内部方法）"""
+        from src.domain.services.context_injection import (
+            ContextInjection,
+            InjectionType,
+            InjectionPoint,
+        )
+
+        return ContextInjection(
+            session_id=session_id,
+            injection_type=InjectionType.SUPPLEMENT,
+            injection_point=InjectionPoint.PRE_THINKING,
+            content=f"内容已被替换为: {replacement}",
+            source="supervisor",
+            reason=supervision_info.trigger_condition,
+        )
+
+    def get_supervision_logs(self) -> list[dict[str, Any]]:
+        """获取所有监督日志"""
+        return self._supervision_logger.get_logs()
+
+    def get_supervision_logs_by_session(self, session_id: str) -> list[dict[str, Any]]:
+        """获取指定会话的监督日志"""
+        return self._supervision_logger.get_logs_by_session(session_id)
+
+    # ==================== Phase 34.5: 干预系统 ====================
+
+    def replace_workflow_node(
+        self,
+        workflow_definition: dict[str, Any],
+        node_id: str,
+        replacement_config: dict[str, Any],
+        reason: str,
+        session_id: str,
+    ) -> Any:
+        """替换工作流节点
+
+        参数：
+            workflow_definition: 工作流定义
+            node_id: 原节点 ID
+            replacement_config: 替换节点配置
+            reason: 替换原因
+            session_id: 会话 ID
+
+        返回：
+            ModificationResult
+        """
+        from src.domain.services.intervention_system import NodeReplacementRequest
+
+        request = NodeReplacementRequest(
+            workflow_id=workflow_definition.get("id", "unknown"),
+            original_node_id=node_id,
+            replacement_node_config=replacement_config,
+            reason=reason,
+            session_id=session_id,
+        )
+
+        return self.workflow_modifier.replace_node(workflow_definition, request)
+
+    def remove_workflow_node(
+        self,
+        workflow_definition: dict[str, Any],
+        node_id: str,
+        reason: str,
+        session_id: str,
+    ) -> Any:
+        """移除工作流节点
+
+        参数：
+            workflow_definition: 工作流定义
+            node_id: 节点 ID
+            reason: 移除原因
+            session_id: 会话 ID
+
+        返回：
+            ModificationResult
+        """
+        from src.domain.services.intervention_system import NodeReplacementRequest
+
+        request = NodeReplacementRequest(
+            workflow_id=workflow_definition.get("id", "unknown"),
+            original_node_id=node_id,
+            replacement_node_config=None,  # None 表示移除
+            reason=reason,
+            session_id=session_id,
+        )
+
+        return self.workflow_modifier.remove_node(workflow_definition, request)
+
+    def terminate_task(
+        self,
+        session_id: str,
+        reason: str,
+        error_code: str,
+        notify_agents: list[str] | None = None,
+        notify_user: bool = True,
+    ) -> Any:
+        """终止任务
+
+        参数：
+            session_id: 会话 ID
+            reason: 终止原因
+            error_code: 错误代码
+            notify_agents: 需要通知的 Agent 列表
+            notify_user: 是否通知用户
+
+        返回：
+            TerminationResult
+        """
+        from src.domain.services.intervention_system import TaskTerminationRequest
+
+        request = TaskTerminationRequest(
+            session_id=session_id,
+            reason=reason,
+            error_code=error_code,
+            notify_agents=notify_agents or ["conversation", "workflow"],
+            notify_user=notify_user,
+        )
+
+        return self.task_terminator.terminate(request)
+
+    def handle_intervention(
+        self,
+        level: Any,
+        context: dict[str, Any],
+    ) -> Any:
+        """处理干预
+
+        参数：
+            level: 干预级别 (InterventionLevel)
+            context: 上下文数据
+
+        返回：
+            InterventionResult
+        """
+        return self.intervention_coordinator.handle_intervention(level, context)
+
+    def get_intervention_logs(self) -> list[dict[str, Any]]:
+        """获取所有干预日志"""
+        return self._intervention_logger.get_logs()
+
+    def get_intervention_logs_by_session(self, session_id: str) -> list[dict[str, Any]]:
+        """获取指定会话的干预日志"""
+        return self._intervention_logger.get_logs_by_session(session_id)
+
+    # ==================== Phase 34.6: 结果回执系统 ====================
+
+    def send_save_result_receipt(
+        self,
+        session_id: str,
+        request_id: str,
+        success: bool,
+        message: str,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        violation_severity: str | None = None,
+        audit_trail: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """发送保存结果回执
+
+        当 SaveRequest 执行完成后，调用此方法发送回执给 ConversationAgent。
+
+        参数：
+            session_id: 会话 ID
+            request_id: 原始请求 ID
+            success: 是否成功
+            message: 状态消息
+            error_code: 错误代码（如有）
+            error_message: 错误信息（如有）
+            violation_severity: 违规严重级别（如有）
+            audit_trail: 审计追踪信息
+
+        返回：
+            处理结果字典
+        """
+        from src.domain.services.save_request_receipt import (
+            SaveRequestResult,
+            SaveRequestResultEvent,
+            SaveResultStatus,
+        )
+
+        # 确定状态
+        if success:
+            status = SaveResultStatus.SUCCESS
+        elif violation_severity:
+            status = SaveResultStatus.REJECTED
+        else:
+            status = SaveResultStatus.FAILED
+
+        # 记录请求接收日志
+        self._save_receipt_logger.log_request_received(
+            request_id=request_id,
+            session_id=session_id,
+            target_path="",  # 可从 audit_trail 中提取
+        )
+
+        # 创建回执
+        result = SaveRequestResult(
+            request_id=request_id,
+            status=status,
+            message=message,
+            error_code=error_code,
+            error_message=error_message,
+            violation_severity=violation_severity,
+            audit_trail=audit_trail or [],
+        )
+
+        # 记录审核日志
+        self._save_receipt_logger.log_audit_completed(
+            request_id=request_id,
+            approved=success,
+            rules_checked=[t.get("rule", "") for t in (audit_trail or []) if "rule" in t],
+        )
+
+        # 处理结果（记忆更新、知识库写入）
+        processing_result = self.save_receipt_system.process_result(session_id, result)
+
+        # 发布结果事件
+        if self.event_bus:
+            event = SaveRequestResultEvent(
+                result=result,
+                session_id=session_id,
+                source="coordinator_agent",
+            )
+            self.event_bus.publish(event)
+
+        logger.info(
+            f"[RECEIPT SENT] request_id={request_id} "
+            f"session_id={session_id} "
+            f"status={status.value} "
+            f"written_to_kb={processing_result['written_to_knowledge_base']}"
+        )
+
+        return processing_result
+
+    def process_save_request_with_receipt(self) -> dict[str, Any] | None:
+        """处理保存请求并发送回执
+
+        完整流程：
+        1. 从队列取出请求
+        2. 执行审核
+        3. 如果通过，执行写操作
+        4. 发送结果回执
+        5. 更新 ConversationAgent 记忆
+
+        返回：
+            处理结果或 None（队列为空时）
+        """
+        from src.domain.services.save_request_audit import AuditStatus
+
+        # 确保审核器已初始化
+        if not hasattr(self, "_save_auditor") or self._save_auditor is None:
+            self.configure_save_auditor()
+
+        # 从队列取出请求
+        request = self.dequeue_save_request()
+        if request is None:
+            return None
+
+        request_id = request.request_id
+        session_id = request.session_id
+
+        # 执行审核
+        audit_result = self._save_auditor.audit(request)
+        self._save_audit_logger.log_audit(request, audit_result)
+
+        # 构建审计追踪
+        audit_trail = [
+            {
+                "step": "received",
+                "timestamp": request.timestamp.isoformat(),
+            },
+            {
+                "step": "audited",
+                "status": audit_result.status.value,
+                "reason": audit_result.reason,
+                "rules_matched": audit_result.rules_matched,
+            },
+        ]
+
+        # 如果审核未通过
+        if audit_result.status != AuditStatus.APPROVED:
+            # 确定违规严重级别
+            violation_severity = "low"
+            if "dangerous" in (audit_result.reason or "").lower():
+                violation_severity = "critical"
+            elif "sensitive" in (audit_result.reason or "").lower():
+                violation_severity = "high"
+
+            return self.send_save_result_receipt(
+                session_id=session_id,
+                request_id=request_id,
+                success=False,
+                message=f"审核未通过: {audit_result.reason}",
+                error_code=f"AUDIT_{audit_result.status.value.upper()}",
+                error_message=audit_result.reason,
+                violation_severity=violation_severity,
+                audit_trail=audit_trail,
+            )
+
+        # 执行写操作
+        exec_result = self._save_executor.execute(request)
+        self._save_audit_logger.log_execution(exec_result)
+
+        audit_trail.append({
+            "step": "executed",
+            "success": exec_result.success,
+            "bytes_written": exec_result.bytes_written,
+        })
+
+        return self.send_save_result_receipt(
+            session_id=session_id,
+            request_id=request_id,
+            success=exec_result.success,
+            message="保存成功" if exec_result.success else f"执行失败: {exec_result.error_message}",
+            error_code="IO_ERROR" if not exec_result.success else None,
+            error_message=exec_result.error_message,
+            audit_trail=audit_trail,
+        )
+
+    def get_save_receipt_context(self, session_id: str) -> dict[str, Any]:
+        """获取保存回执上下文
+
+        为 ConversationAgent 生成保存结果相关的上下文。
+
+        参数：
+            session_id: 会话 ID
+
+        返回：
+            上下文字典
+        """
+        return self.save_receipt_system.generate_context_for_agent(session_id)
+
+    def get_save_receipt_chain_log(self, request_id: str) -> dict[str, Any] | None:
+        """获取保存请求的完整链路日志
+
+        参数：
+            request_id: 请求 ID
+
+        返回：
+            链路日志或 None
+        """
+        return self.save_receipt_system.get_receipt_chain_log(request_id)
+
+    def get_save_receipt_logs(self) -> list[dict[str, Any]]:
+        """获取所有回执日志"""
+        return self._save_receipt_logger.get_all_logs()
+
+    def get_session_save_statistics(self, session_id: str) -> dict[str, Any]:
+        """获取会话的保存统计
+
+        参数：
+            session_id: 会话 ID
+
+        返回：
+            统计信息字典
+        """
+        return self.save_receipt_system.memory_handler.get_session_statistics(session_id)
+
     # ==================== Phase 1: 上下文服务 ====================
 
     @property
@@ -418,6 +1367,102 @@ class CoordinatorAgent:
     def tool_repository(self, repo: Any) -> None:
         """设置工具仓库"""
         self._tool_repository = repo
+
+    # ==================== GAP-004: 代码自动修复 ====================
+
+    @property
+    def auto_repair_enabled(self) -> bool:
+        """是否启用自动修复"""
+        return self._auto_repair_enabled
+
+    @property
+    def max_repair_attempts(self) -> int:
+        """最大修复尝试次数"""
+        return self._max_repair_attempts
+
+    def enable_auto_repair(self, max_attempts: int = 3) -> None:
+        """启用代码自动修复
+
+        参数：
+            max_attempts: 最大修复尝试次数
+        """
+        self._auto_repair_enabled = True
+        self._max_repair_attempts = max_attempts
+
+        # 懒加载代码修复服务
+        if self._code_repair_service is None:
+            from src.domain.services.code_repair import CodeRepair
+
+            self._code_repair_service = CodeRepair(
+                max_repair_attempts=max_attempts
+            )
+
+    def disable_auto_repair(self) -> None:
+        """禁用代码自动修复"""
+        self._auto_repair_enabled = False
+
+    async def handle_code_execution_failure(
+        self,
+        node_id: str,
+        code: str,
+        error: BaseException,
+        execution_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """处理代码执行失败
+
+        尝试分析错误并进行修复（如果启用了自动修复）。
+
+        参数：
+            node_id: 节点ID
+            code: 执行失败的代码
+            error: 错误实例
+            execution_context: 执行上下文
+
+        返回：
+            处理结果字典
+        """
+        result: dict[str, Any] = {
+            "node_id": node_id,
+            "original_error": str(error),
+            "repair_attempted": False,
+            "action": "none",
+        }
+
+        if not self._auto_repair_enabled:
+            result["action"] = "manual_review_required"
+            return result
+
+        # 懒加载代码修复服务
+        if self._code_repair_service is None:
+            from src.domain.services.code_repair import CodeRepair
+
+            self._code_repair_service = CodeRepair(
+                max_repair_attempts=self._max_repair_attempts
+            )
+
+        result["repair_attempted"] = True
+
+        # 分析错误
+        analysis = self._code_repair_service.analyze_error(code, error)
+        result["error_analysis"] = analysis
+
+        # 尝试修复
+        repair_result = await self._code_repair_service.repair_code_with_result(
+            code,
+            error,
+            context=execution_context,
+        )
+
+        if repair_result.success:
+            result["action"] = "repaired"
+            result["repaired_code"] = repair_result.repaired_code
+            result["repair_attempts"] = repair_result.attempts
+        else:
+            result["action"] = "repair_failed"
+            result["repair_error"] = repair_result.error_message
+            result["requires_manual_intervention"] = repair_result.requires_manual_intervention
+
+        return result
 
     def get_context(
         self,

@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(dir:*)",
+      "mcp__codex__codex",
       "Bash(python -m pytest tests/unit/domain/services/test_context_compressor.py -v --tb=short)",
       "Bash(python -m pytest:*)",
       "Bash(timeout:*)",
@@ -24,7 +25,10 @@
       "Bash(grep:*)",
       "Bash(powershell -Command \"(Get-Content ''D:\\My_Project\\agent_data\\docs\\architecture\\current_agents.md'').Length\")",
       "Bash(powershell -Command \"Get-ChildItem -Path ''D:\\My_Project\\agent_data'' -Directory | Select-Object Name\")",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(D:)",
+      "Bash(cd:*)",
+      "Bash(del \"D:\\My_Project\\agent_data\\docs\\architecture\\section_38_injection.md\")"
     ],
     "deny": [],
     "ask": []

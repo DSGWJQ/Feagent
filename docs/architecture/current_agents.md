@@ -7085,6 +7085,134 @@ gantt
 
 ---
 
+### 13.8 父子节点折叠现状 vs 目标对照表（Phase 8+ 审计）
+
+> **审计日期**: 2025-12-08
+> **审计范围**: NodeDefinition / WorkflowAgent / ConversationAgent 节点管理与工作流执行
+> **测试基线**: 125 个相关测试全部通过 ✅
+
+#### 13.8.1 父子节点折叠能力对照
+
+| 功能维度 | 现状 | 状态 | 目标 | 差距分析 |
+|---------|------|------|------|----------|
+| **Schema 定义** | `nested.children` 支持子节点声明，`nested.parallel` 支持并行/顺序 | ✅ 完整 | 统一定义标准 | 无差距 |
+| **NodeDefinition 数据结构** | `parent_id`, `children`, `collapsed` 字段完整 | ✅ 完整 | 层次化数据模型 | 无差距 |
+| **深度限制** | `MAX_NODE_DEFINITION_DEPTH = 5` | ✅ 完整 | 防止无限递归 | 无差距 |
+| **折叠/展开操作** | `collapse()`, `expand()`, `toggle_collapsed()` 方法 | ✅ 完整 | UI 可控折叠 | 无差距 |
+| **可见性管理** | `get_visible_children()`, `get_all_descendants()` | ✅ 完整 | 层级过滤 | 无差距 |
+| **层级服务** | `NodeHierarchyService` 提供事件驱动层级操作 | ✅ 完整 | 事件广播 | 无差距 |
+| **层级事件** | `NodeCollapsedEvent`, `NodeExpandedEvent`, `ChildAddedEvent` | ✅ 完整 | 状态同步 | 无差距 |
+| **YAML 示例** | 仅 `parallel_data_pipeline.yaml` 一个嵌套示例 | ⚠️ 部分 | 多场景模板 | **需补充更多模板** |
+| **WorkflowAgent 层级执行** | `execute_hierarchical_node()` 递归执行子节点 | ✅ 完整 | 层级执行引擎 | 无差距 |
+| **分组节点操作** | `create_grouped_nodes()`, `add_step_to_group()`, `reorder_steps_in_group()` | ✅ 完整 | 动态分组管理 | 无差距 |
+
+#### 13.8.2 统一错误策略能力对照
+
+| 功能维度 | 现状 | 状态 | 目标 | 差距分析 |
+|---------|------|------|------|----------|
+| **Schema 错误策略** | `error_strategy.retry`, `error_strategy.on_failure`, `error_strategy.fallback` | ✅ 完整 | 统一配置格式 | 无差距 |
+| **重试配置** | `max_attempts`, `delay_seconds`, `backoff_multiplier` | ✅ 完整 | 指数退避 | 无差距 |
+| **失败动作** | `retry`, `skip`, `abort`, `replan`, `fallback` 五种策略 | ✅ 完整 | 多策略支持 | 无差距 |
+| **错误分类** | `ErrorCategory` 枚举 (10种错误类型) | ✅ 完整 | 细粒度分类 | 无差距 |
+| **恢复动作** | `RecoveryAction` 枚举 (7种恢复方式) | ✅ 完整 | 自动恢复 | 无差距 |
+| **节点级策略** | 每个节点定义可独立配置 `error_strategy` | ✅ 完整 | 节点粒度控制 | 无差距 |
+| **全局默认策略** | 无统一的工作流级默认错误策略 | ⚠️ 部分 | 工作流级默认 | **需添加全局默认配置** |
+| **错误传播机制** | 子节点失败可传播到父节点 | ✅ 完整 | 层级错误传播 | 无差距 |
+| **CoordinatorAgent 恢复** | `FailureHandlingStrategy` (RETRY/SKIP/ABORT/REPLAN) | ✅ 完整 | 协调者决策 | 无差距 |
+| **ConversationAgent 重规划** | `replan_workflow()` 支持失败后重新规划 | ✅ 完整 | 智能重规划 | 无差距 |
+
+#### 13.8.3 容器化执行能力对照
+
+| 功能维度 | 现状 | 状态 | 目标 | 差距分析 |
+|---------|------|------|------|----------|
+| **NodeType 支持** | `CONTAINER` 类型已定义 | ✅ 完整 | 容器节点类型 | 无差距 |
+| **Schema 执行配置** | `execution.timeout_seconds`, `memory_limit`, `cpu_limit`, `sandbox` | ✅ 完整 | 资源限制声明 | 无差距 |
+| **NodeDefinition 容器字段** | `is_container`, `container_config` | ✅ 完整 | 容器配置模型 | 无差距 |
+| **容器工厂方法** | `NodeDefinitionFactory.create_container_node()` | ✅ 完整 | 便捷创建 | 无差距 |
+| **WorkflowAgent 容器执行** | `execute_container_node()` 方法存在 | ⚠️ 部分 | 容器执行引擎 | **需配置 container_executor** |
+| **ContainerExecutor 实现** | `ContainerExecutor` 类已定义，支持 Docker | ✅ 完整 | Docker 集成 | 无差距 |
+| **沙箱执行器** | `SandboxExecutor` 支持轻量级沙箱 | ✅ 完整 | 非Docker沙箱 | 无差距 |
+| **安全控制** | `DANGEROUS_IMPORTS`, `SAFE_IMPORTS` 白名单机制 | ✅ 完整 | 代码安全 | 无差距 |
+| **容器事件** | `ContainerStartedEvent`, `ContainerCompletedEvent` | ✅ 完整 | 状态监控 | 无差距 |
+| **默认 container_executor 注入** | WorkflowAgent 需要外部传入 executor | ⚠️ 部分 | 自动注入 | **需实现默认注入机制** |
+
+#### 13.8.4 其他节点管理能力对照
+
+| 功能维度 | 现状 | 状态 | 目标 | 差距分析 |
+|---------|------|------|------|----------|
+| **自描述节点验证** | `SelfDescribingNodeValidator` 三层验证 | ✅ 完整 | 完整性校验 | 无差距 |
+| **YAML 解析** | `NodeDefinition.from_yaml()` 支持递归解析 | ✅ 完整 | 定义加载 | 无差距 |
+| **依赖图构建** | `DependencyGraphBuilder` + 引用格式 `node.output.field` | ✅ 完整 | 自动连线 | 无差距 |
+| **拓扑排序** | `TopologicalExecutor` (Kahn 算法) | ✅ 完整 | 执行顺序 | 无差距 |
+| **循环检测** | 拓扑排序副产品自动检测循环 | ✅ 完整 | DAG 验证 | 无差距 |
+| **输出聚合** | `merge`, `list`, `first`, `last` 四种策略 | ✅ 完整 | 子节点结果聚合 | 无差距 |
+| **动态节点监控** | `DynamicNodeMonitoring` (指标、回滚、告警) | ✅ 完整 | 运维支持 | 无差距 |
+| **Schema 自动推断** | 无实现 | ❌ 缺失 | 类型自动推断 | **GAP-003 待实现** |
+| **代码修复循环** | 无自动修复机制 | ❌ 缺失 | 失败自愈 | **GAP-004 待实现** |
+
+#### 13.8.5 测试基线确认 (2025-12-08)
+
+**执行命令**：
+```bash
+pytest tests/unit/domain/agents/test_workflow_agent.py \
+       tests/unit/domain/agents/test_node_definition.py \
+       tests/unit/domain/agents/test_hierarchical_node_definition.py \
+       tests/unit/domain/agents/test_container_node_execution.py \
+       tests/integration/test_workflow_dependency_graph.py \
+       tests/integration/test_workflow_self_describing_nodes.py -v
+```
+
+**测试结果**：
+
+| 测试文件 | 测试数 | 状态 |
+|----------|--------|------|
+| `test_workflow_agent.py` | 11 | ✅ |
+| `test_node_definition.py` | 20 | ✅ |
+| `test_hierarchical_node_definition.py` | 21 | ✅ |
+| `test_container_node_execution.py` | 23 | ✅ |
+| `test_workflow_dependency_graph.py` | 22 | ✅ |
+| `test_workflow_self_describing_nodes.py` | 28 | ✅ |
+| **合计** | **125** | **✅ 100%** |
+
+#### 13.8.6 需求缺口汇总
+
+| 缺口ID | 缺口名称 | 现状描述 | 目标状态 | 优先级 | 建议方案 |
+|--------|----------|----------|----------|--------|----------|
+| GAP-H01 | **嵌套节点模板不足** | 仅 `parallel_data_pipeline.yaml` 一个示例 | 覆盖5+场景的嵌套模板 | 🟡 中 | 添加 data_etl_pipeline、ml_training_pipeline 等模板 |
+| GAP-H02 | **全局错误策略缺失** | 每个节点需单独配置错误策略 | 工作流级默认 + 节点覆盖 | 🟡 中 | 在 WorkflowPlan 中添加 `default_error_strategy` 字段 |
+| GAP-H03 | **容器执行器自动注入** | WorkflowAgent 需外部传入 container_executor | 默认注入或懒加载 | 🟡 中 | 在 WorkflowAgent.__init__ 中实现默认 executor 工厂 |
+| GAP-003 | **Schema 自动推断** | 无实现 | 从代码/数据推断 Schema | 🟡 中 | 新增 `SchemaInference` 服务 |
+| GAP-004 | **代码修复循环** | 执行失败后无自动修复 | LLM 辅助自动修复 | 🟡 中 | CoordinatorAgent 集成 CodeRepair 模块 |
+
+#### 13.8.7 后续改造基线
+
+本次审计确认以下测试作为后续改造的回归基线：
+
+```bash
+# 父子节点折叠相关
+pytest tests/unit/domain/agents/test_hierarchical_node_definition.py -v  # 21 tests
+
+# 容器化执行相关
+pytest tests/unit/domain/agents/test_container_node_execution.py -v      # 23 tests
+
+# 依赖图与自描述节点
+pytest tests/integration/test_workflow_dependency_graph.py -v            # 22 tests
+pytest tests/integration/test_workflow_self_describing_nodes.py -v       # 28 tests
+
+# 核心 Agent 功能
+pytest tests/unit/domain/agents/test_workflow_agent.py -v                # 11 tests
+pytest tests/unit/domain/agents/test_node_definition.py -v               # 20 tests
+
+# 总计: 125 个测试 ✅
+```
+
+**改造原则**：
+1. 任何涉及节点管理、工作流执行的改动必须保证上述 125 个测试全部通过
+2. 新增功能需同步添加相应测试用例
+3. 破坏性变更需先更新对照表并获得确认
+
+---
+
 ## 14. 通用节点 YAML 规范（Node Definition Specification）
 
 > 版本: 1.0.0
@@ -7370,6 +7498,233 @@ definitions/
     ├── http_request.yaml              # HTTP 工具
     └── llm_call.yaml                  # LLM 工具
 ```
+
+---
+
+## 14.5 父节点抽象模型（Parent Node Schema）
+
+> 版本: 1.0.0
+> 更新日期: 2025-12-09
+> 实现文件: `src/domain/services/parent_node_schema.py`
+> 测试文件: `tests/unit/domain/services/test_parent_node_schema.py`
+
+### 14.5.1 概述
+
+父节点抽象模型定义了复合节点的统一元数据结构，支持继承机制以实现配置复用：
+
+- **输入输出定义**：参数和返回值的继承与覆盖
+- **错误处理策略**：继承父节点的重试、回退策略
+- **资源限制**：CPU/内存限制的继承与覆盖
+- **子节点列表**：支持 ref 引用和局部覆盖
+- **复用标签**：标签去重合并
+
+### 14.5.2 继承机制
+
+```
+优先级（高 → 低）：
+1. override.*（显式覆盖）
+2. 本地定义（parameters/resources/...）
+3. inherit_from 按顺序深合并（后者覆盖前者）
+```
+
+**继承源解析**：
+- `inherit_from` 支持单字符串或字符串数组
+- 多源继承按顺序合并，后者覆盖前者
+- 支持循环检测（DFS）和深度限制
+
+**合并规则**：
+| 类型 | 规则 |
+|------|------|
+| 对象 | 键级深合并 |
+| 数组 | 去重合并（override 时完全覆盖） |
+| 标量 | 后者覆盖前者 |
+
+### 14.5.3 Schema 字段说明
+
+```yaml
+# ========== 基础字段（必填）==========
+name: string              # 节点名称
+kind: enum                # node | workflow | template
+version: string           # 语义化版本
+
+# ========== 继承字段（可选）==========
+inherit_from: string | array[string]  # 继承源 ID（单个或列表）
+
+inherit:                  # 可继承配置块
+  parameters:             # 输入参数定义
+    param_name:
+      type: enum          # string | number | integer | boolean | array | object
+      required: boolean
+      default: any
+  returns:                # 返回值定义
+    field_name:
+      type: string
+  error_strategy:         # 错误处理策略
+    retry:
+      max_attempts: integer
+      delay_seconds: number
+      backoff_multiplier: number
+    on_failure: enum      # retry | skip | abort | replan | fallback
+  resources:              # 资源限制
+    cpu: string           # 如 "2", "0.5", "100m"
+    memory: string        # 如 "4g", "512m", "1Gi"
+  tags: array[string]     # 标签列表
+
+override:                 # 显式覆盖（最高优先级）
+  resources:
+    cpu: string
+    memory: string
+  tags: array[string]     # 完全覆盖数组
+
+# ========== 子节点（可选）==========
+children:
+  - ref: string           # 子节点引用 ID（必填）
+    alias: string         # 别名（唯一）
+    override:             # 子节点局部覆盖
+      resources:
+        memory: string
+      error_strategy:
+        on_failure: string
+    condition: string     # 条件表达式
+```
+
+### 14.5.4 YAML 模板示例
+
+```yaml
+# 父节点示例：数据处理管道
+name: data_pipeline
+kind: workflow
+version: "1.0.0"
+description: 数据处理工作流，继承基础配置
+
+# 继承多个模板
+inherit_from:
+  - tpl.base.io
+  - tpl.base.resources
+
+# 继承配置
+inherit:
+  parameters:
+    input_path:
+      type: string
+      required: true
+      description: 输入数据路径
+  returns:
+    output_path:
+      type: string
+  error_strategy:
+    retry:
+      max_attempts: 3
+      delay_seconds: 5.0
+    on_failure: retry
+  resources:
+    cpu: "2"
+    memory: "4g"
+  tags:
+    - team:data
+    - tier:batch
+
+# 显式覆盖
+override:
+  resources:
+    cpu: "4"               # 覆盖 CPU
+  tags:
+    - owner:alice          # 合并到 tags
+
+# 子节点定义
+children:
+  - ref: node.extract
+    alias: extract
+  - ref: node.transform
+    alias: transform
+    override:
+      resources:
+        memory: "8g"       # 子节点独立覆盖
+  - ref: node.load
+    alias: load
+    override:
+      error_strategy:
+        on_failure: skip   # 子节点错误跳过
+```
+
+### 14.5.5 校验规则
+
+| 场景 | 错误消息 |
+|------|----------|
+| 缺少 `kind` | 缺少必填字段 'kind' |
+| `kind` 非法值 | 无效的 kind 值 |
+| `inherit_from` 空字符串 | inherit_from 不能为空字符串 |
+| `inherit_from` 类型非法 | inherit_from 必须是字符串或字符串列表 |
+| 参数缺少 `type` | 参数缺少必填字段 'type' |
+| `default` 类型不匹配 | default 值类型与 type 不匹配 |
+| `inherit` 未知字段 | inherit 块包含未知字段 |
+| `retry.max_attempts` 非正整数 | max_attempts 必须是非负整数 |
+| `on_failure` 非法枚举 | 无效的 on_failure 值 |
+| `cpu` 格式非法 | 无效的 cpu 格式 |
+| `memory` 格式非法 | 无效的 memory 格式 |
+| `children` 缺少 `ref` | 子节点缺少必填字段 'ref' |
+| `alias` 重复 | 子节点 alias 重复 |
+| 循环继承 | 检测到循环继承: A -> B -> A |
+| 继承深度超限 | 继承深度超限 (max=10) |
+| 多源冲突无 override | 继承冲突 at 'path': value1 vs value2 |
+
+### 14.5.6 核心类
+
+```python
+# src/domain/services/parent_node_schema.py
+
+class ParentNodeSchema:
+    """父节点数据类"""
+    name: str
+    kind: str
+    version: str
+    inherit_from: str | list[str] | None
+    inherit: dict[str, Any]
+    override: dict[str, Any]
+    children: list[dict[str, Any]]
+
+    @classmethod
+    def from_yaml(cls, path: Path) -> ParentNodeSchema
+    def to_yaml(self, path: Path) -> None
+
+class ParentNodeValidator:
+    """验证器"""
+    def __init__(self, registry: dict | None = None, max_depth: int = 10)
+    def validate(self, schema: dict) -> ValidationResult
+    def resolve_inheritance(self, node_id: str) -> dict
+    def resolve_reference(self, ref: str) -> dict
+
+class InheritanceMerger:
+    """继承合并器"""
+    def __init__(self, strict_conflict: bool = False)
+    def merge(self, sources: list[dict], child: dict, override: dict | None) -> dict
+
+# 异常类
+class InheritanceError(Exception): ...
+class CyclicInheritanceError(InheritanceError): ...
+class ConflictingInheritanceError(InheritanceError): ...
+class InvalidSchemaError(ValueError): ...
+```
+
+### 14.5.7 测试覆盖
+
+| 测试类 | 用例数 | 覆盖范围 |
+|--------|--------|----------|
+| TestParentNodeSchemaBasicValidation | 6 | 基础字段验证 |
+| TestInheritFromValidation | 4 | inherit_from 语法 |
+| TestInheritBlockValidation | 5 | inherit 块验证 |
+| TestErrorStrategyValidation | 3 | 错误策略验证 |
+| TestResourcesValidation | 3 | 资源限制验证 |
+| TestChildrenValidation | 5 | 子节点验证 |
+| TestInheritanceMerger | 5 | 合并逻辑 |
+| TestCyclicInheritanceDetection | 2 | 循环检测 |
+| TestConflictDetection | 2 | 冲突检测 |
+| TestReferenceResolution | 2 | 引用解析 |
+| TestInheritanceDepth | 1 | 深度限制 |
+| TestParentNodeSchemaFromYaml | 2 | YAML 加载 |
+| TestParentNodeSchemaToYaml | 1 | YAML 序列化 |
+| TestIntegrationWithExistingSchema | 2 | 向后兼容 |
+| **总计** | **43** | **100% 通过** |
 
 ---
 
@@ -14565,5 +14920,2427 @@ jobs:
 | `src/domain/services/coordinator_runbook.py` | 运维手册核心实现 (~700 行) |
 | `tests/unit/domain/services/test_coordinator_runbook.py` | 单元测试 (78 个) |
 | `tests/integration/test_coordinator_runbook_integration.py` | 集成测试 (15 个) |
+
+---
+
+## 34. 持久化操作控制现状审计
+
+> 版本: 1.0.0
+> 审计日期: 2025-12-07
+> 审计范围: ConversationAgent / CoordinatorAgent 持久化操作能力
+
+### 34.1 审计背景
+
+本审计旨在评估现有系统中 **ConversationAgent** 与 **CoordinatorAgent** 对持久化操作（文件写入、系统命令调用等）的控制能力，识别安全缺口，为后续增强提供基线。
+
+### 34.2 持久化操作控制现状 vs 需求表格
+
+| 能力维度 | 现状 | 需求 | 实现位置 | 缺口说明 |
+|----------|------|------|----------|----------|
+| **文件写入限制** | ✅ 部分实现 | 需完全受控 | `sandbox_executor.py:228` | 沙箱内禁止 `open()` 函数，但非沙箱代码路径无限制 |
+| **系统命令调用** | ✅ 沙箱内禁止 | 需完全禁止 | `sandbox_executor.py:199-220` | 禁止 `os`, `subprocess`, `shutil` 等，但仅限沙箱执行 |
+| **危险模块黑名单** | ✅ 已实现 | 需扩展 | `sandbox_executor.py:198-220` | 已禁止 20+ 危险模块，需考虑新增模块 |
+| **危险函数黑名单** | ✅ 已实现 | 需扩展 | `sandbox_executor.py:222-233` | 已禁止 `eval`, `exec`, `compile`, `__import__`, `open` 等 |
+| **网络操作限制** | ✅ 沙箱内禁止 | 需完全受控 | `sandbox_executor.py:204-209` | 禁止 `socket`, `urllib`, `requests`, `http` 等 |
+| **保存请求通道** | ❌ 未实现 | 需要 | - | 缺少 Agent 主动请求保存的标准通道 |
+| **保存审核规则** | ❌ 未实现 | 需要 | - | 缺少 Coordinator 审核保存请求的规则 |
+| **上下文干预机制** | ⚠️ 部分实现 | 需增强 | `coordinator_agent.py:4356-4370` | 有 `InterventionManager` 但无持久化专用干预 |
+| **决策类型扩展** | ⚠️ 部分实现 | 需扩展 | `conversation_agent.py:104-116` | 需新增 `PERSIST_REQUEST` 决策类型 |
+| **审核日志** | ⚠️ 部分实现 | 需增强 | `coordinator_agent.py:3867` | 决策验证日志已记录，待持久化 |
+| **沙箱安全级别** | ✅ 已实现 | 需保持 | `sandbox_executor.py:40-45` | 三级安全：STRICT/MODERATE/PERMISSIVE |
+| **资源限制** | ✅ 已实现 | 需保持 | `sandbox_executor.py:102-145` | 超时、内存、输出大小限制 |
+| **安全违规检测** | ✅ 已实现 | 需保持 | `sandbox_executor.py:255-284` | 5 项检查：导入/函数/属性/循环/资源 |
+| **隔离目录执行** | ✅ 已实现 | 需保持 | `sandbox_executor.py:143-144` | 代码在隔离目录中执行 |
+| **执行监控集成** | ⚠️ 部分实现 | 需增强 | `sandbox_executor.py:7` | 有监控概念但未完整集成 |
+
+### 34.3 已实现能力详细分析
+
+#### 34.3.1 沙箱安全检查器 (SecurityChecker)
+
+**位置**: `src/domain/services/sandbox_executor.py:186-284`
+
+```python
+class SecurityChecker:
+    # 危险模块黑名单
+    DANGEROUS_MODULES = {
+        "os", "subprocess", "sys", "shutil", "socket",
+        "urllib", "requests", "http", "ftplib", "telnetlib",
+        "pickle", "shelve", "marshal", "ctypes",
+        "multiprocessing", "threading", "asyncio",
+        "signal", "pty", "tty",
+    }
+
+    # 危险函数黑名单
+    DANGEROUS_FUNCTIONS = {
+        "eval", "exec", "compile", "__import__",
+        "open", "input", "raw_input", "execfile", "file",
+    }
+
+    # 危险属性访问黑名单
+    DANGEROUS_ATTRIBUTES = {
+        "__builtins__", "__class__", "__bases__",
+        "__subclasses__", "__globals__", "__code__",
+        "__reduce__", "__reduce_ex__",
+    }
+```
+
+**检查流程**:
+1. 危险导入检查 (AST 解析)
+2. 危险函数调用检查
+3. 危险属性访问检查
+4. 无限循环模式检查
+5. 资源炸弹检查
+6. 文件操作检查
+
+#### 34.3.2 CoordinatorAgent 规则引擎
+
+**位置**: `src/domain/agents/coordinator_agent.py:46-87`
+
+```python
+@dataclass
+class Rule:
+    id: str                     # 规则唯一标识
+    name: str                   # 规则名称
+    description: str            # 规则描述
+    condition: Callable         # 条件函数
+    priority: int               # 优先级
+```
+
+**已实现的规则类型**:
+- Payload 校验规则
+- DAG 验证规则
+- 节点类型限制规则
+- 沙箱权限验证
+
+#### 34.3.3 失败处理策略
+
+**位置**: `coordinator_agent.py` (Phase 12)
+
+```python
+class FailureHandlingStrategy(str, Enum):
+    RETRY = "retry"      # 重试执行
+    SKIP = "skip"        # 跳过节点
+    ABORT = "abort"      # 终止工作流
+    REPLAN = "replan"    # 请求重新规划
+```
+
+#### 34.3.4 干预管理器 (InterventionManager)
+
+**位置**: `current_agents.md:4356-4370`
+
+| 干预类型 | 方法 | 触发条件 | 效果 |
+|----------|------|----------|------|
+| 上下文注入 | `inject_context()` | 检测到警告级问题 | 向 Agent 注入警告信息 |
+| 任务终止 | `terminate_task()` | 严重安全风险 | 终止当前任务 |
+| 工作流终止 | `terminate_workflow()` | 严重资源超限 | 终止整个工作流 |
+| REPLAN | `trigger_replan()` | 连续失败/策略失效 | 请求重新规划 |
+
+### 34.4 识别的缺口
+
+#### 缺口 1: 保存请求通道 (GAP-PERSIST-001)
+
+**现状**: 无标准化的 Agent 保存请求机制
+
+**需求**:
+- ConversationAgent 需要标准化的方式请求持久化操作
+- 请求需包含：目标路径、内容、操作类型、理由
+
+**建议实现**:
+```python
+class PersistenceRequestType(str, Enum):
+    FILE_WRITE = "file_write"
+    FILE_APPEND = "file_append"
+    FILE_DELETE = "file_delete"
+    CONFIG_UPDATE = "config_update"
+
+@dataclass
+class PersistenceRequestEvent(Event):
+    request_id: str
+    request_type: PersistenceRequestType
+    target_path: str
+    content: str | bytes
+    reason: str
+    session_id: str
+    timestamp: datetime
+```
+
+#### 缺口 2: 审核规则 (GAP-PERSIST-002)
+
+**现状**: 无持久化专用审核规则
+
+**需求**:
+- 路径白名单/黑名单
+- 内容安全检查
+- 操作频率限制
+- 敏感文件保护
+
+**建议实现**:
+```python
+class PersistenceAuditRule(Protocol):
+    def validate_path(self, path: str) -> ValidationResult: ...
+    def validate_content(self, content: str) -> ValidationResult: ...
+    def check_rate_limit(self, session_id: str) -> bool: ...
+```
+
+#### 缺口 3: 上下文干预增强 (GAP-PERSIST-003)
+
+**现状**: InterventionManager 无持久化专用干预
+
+**需求**:
+- 持久化操作拦截
+- 用户确认流程
+- 操作撤销能力
+
+### 34.5 现有测试覆盖确认
+
+| 测试文件 | 测试数量 | 状态 | 覆盖范围 |
+|----------|----------|------|----------|
+| `test_conversation_agent.py` | 13 | ✅ 通过 | ReAct 循环、目标分解、决策发布 |
+| `test_coordinator_agent.py` | 13 | ✅ 通过 | 规则引擎、决策验证、中间件 |
+| `test_sandbox_executor.py` | 38 | ✅ 通过 | 安全检查、资源限制、隔离执行 |
+
+**测试运行结果**:
+```
+tests/unit/domain/agents/test_conversation_agent.py: 13 passed
+tests/unit/domain/agents/test_coordinator_agent.py: 13 passed
+tests/unit/domain/services/test_sandbox_executor.py: 38 passed
+Total: 64 tests passed
+```
+
+### 34.6 安全边界总结
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     当前安全边界                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │               ConversationAgent                              │   │
+│  │  ┌───────────────────────────────────────────────────────┐  │   │
+│  │  │ ✅ ReAct 循环控制 (max_iterations)                     │  │   │
+│  │  │ ✅ 决策类型限制 (DecisionType enum)                    │  │   │
+│  │  │ ❌ 无直接持久化能力                                    │  │   │
+│  │  │ ❌ 无保存请求标准通道                                  │  │   │
+│  │  └───────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ▼ DecisionMadeEvent                    │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │               CoordinatorAgent                               │   │
+│  │  ┌───────────────────────────────────────────────────────┐  │   │
+│  │  │ ✅ 规则引擎验证                                        │  │   │
+│  │  │ ✅ 决策拦截 (中间件模式)                               │  │   │
+│  │  │ ✅ 失败处理策略 (RETRY/SKIP/ABORT/REPLAN)             │  │   │
+│  │  │ ⚠️ 干预管理器 (无持久化专用)                          │  │   │
+│  │  │ ❌ 无持久化审核规则                                    │  │   │
+│  │  └───────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ▼ 执行                                  │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │               SandboxExecutor                                │   │
+│  │  ┌───────────────────────────────────────────────────────┐  │   │
+│  │  │ ✅ 危险模块黑名单 (20+)                                │  │   │
+│  │  │ ✅ 危险函数黑名单 (9)                                  │  │   │
+│  │  │ ✅ 危险属性黑名单 (8)                                  │  │   │
+│  │  │ ✅ 资源限制 (超时/内存/输出)                           │  │   │
+│  │  │ ✅ 隔离目录执行                                        │  │   │
+│  │  │ ✅ 安全级别控制 (STRICT/MODERATE/PERMISSIVE)          │  │   │
+│  │  └───────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 34.7 下一步行动建议
+
+1. **Phase 1: 保存请求通道**
+   - 新增 `PersistenceRequestEvent` 事件
+   - 扩展 `DecisionType` 枚举
+   - ConversationAgent 集成保存请求能力
+
+2. **Phase 2: 审核规则**
+   - 实现 `PersistenceAuditRule` 协议
+   - 路径白名单/黑名单配置
+   - 内容安全检查器
+
+3. **Phase 3: 干预增强**
+   - 扩展 `InterventionManager`
+   - 用户确认流程
+   - 操作审计日志
+
+### 34.8 基线测试确认
+
+**执行日期**: 2025-12-07
+
+| 测试命令 | 结果 |
+|----------|------|
+| `pytest tests/unit/domain/agents/test_conversation_agent.py -v` | ✅ 13/13 通过 |
+| `pytest tests/unit/domain/agents/test_coordinator_agent.py -v` | ✅ 13/13 通过 |
+| `pytest tests/unit/domain/services/test_sandbox_executor.py -v` | ✅ 38/38 通过 |
+
+**基线可靠性**: ✅ 确认
+
+---
+
+## 35. 保存请求协议 (Save Request Protocol)
+
+> 版本: 1.0.0
+> 实现日期: 2025-12-07
+> 状态: ✅ 已实现
+
+### 35.1 协议概述
+
+保存请求协议定义了 **ConversationAgent** 如何标准化地请求持久化操作，以及 **CoordinatorAgent** 如何接收、排队和审核这些请求。
+
+**核心原则**:
+- ConversationAgent **仅生成保存请求**，不直接写入文件
+- Coordinator **负责接收和排队**保存请求
+- 所有持久化操作需经过审核通道
+
+### 35.2 数据结构定义
+
+#### 35.2.1 SaveRequestType 枚举
+
+```python
+class SaveRequestType(str, Enum):
+    """保存请求操作类型"""
+    FILE_WRITE = "file_write"      # 文件写入（覆盖）
+    FILE_APPEND = "file_append"    # 文件追加
+    FILE_DELETE = "file_delete"    # 文件删除
+    CONFIG_UPDATE = "config_update" # 配置更新
+```
+
+#### 35.2.2 SaveRequestPriority 枚举
+
+```python
+class SaveRequestPriority(str, Enum):
+    """保存请求优先级 (CRITICAL > HIGH > NORMAL > LOW)"""
+    LOW = "low"           # 低优先级
+    NORMAL = "normal"     # 普通优先级（默认）
+    HIGH = "high"         # 高优先级
+    CRITICAL = "critical" # 关键优先级
+```
+
+#### 35.2.3 SaveRequest 事件
+
+```python
+@dataclass
+class SaveRequest(Event):
+    """保存请求事件
+
+    属性:
+        request_id: 请求唯一标识 (自动生成)
+        target_path: 目标路径 (必填)
+        content: 保存内容 (字符串或字节)
+        operation_type: 操作类型 (默认 FILE_WRITE)
+        session_id: 来源会话 ID (必填)
+        reason: 保存原因说明
+        priority: 优先级 (默认 NORMAL)
+        source_agent: 来源 Agent 类型
+        is_binary: 是否为二进制内容
+        timestamp: 请求时间戳
+        has_warning: 是否有警告
+        warnings: 警告列表
+    """
+    target_path: str = ""
+    content: str | bytes = ""
+    operation_type: SaveRequestType = SaveRequestType.FILE_WRITE
+    session_id: str = ""
+    reason: str = ""
+    priority: SaveRequestPriority = SaveRequestPriority.NORMAL
+    source_agent: str = "ConversationAgent"
+    is_binary: bool = False
+    request_id: str = field(default_factory=...)
+    timestamp: datetime = field(default_factory=datetime.now)
+    has_warning: bool = False
+    warnings: list[str] = field(default_factory=list)
+```
+
+#### 35.2.4 字段示例
+
+| 字段 | 类型 | 示例值 | 说明 |
+|------|------|--------|------|
+| `request_id` | str | `"save-a1b2c3d4e5f6"` | 自动生成的 12 位十六进制 ID |
+| `target_path` | str | `"/data/output/result.json"` | 目标文件路径 |
+| `content` | str/bytes | `'{"status": "success"}'` | 要保存的内容 |
+| `operation_type` | SaveRequestType | `FILE_WRITE` | 操作类型枚举 |
+| `session_id` | str | `"session-001"` | 会话标识 |
+| `reason` | str | `"保存用户请求的分析结果"` | 操作原因 |
+| `priority` | SaveRequestPriority | `NORMAL` | 优先级枚举 |
+| `source_agent` | str | `"ConversationAgent"` | 来源 Agent |
+| `is_binary` | bool | `false` | 是否为二进制 |
+| `timestamp` | datetime | `2025-12-07T10:30:00` | ISO 格式时间戳 |
+
+### 35.3 协议流程图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        保存请求协议流程                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────┐
+│  ConversationAgent  │
+│                     │
+│  1. 检测保存意图     │
+│     (SaveIntent     │
+│      Detector)      │
+│                     │
+│  2. 创建 SaveRequest│
+│     - target_path   │
+│     - content       │
+│     - session_id    │
+│     - reason        │
+│                     │
+│  3. 发布事件        │
+│     event_bus.      │
+│     publish()       │
+└─────────┬───────────┘
+          │
+          │ SaveRequest Event
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            EventBus                                          │
+│                                                                              │
+│   ┌────────────────────────────────────────────────────────────────────┐    │
+│   │  Coordinator 订阅 SaveRequest 事件                                  │    │
+│   │  event_bus.subscribe(SaveRequest, handler)                         │    │
+│   └────────────────────────────────────────────────────────────────────┘    │
+└─────────┬───────────────────────────────────────────────────────────────────┘
+          │
+          │ Event Dispatch
+          ▼
+┌─────────────────────┐
+│  CoordinatorAgent   │
+│                     │
+│  4. 接收 SaveRequest│
+│     _handle_save_   │
+│     request()       │
+│                     │
+│  5. 入队           │
+│     SaveRequest     │
+│     QueueManager    │
+│     .enqueue()      │
+│                     │
+│  6. 发布确认事件    │
+│     SaveRequest     │
+│     ReceivedEvent   │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Priority Queue (优先级队列)                              │
+│                                                                              │
+│   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐                        │
+│   │CRITICAL │→ │  HIGH   │→ │ NORMAL  │→ │   LOW   │                        │
+│   └─────────┘  └─────────┘  └─────────┘  └─────────┘                        │
+│                                                                              │
+│   排序规则: 优先级 > 入队时间 (FIFO within same priority)                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 35.4 ConversationAgent 集成
+
+#### 35.4.1 启用保存请求通道
+
+```python
+# 位置: src/domain/agents/conversation_agent.py
+
+# Phase 34: 保存请求通道
+self._save_request_channel_enabled = False
+
+def enable_save_request_channel(self) -> None:
+    """启用保存请求通道"""
+    self._save_request_channel_enabled = True
+
+def request_save(
+    self,
+    target_path: str,
+    content: str | bytes,
+    reason: str,
+    priority: SaveRequestPriority | None = None,
+    is_binary: bool = False,
+) -> str | None:
+    """请求保存操作 (不直接写入文件)
+
+    返回:
+        请求 ID 或 None (如果未启用)
+    """
+```
+
+#### 35.4.2 保存意图检测器
+
+```python
+# 位置: src/domain/services/save_request_channel.py
+
+class SaveIntentDetector:
+    """从用户输入中检测保存意图"""
+
+    SAVE_PATTERNS = [
+        r"保存到\s*(.+)",
+        r"写入\s*(.+)",
+        r"存储到\s*(.+)",
+        r"导出到\s*(.+)",
+        r"save\s+to\s+(.+)",
+        r"write\s+to\s+(.+)",
+    ]
+
+    def detect(self, user_input: str) -> SaveIntentResult:
+        """检测保存意图并提取路径"""
+```
+
+### 35.5 CoordinatorAgent 集成
+
+#### 35.5.1 启用保存请求处理器
+
+```python
+# 位置: src/domain/agents/coordinator_agent.py
+
+# Phase 34: 保存请求通道
+self._save_request_queue = SaveRequestQueueManager()
+self._save_request_handler_enabled = False
+
+def enable_save_request_handler(self) -> None:
+    """启用保存请求处理器"""
+    self._save_request_handler_enabled = True
+    if self.event_bus and not self._is_listening_save_requests:
+        self.event_bus.subscribe(SaveRequest, self._handle_save_request)
+```
+
+#### 35.5.2 队列管理 API
+
+| 方法 | 返回类型 | 说明 |
+|------|----------|------|
+| `has_pending_save_requests()` | bool | 是否有待处理请求 |
+| `get_pending_save_request_count()` | int | 待处理请求数量 |
+| `get_save_request_queue()` | list[SaveRequest] | 获取队列（按优先级排序） |
+| `get_save_request_status(request_id)` | SaveRequestStatus | 获取请求状态 |
+| `get_save_requests_by_session(session_id)` | list[SaveRequest] | 按会话获取请求 |
+| `dequeue_save_request()` | SaveRequest \| None | 取出最高优先级请求 |
+
+### 35.6 测试覆盖
+
+| 测试类 | 测试数量 | 覆盖范围 |
+|--------|----------|----------|
+| `TestSaveRequestTypeEnum` | 4 | 操作类型枚举 |
+| `TestSaveRequestPriorityEnum` | 5 | 优先级枚举和排序 |
+| `TestSaveRequestEvent` | 9 | 事件创建、序列化、反序列化 |
+| `TestSaveRequestValidation` | 4 | 必填字段验证、警告 |
+| `TestConversationAgentSaveRequestGeneration` | 5 | Agent 生成请求、不直接写文件 |
+| `TestCoordinatorSaveRequestQueue` | 4 | 接收、排队、状态跟踪 |
+| `TestSaveRequestQueueManager` | 5 | 队列入队、出队、容量限制 |
+| `TestSaveRequestEndToEndScenarios` | 3 | 完整流程、多 Agent 隔离 |
+
+**测试运行结果**:
+```
+tests/unit/domain/services/test_save_request_channel.py: 40 passed
+```
+
+### 35.7 文件位置
+
+| 组件 | 文件路径 | 说明 |
+|------|----------|------|
+| SaveRequest 事件 | `src/domain/services/save_request_channel.py` | 事件定义、枚举、队列管理 |
+| ConversationAgent 集成 | `src/domain/agents/conversation_agent.py:481-562` | Phase 34 保存请求通道 |
+| CoordinatorAgent 集成 | `src/domain/agents/coordinator_agent.py:410-518` | Phase 34 保存请求处理 |
+| 测试 | `tests/unit/domain/services/test_save_request_channel.py` | 40 个测试用例 |
+
+---
+
+## 36. 审核与执行流程 (Audit & Execution Flow)
+
+> 版本: 1.0.0
+> 实现日期: 2025-12-08
+> 状态: ✅ 已实现
+
+### 36.1 流程概述
+
+Coordinator 审核与执行流程实现了保存请求的完整生命周期管理：
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      审核 → 执行 → 回执 流程                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  SaveRequest                    CoordinatorAgent
+      │                               │
+      │   1. 从队列取出请求             │
+      ├──────────────────────────────>│
+      │                               │
+      │   2. 执行审核规则              │
+      │   ┌───────────────────────────┴───────────────────────────┐
+      │   │  PathBlacklistRule → PathWhitelistRule →              │
+      │   │  ContentSizeRule → RateLimitRule →                    │
+      │   │  SensitiveContentRule                                 │
+      │   └───────────────────────────┬───────────────────────────┘
+      │                               │
+      │   3. 记录审计日志              │
+      │                      ┌────────┴────────┐
+      │                      ▼                 ▼
+      │               [APPROVED]          [REJECTED]
+      │                      │                 │
+      │   4. 执行写操作       │                 │
+      │                      ▼                 │
+      │               SaveExecutor             │
+      │                      │                 │
+      │   5. 记录执行日志     │                 │
+      │                      ▼                 ▼
+      │   6. 发布完成事件    SaveRequestCompletedEvent
+      │                               │
+      ▼                               ▼
+  ProcessResult              EventBus → 订阅者
+```
+
+### 36.2 审核规则系统
+
+#### 36.2.1 内置规则
+
+| 规则 | rule_id | 说明 | 默认配置 |
+|------|---------|------|----------|
+| PathBlacklistRule | `path_blacklist` | 拒绝黑名单路径 | `/etc`, `/sys`, `/proc`, `/root`, `/boot`, `/dev` |
+| PathWhitelistRule | `path_whitelist` | 只允许白名单路径 | `/tmp` |
+| ContentSizeRule | `content_size` | 内容大小限制 | 10MB |
+| RateLimitRule | `rate_limit` | 频率限制 | 60/分钟, 1000/会话 |
+| SensitiveContentRule | `sensitive_content` | 敏感内容检测 | API Key, Password 等 |
+
+#### 36.2.2 敏感内容检测模式
+
+```python
+SENSITIVE_PATTERNS = [
+    r"api[_-]?key\s*[=:]\s*['\"]?[\w-]+",
+    r"secret[_-]?key\s*[=:]\s*['\"]?[\w-]+",
+    r"password\s*[=:]\s*['\"]?[^\s'\"]+",
+    r"private[_-]?key",
+    r"-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----",
+    r"aws[_-]?access[_-]?key",
+    r"bearer\s+[\w-]+\.[\w-]+\.[\w-]+",
+    r"sk-[a-zA-Z0-9]{20,}",  # OpenAI API Key
+]
+```
+
+### 36.3 审核状态
+
+```python
+class AuditStatus(str, Enum):
+    APPROVED = "approved"          # 审核通过，可执行
+    REJECTED = "rejected"          # 审核拒绝，不执行
+    PENDING_REVIEW = "pending_review"  # 待人工审核
+```
+
+### 36.4 拒绝原因
+
+```python
+class RejectionReason(str, Enum):
+    PATH_BLACKLISTED = "path_blacklisted"       # 路径在黑名单
+    PATH_NOT_WHITELISTED = "path_not_whitelisted"  # 路径不在白名单
+    CONTENT_TOO_LARGE = "content_too_large"     # 内容过大
+    RATE_LIMIT_EXCEEDED = "rate_limit_exceeded" # 频率限制
+    SENSITIVE_CONTENT = "sensitive_content"     # 敏感内容
+    INVALID_OPERATION = "invalid_operation"     # 无效操作
+```
+
+### 36.5 错误反馈格式
+
+#### 36.5.1 ProcessResult 结构
+
+```python
+@dataclass
+class ProcessResult:
+    request_id: str           # 请求 ID
+    success: bool             # 是否成功
+    audit_status: AuditStatus # 审核状态
+    error_message: str | None # 错误信息
+    bytes_written: int        # 写入字节数
+```
+
+#### 36.5.2 错误反馈示例
+
+**审核拒绝（黑名单路径）：**
+```json
+{
+    "request_id": "save-a1b2c3d4e5f6",
+    "success": false,
+    "audit_status": "rejected",
+    "error_message": "Path '/etc/passwd' is in blacklist (matches '/etc')",
+    "bytes_written": 0
+}
+```
+
+**审核拒绝（内容过大）：**
+```json
+{
+    "request_id": "save-x1y2z3w4v5u6",
+    "success": false,
+    "audit_status": "rejected",
+    "error_message": "Content size (15728640 bytes) exceeds limit (10485760 bytes)",
+    "bytes_written": 0
+}
+```
+
+**执行失败（权限错误）：**
+```json
+{
+    "request_id": "save-m1n2o3p4q5r6",
+    "success": false,
+    "audit_status": "approved",
+    "error_message": "Permission denied: /protected/file.txt",
+    "bytes_written": 0
+}
+```
+
+**执行成功：**
+```json
+{
+    "request_id": "save-h1i2j3k4l5m6",
+    "success": true,
+    "audit_status": "approved",
+    "error_message": null,
+    "bytes_written": 1024
+}
+```
+
+### 36.6 审计日志格式
+
+#### 36.6.1 审核决策日志
+
+```
+[AUDIT] APPROVED request=save-123456 path=/tmp/output.txt session=session-001
+[AUDIT] REJECTED request=save-789012 rule=path_blacklist reason=Path '/etc/passwd' is in blacklist path=/etc/passwd session=session-002
+```
+
+#### 36.6.2 执行结果日志
+
+```
+[EXEC] SUCCESS request=save-123456 bytes=1024 time=15.50ms
+[EXEC] FAILED request=save-345678 error=Permission denied: /root/file.txt
+```
+
+#### 36.6.3 结构化日志示例
+
+**审核通过日志：**
+```json
+{
+    "type": "audit",
+    "request_id": "save-a1b2c3d4e5f6",
+    "status": "approved",
+    "rule_id": null,
+    "reason": "All 5 rules passed",
+    "target_path": "/tmp/output.txt",
+    "session_id": "session-001",
+    "timestamp": "2025-12-08T10:30:00.123456"
+}
+```
+
+**审核拒绝日志：**
+```json
+{
+    "type": "audit",
+    "request_id": "save-x1y2z3w4v5u6",
+    "status": "rejected",
+    "rule_id": "path_blacklist",
+    "reason": "path_blacklisted",
+    "target_path": "/etc/passwd",
+    "session_id": "session-002",
+    "timestamp": "2025-12-08T10:31:00.654321"
+}
+```
+
+**执行成功日志：**
+```json
+{
+    "type": "execution",
+    "request_id": "save-a1b2c3d4e5f6",
+    "success": true,
+    "error_message": null,
+    "bytes_written": 1024,
+    "execution_time_ms": 15.5,
+    "timestamp": "2025-12-08T10:30:00.234567"
+}
+```
+
+### 36.7 Coordinator 配置 API
+
+```python
+def configure_save_auditor(
+    self,
+    path_whitelist: list[str] | None = None,
+    path_blacklist: list[str] | None = None,
+    max_content_size: int = 10 * 1024 * 1024,  # 10MB
+    enable_rate_limit: bool = True,
+    enable_sensitive_check: bool = True,
+) -> None:
+    """配置保存请求审核器"""
+```
+
+**配置示例：**
+```python
+coordinator.configure_save_auditor(
+    path_whitelist=["/data/output", "/tmp", "/home/user/projects"],
+    path_blacklist=["/etc", "/sys", "/proc"],
+    max_content_size=5 * 1024 * 1024,  # 5MB
+    enable_rate_limit=True,
+    enable_sensitive_check=True,
+)
+```
+
+### 36.8 处理 API
+
+| 方法 | 返回类型 | 说明 |
+|------|----------|------|
+| `process_next_save_request()` | ProcessResult \| None | 处理下一个请求 |
+| `get_save_audit_logs()` | list[dict] | 获取所有审计日志 |
+| `get_save_audit_logs_by_session(session_id)` | list[dict] | 按会话获取日志 |
+
+### 36.9 测试覆盖
+
+| 测试类 | 测试数量 | 覆盖范围 |
+|--------|----------|----------|
+| `TestAuditStatusEnum` | 3 | 审核状态枚举 |
+| `TestRejectionReasonEnum` | 4 | 拒绝原因枚举 |
+| `TestAuditResult` | 3 | 审核结果数据结构 |
+| `TestExecutionResult` | 2 | 执行结果数据结构 |
+| `TestPathBlacklistRule` | 2 | 路径黑名单规则 |
+| `TestPathWhitelistRule` | 2 | 路径白名单规则 |
+| `TestContentSizeRule` | 2 | 内容大小规则 |
+| `TestRateLimitRule` | 2 | 频率限制规则 |
+| `TestSensitiveContentRule` | 3 | 敏感内容规则 |
+| `TestSaveRequestAuditor` | 5 | 审核引擎 |
+| `TestSaveExecutor` | 7 | 执行器 |
+| `TestAuditLogger` | 4 | 审计日志 |
+| `TestCoordinatorAuditExecution` | 5 | Coordinator 集成 |
+| `TestAuditExecutionEndToEnd` | 3 | 端到端场景 |
+
+**测试运行结果：**
+```
+tests/unit/domain/services/test_save_request_audit.py: 47 passed
+tests/unit/domain/services/test_save_request_channel.py: 40 passed
+Total: 87 tests passed
+```
+
+### 36.10 文件位置
+
+| 组件 | 文件路径 | 说明 |
+|------|----------|------|
+| 审核模块 | `src/domain/services/save_request_audit.py` | 规则、审核器、执行器、日志 |
+| CoordinatorAgent 集成 | `src/domain/agents/coordinator_agent.py:522-676` | Phase 34.2 审核与执行 |
+| 测试 | `tests/unit/domain/services/test_save_request_audit.py` | 47 个测试用例 |
+
+---
+
+## 37. 规则配置指南 (Rule Configuration Guide)
+
+### 37.1 概述
+
+可配置规则引擎允许通过 JSON/YAML 配置文件定义保存请求的审核规则，无需修改代码即可调整安全策略。
+
+**核心特性：**
+- 支持 JSON 和 YAML 配置格式
+- 四种规则类型：路径规则、内容规则、用户级别规则、命令规则
+- 三级响应动作：WARN（警告）、REPLACE（替换）、TERMINATE（终止）
+- 规则优先级：TERMINATE > REPLACE > WARN > ALLOW
+
+### 37.2 配置结构
+
+```yaml
+version: "1.0"
+description: "配置描述"
+
+rules:
+  path_rules: []       # 路径规则
+  content_rules: []    # 内容模式规则
+  user_level_rules: [] # 用户级别规则
+  command_rules: []    # 敏感命令规则
+
+defaults:
+  unknown_path_action: allow
+  max_content_size_kb: 10240
+```
+
+### 37.3 路径规则 (Path Rules)
+
+基于文件路径判断是否允许写入。
+
+**Schema：**
+```yaml
+path_rules:
+  - id: "rule_unique_id"      # 规则唯一标识
+    pattern: "/etc/*"          # 路径模式（支持通配符）
+    action: "terminate"        # 动作: allow/warn/replace/terminate
+    message: "说明信息"        # 规则触发时的消息
+```
+
+**路径模式支持：**
+| 模式 | 说明 | 示例 |
+|------|------|------|
+| 精确匹配 | 完全匹配路径 | `/etc/passwd` |
+| 单层通配符 `*` | 匹配单层目录 | `/etc/*` 匹配 `/etc/hosts` |
+| 递归通配符 `**` | 匹配任意层级 | `**/logs/**` |
+| 扩展名匹配 | 匹配文件扩展名 | `**/*.py` |
+
+**示例场景：**
+```yaml
+path_rules:
+  # 阻止系统路径
+  - id: block_system
+    pattern: "/etc/*"
+    action: terminate
+    message: "系统配置路径禁止写入"
+
+  # 警告配置文件修改
+  - id: warn_config
+    pattern: "*.config"
+    action: warn
+    message: "配置文件修改需谨慎"
+```
+
+### 37.4 内容规则 (Content Rules)
+
+基于内容模式（正则表达式）判断或替换内容。
+
+**Schema：**
+```yaml
+content_rules:
+  - id: "rule_unique_id"
+    patterns:                    # 正则表达式列表
+      - 'password\s*=\s*[''"][^''"]+[''"]'
+    action: "terminate"          # 或 "replace"
+    replacement: "[REDACTED]"    # 仅 replace 动作需要
+    message: "说明信息"
+    case_insensitive: false      # 可选，是否大小写不敏感
+```
+
+**示例场景：**
+```yaml
+content_rules:
+  # 阻止硬编码密码
+  - id: block_passwords
+    patterns:
+      - 'password\s*=\s*[''"][^''"]+[''"]'
+      - 'api_key\s*=\s*[''"][^''"]+[''"]'
+    action: terminate
+    message: "禁止写入敏感凭证"
+
+  # 脱敏邮箱地址
+  - id: redact_emails
+    patterns:
+      - '\b[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}\b'
+    action: replace
+    replacement: "[EMAIL_REDACTED]"
+    message: "邮箱已脱敏"
+```
+
+### 37.5 用户级别规则 (User Level Rules)
+
+基于用户权限级别控制访问。级别层级：`system > admin > user`
+
+**Schema：**
+```yaml
+user_level_rules:
+  - id: "rule_unique_id"
+    required_level: "admin"      # 需要的最低级别
+    paths:                       # 适用路径列表
+      - "/admin/*"
+      - "/config/admin/*"
+    action: "terminate"
+    message: "需要管理员权限"
+```
+
+**权限示例：**
+```yaml
+user_level_rules:
+  # 管理员路径
+  - id: admin_only
+    required_level: admin
+    paths: ["/admin/*"]
+    action: terminate
+    message: "需要管理员权限"
+
+  # 系统级路径
+  - id: system_only
+    required_level: system
+    paths: ["/system/*", "/core/*"]
+    action: terminate
+    message: "需要系统级权限"
+```
+
+### 37.6 命令规则 (Command Rules)
+
+检测内容中的危险命令。
+
+**Schema：**
+```yaml
+command_rules:
+  - id: "rule_unique_id"
+    commands:                    # 危险命令列表
+      - "rm -rf"
+      - "DROP TABLE"
+    action: "terminate"
+    message: "危险命令被阻止"
+```
+
+**示例场景：**
+```yaml
+command_rules:
+  # 阻止危险 Shell 命令
+  - id: block_shell
+    commands:
+      - "rm -rf"
+      - "mkfs"
+      - "dd if="
+    action: terminate
+    message: "危险 Shell 命令被阻止"
+
+  # 阻止危险 SQL
+  - id: block_sql
+    commands:
+      - "DROP TABLE"
+      - "DROP DATABASE"
+      - "TRUNCATE TABLE"
+    action: terminate
+    message: "危险 SQL 命令被阻止"
+```
+
+### 37.7 动作优先级
+
+当请求匹配多个规则时，取最高优先级的动作：
+
+```
+TERMINATE (3) > REPLACE (2) > WARN (1) > ALLOW (0)
+```
+
+**行为说明：**
+| 动作 | 优先级 | 请求继续 | 内容修改 | 说明 |
+|------|--------|----------|----------|------|
+| ALLOW | 0 | 是 | 否 | 允许请求 |
+| WARN | 1 | 是 | 否 | 记录警告，允许请求 |
+| REPLACE | 2 | 是 | 是 | 替换内容后允许 |
+| TERMINATE | 3 | 否 | 否 | 终止请求 |
+
+### 37.8 使用方法
+
+**方式一：从配置文件加载**
+```python
+from src.domain.services.configurable_rule_engine import ConfigurableRuleEngine
+
+# 从 JSON 文件加载
+engine = ConfigurableRuleEngine.from_file("config/save_rules.json")
+
+# 从 YAML 文件加载
+engine = ConfigurableRuleEngine.from_file("config/save_rules.yaml")
+```
+
+**方式二：从字典加载**
+```python
+config = {
+    "version": "1.0",
+    "rules": {
+        "path_rules": [...],
+        "content_rules": [...]
+    }
+}
+engine = ConfigurableRuleEngine(config)
+```
+
+**方式三：集成到审核系统**
+```python
+from src.domain.services.configurable_rule_engine import ConfigurableRuleEngine
+from src.domain.services.save_request_audit import SaveRequestAuditor
+
+engine = ConfigurableRuleEngine.from_file("config/save_rules.yaml")
+audit_rule = engine.as_audit_rule()
+
+auditor = SaveRequestAuditor(rules=[audit_rule])
+result = auditor.audit(save_request)
+```
+
+### 37.9 评估结果
+
+```python
+@dataclass
+class RuleEvaluationResult:
+    request_id: str           # 请求 ID
+    matches: list[RuleMatch]  # 所有匹配的规则
+    final_action: RuleAction  # 最终动作
+    modified_content: str     # 修改后的内容（如有替换）
+    is_allowed: bool          # 是否允许继续
+
+@dataclass
+class RuleMatch:
+    rule_id: str              # 规则 ID
+    action: RuleAction        # 动作
+    message: str              # 消息
+    replacement: str | None   # 替换内容
+```
+
+### 37.10 配置校验
+
+```python
+from src.domain.services.configurable_rule_engine import RuleConfigValidator
+
+errors = RuleConfigValidator.validate(config)
+if errors:
+    print("配置错误:", errors)
+else:
+    print("配置有效")
+```
+
+**校验规则：**
+- `version` 必填，格式 `X.Y`
+- 每个规则必须有 `id`、`action`
+- `action` 必须是 `allow/warn/replace/terminate`
+- `replace` 动作必须提供 `replacement` 字段
+- 路径规则必须有 `pattern`
+- 内容规则必须有 `patterns` 列表
+- 用户级别规则必须有 `required_level` 和 `paths`
+- 命令规则必须有 `commands` 列表
+
+### 37.11 测试覆盖
+
+| 测试类 | 测试数量 | 覆盖范围 |
+|--------|----------|----------|
+| `TestRuleAction` | 5 | RuleAction 枚举和优先级 |
+| `TestRuleConfigStructures` | 5 | 数据结构 |
+| `TestRuleConfigSchema` | 11 | Schema 校验 |
+| `TestPathRules` | 5 | 路径规则匹配 |
+| `TestContentRules` | 4 | 内容模式匹配和替换 |
+| `TestUserLevelRules` | 3 | 用户级别控制 |
+| `TestCommandRules` | 2 | 命令检测 |
+| `TestActionPriority` | 3 | 动作优先级 |
+| `TestConfigFileLoading` | 5 | 配置文件加载 |
+| `TestDefaultConfig` | 2 | 默认配置 |
+| `TestIntegrationWithAuditSystem` | 2 | 审核系统集成 |
+| `TestCompleteWorkflow` | 2 | 完整工作流 |
+
+**测试运行结果：**
+```
+tests/unit/domain/services/test_configurable_rule_engine.py: 49 passed
+```
+
+### 37.12 文件位置
+
+| 组件 | 文件路径 | 说明 |
+|------|----------|------|
+| 规则引擎 | `src/domain/services/configurable_rule_engine.py` | 核心实现 |
+| JSON 样例 | `config/save_rules.example.json` | JSON 配置示例 |
+| YAML 样例 | `config/save_rules.example.yaml` | YAML 配置示例 |
+| 测试 | `tests/unit/domain/services/test_configurable_rule_engine.py` | 49 个测试用例 |
+
+---
+
+## 38. 上下文注入机�?(Context Injection Mechanism)
+
+### 38.1 概述
+
+上下文注入机制允�?Coordinator �?ConversationAgent �?ReAct 循环不同阶段注入上下文信息，实现�?
+- 循环开始前注入最新指令、观察、长期记�?
+- 思考阶段前/后注入警告或补充信息
+- 监督模块触发干预时注入干预指�?
+
+### 38.2 上下文注入点时序�?
+
+```
+┌─────────────�?   ┌──────────────────�?   ┌───────────────────�?   ┌─────────────────�?
+�?Coordinator �?   �?InjectionManager �?   �?ConversationAgent �?   �?InjectionLogger �?
+└──────┬──────�?   └────────┬─────────�?   └─────────┬─────────�?   └────────┬────────�?
+       �?                   �?                       �?                      �?
+       �? inject_memory()   �?                       �?                      �?
+       │───────────────────>�?                       �?                      �?
+       �?                   �? log_injection()       �?                      �?
+       �?                   │───────────────────────────────────────────────>�?
+       �?                   �?                       �?                      �?
+       �? inject_warning()  �?                       �?                      �?
+       │───────────────────>�?                       �?                      �?
+       �?                   �? log_injection()       �?                      �?
+       �?                   │───────────────────────────────────────────────>�?
+       �?                   �?                       �?                      �?
+       �?                   �?                       �?  run_async() 开�?   �?
+       �?                   �?                       │──────────�?           �?
+       �?                   �?                       �?         �?           �?
+       �?                   �? ╔═══════════════════════════════════════════�?�?
+       �?                   �? �?       PRE_LOOP 注入�?                   �?�?
+       �?                   �? ╚═══════════════════════════════════════════�?�?
+       �?                   �?                       �?         �?           �?
+       �?                   �? get_pending_injections�?         �?           �?
+       �?                   �?───────────────────────�?         �?           �?
+       �?                   �? [记忆, 指令, 观察]    �?         �?           �?
+       �?                   │────────────────────────>          �?           �?
+       �?                   �?                       �?         �?           �?
+       �?                   �? mark_as_applied()     �?         �?           �?
+       �?                   �?───────────────────────�?         �?           �?
+       �?                   �? log_applied()         �?         �?           �?
+       �?                   │───────────────────────────────────────────────>�?
+       �?                   �?                       �?         �?           �?
+       �?                   �?                       �? ┌───────┴───────�?   �?
+       �?                   �?                       �? �? ReAct 循环   �?   �?
+       �?                   �?                       �? └───────┬───────�?   �?
+       �?                   �?                       �?         �?           �?
+       �?                   �? ╔═══════════════════════════════════════════�?�?
+       �?                   �? �?     PRE_THINKING 注入�?                 �?�?
+       �?                   �? ╚═══════════════════════════════════════════�?�?
+       �?                   �?                       �?         �?           �?
+       �?                   �? get_pending_injections�?         �?           �?
+       �?                   �?───────────────────────�?         �?           �?
+       �?                   �? [警告]                �?         �?           �?
+       �?                   │────────────────────────>          �?           �?
+       �?                   �?                       �?         �?           �?
+       �?                   �?                       �? ┌───────┴───────�?   �?
+       �?                   �?                       �? �?  Thinking    �?   �?
+       �?                   �?                       �? └───────┬───────�?   �?
+       �?                   �?                       �?         �?           �?
+       �?                   �? ╔═══════════════════════════════════════════�?�?
+       �?                   �? �?    POST_THINKING 注入�?                 �?�?
+       �?                   �? ╚═══════════════════════════════════════════�?�?
+       �?                   �?                       �?         �?           �?
+       �?                   �?                       �? ┌───────┴───────�?   �?
+       �?                   �?                       �? �?   Action     �?   �?
+       �?                   �?                       �? └───────┬───────�?   �?
+       �?                   �?                       �?         �?           �?
+       �?inject_intervention�?                       �?         �?           �?
+       │───────────────────>�?                       �?         �?           �?
+       �?                   �?                       �?         �?           �?
+       �?                   �? ╔═══════════════════════════════════════════�?�?
+       �?                   �? �?    INTERVENTION 注入�?(中断/紧�?       �?�?
+       �?                   �? ╚═══════════════════════════════════════════�?�?
+       �?                   �?                       �?         �?           �?
+       �?                   �? get_pending_injections�?         �?           �?
+       �?                   �?───────────────────────�?         �?           �?
+       �?                   �? [干预指令]            �?         �?           �?
+       �?                   │────────────────────────>          �?           �?
+       �?                   �?                       �?         �?           �?
+       �?                   �?                       �? 处理干预/终止循环   �?
+       �?                   �?                       �?─────────�?           �?
+       �?                   �?                       �?                      �?
+```
+
+### 38.3 注入类型枚举
+
+```python
+class InjectionType(str, Enum):
+    """注入类型枚举"""
+    INSTRUCTION = "instruction"    # 指令更新
+    OBSERVATION = "observation"    # 观察信息
+    MEMORY = "memory"              # 长期记忆
+    WARNING = "warning"            # 警告信息
+    SUPPLEMENT = "supplement"      # 补充信息
+    INTERVENTION = "intervention"  # 干预指令
+```
+
+### 38.4 注入点枚�?
+
+```python
+class InjectionPoint(str, Enum):
+    """注入点枚�?- ReAct 循环中的注入位置"""
+    PRE_LOOP = "pre_loop"          # 循环开始前
+    PRE_THINKING = "pre_thinking"  # 思考阶段前
+    POST_THINKING = "post_thinking"  # 思考阶段后
+    INTERVENTION = "intervention"  # 干预注入�?
+```
+
+### 38.5 注入数据结构
+
+```python
+@dataclass
+class ContextInjection:
+    """上下文注入数�?""
+    session_id: str               # 会话 ID
+    injection_type: InjectionType # 注入类型
+    injection_point: InjectionPoint  # 注入�?
+    content: str                  # 注入内容
+    source: str                   # 来源 (coordinator/supervisor/memory_system)
+    reason: str                   # 注入原因
+    injection_id: str             # 唯一标识 (inj-xxxx)
+    priority: int = 0             # 优先�?(数值越大优先级越高)
+    metadata: dict = field(...)   # 附加元数�?
+    timestamp: datetime           # 创建时间
+    applied: bool = False         # 是否已应�?
+
+    def to_prompt_format(self) -> str:
+        """转换为提示词格式"""
+        # 返回: [指令] content / [警告] content / [记忆] content �?
+```
+
+### 38.6 注入优先级规�?
+
+| 注入类型 | 默认优先�?| 说明 |
+|----------|-----------|------|
+| INTERVENTION | 100 | 最高优先级，干预指�?|
+| WARNING | 50 | 高优先级，安全警�?|
+| INSTRUCTION | 30 | 中优先级，指令更�?|
+| OBSERVATION | 20 | 低优先级，状态观�?|
+| MEMORY | 10 | 最低优先级，记忆召�?|
+
+### 38.7 ContextInjectionManager API
+
+```python
+class ContextInjectionManager:
+    """上下文注入管理器"""
+
+    def add_injection(self, injection: ContextInjection) -> None:
+        """添加注入"""
+
+    def get_pending_injections(
+        self,
+        session_id: str,
+        injection_point: InjectionPoint,
+    ) -> list[ContextInjection]:
+        """获取待处理注入（按优先级降序�?""
+
+    def mark_as_applied(self, injection_id: str, iteration: int = 0) -> bool:
+        """标记注入已应�?""
+
+    def clear_session(self, session_id: str) -> None:
+        """清除会话的所有注�?""
+
+    # 便捷方法
+    def inject_memory(self, session_id, content, source, relevance_score, priority) -> ContextInjection
+    def inject_warning(self, session_id, content, source, reason, priority) -> ContextInjection
+    def inject_intervention(self, session_id, content, source, reason, priority) -> ContextInjection
+    def inject_instruction(self, session_id, content, source, reason, priority) -> ContextInjection
+    def inject_observation(self, session_id, content, source, reason, priority) -> ContextInjection
+```
+
+### 38.8 CoordinatorAgent 集成
+
+```python
+class CoordinatorAgent:
+    def __init__(self, ...):
+        # Phase 34.3: 上下文注�?
+        self._injection_logger = InjectionLogger()
+        self.injection_manager = ContextInjectionManager(logger=self._injection_logger)
+
+    def inject_context(
+        self,
+        session_id: str,
+        injection_type: InjectionType,
+        content: str,
+        reason: str,
+        priority: int = 30,
+    ) -> ContextInjection:
+        """通用注入方法"""
+
+    def inject_warning(self, session_id: str, warning_message: str, rule_id: str = None) -> ContextInjection:
+        """注入警告 - 用于审核规则触发"""
+
+    def inject_intervention(self, session_id: str, intervention_message: str, reason: str) -> ContextInjection:
+        """注入干预 - 用于紧急中�?""
+
+    def inject_memory(self, session_id: str, memory_content: str, relevance_score: float) -> ContextInjection:
+        """注入记忆 - 用于长期记忆召回"""
+
+    def inject_observation(self, session_id: str, observation: str, source: str) -> ContextInjection:
+        """注入观察 - 用于状态监�?""
+
+    def get_injection_logs(self) -> list[dict]:
+        """获取所有注入日�?""
+
+    def get_injection_logs_by_session(self, session_id: str) -> list[dict]:
+        """获取指定会话的注入日�?""
+```
+
+### 38.9 日志记录
+
+```python
+class InjectionLogger:
+    """注入日志记录�?""
+
+    def log_injection(self, injection: ContextInjection) -> None:
+        """记录注入操作
+        日志格式: [INJECTION] type=xxx point=xxx session=xxx source=xxx reason=xxx
+        """
+
+    def log_applied(self, injection_id: str, session_id: str, iteration: int) -> None:
+        """记录注入已应�?
+        日志格式: [INJECTION APPLIED] id=xxx session=xxx iteration=xxx
+        """
+
+    def get_logs(self) -> list[dict]:
+        """获取所有日�?""
+
+    def get_logs_by_session(self, session_id: str) -> list[dict]:
+        """按会话获取日�?""
+```
+
+### 38.10 事件定义
+
+```python
+@dataclass
+class ContextInjectionEvent(Event):
+    """上下文注入事�?- 当注入被添加时发�?""
+    injection: ContextInjection
+    event_type: str = "context_injection"
+
+@dataclass
+class InjectionAppliedEvent(Event):
+    """注入已应用事�?- 当注入被实际应用到上下文时发�?""
+    injection_id: str
+    session_id: str
+    applied_at_iteration: int
+    event_type: str = "injection_applied"
+```
+
+### 38.11 使用示例
+
+**场景 1：循环前注入长期记忆**
+```python
+coordinator = CoordinatorAgent(...)
+
+# �?ReAct 循环开始前注入相关记忆
+coordinator.inject_memory(
+    session_id="session-123",
+    memory_content="用户偏好：简洁回答，技术导�?,
+    relevance_score=0.95
+)
+```
+
+**场景 2：审核触发警告注�?*
+```python
+# 当审核规则检测到敏感操作
+coordinator.inject_warning(
+    session_id="session-123",
+    warning_message="检测到敏感路径访问，请谨慎操作",
+    rule_id="warn_config_files"
+)
+```
+
+**场景 3：紧急干�?*
+```python
+# 监督模块检测到需要干�?
+coordinator.inject_intervention(
+    session_id="session-123",
+    intervention_message="立即停止当前操作，等待人工确�?,
+    reason="安全阈值超�?
+)
+```
+
+**场景 4：获取注入日志审�?*
+```python
+# 获取会话的所有注入日�?
+logs = coordinator.get_injection_logs_by_session("session-123")
+for log in logs:
+    print(f"{log['type']}: {log['injection_type']} - {log['reason']}")
+```
+
+### 38.12 测试覆盖
+
+| 测试�?| 测试数量 | 覆盖范围 |
+|--------|----------|----------|
+| `TestInjectionType` | 6 | 注入类型枚举 |
+| `TestInjectionPoint` | 4 | 注入点枚�?|
+| `TestContextInjection` | 5 | 注入数据结构 |
+| `TestContextInjectionManager` | 9 | 管理器核心功�?|
+| `TestInjectionEvents` | 3 | 事件定义 |
+| `TestInjectionLogger` | 4 | 日志记录�?|
+| `TestCoordinatorIntegration` | 4 | Coordinator 集成 |
+| `TestConversationAgentIntegration` | 2 | ConversationAgent 集成 |
+| `TestInjectionInfluenceDecision` | 4 | 注入影响决策 |
+| `TestInjectionLogging` | 2 | 注入日志 |
+
+**测试运行结果�?*
+```
+tests/unit/domain/services/test_context_injection.py: 43 passed
+```
+
+### 38.13 文件位置
+
+| 组件 | 文件路径 | 说明 |
+|------|----------|------|
+| 注入机制 | `src/domain/services/context_injection.py` | 核心实现 |
+| Coordinator 集成 | `src/domain/agents/coordinator_agent.py` | Phase 34.3 |
+| 测试 | `tests/unit/domain/services/test_context_injection.py` | 43 个测试用�?|
+
+---
+
+## 39. 监督模块 (Supervision Module)
+
+### 39.1 概述
+
+监督模块�?Coordinator 维护，持续分析对�?Agent 的上下文、SaveRequest、决策链路，判断是否需要干预。支持三种干预动作：
+- **WARNING** (警告)：注入警告信息，提醒 Agent 注意
+- **REPLACE** (替换)：替换敏感内容或节点
+- **TERMINATE** (终止)：终止当前任�?
+
+### 39.2 监督流程时序�?
+
+```
+┌─────────────�?   ┌───────────────────�?   ┌───────────────────�?   ┌──────────────────�?
+�?Coordinator �?   �?SupervisionModule �?   �?SupervisionLogger �?   �?InjectionManager �?
+└──────┬──────�?   └─────────┬─────────�?   └─────────┬─────────�?   └────────┬─────────�?
+       �?                    �?                       �?                      �?
+       �? analyze_context()  �?                       �?                      �?
+       │────────────────────>�?                       �?                      �?
+       �?                    �?                       �?                      �?
+       �?                    �? [检查所有规则]        �?                      �?
+       �?                    │──────────�?            �?                      �?
+       �?                    �?         �?            �?                      �?
+       �?                    �?─────────�?            �?                      �?
+       �?                    �?                       �?                      �?
+       �?                    �? [规则触发]            �?                      �?
+       �?                    �? log_trigger()         �?                      �?
+       �?                    │───────────────────────>�?                      �?
+       �?                    �?                       �?                      �?
+       �? [SupervisionInfo]  �?                       �?                      �?
+       �?────────────────────�?                       �?                      �?
+       �?                    �?                       �?                      �?
+       �? should_intervene() �?                       �?                      �?
+       │────────────────────>�?                       �?                      �?
+       �? [True]             �?                       �?                      �?
+       �?────────────────────�?                       �?                      �?
+       �?                    �?                       �?                      �?
+       �? execute_intervention()                      �?                      �?
+       │──────────────────────────────────────────────────────────────────────>�?
+       �?                    �?                       �?                      �?
+       �?                    �? log_intervention()    �?                      �?
+       �?                    │───────────────────────>�?                      �?
+       �?                    �?                       �?                      �?
+       �?                    �?                       �? [创建注入]           �?
+       �?                    �?                       �?                      �?
+```
+
+### 39.3 监督动作枚举
+
+```python
+class SupervisionAction(str, Enum):
+    """监督动作类型"""
+    WARNING = "warning"        # 警告 - 注入警告信息
+    REPLACE = "replace"        # 替换 - 替换内容/节点
+    TERMINATE = "terminate"    # 终止 - 终止任务
+
+    @staticmethod
+    def get_priority(action: SupervisionAction) -> int:
+        """获取动作优先级（TERMINATE > REPLACE > WARNING�?""
+        priorities = {
+            SupervisionAction.WARNING: 10,
+            SupervisionAction.REPLACE: 50,
+            SupervisionAction.TERMINATE: 100,
+        }
+        return priorities.get(action, 0)
+```
+
+### 39.4 监督信息结构
+
+```python
+@dataclass
+class SupervisionInfo:
+    """监督信息结构"""
+    supervision_id: str           # 唯一标识 (sup-xxxx)
+    session_id: str               # 会话 ID
+    action: SupervisionAction     # 动作类型
+    content: str                  # 监督内容/消息
+    trigger_rule: str             # 触发规则 ID
+    trigger_condition: str        # 触发条件描述
+    duration: float | None        # 持续时间（秒�?
+    metadata: dict                # 附加元数�?
+    timestamp: datetime           # 创建时间
+    resolved: bool                # 是否已解�?
+```
+
+### 39.5 监督信息格式样例
+
+**样例 1：警告信�?*
+```json
+{
+    "supervision_id": "sup-a1b2c3d4e5f6",
+    "session_id": "session-123",
+    "action": "warning",
+    "content": "规则 [高上下文使用率警告] 触发",
+    "trigger_rule": "builtin-high-usage-warning",
+    "trigger_condition": "上下文使用率超过80%时警�?,
+    "duration": null,
+    "metadata": {
+        "rule_priority": 30,
+        "replacement_content": null
+    },
+    "timestamp": "2025-12-08T10:30:00.000000",
+    "resolved": false
+}
+```
+
+**样例 2：替换信�?*
+```json
+{
+    "supervision_id": "sup-b2c3d4e5f6g7",
+    "session_id": "session-456",
+    "action": "replace",
+    "content": "规则 [敏感内容检测] 触发",
+    "trigger_rule": "builtin-sensitive-content",
+    "trigger_condition": "检测密码、API密钥等敏感信�?,
+    "duration": null,
+    "metadata": {
+        "rule_priority": 70,
+        "replacement_content": "[REDACTED]"
+    },
+    "timestamp": "2025-12-08T10:31:00.000000",
+    "resolved": false
+}
+```
+
+**样例 3：终止信�?*
+```json
+{
+    "supervision_id": "sup-c3d4e5f6g7h8",
+    "session_id": "session-789",
+    "action": "terminate",
+    "content": "规则 [危险命令检测] 触发",
+    "trigger_rule": "builtin-dangerous-command",
+    "trigger_condition": "检测可能造成系统损坏的命�?,
+    "duration": null,
+    "metadata": {
+        "rule_priority": 100,
+        "replacement_content": null
+    },
+    "timestamp": "2025-12-08T10:32:00.000000",
+    "resolved": false
+}
+```
+
+### 39.6 监督规则结构
+
+```python
+@dataclass
+class SupervisionRule:
+    """监督规则"""
+    rule_id: str                  # 规则唯一标识
+    name: str                     # 规则名称
+    description: str              # 规则描述
+    action: SupervisionAction     # 触发时的动作
+    priority: int = 50            # 规则优先�?
+    enabled: bool = True          # 是否启用
+    condition: Callable | None    # 条件函数
+    replacement_content: str | None  # 替换内容
+
+    def check(self, context: dict) -> SupervisionInfo | None:
+        """检查规则是否触�?""
+```
+
+### 39.7 内置规则列表
+
+| 规则 ID | 名称 | 动作 | 优先�?| 触发条件 |
+|---------|------|------|--------|----------|
+| `builtin-high-usage-warning` | 高上下文使用率警�?| WARNING | 30 | usage_ratio > 0.8 |
+| `builtin-critical-usage-terminate` | 临界上下文使用率终止 | TERMINATE | 90 | usage_ratio > 0.95 |
+| `builtin-dangerous-path` | 危险路径检�?| TERMINATE | 100 | 路径�?/etc/, /boot/, /root/ 等开�?|
+| `builtin-sensitive-content` | 敏感内容检�?| WARNING | 70 | 内容包含 password=, api_key= �?|
+| `builtin-dangerous-command` | 危险命令检�?| TERMINATE | 100 | 内容包含 rm -rf /, mkfs �?|
+| `builtin-loop-detection` | 循环检�?| WARNING | 50 | 最�?个决策相�?|
+| `builtin-long-history` | 超长对话历史 | WARNING | 20 | 对话历史超过50�?|
+
+### 39.8 SupervisionModule API
+
+```python
+class SupervisionModule:
+    """监督模块"""
+
+    def __init__(
+        self,
+        rules: list[SupervisionRule] | None = None,
+        logger: SupervisionLogger | None = None,
+        use_builtin_rules: bool = False,
+    ):
+        """初始�?""
+
+    def add_rule(self, rule: SupervisionRule) -> None:
+        """添加规则"""
+
+    def remove_rule(self, rule_id: str) -> bool:
+        """移除规则"""
+
+    def analyze_context(self, context: dict) -> list[SupervisionInfo]:
+        """分析上下�?""
+
+    def analyze_save_request(self, request: dict) -> list[SupervisionInfo]:
+        """分析保存请求"""
+
+    def analyze_decision_chain(self, decisions: list, session_id: str) -> list[SupervisionInfo]:
+        """分析决策链路"""
+
+    def should_intervene(self, infos: list[SupervisionInfo]) -> bool:
+        """判断是否需要干�?""
+
+    def get_highest_priority_action(self, infos: list) -> SupervisionAction | None:
+        """获取最高优先级动作"""
+```
+
+### 39.9 CoordinatorAgent 集成
+
+```python
+class CoordinatorAgent:
+    def __init__(self, ...):
+        # Phase 34.4: 监督模块
+        self._supervision_logger = SupervisionLogger()
+        self.supervision_module = SupervisionModule(
+            logger=self._supervision_logger,
+            use_builtin_rules=True,
+        )
+
+    def supervise_context(self, context: dict) -> list[SupervisionInfo]:
+        """监督上下�?""
+
+    def supervise_save_request(self, request: dict) -> list[SupervisionInfo]:
+        """监督保存请求"""
+
+    def supervise_decision_chain(self, decisions: list, session_id: str) -> list[SupervisionInfo]:
+        """监督决策链路"""
+
+    def execute_intervention(self, supervision_info: SupervisionInfo) -> dict:
+        """执行干预"""
+
+    def get_supervision_logs(self) -> list[dict]:
+        """获取所有监督日�?""
+
+    def get_supervision_logs_by_session(self, session_id: str) -> list[dict]:
+        """获取指定会话的监督日�?""
+```
+
+### 39.10 日志格式
+
+**触发日志格式�?*
+```
+[SUPERVISION TRIGGER] rule=builtin-high-usage-warning action=warning session=session-123 condition=上下文使用率超过80%时警�?
+```
+
+**干预日志格式�?*
+```
+[SUPERVISION INTERVENTION] rule=builtin-dangerous-command action=terminate result=task_terminated session=session-789
+```
+
+**日志条目结构�?*
+```json
+{
+    "type": "trigger",           // �?"intervention"
+    "supervision_id": "sup-xxx",
+    "session_id": "session-xxx",
+    "action": "warning",
+    "content": "规则触发消息",
+    "trigger_rule": "rule-id",
+    "trigger_condition": "触发条件描述",
+    "result": "intervention_result",  // 仅干预日�?
+    "timestamp": "2025-12-08T10:30:00"
+}
+```
+
+### 39.11 使用示例
+
+**场景 1：监督上下文使用�?*
+```python
+coordinator = CoordinatorAgent()
+
+# 分析上下�?
+context = {
+    "session_id": "session-123",
+    "usage_ratio": 0.85,  # 超过80%阈�?
+}
+
+results = coordinator.supervise_context(context)
+
+if coordinator.supervision_module.should_intervene(results):
+    for info in results:
+        coordinator.execute_intervention(info)
+```
+
+**场景 2：监督保存请�?*
+```python
+# 检测敏感内�?
+request = {
+    "request_id": "req-001",
+    "target_path": "/etc/passwd",  # 危险路径
+    "content": "恶意内容",
+    "session_id": "session-123",
+}
+
+results = coordinator.supervise_save_request(request)
+
+# 应该触发 TERMINATE 动作
+if results:
+    highest_action = coordinator.supervision_module.get_highest_priority_action(results)
+    print(f"最高优先级动作: {highest_action}")  # TERMINATE
+```
+
+**场景 3：添加自定义规则**
+```python
+from src.domain.services.supervision_module import SupervisionRule, SupervisionAction
+
+# 自定义敏感词检测规�?
+custom_rule = SupervisionRule(
+    rule_id="custom-sensitive-words",
+    name="敏感词检�?,
+    description="检测内容中的敏感词",
+    action=SupervisionAction.REPLACE,
+    priority=60,
+    condition=lambda ctx: "敏感�? in ctx.get("content", ""),
+    replacement_content="[内容已过滤]",
+)
+
+coordinator.supervision_module.add_rule(custom_rule)
+```
+
+**场景 4：获取日志审�?*
+```python
+# 获取会话的所有监督日�?
+logs = coordinator.get_supervision_logs_by_session("session-123")
+
+for log in logs:
+    print(f"[{log['type']}] {log['trigger_rule']}: {log['trigger_condition']}")
+```
+
+### 39.12 测试覆盖
+
+| 测试�?| 测试数量 | 覆盖范围 |
+|--------|----------|----------|
+| `TestSupervisionAction` | 5 | 动作枚举和优先级 |
+| `TestSupervisionInfo` | 6 | 监督信息结构 |
+| `TestSupervisionRule` | 4 | 监督规则 |
+| `TestSupervisionModule` | 12 | 模块核心功能 |
+| `TestBuiltinRules` | 4 | 内置规则 |
+| `TestSupervisionLogger` | 5 | 日志记录�?|
+| `TestCoordinatorIntegration` | 7 | Coordinator 集成 |
+| `TestEndToEndIntervention` | 3 | 端到端干预流�?|
+| `TestInterventionLogging` | 3 | 干预日志追踪 |
+| `TestSupervisionEvents` | 2 | 监督事件 |
+
+**测试运行结果�?*
+```
+tests/unit/domain/services/test_supervision_module.py: 52 passed
+```
+
+### 39.13 文件位置
+
+| 组件 | 文件路径 | 说明 |
+|------|----------|------|
+| 监督模块 | `src/domain/services/supervision_module.py` | 核心实现 |
+| Coordinator 集成 | `src/domain/agents/coordinator_agent.py` | Phase 34.4 |
+| 测试 | `tests/unit/domain/services/test_supervision_module.py` | 52 个测试用�?|
+
+---
+
+## 40. 干预系统 (Intervention System)
+
+### 40.1 概述
+
+干预系统�?Coordinator 提供�?
+- 修改工作流定义的接口（替�?移除节点�?
+- 终止任务的指令通道（通知 ConversationAgent、WorkflowAgent、用户）
+- 干预级别递进机制
+
+### 40.2 干预级别
+
+```python
+class InterventionLevel(str, Enum):
+    """干预级别枚举"""
+    NONE = "none"              # 无干�?(严重程度: 0)
+    NOTIFY = "notify"          # 通知（仅记录�?严重程度: 10)
+    WARN = "warn"              # 警告（注入警告）(严重程度: 30)
+    REPLACE = "replace"        # 替换（替换节点）(严重程度: 60)
+    TERMINATE = "terminate"    # 终止（强制终止）(严重程度: 100)
+```
+
+### 40.3 干预流程时序�?
+
+```
+┌─────────────�?   ┌─────────────────────�?   ┌──────────────────�?   ┌─────────────────�?
+�?Coordinator �?   �?SupervisionModule   �?   �?InterventionCoord�?   �?WorkflowModifier�?
+└──────┬──────�?   └──────────┬──────────�?   └────────┬─────────�?   └────────┬────────�?
+       �?                     �?                       �?                      �?
+       �? supervise_context() �?                       �?                      �?
+       │─────────────────────>�?                       �?                      �?
+       �?                     �?                       �?                      �?
+       �? [SupervisionInfo]   �?                       �?                      �?
+       �? action=REPLACE      �?                       �?                      �?
+       �?─────────────────────�?                       �?                      �?
+       �?                     �?                       �?                      �?
+       �?                     �? handle_intervention() �?                      �?
+       �?                     �? level=REPLACE         �?                      �?
+       │─────────────────────────────────────────────>�?                      �?
+       �?                     �?                       �?                      �?
+       �?                     �?                       �? replace_node()       �?
+       �?                     �?                       │──────────────────────>�?
+       �?                     �?                       �?                      �?
+       �?                     �?                       �? [ModificationResult] �?
+       �?                     �?                       �?──────────────────────�?
+       �?                     �?                       �?                      �?
+       �? [InterventionResult]�?                       �?                      �?
+       �?─────────────────────────────────────────────�?                      �?
+       �?                     �?                       �?                      �?
+       �? ┌────────────────────────────────────────────────────────────────�? �?
+       �? �?如果替换失败，升级到 TERMINATE                                   �? �?
+       �? └────────────────────────────────────────────────────────────────�? �?
+       �?                     �?                       �?                      �?
+       �?                     �? escalate_intervention �?                      �?
+       �?                     �? REPLACE �?TERMINATE   �?                      �?
+       │─────────────────────────────────────────────>�?                      �?
+       �?                     �?                       �?                      �?
+       �?                     �?                       �?                      �?
+```
+
+### 40.4 节点替换请求
+
+```python
+@dataclass
+class NodeReplacementRequest:
+    """节点替换请求"""
+    request_id: str           # 请求唯一标识 (nrr-xxxx)
+    workflow_id: str          # 工作�?ID
+    original_node_id: str     # 原节�?ID
+    replacement_node_config: dict | None  # 替换配置（None=移除�?
+    reason: str               # 替换原因
+    session_id: str           # 会话 ID
+    timestamp: datetime       # 请求时间
+
+    def is_removal(self) -> bool:
+        """是否为移除操�?""
+```
+
+### 40.5 任务终止请求
+
+```python
+@dataclass
+class TaskTerminationRequest:
+    """任务终止请求"""
+    request_id: str           # 请求唯一标识 (ttr-xxxx)
+    session_id: str           # 会话 ID
+    reason: str               # 终止原因
+    error_code: str           # 错误代码
+    notify_agents: list[str]  # 需要通知�?Agent 列表
+    notify_user: bool         # 是否通知用户
+    timestamp: datetime       # 请求时间
+```
+
+### 40.6 WorkflowModifier API
+
+```python
+class WorkflowModifier:
+    """工作流修改器"""
+
+    def replace_node(
+        self,
+        workflow_definition: dict,
+        request: NodeReplacementRequest,
+    ) -> ModificationResult:
+        """替换节点"""
+
+    def remove_node(
+        self,
+        workflow_definition: dict,
+        request: NodeReplacementRequest,
+    ) -> ModificationResult:
+        """移除节点"""
+
+    def validate_workflow(self, workflow_definition: dict) -> ValidationResult:
+        """验证工作�?""
+```
+
+### 40.7 TaskTerminator API
+
+```python
+class TaskTerminator:
+    """任务终止�?""
+
+    def terminate(self, request: TaskTerminationRequest) -> TerminationResult:
+        """终止任务
+
+        执行�?
+        1. 通知指定�?Agent
+        2. 通知用户（如�?notify_user=True�?
+        3. 创建错误事件
+        4. 记录日志
+        """
+```
+
+### 40.8 InterventionCoordinator API
+
+```python
+class InterventionCoordinator:
+    """干预协调�?""
+
+    def handle_intervention(
+        self,
+        level: InterventionLevel,
+        context: dict,
+    ) -> InterventionResult:
+        """处理干预"""
+
+    def escalate_intervention(
+        self,
+        current_level: InterventionLevel,
+        reason: str,
+    ) -> InterventionLevel:
+        """升级干预级别"""
+```
+
+### 40.9 CoordinatorAgent 集成
+
+```python
+class CoordinatorAgent:
+    def __init__(self, ...):
+        # Phase 34.5: 干预系统
+        self._intervention_logger = InterventionLogger()
+        self.workflow_modifier = WorkflowModifier(logger=self._intervention_logger)
+        self.task_terminator = TaskTerminator(logger=self._intervention_logger)
+        self.intervention_coordinator = InterventionCoordinator(...)
+
+    def replace_workflow_node(
+        self, workflow_definition, node_id, replacement_config, reason, session_id
+    ) -> ModificationResult:
+        """替换工作流节�?""
+
+    def remove_workflow_node(
+        self, workflow_definition, node_id, reason, session_id
+    ) -> ModificationResult:
+        """移除工作流节�?""
+
+    def terminate_task(
+        self, session_id, reason, error_code, notify_agents, notify_user
+    ) -> TerminationResult:
+        """终止任务"""
+
+    def handle_intervention(self, level, context) -> InterventionResult:
+        """处理干预"""
+
+    def get_intervention_logs(self) -> list[dict]:
+        """获取所有干预日�?""
+```
+
+### 40.10 使用示例
+
+**场景 1：检测异�?�?替换节点 �?工作流继�?*
+```python
+coordinator = CoordinatorAgent()
+
+# 1. 监督检测到异常
+context = {
+    "session_id": "session-123",
+    "node_id": "node-broken",
+    "node_config": {"url": "http://broken.com"},
+}
+supervision_results = coordinator.supervise_context(context)
+
+# 2. 发现需要替�?
+if any(r.action == SupervisionAction.REPLACE for r in supervision_results):
+    # 3. 替换节点
+    result = coordinator.replace_workflow_node(
+        workflow_definition=workflow,
+        node_id="node-broken",
+        replacement_config={"type": "http", "config": {"url": "http://working.com"}},
+        reason="节点超时",
+        session_id="session-123",
+    )
+
+    # 4. 验证工作流仍然有�?
+    if result.success:
+        validation = coordinator.workflow_modifier.validate_workflow(result.modified_workflow)
+        assert validation.is_valid
+```
+
+**场景 2：极端异�?�?强制终止 �?用户收到错误**
+```python
+coordinator = CoordinatorAgent()
+
+# 1. 检测到极端异常
+context = {
+    "session_id": "session-456",
+    "error_type": "unrecoverable",
+}
+supervision_results = coordinator.supervise_context(context)
+
+# 2. 发现需要终�?
+if any(r.action == SupervisionAction.TERMINATE for r in supervision_results):
+    # 3. 终止任务
+    result = coordinator.terminate_task(
+        session_id="session-456",
+        reason="系统崩溃",
+        error_code="E999",
+        notify_agents=["conversation", "workflow"],
+        notify_user=True,
+    )
+
+    # 4. 验证用户收到错误
+    assert result.user_notified
+    assert "E999" in result.user_message
+```
+
+**场景 3：干预升�?*
+```python
+# 替换失败时自动升级到终止
+result = coordinator.replace_workflow_node(...)
+
+if not result.success:
+    new_level = coordinator.intervention_coordinator.escalate_intervention(
+        current_level=InterventionLevel.REPLACE,
+        reason="替换失败",
+    )
+    # new_level == InterventionLevel.TERMINATE
+```
+
+### 40.11 日志格式
+
+**节点替换日志�?*
+```
+[INTERVENTION] type=node_replacement workflow=wf-001 node=node-A -> node-A-new reason=节点超时
+```
+
+**任务终止日志�?*
+```
+[INTERVENTION] type=task_termination session=session-123 error_code=E001 reason=系统崩溃
+```
+
+**干预升级日志�?*
+```
+[ESCALATION] REPLACE -> TERMINATE: 替换失败
+```
+
+### 40.12 测试覆盖
+
+| 测试�?| 测试数量 | 覆盖范围 |
+|--------|----------|----------|
+| `TestInterventionLevel` | 7 | 干预级别枚举 |
+| `TestNodeReplacementRequest` | 3 | 节点替换请求 |
+| `TestTaskTerminationRequest` | 4 | 任务终止请求 |
+| `TestWorkflowModifier` | 7 | 工作流修改器 |
+| `TestTaskTerminator` | 6 | 任务终止�?|
+| `TestInterventionCoordinator` | 8 | 干预协调�?|
+| `TestCoordinatorAgentIntegration` | 7 | Coordinator 集成 |
+| `TestIntegrationAnomalyReplaceAndContinue` | 2 | 异常→替换→继续 |
+| `TestIntegrationExtremeAnomalyTerminate` | 3 | 极端异常→终�?|
+| `TestInterventionEvents` | 3 | 干预事件 |
+| `TestInterventionLogger` | 4 | 干预日志 |
+
+**测试运行结果�?*
+```
+tests/unit/domain/services/test_intervention_system.py: 55 passed
+```
+
+### 40.13 文件位置
+
+| 组件 | 文件路径 | 说明 |
+|------|----------|------|
+| 干预系统 | `src/domain/services/intervention_system.py` | 核心实现 |
+| Coordinator 集成 | `src/domain/agents/coordinator_agent.py` | Phase 34.5 |
+| 测试 | `tests/unit/domain/services/test_intervention_system.py` | 55 个测试用例 |
+
+---
+
+## 41. 结果回执与记忆更新 (Save Request Receipt & Memory Update)
+
+### 41.1 概述
+
+当 SaveRequest 执行完成后：
+- Coordinator 返回结果回执（含状态码、错误信息）
+- ConversationAgent 记录在短期/中期记忆以供后续参考
+- 严重违规写入长期知识库
+
+### 41.2 回执状态
+
+```python
+class SaveResultStatus(str, Enum):
+    """保存结果状态"""
+    SUCCESS = "success"       # 成功
+    REJECTED = "rejected"     # 被拒绝（规则违规）
+    FAILED = "failed"         # 执行失败（IO错误等）
+    PENDING = "pending"       # 待处理
+    CANCELLED = "cancelled"   # 已取消
+```
+
+### 41.3 回执数据结构
+
+```python
+@dataclass
+class SaveRequestResult:
+    """保存请求结果回执"""
+    request_id: str                          # 原始请求 ID
+    status: SaveResultStatus                  # 执行状态
+    message: str                             # 状态消息
+    error_code: str | None = None            # 错误代码
+    error_message: str | None = None         # 错误信息
+    execution_time: float | None = None      # 执行时间（秒）
+    violation_severity: str | None = None    # 违规严重级别
+    audit_trail: list[dict] = []             # 审计追踪信息
+    metadata: dict = {}                      # 附加元数据
+    timestamp: datetime                       # 结果时间戳
+
+    def is_success(self) -> bool:
+        """是否成功"""
+
+    def is_error(self) -> bool:
+        """是否为错误"""
+
+    def get_severity(self) -> str:
+        """获取严重级别 (none/low/medium/high/critical)"""
+```
+
+### 41.4 反馈循环时序图
+
+```
+┌─────────────┐   ┌─────────────────────┐   ┌──────────────────┐   ┌───────────────┐
+│ Conversation │   │    Coordinator     │   │  ReceiptSystem   │   │ KnowledgeBase │
+│    Agent     │   │       Agent        │   │                  │   │               │
+└──────┬──────┘   └──────────┬──────────┘   └────────┬─────────┘   └───────┬───────┘
+       │                     │                       │                     │
+       │ SaveRequest         │                       │                     │
+       │────────────────────>│                       │                     │
+       │                     │                       │                     │
+       │                     │ [审核]                │                     │
+       │                     │ analyze_save_request()│                     │
+       │                     │───────────┐           │                     │
+       │                     │           │           │                     │
+       │                     │<──────────┘           │                     │
+       │                     │                       │                     │
+       │                     │ [执行/拒绝]           │                     │
+       │                     │ process_result()     │                     │
+       │                     │──────────────────────>│                     │
+       │                     │                       │                     │
+       │                     │                       │ [记录短期记忆]      │
+       │                     │                       │ record_to_short_term│
+       │                     │                       │───────────┐         │
+       │                     │                       │           │         │
+       │                     │                       │<──────────┘         │
+       │                     │                       │                     │
+       │                     │                       │ [记录中期记忆]      │
+       │                     │                       │ record_to_medium_term
+       │                     │                       │───────────┐         │
+       │                     │                       │           │         │
+       │                     │                       │<──────────┘         │
+       │                     │                       │                     │
+       │                     │                       │ [严重违规?]         │
+       │                     │                       │ YES -> write_violation
+       │                     │                       │────────────────────>│
+       │                     │                       │                     │
+       │                     │                       │ [kb_entry_id]       │
+       │                     │                       │<────────────────────│
+       │                     │                       │                     │
+       │ SaveRequestResultEvent                     │                     │
+       │<────────────────────│                       │                     │
+       │                     │                       │                     │
+       │ [更新本地记忆]      │                       │                     │
+       │───────────┐         │                       │                     │
+       │           │         │                       │                     │
+       │<──────────┘         │                       │                     │
+       │                     │                       │                     │
+```
+
+### 41.5 记忆分层
+
+| 记忆类型 | 容量 | 用途 | 持久性 |
+|---------|------|------|--------|
+| **短期记忆** | 最近 10 条 | 即时上下文 | 会话内 |
+| **中期记忆** | 无限制 | 统计与回顾 | 会话内 |
+| **长期记忆** | 知识库 | 严重违规记录 | 持久化 |
+
+### 41.6 记忆处理器
+
+```python
+class SaveResultMemoryHandler:
+    """保存结果记忆处理器"""
+
+    def record_to_short_term(self, session_id: str, result: SaveRequestResult):
+        """记录到短期记忆"""
+
+    def record_to_medium_term(self, session_id: str, result: SaveRequestResult):
+        """记录到中期记忆"""
+
+    def get_short_term_memory(self, session_id: str) -> list[dict]:
+        """获取短期记忆"""
+
+    def get_medium_term_memory(self, session_id: str) -> list[dict]:
+        """获取中期记忆"""
+
+    def get_session_statistics(self, session_id: str) -> dict:
+        """获取会话统计"""
+
+    def generate_context_for_agent(self, session_id: str) -> dict:
+        """为 ConversationAgent 生成上下文"""
+```
+
+### 41.7 违规知识库写入
+
+```python
+class ViolationKnowledgeWriter:
+    """违规知识库写入器"""
+
+    # 需要写入知识库的严重级别
+    WRITABLE_SEVERITIES = {"high", "critical"}
+
+    def should_write_to_knowledge_base(self, result: SaveRequestResult) -> bool:
+        """判断是否应写入知识库"""
+
+    def write_violation(self, session_id: str, result: SaveRequestResult) -> str:
+        """写入违规记录，返回知识条目 ID"""
+
+    def batch_write_violations(self, session_id: str, results: list) -> list[str]:
+        """批量写入违规记录"""
+```
+
+### 41.8 回执日志记录
+
+```python
+class ReceiptLogger:
+    """回执日志记录器"""
+
+    def log_request_received(self, request_id, session_id, target_path):
+        """记录请求接收"""
+
+    def log_audit_completed(self, request_id, approved, rules_checked):
+        """记录审核完成"""
+
+    def log_receipt_sent(self, request_id, status, message):
+        """记录回执发送"""
+
+    def get_chain_log(self, request_id: str) -> list[dict]:
+        """获取请求的完整链路日志"""
+```
+
+### 41.9 CoordinatorAgent 集成
+
+```python
+class CoordinatorAgent:
+    def __init__(self, ...):
+        # Phase 34.6: 结果回执系统
+        self._save_receipt_logger = ReceiptLogger()
+        self.save_receipt_system = SaveResultReceiptSystem(
+            knowledge_manager=self.knowledge_manager,
+            short_term_limit=10,
+        )
+
+    def send_save_result_receipt(
+        self, session_id, request_id, success, message,
+        error_code=None, error_message=None, violation_severity=None, audit_trail=None
+    ) -> dict:
+        """发送保存结果回执"""
+
+    def process_save_request_with_receipt(self) -> dict | None:
+        """处理保存请求并发送回执（完整流程）"""
+
+    def get_save_receipt_context(self, session_id: str) -> dict:
+        """获取保存回执上下文"""
+
+    def get_save_receipt_chain_log(self, request_id: str) -> dict | None:
+        """获取保存请求的完整链路日志"""
+
+    def get_session_save_statistics(self, session_id: str) -> dict:
+        """获取会话的保存统计"""
+```
+
+### 41.10 使用示例
+
+**场景 1：成功保存并更新记忆**
+```python
+coordinator = CoordinatorAgent()
+coordinator.enable_save_request_handler()
+
+# 处理保存请求并发送回执
+result = coordinator.process_save_request_with_receipt()
+
+# 检查处理结果
+assert result["recorded_to_short_term"]
+assert result["recorded_to_medium_term"]
+assert not result["written_to_knowledge_base"]  # 成功的不写入知识库
+```
+
+**场景 2：严重违规写入长期知识库**
+```python
+# 发送拒绝回执
+result = coordinator.send_save_result_receipt(
+    session_id="session-123",
+    request_id="save-abc",
+    success=False,
+    message="审核未通过: 尝试写入系统目录",
+    error_code="DANGEROUS_PATH",
+    error_message="路径 /etc/passwd 被禁止",
+    violation_severity="critical",  # 严重级别
+    audit_trail=[
+        {"rule": "dangerous_path", "matched": True},
+    ],
+)
+
+# 验证写入知识库
+assert result["written_to_knowledge_base"]
+assert result["knowledge_entry_id"] is not None
+```
+
+**场景 3：获取完整链路日志**
+```python
+# SaveRequest -> 审核 -> 回执 链路
+chain_log = coordinator.get_save_receipt_chain_log("save-abc")
+
+print(chain_log)
+# {
+#     "request_id": "save-abc",
+#     "audit_trail": [...],
+#     "receipt_timestamp": "2025-12-08T10:00:03",
+#     "chain_log": [
+#         {"event": "request_received", ...},
+#         {"event": "audit_completed", ...},
+#         {"event": "receipt_sent", ...},
+#     ]
+# }
+```
+
+**场景 4：为 ConversationAgent 生成上下文**
+```python
+# 获取保存结果相关的上下文
+context = coordinator.get_save_receipt_context("session-123")
+
+print(context)
+# {
+#     "recent_save_results": [...],    # 最近的保存结果
+#     "save_statistics": {
+#         "total_requests": 5,
+#         "success_count": 3,
+#         "rejected_count": 2,
+#         "success_rate": 0.6,
+#     }
+# }
+```
+
+### 41.11 日志格式
+
+**请求接收日志：**
+```
+[RECEIPT] request_received request_id=save-abc session_id=session-123 target_path=/tmp/test.txt
+```
+
+**审核完成日志：**
+```
+[RECEIPT] audit_completed request_id=save-abc approved=True rules_checked=['dangerous_path', 'sensitive_content']
+```
+
+**回执发送日志：**
+```
+[RECEIPT] receipt_sent request_id=save-abc status=success message=保存成功
+```
+
+**知识库写入日志：**
+```
+[VIOLATION WRITTEN] entry_id=kb-entry-123 request_id=save-abc severity=critical
+```
+
+**回执系统处理日志：**
+```
+[RECEIPT SYSTEM] Processed result request_id=save-abc status=success written_to_kb=False
+```
+
+### 41.12 测试覆盖
+
+| 测试类 | 测试数量 | 覆盖范围 |
+|--------|----------|----------|
+| `TestSaveRequestResultDataStructure` | 6 | 回执数据结构 |
+| `TestSaveRequestResultEvent` | 2 | 回执事件 |
+| `TestSaveResultMemoryHandler` | 5 | 记忆处理器 |
+| `TestViolationKnowledgeWriter` | 3 | 违规知识库写入 |
+| `TestSaveResultReceiptSystem` | 3 | 回执系统集成 |
+| `TestConversationAgentIntegration` | 2 | ConversationAgent 集成 |
+| `TestReceiptLogging` | 2 | 日志追踪 |
+| `TestEdgeCases` | 3 | 边界情况 |
+
+**测试运行结果：**
+```
+tests/unit/domain/services/test_save_request_receipt.py: 26 passed
+```
+
+### 41.13 文件位置
+
+| 组件 | 文件路径 | 说明 |
+|------|----------|------|
+| 回执系统 | `src/domain/services/save_request_receipt.py` | 核心实现 |
+| Coordinator 集成 | `src/domain/agents/coordinator_agent.py` | Phase 34.6 |
+| 测试 | `tests/unit/domain/services/test_save_request_receipt.py` | 26 个测试用例 |
 
 ---

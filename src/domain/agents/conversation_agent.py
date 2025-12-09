@@ -478,6 +478,89 @@ class ConversationAgent:
         self.progress_events: list[Any] = []  # 存储进度事件历史
         self._is_listening_progress = False
 
+        # Phase 34: 保存请求通道
+        self._save_request_channel_enabled = False
+
+    # =========================================================================
+    # Phase 34: 保存请求通道方法
+    # =========================================================================
+
+    def enable_save_request_channel(self) -> None:
+        """启用保存请求通道
+
+        启用后，ConversationAgent 将通过 SaveRequest 事件请求持久化操作，
+        而不是直接执行文件写入。
+        """
+        self._save_request_channel_enabled = True
+
+    def disable_save_request_channel(self) -> None:
+        """禁用保存请求通道"""
+        self._save_request_channel_enabled = False
+
+    def is_save_request_channel_enabled(self) -> bool:
+        """检查保存请求通道是否启用
+
+        返回：
+            True 如果已启用
+        """
+        return self._save_request_channel_enabled
+
+    def request_save(
+        self,
+        target_path: str,
+        content: str | bytes,
+        reason: str,
+        priority: Any | None = None,
+        is_binary: bool = False,
+    ) -> str | None:
+        """发起保存请求
+
+        通过 EventBus 发布 SaveRequest 事件，而非直接写入文件。
+        需要先调用 enable_save_request_channel() 启用此功能。
+
+        参数：
+            target_path: 目标文件路径
+            content: 保存内容
+            reason: 保存原因说明
+            priority: 优先级（可选）
+            is_binary: 是否为二进制内容
+
+        返回：
+            请求 ID，如果发送失败返回 None
+        """
+        if not self._save_request_channel_enabled:
+            return None
+
+        if not self.event_bus:
+            return None
+
+        from src.domain.services.save_request_channel import (
+            SaveRequest,
+            SaveRequestPriority,
+            SaveRequestType,
+        )
+
+        # 设置默认优先级
+        if priority is None:
+            priority = SaveRequestPriority.NORMAL
+
+        # 创建保存请求
+        request = SaveRequest(
+            target_path=target_path,
+            content=content,
+            operation_type=SaveRequestType.FILE_WRITE,
+            session_id=self.session_context.session_id,
+            reason=reason,
+            priority=priority,
+            source_agent="ConversationAgent",
+            is_binary=is_binary,
+        )
+
+        # 发布事件
+        self.event_bus.publish(request)
+
+        return request.request_id
+
     @property
     def state(self) -> ConversationAgentState:
         """获取当前状态"""
@@ -1395,7 +1478,7 @@ class ConversationAgent:
         # 调用 LLM 规划工作流
         plan_data = await self.llm.plan_workflow(goal, context)
 
-        # 转换节点
+        # 转换节点（支持父节点）
         nodes = []
         for node_data in plan_data.get("nodes", []):
             node_type_str = node_data.get("type", "generic")
@@ -1413,7 +1496,36 @@ class ConversationAgent:
                 method=node_data.get("method", "GET"),
                 query=node_data.get("query"),
                 config=node_data.get("config", {}),
+                # Phase 9: 父节点策略支持
+                error_strategy=node_data.get("error_strategy"),
+                resource_limits=node_data.get("resource_limits", {}),
             )
+
+            # Phase 9: 如果有子节点，添加并传播策略
+            if "children" in node_data and node_data["children"]:
+                for child_data in node_data["children"]:
+                    child_type_str = child_data.get("type", "python")
+                    try:
+                        child_type = NodeType(child_type_str.lower())
+                    except ValueError:
+                        child_type = NodeType.PYTHON
+
+                    child = NodeDefinition(
+                        node_type=child_type,
+                        name=child_data.get("name", ""),
+                        code=child_data.get("code"),
+                        prompt=child_data.get("prompt"),
+                        url=child_data.get("url"),
+                        method=child_data.get("method", "GET"),
+                        query=child_data.get("query"),
+                        config=child_data.get("config", {}),
+                    )
+                    node.add_child(child)
+
+                # 传播策略到子节点
+                if node.error_strategy or node.resource_limits:
+                    node.propagate_strategy_to_children()
+
             nodes.append(node)
 
         # 转换边
@@ -1460,7 +1572,7 @@ class ConversationAgent:
         # 调用 LLM 分解
         node_dicts = await self.llm.decompose_to_nodes(goal)
 
-        # 转换为 NodeDefinition
+        # 转换为 NodeDefinition（支持父节点）
         nodes = []
         for node_data in node_dicts:
             node_type_str = node_data.get("type", "generic")
@@ -1477,7 +1589,35 @@ class ConversationAgent:
                 url=node_data.get("url"),
                 query=node_data.get("query"),
                 config=node_data.get("config", {}),
+                # Phase 9: 父节点策略支持
+                error_strategy=node_data.get("error_strategy"),
+                resource_limits=node_data.get("resource_limits", {}),
             )
+
+            # Phase 9: 如果有子节点，添加并传播策略
+            if "children" in node_data and node_data["children"]:
+                for child_data in node_data["children"]:
+                    child_type_str = child_data.get("type", "python")
+                    try:
+                        child_type = NodeType(child_type_str.lower())
+                    except ValueError:
+                        child_type = NodeType.PYTHON
+
+                    child = NodeDefinition(
+                        node_type=child_type,
+                        name=child_data.get("name", ""),
+                        code=child_data.get("code"),
+                        prompt=child_data.get("prompt"),
+                        url=child_data.get("url"),
+                        query=child_data.get("query"),
+                        config=child_data.get("config", {}),
+                    )
+                    node.add_child(child)
+
+                # 传播策略到子节点
+                if node.error_strategy or node.resource_limits:
+                    node.propagate_strategy_to_children()
+
             nodes.append(node)
 
         return nodes

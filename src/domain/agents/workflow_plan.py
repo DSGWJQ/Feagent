@@ -62,6 +62,10 @@ class EdgeDefinition:
         )
 
 
+# 有效的 on_failure 值
+VALID_ON_FAILURE_VALUES = {"retry", "skip", "abort", "replan", "fallback"}
+
+
 @dataclass
 class WorkflowPlan:
     """工作流规划
@@ -75,6 +79,7 @@ class WorkflowPlan:
         goal: 对应的用户目标
         nodes: 节点定义列表
         edges: 边定义列表
+        default_error_strategy: 全局默认错误策略
     """
 
     name: str
@@ -83,6 +88,7 @@ class WorkflowPlan:
     description: str = ""
     nodes: list[NodeDefinition] = field(default_factory=list)
     edges: list[EdgeDefinition] = field(default_factory=list)
+    default_error_strategy: dict[str, Any] | None = None
 
     def validate(self) -> list[str]:
         """验证规划完整性
@@ -90,6 +96,7 @@ class WorkflowPlan:
         检查：
         1. 所有节点定义是否有效
         2. 边引用的节点是否存在
+        3. 默认错误策略是否有效
 
         返回：
             错误列表，空列表表示验证通过
@@ -112,7 +119,98 @@ class WorkflowPlan:
             if edge.target_node not in node_names:
                 errors.append(f"边的目标节点 (target) '{edge.target_node}' 不存在")
 
+        # 3. 验证默认错误策略
+        if self.default_error_strategy:
+            strategy_errors = self._validate_error_strategy(self.default_error_strategy)
+            errors.extend(strategy_errors)
+
         return errors
+
+    def _validate_error_strategy(self, strategy: dict[str, Any]) -> list[str]:
+        """验证错误策略
+
+        参数：
+            strategy: 错误策略字典
+
+        返回：
+            错误列表
+        """
+        errors = []
+
+        # 验证 on_failure 值
+        if "on_failure" in strategy:
+            on_failure = strategy["on_failure"]
+            if on_failure not in VALID_ON_FAILURE_VALUES:
+                errors.append(
+                    f"无效的 on_failure 值 '{on_failure}'，"
+                    f"有效值为: {', '.join(sorted(VALID_ON_FAILURE_VALUES))}"
+                )
+
+        # 验证 retry.max_attempts 范围
+        if "retry" in strategy and isinstance(strategy["retry"], dict):
+            retry_config = strategy["retry"]
+            if "max_attempts" in retry_config:
+                max_attempts = retry_config["max_attempts"]
+                if not isinstance(max_attempts, int) or max_attempts < 0:
+                    errors.append("retry.max_attempts 必须是非负整数")
+                elif max_attempts > 10:
+                    errors.append("retry.max_attempts 不能超过 10")
+
+        return errors
+
+    def get_effective_error_strategy(self, node_name: str) -> dict[str, Any] | None:
+        """获取节点的有效错误策略
+
+        合并逻辑：节点策略 > 全局默认策略
+
+        参数：
+            node_name: 节点名称
+
+        返回：
+            合并后的有效策略，或 None（如果无策略）
+        """
+        node = self.get_node_by_name(node_name)
+        if not node:
+            return None
+
+        # 获取节点策略
+        node_strategy = getattr(node, "error_strategy", None)
+
+        # 如果节点没有策略，返回全局策略
+        if not node_strategy:
+            return self.default_error_strategy
+
+        # 如果没有全局策略，返回节点策略
+        if not self.default_error_strategy:
+            return node_strategy
+
+        # 合并策略：节点策略覆盖全局策略
+        merged = self._deep_merge(self.default_error_strategy, node_strategy)
+        return merged
+
+    def _deep_merge(
+        self, base: dict[str, Any], override: dict[str, Any]
+    ) -> dict[str, Any]:
+        """深度合并两个字典
+
+        参数：
+            base: 基础字典
+            override: 覆盖字典
+
+        返回：
+            合并后的字典
+        """
+        result = base.copy()
+        for key, value in override.items():
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
 
     def has_circular_dependency(self) -> bool:
         """检测是否有循环依赖
@@ -235,7 +333,7 @@ class WorkflowPlan:
         返回：
             包含完整规划的字典
         """
-        return {
+        result = {
             "id": self.id,
             "name": self.name,
             "description": self.description,
@@ -243,6 +341,9 @@ class WorkflowPlan:
             "nodes": [node.to_dict() for node in self.nodes],
             "edges": [edge.to_dict() for edge in self.edges],
         }
+        if self.default_error_strategy:
+            result["default_error_strategy"] = self.default_error_strategy
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WorkflowPlan":
@@ -264,6 +365,7 @@ class WorkflowPlan:
             goal=data.get("goal", ""),
             nodes=nodes,
             edges=edges,
+            default_error_strategy=data.get("default_error_strategy"),
         )
 
 

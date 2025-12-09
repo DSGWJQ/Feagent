@@ -149,6 +149,42 @@ class SelfDescribingNodeDefinition:
         return []
 
     @classmethod
+    def from_yaml(cls, yaml_content: str) -> "SelfDescribingNodeDefinition":
+        """从 YAML 字符串创建
+
+        参数：
+            yaml_content: YAML 格式的节点定义
+
+        返回：
+            节点定义实例
+
+        异常：
+            ValueError: 当 YAML 内容无效或嵌套配置无效时
+        """
+        try:
+            data = yaml.safe_load(yaml_content)
+            if not data or not isinstance(data, dict):
+                raise ValueError("无效的 YAML 内容：必须是非空字典")
+
+            # 验证嵌套配置
+            if "nested" in data:
+                nested_data = data["nested"]
+                if not isinstance(nested_data, dict):
+                    raise ValueError("无效的嵌套配置：nested 必须是字典")
+
+                children = nested_data.get("children")
+                if children is None:
+                    raise ValueError("无效的嵌套配置：缺少 children 字段")
+                if not isinstance(children, list):
+                    raise ValueError("无效的嵌套配置：children 必须是列表")
+                if len(children) == 0:
+                    raise ValueError("无效的嵌套配置：children 不能为空列表")
+
+            return cls.from_dict(data)
+        except yaml.YAMLError as e:
+            raise ValueError(f"YAML 解析错误: {e}") from e
+
+    @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SelfDescribingNodeDefinition":
         """从字典创建"""
         # 解析参数
