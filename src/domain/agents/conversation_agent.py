@@ -42,6 +42,32 @@ DEFAULT_INTENT_CONFIDENCE_THRESHOLD = 0.7
 RULE_BASED_EXTRACTION_CONFIDENCE = 0.6
 """基于规则提取的置信度（较低，因为不如LLM准确）"""
 
+# =========================================================================
+# P1 Fix: 决策类型映射常量（避免重复创建）
+# =========================================================================
+# 注意：此映射在 DecisionType 枚举定义后使用，在 make_decision 中引用
+# 延迟定义为 lambda 以避免循环引用
+_DECISION_TYPE_MAP: dict[str, "DecisionType"] | None = None
+
+
+def _get_decision_type_map() -> dict[str, "DecisionType"]:
+    """获取决策类型映射（延迟初始化）"""
+    global _DECISION_TYPE_MAP
+    if _DECISION_TYPE_MAP is None:
+        _DECISION_TYPE_MAP = {
+            "create_node": DecisionType.CREATE_NODE,
+            "create_workflow_plan": DecisionType.CREATE_WORKFLOW_PLAN,
+            "execute_workflow": DecisionType.EXECUTE_WORKFLOW,
+            "modify_node": DecisionType.MODIFY_NODE,
+            "request_clarification": DecisionType.REQUEST_CLARIFICATION,
+            "respond": DecisionType.RESPOND,
+            "continue": DecisionType.CONTINUE,
+            "error_recovery": DecisionType.ERROR_RECOVERY,
+            "replan_workflow": DecisionType.REPLAN_WORKFLOW,
+            "spawn_subagent": DecisionType.SPAWN_SUBAGENT,
+        }
+    return _DECISION_TYPE_MAP
+
 if TYPE_CHECKING:
     from src.domain.agents.control_flow_ir import ControlFlowIR
     from src.domain.agents.error_handling import (
@@ -503,6 +529,9 @@ class ConversationAgent:
         # P0 Fix: Task tracking to prevent race conditions
         self._pending_tasks: set[asyncio.Task[Any]] = set()
 
+        # P1 Fix: 决策元数据自管（避免污染 session_context）
+        self._decision_metadata: list[dict[str, Any]] = []
+
     def _create_tracked_task(self, coro: Any) -> asyncio.Task[Any]:
         """创建被追踪的异步任务
 
@@ -594,8 +623,8 @@ class ConversationAgent:
             is_binary=is_binary,
         )
 
-        # 发布事件
-        self.event_bus.publish(request)
+        # P1 Fix: 使用 _create_tracked_task 确保事件被发布（避免协程被丢弃）
+        self._create_tracked_task(self.event_bus.publish(request))
 
         return request.request_id
 
@@ -1288,11 +1317,9 @@ class ConversationAgent:
             # 使用验证后的 payload（转回字典）
             validated_dict = validated_payload.model_dump()
 
-            # 将元数据添加到 session context（用于调试和监控）
+            # P1 Fix: 将元数据添加到自管列表（避免污染 session_context）
             if metadata:
-                if not hasattr(self.session_context, "_decision_metadata"):
-                    self.session_context._decision_metadata = []
-                self.session_context._decision_metadata.append(
+                self._decision_metadata.append(
                     {
                         "action_type": action_type,
                         "timestamp": datetime.now().isoformat(),
@@ -1321,21 +1348,9 @@ class ConversationAgent:
             raise
 
         # 转换为Decision（使用验证后的 payload）
-        decision_type_mapping = {
-            "create_node": DecisionType.CREATE_NODE,
-            "create_workflow_plan": DecisionType.CREATE_WORKFLOW_PLAN,
-            "execute_workflow": DecisionType.EXECUTE_WORKFLOW,
-            "modify_node": DecisionType.MODIFY_NODE,
-            "request_clarification": DecisionType.REQUEST_CLARIFICATION,
-            "respond": DecisionType.RESPOND,
-            "continue": DecisionType.CONTINUE,
-            "error_recovery": DecisionType.ERROR_RECOVERY,
-            "replan_workflow": DecisionType.REPLAN_WORKFLOW,
-            "spawn_subagent": DecisionType.SPAWN_SUBAGENT,
-        }
-
+        # P1 Fix: 使用模块级常量映射，避免每次调用重建字典
         decision = Decision(
-            type=decision_type_mapping.get(action_type, DecisionType.CONTINUE),
+            type=_get_decision_type_map().get(action_type, DecisionType.CONTINUE),
             payload=validated_dict,  # 使用验证后的 payload
         )
 
