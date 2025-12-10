@@ -194,17 +194,17 @@ class ControlFlowIR:
 
         loops = [
             LoopSpec(
-                id=l.get("id", ""),
-                description=l.get("description", ""),
-                collection=l.get("collection", "items"),
-                loop_variable=l.get("loop_variable", "item"),
-                loop_type=l.get("loop_type", "for_each"),
-                body_task_ids=l.get("body_task_ids", []),
-                condition=l.get("condition"),
-                confidence=l.get("confidence", 1.0),
-                source_text=l.get("source_text", ""),
+                id=loop_data.get("id", ""),
+                description=loop_data.get("description", ""),
+                collection=loop_data.get("collection", "items"),
+                loop_variable=loop_data.get("loop_variable", "item"),
+                loop_type=loop_data.get("loop_type", "for_each"),
+                body_task_ids=loop_data.get("body_task_ids", []),
+                condition=loop_data.get("condition"),
+                confidence=loop_data.get("confidence", 1.0),
+                source_text=loop_data.get("source_text", ""),
             )
-            for l in data.get("loops", [])
+            for loop_data in data.get("loops", [])
         ]
 
         tasks = [

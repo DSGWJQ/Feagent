@@ -30,6 +30,27 @@ from src.domain.services.event_bus import Event, EventBus
 
 logger = logging.getLogger(__name__)
 
+# =========================================================================
+# P1 Fix: 配置常量（避免魔法数字）
+# =========================================================================
+DEFAULT_REJECTION_RATE_THRESHOLD = 0.5
+"""默认决策拒绝率阈值"""
+
+DEFAULT_MAX_RETRIES = 3
+"""默认最大重试次数"""
+
+DEFAULT_RETRY_DELAY = 1.0
+"""默认重试延迟（秒）"""
+
+MAX_MESSAGE_LOG_SIZE = 1000
+"""消息日志最大条目数（防止内存泄漏）"""
+
+MAX_CONTAINER_LOGS_SIZE = 500
+"""容器日志最大条目数"""
+
+MAX_SUBAGENT_RESULTS_SIZE = 100
+"""子Agent结果历史最大条目数"""
+
 
 class FailureHandlingStrategy(str, Enum):
     """失败处理策略枚举
@@ -264,7 +285,7 @@ class CoordinatorAgent:
     def __init__(
         self,
         event_bus: EventBus | None = None,
-        rejection_rate_threshold: float = 0.5,
+        rejection_rate_threshold: float = DEFAULT_REJECTION_RATE_THRESHOLD,
         circuit_breaker_config: Any | None = None,
         context_bridge: Any | None = None,
         failure_strategy_config: dict[str, Any] | None = None,
@@ -492,6 +513,27 @@ class CoordinatorAgent:
         self._allowed_api_schemes = {"http", "https"}
         # 人机交互内容安全配置
         self._human_sensitive_patterns: list[str] | None = None
+
+    # =========================================================================
+    # P1-6 Fix: 有界列表辅助方法（防止内存泄漏）
+    # =========================================================================
+
+    def _add_to_bounded_list(
+        self,
+        target_list: list[Any],
+        item: Any,
+        max_size: int,
+    ) -> None:
+        """添加项目到有界列表，超出限制时移除最旧的项
+
+        参数：
+            target_list: 目标列表
+            item: 要添加的项目
+            max_size: 最大大小限制
+        """
+        target_list.append(item)
+        while len(target_list) > max_size:
+            target_list.pop(0)  # 移除最旧的
 
     # ==================== Phase 5 (七种节点类型): 安全规则配置与验证 ====================
 
@@ -3193,8 +3235,8 @@ class CoordinatorAgent:
         """处理重试策略"""
         import asyncio
 
-        max_retries = self.failure_strategy_config.get("max_retries", 3)
-        retry_delay = self.failure_strategy_config.get("retry_delay", 1.0)
+        max_retries = self.failure_strategy_config.get("max_retries", DEFAULT_MAX_RETRIES)
+        retry_delay = self.failure_strategy_config.get("retry_delay", DEFAULT_RETRY_DELAY)
 
         agent = self._workflow_agents.get(workflow_id)
         if not agent:
@@ -3384,12 +3426,14 @@ class CoordinatorAgent:
     async def _handle_simple_message_event(self, event: Any) -> None:
         """处理简单消息事件
 
-        将消息记录到 message_log。
+        将消息记录到 message_log（带大小限制防止内存泄漏）。
 
         参数：
             event: SimpleMessageEvent 实例
         """
-        self.message_log.append(
+        # P1-6 Fix: 使用有界列表防止内存泄漏
+        self._add_to_bounded_list(
+            self.message_log,
             {
                 "user_input": event.user_input,
                 "response": event.response,
@@ -3397,7 +3441,8 @@ class CoordinatorAgent:
                 "confidence": event.confidence,
                 "session_id": event.session_id,
                 "timestamp": event.timestamp,
-            }
+            },
+            MAX_MESSAGE_LOG_SIZE,
         )
 
     def get_message_statistics(self) -> dict[str, Any]:
@@ -3991,19 +4036,22 @@ class CoordinatorAgent:
         )
 
     async def _handle_container_log(self, event: Any) -> None:
-        """处理容器日志事件"""
+        """处理容器日志事件（带大小限制防止内存泄漏）"""
         container_id = event.container_id
 
         if container_id not in self.container_logs:
             self.container_logs[container_id] = []
 
-        self.container_logs[container_id].append(
+        # P1-6 Fix: 使用有界列表防止内存泄漏
+        self._add_to_bounded_list(
+            self.container_logs[container_id],
             {
                 "level": event.log_level,
                 "message": event.message,
                 "timestamp": event.timestamp,
                 "node_id": event.node_id,
-            }
+            },
+            MAX_CONTAINER_LOGS_SIZE,
         )
 
     def get_workflow_container_executions(self, workflow_id: str) -> list[dict[str, Any]]:

@@ -20,6 +20,7 @@
 """
 
 import asyncio
+import copy
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -29,9 +30,27 @@ from uuid import uuid4
 from src.domain.services.context_manager import Goal, SessionContext
 from src.domain.services.event_bus import Event, EventBus
 
+# =========================================================================
+# P1 Fix: 配置常量（避免魔法数字）
+# =========================================================================
+DEFAULT_MAX_ITERATIONS = 10
+"""默认最大ReAct迭代次数"""
+
+DEFAULT_INTENT_CONFIDENCE_THRESHOLD = 0.7
+"""默认意图分类置信度阈值"""
+
+RULE_BASED_EXTRACTION_CONFIDENCE = 0.6
+"""基于规则提取的置信度（较低，因为不如LLM准确）"""
+
 if TYPE_CHECKING:
+    from src.domain.agents.control_flow_ir import ControlFlowIR
+    from src.domain.agents.error_handling import (
+        FormattedError,
+        UserDecision,
+        UserDecisionResult,
+    )
     from src.domain.agents.node_definition import NodeDefinition
-    from src.domain.agents.workflow_plan import WorkflowPlan
+    from src.domain.agents.workflow_plan import EdgeDefinition, WorkflowPlan
 
 
 class StepType(str, Enum):
@@ -406,13 +425,13 @@ class ConversationAgent:
         session_context: SessionContext,
         llm: ConversationAgentLLM,
         event_bus: EventBus | None = None,
-        max_iterations: int = 10,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
         timeout_seconds: float | None = None,
         max_tokens: int | None = None,
         max_cost: float | None = None,
         coordinator: Any | None = None,
         enable_intent_classification: bool = False,
-        intent_confidence_threshold: float = 0.7,
+        intent_confidence_threshold: float = DEFAULT_INTENT_CONFIDENCE_THRESHOLD,
         emitter: Any | None = None,
         stream_emitter: Any | None = None,
     ):
@@ -480,6 +499,25 @@ class ConversationAgent:
 
         # Phase 34: 保存请求通道
         self._save_request_channel_enabled = False
+
+        # P0 Fix: Task tracking to prevent race conditions
+        self._pending_tasks: set[asyncio.Task[Any]] = set()
+
+    def _create_tracked_task(self, coro: Any) -> asyncio.Task[Any]:
+        """创建被追踪的异步任务
+
+        防止任务在完成前被垃圾回收（P0 Race Condition 修复）
+
+        参数：
+            coro: 协程对象
+
+        返回：
+            被追踪的 Task 对象
+        """
+        task = asyncio.create_task(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        return task
 
     # =========================================================================
     # Phase 34: 保存请求通道方法
@@ -585,8 +623,9 @@ class ConversationAgent:
         self._state = new_state
 
         # 发布状态变化事件（异步任务，不阻塞同步方法）
+        # P0 Fix: Track task to prevent garbage collection before completion
         if self.event_bus:
-            asyncio.create_task(
+            self._create_tracked_task(
                 self.event_bus.publish(
                     StateChangedEvent(
                         from_state=old_state.value,
@@ -614,7 +653,8 @@ class ConversationAgent:
         """
         self.pending_subagent_id = subagent_id
         self.pending_task_id = task_id
-        self.suspended_context = context.copy()
+        # P0 Fix: Use deepcopy to prevent shared nested references
+        self.suspended_context = copy.deepcopy(context)
         self.transition_to(ConversationAgentState.WAITING_FOR_SUBAGENT)
 
     def resume_from_subagent(self, result: dict[str, Any]) -> dict[str, Any]:
@@ -629,7 +669,8 @@ class ConversationAgent:
             恢复的上下文（包含子Agent结果）
         """
         # 获取保存的上下文
-        context = self.suspended_context.copy() if self.suspended_context else {}
+        # P0 Fix: Use deepcopy to prevent shared nested references
+        context = copy.deepcopy(self.suspended_context) if self.suspended_context else {}
 
         # 添加子Agent结果
         context["subagent_result"] = result
@@ -715,8 +756,9 @@ class ConversationAgent:
         task_id = f"task_{uuid4().hex[:8]}"
 
         # 发布事件（异步任务，不阻塞同步方法）
+        # P0 Fix: Track task to prevent garbage collection before completion
         if self.event_bus:
-            asyncio.create_task(
+            self._create_tracked_task(
                 self.event_bus.publish(
                     SpawnSubAgentEvent(
                         subagent_type=subagent_type,
@@ -2329,7 +2371,7 @@ class ConversationAgent:
                     description="conditional_branch",
                     expression="...",  # 占位符，实际需要 LLM 或更复杂的解析
                     branches=[],
-                    confidence=0.6,  # 规则识别置信度较低
+                    confidence=RULE_BASED_EXTRACTION_CONFIDENCE,  # 规则识别置信度较低
                     source_text=text,
                 )
             )
@@ -2344,7 +2386,7 @@ class ConversationAgent:
                     collection="items",  # 默认集合名
                     loop_variable="item",
                     loop_type="for_each",
-                    confidence=0.6,
+                    confidence=RULE_BASED_EXTRACTION_CONFIDENCE,
                     source_text=text,
                 )
             )
@@ -2425,9 +2467,7 @@ class ConversationAgent:
 
             # 循环体任务边
             for task_id in loop.body_task_ids:
-                new_edges.append(
-                    EdgeDefinition(source_node=loop_name, target_node=task_id)
-                )
+                new_edges.append(EdgeDefinition(source_node=loop_name, target_node=task_id))
 
         return new_nodes, new_edges
 
