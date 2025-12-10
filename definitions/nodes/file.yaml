@@ -1,0 +1,57 @@
+# File 节点 - 本地文件操作
+name: file
+kind: node
+description: 本地文件的读取、写入、追加、删除与目录列出
+version: "1.0.0"
+
+parameters:
+  - name: operation
+    type: string
+    description: 文件操作类型
+    required: true
+    default: read
+    enum: [read, write, append, delete, list]
+  - name: path
+    type: string
+    description: 目标文件或目录路径
+    required: true
+  - name: content
+    type: string
+    description: 写入/追加的内容（write/append 必填）
+    required: false
+  - name: encoding
+    type: string
+    description: 文件编码
+    required: false
+    default: "utf-8"
+
+returns:
+  type: object
+  properties:
+    path:
+      type: string
+      description: 操作的文件路径
+    operation:
+      type: string
+      description: 执行的操作类型
+    content:
+      type: string
+      description: read 操作返回的内容
+    bytes_written:
+      type: integer
+      description: write/append 操作写入的字节数
+    items:
+      type: array
+      description: list 操作返回的目录项
+    count:
+      type: integer
+      description: list 操作返回的目录项数量
+    status:
+      type: string
+      description: 操作状态
+
+executor_type: file
+
+conditions:
+  - when: operation in ["write", "append"]
+    require: ["content"]

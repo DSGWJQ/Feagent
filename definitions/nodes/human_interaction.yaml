@@ -1,0 +1,37 @@
+# Human 节点 - 人机交互挂起
+name: human_interaction
+kind: node
+description: 需要人工确认或输入的步骤，执行时挂起工作流
+version: "1.0.0"
+
+parameters:
+  - name: prompt
+    type: string
+    description: 展示给用户的提示
+    required: true
+  - name: expected_inputs
+    type: array
+    description: 允许的输入选项（可选）
+    required: false
+    default: []
+  - name: timeout_seconds
+    type: integer
+    description: 超时挂起秒数
+    required: false
+    default: 300
+  - name: metadata
+    type: object
+    description: 透传到事件总线的上下文
+    required: false
+
+returns:
+  type: object
+  properties:
+    status:
+      type: string
+      description: pending_human_input 或 completed
+    response:
+      type: object
+      description: 人类输入内容
+
+executor_type: human

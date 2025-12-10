@@ -71,6 +71,10 @@ class NodeType(str, Enum):
     LOOP = "LOOP"
     PARALLEL = "PARALLEL"
     CONTAINER = "CONTAINER"
+    FILE = "FILE"  # Phase 4: 文件操作节点
+    DATA_PROCESS = "DATA_PROCESS"  # Phase 4: 数据处理节点
+    HUMAN = "HUMAN"  # Phase 4: 人机交互节点
+    GENERIC = "GENERIC"  # Phase 4: 通用节点
 
 
 class ExecutionMode(str, Enum):
@@ -541,8 +545,8 @@ def create_payload_from_dict(
 
     try:
         action_enum = ActionType(action_type)
-    except ValueError:
-        raise ValueError(f"未知的 action_type: {action_type}")
+    except ValueError as err:
+        raise ValueError(f"未知的 action_type: {action_type}") from err
 
     payload_class = payload_map[action_enum]
     return payload_class(**payload_dict)

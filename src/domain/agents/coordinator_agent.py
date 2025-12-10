@@ -435,8 +435,10 @@ class CoordinatorAgent:
 
         # ==================== Phase 34.4: 监督模块 ====================
         from src.domain.services.supervision_module import (
-            SupervisionModule,
             SupervisionLogger as SupLogger,
+        )
+        from src.domain.services.supervision_module import (
+            SupervisionModule,
         )
 
         self._supervision_logger = SupLogger()
@@ -448,9 +450,9 @@ class CoordinatorAgent:
         # ==================== Phase 34.5: 干预系统 ====================
         from src.domain.services.intervention_system import (
             InterventionCoordinator,
-            WorkflowModifier,
-            TaskTerminator,
             InterventionLogger,
+            TaskTerminator,
+            WorkflowModifier,
         )
 
         self._intervention_logger = InterventionLogger()
@@ -464,8 +466,10 @@ class CoordinatorAgent:
 
         # ==================== Phase 34.6: 结果回执系统 ====================
         from src.domain.services.save_request_receipt import (
-            SaveResultReceiptSystem,
             ReceiptLogger as SaveReceiptLogger,
+        )
+        from src.domain.services.save_request_receipt import (
+            SaveResultReceiptSystem,
         )
 
         self._save_receipt_logger = SaveReceiptLogger()
@@ -473,6 +477,283 @@ class CoordinatorAgent:
             knowledge_manager=self.knowledge_manager,
             short_term_limit=10,
         )
+
+        # ==================== Phase 5 (七种节点类型): 安全配置 ====================
+        # 文件操作安全配置
+        self._file_security_config = {
+            "whitelist": [],
+            "blacklist": ["/etc", "/sys", "/proc", "/root", "/boot", "/dev"],
+            "max_content_bytes": 2 * 1024 * 1024,  # 2MB
+            "allowed_operations": {"read", "write", "append", "delete", "list"},
+        }
+        # API请求安全配置
+        self._api_domain_whitelist: set[str] = set()
+        self._api_domain_blacklist: set[str] = set()
+        self._allowed_api_schemes = {"http", "https"}
+        # 人机交互内容安全配置
+        self._human_sensitive_patterns: list[str] | None = None
+
+    # ==================== Phase 5 (七种节点类型): 安全规则配置与验证 ====================
+
+    def configure_file_security(
+        self,
+        whitelist: list[str] | None = None,
+        blacklist: list[str] | None = None,
+        max_content_bytes: int | None = None,
+        allowed_operations: set[str] | None = None,
+    ) -> None:
+        """配置文件操作安全规则
+
+        参数:
+            whitelist: 允许访问的路径白名单
+            blacklist: 禁止访问的路径黑名单
+            max_content_bytes: 内容最大字节数限制
+            allowed_operations: 允许的操作类型集合
+        """
+        if whitelist is not None:
+            self._file_security_config["whitelist"] = whitelist
+        if blacklist is not None:
+            self._file_security_config["blacklist"] = blacklist
+        if max_content_bytes is not None:
+            self._file_security_config["max_content_bytes"] = max_content_bytes
+        if allowed_operations is not None:
+            self._file_security_config["allowed_operations"] = allowed_operations
+
+    def configure_api_domains(
+        self,
+        whitelist: list[str] | None = None,
+        blacklist: list[str] | None = None,
+        allowed_schemes: set[str] | None = None,
+    ) -> None:
+        """配置API域名白名单规则
+
+        参数:
+            whitelist: 允许访问的域名白名单
+            blacklist: 禁止访问的域名黑名单
+            allowed_schemes: 允许的URL scheme集合
+        """
+        if whitelist is not None:
+            self._api_domain_whitelist = set(whitelist)
+        if blacklist is not None:
+            self._api_domain_blacklist = set(blacklist)
+        if allowed_schemes is not None:
+            self._allowed_api_schemes = allowed_schemes
+
+    async def validate_file_operation(
+        self,
+        node_id: str,
+        operation: str | None,
+        path: str | None,
+        config: dict[str, Any] | None = None,
+    ) -> ValidationResult:
+        """验证文件操作安全性
+
+        参数:
+            node_id: 节点ID
+            operation: 文件操作类型（read/write/append/delete/list）
+            path: 文件路径
+            config: 节点配置，包含content等字段
+
+        返回:
+            ValidationResult: 验证结果
+        """
+        from pathlib import Path
+
+        errors: list[str] = []
+
+        # 检查operation合法性
+        if not operation or operation not in self._file_security_config["allowed_operations"]:
+            errors.append(f"invalid operation: {operation}")
+
+        # 检查path必填
+        if not path:
+            errors.append("path is required")
+            return ValidationResult(is_valid=False, errors=errors)
+
+        # 路径遍历检测（Phase 5 Codex审查修复：无论是否配置whitelist都检测）
+        raw_path = Path(path)
+        if ".." in raw_path.parts:
+            errors.append("path contains traversal segments")
+
+        # 规范化路径
+        try:
+            target_path = Path(path).expanduser().resolve()
+        except Exception as e:
+            errors.append(f"invalid path format: {e}")
+            return ValidationResult(is_valid=False, errors=errors)
+
+        # 黑名单检查
+        for blacklist_pattern in self._file_security_config["blacklist"]:
+            try:
+                if target_path.is_relative_to(Path(blacklist_pattern).resolve()):
+                    errors.append(f"path is blacklisted: {blacklist_pattern}")
+                    break
+            except Exception:
+                # 如果黑名单路径不存在，仍然检查字符串匹配
+                if str(target_path).startswith(blacklist_pattern):
+                    errors.append(f"path is blacklisted: {blacklist_pattern}")
+                    break
+
+        # 白名单检查
+        whitelist = self._file_security_config["whitelist"]
+        if whitelist:
+            is_in_whitelist = False
+            for allowed_root in whitelist:
+                try:
+                    if target_path.is_relative_to(Path(allowed_root).expanduser().resolve()):
+                        is_in_whitelist = True
+                        break
+                except Exception:
+                    # 如果白名单路径不存在，检查字符串匹配
+                    if str(target_path).startswith(allowed_root):
+                        is_in_whitelist = True
+                        break
+
+            if not is_in_whitelist:
+                errors.append("path not in whitelist")
+
+        # 内容检查（write/append操作）
+        config = config or {}
+        if operation in {"write", "append"}:
+            content = config.get("content")
+            if content is None:
+                errors.append("content required for write/append")
+            else:
+                # 大小检查
+                content_bytes = len(str(content).encode("utf-8"))
+                max_bytes = self._file_security_config["max_content_bytes"]
+                if content_bytes > max_bytes:
+                    errors.append(f"content too large: {content_bytes} > {max_bytes}")
+
+                # 敏感信息检查
+                from src.domain.services.save_request_audit import SensitiveContentRule
+
+                sens_rule = SensitiveContentRule()
+                # 创建一个简单的mock对象传递给evaluate
+                mock_request = type("Request", (), {"content": str(content)})()
+                sens_result = sens_rule.evaluate(mock_request)
+                if not sens_result.passed:
+                    errors.append("content contains sensitive info")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors)
+
+    async def validate_api_request(
+        self,
+        node_id: str,
+        url: str | None,
+        method: str | None = None,
+        headers: dict[str, Any] | None = None,
+        body: Any | None = None,
+    ) -> ValidationResult:
+        """验证API请求安全性
+
+        参数:
+            node_id: 节点ID
+            url: 请求URL
+            method: HTTP方法
+            headers: 请求头
+            body: 请求体
+
+        返回:
+            ValidationResult: 验证结果
+        """
+        import ipaddress
+        from urllib.parse import urlparse
+
+        errors: list[str] = []
+
+        # 检查URL必填
+        if not url:
+            return ValidationResult(is_valid=False, errors=["url is required"])
+
+        # 解析URL
+        try:
+            parsed = urlparse(url)
+        except Exception as e:
+            return ValidationResult(is_valid=False, errors=[f"invalid url: {e}"])
+
+        # 检查scheme
+        if parsed.scheme not in self._allowed_api_schemes:
+            errors.append(f"scheme not allowed: {parsed.scheme}")
+
+        # 检查hostname
+        host = parsed.hostname or ""
+        if not host:
+            errors.append("hostname is required")
+            return ValidationResult(is_valid=False, errors=errors)
+
+        # 黑名单检查
+        if host in self._api_domain_blacklist:
+            errors.append(f"domain blacklisted: {host}")
+
+        # 白名单检查
+        if self._api_domain_whitelist and host not in self._api_domain_whitelist:
+            errors.append(f"domain not in whitelist: {host}")
+
+        # SSRF防护：检查是否为内网/环回地址
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                errors.append(f"private or loopback address not allowed: {host}")
+        except ValueError:
+            # 不是IP地址，是域名，继续
+            pass
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors)
+
+    async def validate_human_interaction(
+        self,
+        node_id: str,
+        prompt: str,
+        expected_inputs: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ValidationResult:
+        """验证人机交互内容安全性
+
+        参数:
+            node_id: 节点ID
+            prompt: 交互提示词
+            expected_inputs: 期望的输入选项
+            metadata: 元数据
+
+        返回:
+            ValidationResult: 验证结果
+        """
+        from src.domain.services.save_request_audit import SensitiveContentRule
+
+        errors: list[str] = []
+
+        # 检查prompt必填
+        if not prompt or not prompt.strip():
+            errors.append("prompt is required")
+            return ValidationResult(is_valid=False, errors=errors)
+
+        # 长度检查
+        if len(prompt) > 4000:
+            errors.append("prompt too long")
+
+        # 注入关键词检查
+        lower_prompt = prompt.lower()
+        injection_keywords = [
+            "ignore previous instructions",
+            "bypass safety",
+            "disable filter",
+            "override system",
+            "disregard all",
+        ]
+        for keyword in injection_keywords:
+            if keyword in lower_prompt:
+                errors.append(f"prompt contains instruction injection: {keyword}")
+                break
+
+        # 敏感信息检查
+        sens_rule = SensitiveContentRule(additional_patterns=self._human_sensitive_patterns or [])
+        mock_request = type("Request", (), {"content": prompt})()
+        sens_result = sens_rule.evaluate(mock_request)
+        if not sens_result.passed:
+            errors.append("prompt contains sensitive info")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors)
 
     # ==================== Phase 34: 保存请求处理 ====================
 
@@ -503,7 +784,6 @@ class CoordinatorAgent:
         from src.domain.services.save_request_channel import (
             SaveRequest,
             SaveRequestReceivedEvent,
-            SaveRequestStatus,
         )
 
         if not isinstance(event, SaveRequest):
@@ -677,12 +957,14 @@ class CoordinatorAgent:
 
             # 发布完成事件
             if self.event_bus:
-                self.event_bus.publish(SaveRequestCompletedEvent(
-                    request_id=request_id,
-                    success=False,
-                    audit_status=audit_result.status.value,
-                    error_message=audit_result.reason,
-                ))
+                self.event_bus.publish(
+                    SaveRequestCompletedEvent(
+                        request_id=request_id,
+                        success=False,
+                        audit_status=audit_result.status.value,
+                        error_message=audit_result.reason,
+                    )
+                )
 
             return result
 
@@ -700,13 +982,15 @@ class CoordinatorAgent:
 
         # 发布完成事件
         if self.event_bus:
-            self.event_bus.publish(SaveRequestCompletedEvent(
-                request_id=request_id,
-                success=exec_result.success,
-                audit_status=AuditStatus.APPROVED.value,
-                error_message=exec_result.error_message,
-                bytes_written=exec_result.bytes_written,
-            ))
+            self.event_bus.publish(
+                SaveRequestCompletedEvent(
+                    request_id=request_id,
+                    success=exec_result.success,
+                    audit_status=AuditStatus.APPROVED.value,
+                    error_message=exec_result.error_message,
+                    bytes_written=exec_result.bytes_written,
+                )
+            )
 
         return result
 
@@ -942,8 +1226,8 @@ class CoordinatorAgent:
         返回：
             干预结果
         """
+        from src.domain.services.context_injection import InjectionPoint, InjectionType
         from src.domain.services.supervision_module import SupervisionAction
-        from src.domain.services.context_injection import InjectionType, InjectionPoint
 
         action = supervision_info.action
         session_id = supervision_info.session_id
@@ -969,8 +1253,9 @@ class CoordinatorAgent:
                     content=f"内容已被替换为: {replacement}",
                     source="supervisor",
                     reason=supervision_info.trigger_condition,
-                ) if hasattr(self.injection_manager, '_create_injection') else
-                self._create_supplement_injection(session_id, replacement, supervision_info)
+                )
+                if hasattr(self.injection_manager, "_create_injection")
+                else self._create_supplement_injection(session_id, replacement, supervision_info)
             )
             result["intervention_type"] = "content_replaced"
             result["replacement"] = replacement
@@ -1001,8 +1286,8 @@ class CoordinatorAgent:
         """创建补充注入（内部方法）"""
         from src.domain.services.context_injection import (
             ContextInjection,
-            InjectionType,
             InjectionPoint,
+            InjectionType,
         )
 
         return ContextInjection(
@@ -1301,11 +1586,13 @@ class CoordinatorAgent:
         exec_result = self._save_executor.execute(request)
         self._save_audit_logger.log_execution(exec_result)
 
-        audit_trail.append({
-            "step": "executed",
-            "success": exec_result.success,
-            "bytes_written": exec_result.bytes_written,
-        })
+        audit_trail.append(
+            {
+                "step": "executed",
+                "success": exec_result.success,
+                "bytes_written": exec_result.bytes_written,
+            }
+        )
 
         return self.send_save_result_receipt(
             session_id=session_id,
@@ -1393,9 +1680,7 @@ class CoordinatorAgent:
         if self._code_repair_service is None:
             from src.domain.services.code_repair import CodeRepair
 
-            self._code_repair_service = CodeRepair(
-                max_repair_attempts=max_attempts
-            )
+            self._code_repair_service = CodeRepair(max_repair_attempts=max_attempts)
 
     def disable_auto_repair(self) -> None:
         """禁用代码自动修复"""
@@ -1436,9 +1721,7 @@ class CoordinatorAgent:
         if self._code_repair_service is None:
             from src.domain.services.code_repair import CodeRepair
 
-            self._code_repair_service = CodeRepair(
-                max_repair_attempts=self._max_repair_attempts
-            )
+            self._code_repair_service = CodeRepair(max_repair_attempts=self._max_repair_attempts)
 
         result["repair_attempted"] = True
 

@@ -28,11 +28,12 @@ from uuid import uuid4
 class NodeType(str, Enum):
     """节点类型枚举
 
-    预定义13种核心节点类型：
+    预定义16种核心节点类型：
     - 基础节点：START, END
     - 控制流节点：CONDITION, LOOP, PARALLEL
     - AI能力节点：LLM, KNOWLEDGE, CLASSIFY, TEMPLATE
-    - 执行节点：API, CODE, MCP
+    - 执行节点：API, CODE, MCP, FILE, TRANSFORM
+    - 交互节点：HUMAN
     - 通用节点：GENERIC
     """
 
@@ -55,6 +56,11 @@ class NodeType(str, Enum):
     API = "api"
     CODE = "code"
     MCP = "mcp"
+    FILE = "file"  # 文件操作节点
+    TRANSFORM = "transform"  # 数据转换节点
+
+    # 交互节点
+    HUMAN = "human"  # 人机交互节点
 
     # 通用节点
     GENERIC = "generic"
@@ -541,6 +547,91 @@ PREDEFINED_SCHEMAS: dict[NodeType, dict[str, Any]] = {
         "properties": {"name": {"type": "string"}, "description": {"type": "string"}},
         "required": [],
     },
+    NodeType.FILE: {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": ["read", "write", "append", "delete", "list"],
+                "default": "read",
+            },
+            "path": {"type": "string"},
+            "content": {"type": "string", "default": ""},
+            "encoding": {"type": "string", "default": "utf-8"},
+        },
+        "required": ["operation", "path"],
+        "allOf": [
+            {
+                "if": {"properties": {"operation": {"const": "write"}}},
+                "then": {"required": ["content"]},
+            },
+            {
+                "if": {"properties": {"operation": {"const": "append"}}},
+                "then": {"required": ["content"]},
+            },
+        ],
+    },
+    NodeType.TRANSFORM: {
+        "type": "object",
+        "properties": {
+            "type": {
+                "type": "string",
+                "enum": [
+                    "field_mapping",
+                    "type_conversion",
+                    "field_extraction",
+                    "array_mapping",
+                    "filtering",
+                    "aggregation",
+                    "custom",
+                ],
+            },
+            "mapping": {"type": "object"},
+            "conversions": {"type": "object"},
+            "fields": {"type": ["array", "string"]},
+            "element_transform": {"type": "object"},
+            "condition": {"type": "string"},
+            "aggregation": {"type": "object"},
+            "config": {"type": "object"},
+        },
+        "required": ["type"],
+        "allOf": [
+            {
+                "if": {"properties": {"type": {"const": "field_mapping"}}},
+                "then": {"required": ["mapping"]},
+            },
+            {
+                "if": {"properties": {"type": {"const": "type_conversion"}}},
+                "then": {"required": ["conversions"]},
+            },
+            {
+                "if": {"properties": {"type": {"const": "field_extraction"}}},
+                "then": {"required": ["fields"]},
+            },
+            {
+                "if": {"properties": {"type": {"const": "array_mapping"}}},
+                "then": {"required": ["element_transform"]},
+            },
+            {
+                "if": {"properties": {"type": {"const": "filtering"}}},
+                "then": {"required": ["condition"]},
+            },
+            {
+                "if": {"properties": {"type": {"const": "aggregation"}}},
+                "then": {"required": ["aggregation"]},
+            },
+        ],
+    },
+    NodeType.HUMAN: {
+        "type": "object",
+        "properties": {
+            "prompt": {"type": "string"},
+            "expected_inputs": {"type": "array", "items": {"type": "string"}, "default": []},
+            "timeout_seconds": {"type": "integer", "minimum": 1, "default": 300},
+            "metadata": {"type": "object"},
+        },
+        "required": ["prompt"],
+    },
 }
 
 
@@ -670,30 +761,73 @@ class NodeRegistry:
             if field_name not in config:
                 errors.append(f"Missing required field: {field_name}")
 
-        # 检查字段类型
+        # 检查字段类型和枚举约束
         for field_name, value in config.items():
             if field_name in properties:
-                expected_type = properties[field_name].get("type")
+                prop_schema = properties[field_name]
+
+                # 类型检查
+                expected_type = prop_schema.get("type")
                 if not self._check_type(value, expected_type):
                     errors.append(
                         f"Invalid type for {field_name}: expected {expected_type}, "
                         f"got {type(value).__name__}"
                     )
 
+                # 枚举检查
+                enum_values = prop_schema.get("enum")
+                if enum_values and value not in enum_values:
+                    errors.append(f"Invalid value for {field_name}: {value!r} not in {enum_values}")
+
+        # 检查条件约束（if/then/allOf）
+        conditional_rules = schema.get("allOf", [])
+        for rule in conditional_rules:
+            if "if" in rule and "then" in rule:
+                # 检查if条件是否匹配
+                match = self._check_condition(config, rule["if"])
+                if match:
+                    # 如果匹配，检查then中的必需字段
+                    then_required = rule["then"].get("required", [])
+                    for field_name in then_required:
+                        if field_name not in config:
+                            errors.append(f"Missing required field under condition: {field_name}")
+
         return len(errors) == 0, errors
 
-    def _check_type(self, value: Any, expected_type: str | None) -> bool:
+    def _check_condition(self, config: dict[str, Any], condition: dict[str, Any]) -> bool:
+        """检查条件是否匹配
+
+        参数：
+            config: 节点配置
+            condition: if条件（JSON Schema格式）
+
+        返回：
+            是否匹配
+        """
+        # 检查properties中的const约束
+        condition_props = condition.get("properties", {})
+        for prop, prop_schema in condition_props.items():
+            if "const" in prop_schema:
+                if config.get(prop) != prop_schema["const"]:
+                    return False
+        return True
+
+    def _check_type(self, value: Any, expected_type: str | list[str] | None) -> bool:
         """检查值类型是否匹配
 
         参数：
             value: 实际值
-            expected_type: 期望类型
+            expected_type: 期望类型（可以是字符串或类型列表）
 
         返回：
             是否匹配
         """
         if expected_type is None:
             return True
+
+        # 支持多类型（如 ["array", "string"]）
+        if isinstance(expected_type, list):
+            return any(self._check_type(value, t) for t in expected_type)
 
         type_mapping = {
             "string": str,

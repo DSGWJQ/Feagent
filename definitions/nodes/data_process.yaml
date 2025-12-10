@@ -1,0 +1,77 @@
+# Data Process 节点 - 通用数据转换
+name: data_process
+kind: node
+description: 结构化数据转换（字段映射、类型转换、过滤、聚合等）
+version: "1.0.0"
+
+parameters:
+  - name: type
+    type: string
+    description: 数据处理类型
+    required: true
+    enum: [field_mapping, type_conversion, field_extraction, array_mapping, filtering, aggregation, custom]
+  - name: field
+    type: string
+    description: 目标数组或字段名（array_mapping/filtering/aggregation 常用）
+    required: false
+  - name: mapping
+    type: object
+    description: 字段映射（field_mapping/array_mapping）
+    required: false
+  - name: conversions
+    type: object
+    description: 类型转换规则（type_conversion）
+    required: false
+  - name: path
+    type: string
+    description: 嵌套路径（field_extraction 供执行器使用）
+    required: false
+  - name: fields
+    type: array
+    description: 字段列表（field_extraction必需）。注意：也接受单个字符串作为单字段提取
+    required: false
+  - name: condition
+    type: string
+    description: 过滤条件表达式（filtering）
+    required: false
+  - name: operations
+    type: array
+    description: 聚合操作列表（aggregation，例如 sum:price, count）
+    required: false
+  - name: aggregation
+    type: object
+    description: 聚合配置（用于 schema 条件，可镜像 field/operations）
+    required: false
+  - name: function
+    type: string
+    description: 自定义函数名（custom，如 upper/lower/reverse/len/abs）
+    required: false
+  - name: element_transform
+    type: object
+    description: 数组元素转换定义（满足 schema array_mapping 要求，可与 mapping 同步）
+    required: false
+
+returns:
+  type: object
+  properties:
+    result:
+      type: object
+      description: 转换后的对象或统计结果
+
+executor_type: transform  # 与执行器注册名保持一致；data_process作为别名仍在校验器白名单中
+
+conditions:
+  - when: type == field_mapping
+    require: ["mapping"]
+  - when: type == type_conversion
+    require: ["conversions"]
+  - when: type == field_extraction
+    require: ["path", "fields"]
+  - when: type == array_mapping
+    require: ["field", "mapping", "element_transform"]
+  - when: type == filtering
+    require: ["field", "condition"]
+  - when: type == aggregation
+    require: ["field", "operations", "aggregation"]
+  - when: type == custom
+    require: ["function"]

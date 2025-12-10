@@ -51,6 +51,9 @@ class NodeType(str, Enum):
     LOOP = "loop"  # 循环
     PARALLEL = "parallel"  # 并行执行
     CONTAINER = "container"  # Phase 4: 容器执行
+    FILE = "file"  # 文件操作节点
+    DATA_PROCESS = "data_process"  # 数据处理节点
+    HUMAN = "human"  # 人机交互节点
 
 
 @dataclass
@@ -180,6 +183,31 @@ class NodeDefinition:
                 filter_cond = self.config.get("filter_condition") if self.config else None
                 if not filter_cond or not str(filter_cond).strip():
                     errors.append("Loop(filter) 节点需要 config.filter_condition 字段（用于过滤）")
+
+        # FILE 节点验证：必须有 operation 和 path
+        elif self.node_type == NodeType.FILE:
+            operation = self.config.get("operation") if self.config else None
+            if not operation or operation not in ["read", "write", "append", "delete", "list"]:
+                errors.append(
+                    "File 节点需要合法的 config.operation（read/write/append/delete/list）"
+                )
+            path = self.config.get("path") if self.config else None
+            if not path:
+                errors.append("File 节点需要 config.path")
+
+        # DATA_PROCESS 节点验证：必须有 type
+        elif self.node_type == NodeType.DATA_PROCESS:
+            process_type = self.config.get("type") if self.config else None
+            if not process_type:
+                errors.append(
+                    "DataProcess 节点需要 config.type（field_mapping/type_conversion/...）"
+                )
+
+        # HUMAN 节点验证：必须有 prompt
+        elif self.node_type == NodeType.HUMAN:
+            prompt = self.config.get("prompt") if self.config else None
+            if not prompt or not str(prompt).strip():
+                errors.append("Human 交互节点需要 config.prompt")
 
         # GENERIC、PARALLEL 类型无特殊要求
 
@@ -660,14 +688,18 @@ class NodeDefinition:
         "parallel": NodeType.PARALLEL,
         "generic": NodeType.GENERIC,
         "api": NodeType.HTTP,  # api 映射到 HTTP
+        "file": NodeType.FILE,  # 文件操作
+        "transform": NodeType.DATA_PROCESS,  # 数据转换
+        "data_process": NodeType.DATA_PROCESS,  # 数据处理
+        "human": NodeType.HUMAN,  # 人机交互
     }
 
     @classmethod
-    def from_yaml(cls, yaml_content: str, depth: int = 0) -> "NodeDefinition":
-        """从 YAML 字符串解析 NodeDefinition
+    def from_yaml(cls, yaml_content: str | dict[str, Any], depth: int = 0) -> "NodeDefinition":
+        """从 YAML 字符串或字典解析 NodeDefinition
 
         参数：
-            yaml_content: YAML 内容字符串
+            yaml_content: YAML 内容字符串或已解析的字典
             depth: 当前嵌套深度（用于深度限制检查）
 
         返回：
@@ -676,6 +708,11 @@ class NodeDefinition:
         异常：
             ValueError: YAML 解析错误或缺少必填字段
         """
+        # 如果传入的是字典，直接使用
+        if isinstance(yaml_content, dict):
+            return cls._from_yaml_data(yaml_content, depth)
+
+        # 否则解析YAML字符串
         if not yaml_content or not yaml_content.strip():
             raise ValueError("YAML content is empty")
 
@@ -700,14 +737,17 @@ class NodeDefinition:
         返回：
             NodeDefinition 实例
         """
-        # 校验必填字段
-        required_fields = ["name", "executor_type"]
-        missing = [f for f in required_fields if f not in data or not data[f]]
-        if missing:
-            raise ValueError(f"Missing required fields: {', '.join(missing)}")
+        # 校验必填字段（支持 type 或 executor_type）
+        if "name" not in data or not data["name"]:
+            raise ValueError("Missing required field: name")
+
+        # 支持 type 或 executor_type 字段
+        node_type_field = data.get("type") or data.get("executor_type")
+        if not node_type_field:
+            raise ValueError("Missing required field: type or executor_type")
 
         # 解析执行器类型
-        executor_type_str = data.get("executor_type", "generic").lower()
+        executor_type_str = str(node_type_field).lower()
         node_type = cls.EXECUTOR_TYPE_MAP.get(executor_type_str, NodeType.GENERIC)
 
         # 解析参数到 input_schema
@@ -734,7 +774,11 @@ class NodeDefinition:
         # 构建 config（保存元数据和其他配置）
         config = {}
 
-        # 保存元数据
+        # 首先合并传入的config字段（如果有）
+        if "config" in data and isinstance(data["config"], dict):
+            config.update(data["config"])
+
+        # 保存元数据（优先使用顶层字段，回退到config中的值）
         if "author" in data:
             config["author"] = data["author"]
         if "tags" in data:
@@ -875,17 +919,21 @@ class NodeDefinition:
 
         return nodes
 
-    def to_yaml(self) -> str:
-        """序列化为 YAML 字符串
+    def to_yaml_dict(self) -> dict[str, Any]:
+        """序列化为 YAML 数据字典
 
         返回：
-            YAML 格式字符串
+            YAML 数据字典
         """
+        # 为默认值设置
+        kind = self.config.get("kind", "node")
+        version = self.config.get("version", "1.0.0")
+
         data = {
             "name": self.name,
-            "kind": self.config.get("kind", "node"),
-            "version": self.config.get("version", "1.0.0"),
-            "executor_type": self.node_type.value,
+            "kind": kind,
+            "version": version,
+            "type": self.node_type.value,  # 使用 type 而非 executor_type 保持一致性
             "description": self.description,
         }
 
@@ -899,6 +947,31 @@ class NodeDefinition:
             data["method"] = self.method
         if self.query:
             data["query"] = self.query
+
+        # 添加 config 字段（包含所有配置，但排除默认的kind和version）
+        if self.config:
+            # 过滤掉已经在顶层的元数据字段
+            config_to_export = {
+                k: v
+                for k, v in self.config.items()
+                if k
+                not in [
+                    "kind",
+                    "version",
+                    "author",
+                    "tags",
+                    "category",
+                    "parameters",
+                    "returns",
+                    "error_strategy",
+                    "dynamic_code",
+                ]
+                # 排除默认值
+                and not (k == "kind" and v == "node")
+                and not (k == "version" and v == "1.0.0")
+            }
+            if config_to_export:
+                data["config"] = config_to_export
 
         # 添加元数据
         if self.config.get("author"):
@@ -930,10 +1003,19 @@ class NodeDefinition:
             if self.config.get("nested_parallel"):
                 nested["parallel"] = True
             for child in self.children:
-                child_yaml = yaml.safe_load(child.to_yaml())
+                child_yaml = child.to_yaml_dict()
                 nested["children"].append(child_yaml)
             data["nested"] = nested
 
+        return data
+
+    def to_yaml(self) -> str:
+        """序列化为 YAML 字符串
+
+        返回：
+            YAML 格式字符串
+        """
+        data = self.to_yaml_dict()
         return yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
     # ========== Phase 8.1 扩展: DAG 操作 ==========

@@ -272,6 +272,18 @@ class NodeExecutionEvent(Event):
 
 
 @dataclass
+class HumanInputRequestedEvent(Event):
+    """人机交互请求事件"""
+
+    workflow_id: str = ""
+    node_id: str = ""
+    prompt: str = ""
+    expected_inputs: list[str] = field(default_factory=list)
+    timeout_seconds: int = 300
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class ExecutionProgressEvent(Event):
     """执行进度事件 - Phase 8.4
 
@@ -377,6 +389,7 @@ class WorkflowAgent:
         executor: WorkflowExecutorProtocol | None = None,
         llm: ReflectionLLMProtocol | None = None,
         container_executor: Any = None,
+        coordinator_agent: Any | None = None,
     ):
         """初始化工作流Agent
 
@@ -388,11 +401,13 @@ class WorkflowAgent:
             executor: 工作流执行器（可选，Phase 16）
             llm: 反思 LLM（可选，Phase 16）
             container_executor: 容器执行器（可选，Phase 8.2）
+            coordinator_agent: 协调者Agent（可选，用于安全校验）
         """
         self.workflow_context = workflow_context
         self.node_factory = node_factory
         self.node_executor = node_executor
         self.event_bus = event_bus
+        self.coordinator_agent = coordinator_agent
 
         # Phase 16: 新增执行器和 LLM
         self.executor = executor
@@ -449,6 +464,79 @@ class WorkflowAgent:
         from src.domain.services.sandbox_executor import SandboxExecutor
 
         return SandboxExecutor()
+
+    async def _validate_file_node(self, node: Node) -> None:
+        """对FILE节点进行安全校验，失败时抛出PermissionError并发布失败事件。"""
+        if node.type != NodeType.FILE or not self.coordinator_agent:
+            return
+
+        if not hasattr(self.coordinator_agent, "validate_file_operation"):
+            raise PermissionError("CoordinatorAgent does not implement validate_file_operation")
+
+        validation_result = await self.coordinator_agent.validate_file_operation(
+            node_id=node.id,
+            operation=node.config.get("operation"),
+            path=node.config.get("path"),
+            config=node.config,
+        )
+
+        if not getattr(validation_result, "is_valid", False):
+            error_msg = (
+                "; ".join(getattr(validation_result, "errors", [])) or "file operation rejected"
+            )
+
+            if self.event_bus:
+                await self.event_bus.publish(
+                    NodeExecutionEvent(
+                        source="workflow_agent",
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        status="failed",
+                        error=error_msg,
+                    )
+                )
+
+            raise PermissionError(error_msg)
+
+    async def _handle_human_node_request(self, node: Node) -> dict[str, Any] | None:
+        """发布人机交互事件并返回挂起状态。"""
+        if node.type != NodeType.HUMAN:
+            return None
+
+        # Phase 5: 人机交互内容安全校验
+        if self.coordinator_agent and hasattr(self.coordinator_agent, "validate_human_interaction"):
+            validation = await self.coordinator_agent.validate_human_interaction(
+                node_id=node.id,
+                prompt=node.config.get("prompt", ""),
+                expected_inputs=node.config.get("expected_inputs", []),
+                metadata=node.config.get("metadata", {}),
+            )
+            if not getattr(validation, "is_valid", False):
+                error_msg = (
+                    "; ".join(getattr(validation, "errors", [])) or "human interaction rejected"
+                )
+                raise PermissionError(error_msg)
+
+        if not self.event_bus:
+            return None
+
+        await self.event_bus.publish(
+            HumanInputRequestedEvent(
+                source="workflow_agent",
+                workflow_id=self.workflow_context.workflow_id if self.workflow_context else "",
+                node_id=node.id,
+                prompt=node.config.get("prompt", ""),
+                expected_inputs=node.config.get("expected_inputs", []),
+                timeout_seconds=node.config.get("timeout_seconds", 300),
+                metadata=node.config.get("metadata", {}),
+            )
+        )
+
+        if self.workflow_context:
+            self.workflow_context.set_node_output(node.id, {"status": "pending_human_input"})
+
+        self._execution_status = ExecutionStatus.PENDING
+        return {"status": "pending_human_input"}
 
     async def execute_container_node(self, node_id: str) -> dict[str, Any]:
         """执行容器节点
@@ -819,6 +907,12 @@ class WorkflowAgent:
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
+        await self._validate_file_node(node)
+
+        pending_result = await self._handle_human_node_request(node)
+        if pending_result is not None:
+            return pending_result
+
         # 获取节点输入（从上游节点输出）
         inputs = self._collect_node_inputs(node_id)
 
@@ -894,6 +988,22 @@ class WorkflowAgent:
 
         while True:
             try:
+                await self._validate_file_node(node)
+
+                human_pending = await self._handle_human_node_request(node)
+                if human_pending is not None:
+                    execution_time_ms = (time.time() - start_time) * 1000
+                    return ExecutionResult.failure(
+                        error_code=ErrorCode.DEPENDENCY_FAILED,
+                        error_message="Pending human input",
+                        output=human_pending,
+                        metadata={
+                            "execution_time_ms": execution_time_ms,
+                            "retry_count": attempt,
+                            "node_id": node_id,
+                        },
+                    )
+
                 # 执行节点
                 inputs = self._collect_node_inputs(node_id)
 
@@ -974,6 +1084,24 @@ class WorkflowAgent:
                 result = await self.execute_node_with_result(node_id)
                 node_results[node_id] = result
 
+                # 检查是否为人机交互挂起状态
+                if (
+                    result.output
+                    and isinstance(result.output, dict)
+                    and result.output.get("status") == "pending_human_input"
+                ):
+                    execution_time_ms = (time.time() - start_time) * 1000
+                    return LegacyWorkflowExecutionResult(
+                        success=False,
+                        node_results=node_results,
+                        failed_node_id=node_id,
+                        error_message="Pending human input",
+                        metadata={
+                            "execution_time_ms": execution_time_ms,
+                            "status": "pending_human_input",
+                        },
+                    )
+
                 if not result.success:
                     execution_time_ms = (time.time() - start_time) * 1000
                     return LegacyWorkflowExecutionResult(
@@ -1051,6 +1179,10 @@ class WorkflowAgent:
             for node_id in execution_order:
                 result = await self.execute_node(node_id)
                 results[node_id] = result
+
+                if result.get("status") == "pending_human_input":
+                    self._execution_status = ExecutionStatus.PENDING
+                    return {"status": "pending_human_input", "results": results}
 
             self._execution_status = ExecutionStatus.COMPLETED
 
@@ -1130,6 +1262,14 @@ class WorkflowAgent:
                     # 执行节点
                     result = await self.execute_node(node_id)
                     results[node_id] = result
+
+                    if result.get("status") == "pending_human_input":
+                        self._execution_status = ExecutionStatus.PENDING
+                        return {
+                            "status": "pending_human_input",
+                            "results": results,
+                            "skipped_nodes": skipped_nodes,
+                        }
                 else:
                     # 跳过节点
                     skipped_nodes.append(node_id)
@@ -2249,6 +2389,7 @@ class WorkflowAgent:
             "edges_created": len(created_edges),
             "node_mapping": name_to_id,
             "results": execution_result.get("results", {}),
+            "error": execution_result.get("error"),
         }
 
     async def execute_plan_from_dict(self, plan_dict: dict[str, Any]) -> dict[str, Any]:
@@ -2263,31 +2404,51 @@ class WorkflowAgent:
         from src.domain.agents.node_definition import NodeDefinition, NodeType
         from src.domain.agents.workflow_plan import EdgeDefinition, WorkflowPlan
 
-        # 解析节点
-        nodes = []
-        for node_data in plan_dict.get("nodes", []):
-            node_type_str = node_data.get("type", "generic")
+        def _parse_node(node_data: dict[str, Any]) -> NodeDefinition:
+            """递归解析节点（支持子节点）"""
+            # 同时支持 node_type 和 type 字段（兼容性）
+            node_type_raw = node_data.get("node_type") or node_data.get("type", "generic")
             try:
-                node_type = NodeType(node_type_str.lower())
+                node_type = NodeType(str(node_type_raw).lower())
             except ValueError:
                 node_type = NodeType.GENERIC
 
+            # 透传所有配置字段
             node_def = NodeDefinition(
                 node_type=node_type,
                 name=node_data.get("name", ""),
+                description=node_data.get("description", ""),
                 code=node_data.get("code"),
                 prompt=node_data.get("prompt"),
                 url=node_data.get("url"),
+                method=node_data.get("method", "GET"),
                 query=node_data.get("query"),
+                config=node_data.get("config", {}),
+                is_container=node_data.get("is_container", False),
+                container_config=node_data.get("container_config", {}),
+                error_strategy=node_data.get("error_strategy"),
+                resource_limits=node_data.get("resource_limits", {}),
             )
+
+            # 递归处理子节点
+            for child_data in node_data.get("children", []) or []:
+                child_def = _parse_node(child_data)
+                node_def.add_child(child_def)
+
+            return node_def
+
+        # 解析节点
+        nodes = []
+        for node_data in plan_dict.get("nodes", []):
+            node_def = _parse_node(node_data)
             nodes.append(node_def)
 
-        # 解析边
+        # 解析边（支持 source/target 和 source_node/target_node 两种字段名）
         edges = []
         for edge_data in plan_dict.get("edges", []):
             edge_def = EdgeDefinition(
-                source_node=edge_data.get("source", ""),
-                target_node=edge_data.get("target", ""),
+                source_node=edge_data.get("source") or edge_data.get("source_node", ""),
+                target_node=edge_data.get("target") or edge_data.get("target_node", ""),
                 condition=edge_data.get("condition"),
             )
             edges.append(edge_def)
@@ -2719,19 +2880,29 @@ class WorkflowAgent:
             DefNodeType.LOOP: NodeType.LOOP,
             DefNodeType.PARALLEL: NodeType.PARALLEL,
             DefNodeType.CONTAINER: NodeType.GENERIC,  # 容器节点使用 GENERIC 类型
+            DefNodeType.FILE: NodeType.FILE,  # FILE -> FILE
+            DefNodeType.DATA_PROCESS: NodeType.TRANSFORM,  # DATA_PROCESS -> TRANSFORM
+            DefNodeType.HUMAN: NodeType.HUMAN,  # HUMAN -> HUMAN
         }
 
         # 转换节点类型
         node_type = type_mapping.get(node_def.node_type, NodeType.GENERIC)
 
         # 构建配置
-        config = {
-            "name": node_def.name,
-            "description": node_def.description,
-            "code": node_def.code,
-            "is_container": node_def.is_container,
-            "container_config": node_def.container_config,
-        }
+        config = {**node_def.config}
+        for key, value in (
+            ("name", node_def.name),
+            ("description", node_def.description),
+            ("code", node_def.code),
+            ("prompt", node_def.prompt),
+            ("url", node_def.url),
+            ("method", node_def.method),
+            ("query", node_def.query),
+            ("is_container", node_def.is_container),
+            ("container_config", node_def.container_config),
+        ):
+            if value is not None:
+                config[key] = value
 
         # 使用工厂创建节点
         node = self.node_factory.create(node_type, config)
@@ -3195,9 +3366,7 @@ class WorkflowAgent:
                 break
 
         if not edge_found:
-            raise ValueError(
-                f"边不存在: {source_node} -> {target_node}"
-            )
+            raise ValueError(f"边不存在: {source_node} -> {target_node}")
 
     def update_loop_config(
         self,
@@ -3262,9 +3431,7 @@ class WorkflowAgent:
         from src.domain.agents.node_definition import NodeType
 
         if target_node.node_type != NodeType.LOOP:
-            raise ValueError(
-                f"节点 {node_name} 不是循环节点，无法更新循环配置"
-            )
+            raise ValueError(f"节点 {node_name} 不是循环节点，无法更新循环配置")
 
         # 更新配置（仅更新提供的参数）
         if loop_type is not None:
@@ -3296,6 +3463,7 @@ __all__ = [
     "WorkflowExecutionCompletedEvent",
     "WorkflowReflectionCompletedEvent",
     "NodeExecutionEvent",
+    "HumanInputRequestedEvent",
     "NodeExecutor",
     "WorkflowExecutorProtocol",
     "ReflectionLLMProtocol",

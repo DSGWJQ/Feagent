@@ -142,6 +142,10 @@ class NodeYamlValidator:
         "parallel",
         "api",
         "code",  # code 是 python 的别名
+        "file",  # Phase 5: 文件操作节点
+        "data_process",  # Phase 5: 数据处理节点
+        "transform",  # transform 是 data_process 的别名
+        "human",  # Phase 5: 人机交互节点
     }
 
     # 有效的参数类型
