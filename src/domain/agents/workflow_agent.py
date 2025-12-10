@@ -3151,6 +3151,140 @@ class WorkflowAgent:
             # 让调用方决定如何处理
             raise
 
+    # === Phase 17: 反馈驱动更新API (Priority 4) ===
+
+    def update_edge_condition(
+        self,
+        source_node: str,
+        target_node: str,
+        expression: str,
+    ) -> None:
+        """修改边条件表达式
+
+        运行时动态更新边的条件表达式，支持根据执行反馈调整工作流逻辑。
+
+        参数：
+            source_node: 源节点名称
+            target_node: 目标节点名称
+            expression: 新的条件表达式
+
+        异常：
+            ValueError: 当前没有工作流计划或边不存在
+
+        示例：
+            >>> workflow_agent.update_edge_condition(
+            ...     source_node="quality_check",
+            ...     target_node="analyze_task",
+            ...     expression="quality_score > 0.9"  # 提高阈值
+            ... )
+
+        注意：
+            - 更新后的配置在下次执行时生效
+            - 建议先验证表达式语法（使用 ExpressionEvaluator.compile_expression）
+        """
+        if not hasattr(self, "_current_plan") or not self._current_plan:
+            raise ValueError("当前没有工作流计划，无法更新边条件")
+
+        # 查找指定的边
+        edge_found = False
+        for edge in self._current_plan.edges:
+            if edge.source_node == source_node and edge.target_node == target_node:
+                # 更新条件表达式
+                edge.condition = expression
+                edge_found = True
+                break
+
+        if not edge_found:
+            raise ValueError(
+                f"边不存在: {source_node} -> {target_node}"
+            )
+
+    def update_loop_config(
+        self,
+        node_name: str,
+        loop_type: str | None = None,
+        collection_field: str | None = None,
+        transform_expression: str | None = None,
+        filter_condition: str | None = None,
+        loop_variable: str | None = None,
+        condition: str | None = None,
+    ) -> None:
+        """修改循环节点配置
+
+        运行时动态更新循环节点的配置，支持根据执行反馈调整循环策略。
+
+        参数：
+            node_name: 循环节点名称
+            loop_type: 循环类型（for_each/map/filter/while），可选
+            collection_field: 集合字段名，可选
+            transform_expression: 转换表达式（map类型），可选
+            filter_condition: 过滤条件（filter类型），可选
+            loop_variable: 迭代变量名，可选
+            condition: 循环条件（while类型），可选
+
+        异常：
+            ValueError: 当前没有工作流计划、节点不存在或节点不是循环类型
+
+        示例：
+            >>> # 更新循环类型和过滤条件
+            >>> workflow_agent.update_loop_config(
+            ...     node_name="process_datasets",
+            ...     loop_type="filter",
+            ...     filter_condition="dataset['size'] > 1000"
+            ... )
+            >>>
+            >>> # 更新 map 转换表达式
+            >>> workflow_agent.update_loop_config(
+            ...     node_name="transform_data",
+            ...     loop_type="map",
+            ...     transform_expression="item['value'] * 2"
+            ... )
+
+        注意：
+            - 更新后的配置在下次执行时生效
+            - 仅更新提供的参数，未提供的参数保持原值
+            - 建议验证表达式语法
+        """
+        if not hasattr(self, "_current_plan") or not self._current_plan:
+            raise ValueError("当前没有工作流计划，无法更新循环配置")
+
+        # 查找指定的节点
+        target_node = None
+        for node in self._current_plan.nodes:
+            if node.name == node_name:
+                target_node = node
+                break
+
+        if not target_node:
+            raise ValueError(f"节点不存在: {node_name}")
+
+        # 检查节点类型
+        from src.domain.agents.node_definition import NodeType
+
+        if target_node.node_type != NodeType.LOOP:
+            raise ValueError(
+                f"节点 {node_name} 不是循环节点，无法更新循环配置"
+            )
+
+        # 更新配置（仅更新提供的参数）
+        if loop_type is not None:
+            target_node.config["loop_type"] = loop_type
+
+        if collection_field is not None:
+            target_node.config["collection_field"] = collection_field
+
+        if transform_expression is not None:
+            target_node.config["transform_expression"] = transform_expression
+
+        if filter_condition is not None:
+            target_node.config["filter_condition"] = filter_condition
+
+        if loop_variable is not None:
+            target_node.config["loop_variable"] = loop_variable
+
+        if condition is not None:
+            target_node.config["condition"] = condition
+
 
 # 导出
 __all__ = [
