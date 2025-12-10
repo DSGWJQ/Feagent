@@ -272,6 +272,176 @@ class ExpressionEvaluator:
         except Exception as e:
             raise ExpressionEvaluationError(f"未知错误: {e}") from e
 
+    def compile_expression(self, expression: str) -> ast.Expression:
+        """预编译表达式为 AST 节点，供重复使用
+
+        此方法将表达式字符串解析为 AST，并缓存结果以提升性能。
+        适用于需要多次执行相同表达式的场景。
+
+        参数：
+            expression: 表达式字符串
+
+        返回：
+            编译后的 AST Expression 节点
+
+        异常：
+            ExpressionEvaluationError: 语法错误或包含危险关键字
+
+        示例：
+            evaluator = ExpressionEvaluator()
+            compiled = evaluator.compile_expression("score > 0.8")
+            # 可以多次复用 compiled 对象
+        """
+        # 检查缓存
+        if expression in self._compiled_cache:
+            return self._compiled_cache[expression]
+
+        # 检查危险关键字
+        try:
+            self._check_dangerous_keywords(expression)
+        except UnsafeExpressionError as e:
+            raise ExpressionEvaluationError(f"表达式不安全: {e}") from e
+
+        # 解析 AST
+        try:
+            tree = ast.parse(expression, mode="eval")
+        except SyntaxError as e:
+            raise ExpressionEvaluationError(f"表达式语法错误: {expression}") from e
+
+        # 缓存编译结果
+        self._compiled_cache[expression] = tree
+
+        return tree
+
+    def evaluate_compiled(
+        self,
+        compiled_ast: ast.Expression,
+        context: dict[str, Any],
+        *,
+        workflow_vars: dict[str, Any] | None = None,
+        global_vars: dict[str, Any] | None = None,
+        item: Any = None,
+        mode: str | None = None,
+    ) -> Any:
+        """执行编译后的表达式
+
+        使用预编译的 AST 节点进行求值，避免重复解析开销。
+        支持多层上下文，与 evaluate_expression 保持一致。
+
+        参数：
+            compiled_ast: 预编译的 AST Expression 节点
+            context: 主求值上下文
+            workflow_vars: 工作流级别变量（可选）
+            global_vars: 全局级别变量（可选）
+            item: 集合元素（可选）
+            mode: 覆盖实例默认模式（可选）
+
+        返回：
+            表达式计算结果（任意类型）
+
+        异常：
+            ExpressionEvaluationError: 求值失败
+
+        示例：
+            evaluator = ExpressionEvaluator()
+            compiled = evaluator.compile_expression("value * 2")
+            result = evaluator.evaluate_compiled(compiled, {"value": 10})  # 20
+        """
+        # 确定求值模式
+        eval_mode = (mode or self._mode or "safe").lower()
+
+        # 构建合并的求值上下文
+        evaluation_context = self._build_evaluation_context(
+            context=context,
+            workflow_vars=workflow_vars,
+            global_vars=global_vars,
+            item=item,
+        )
+
+        # 验证 AST 安全性
+        try:
+            allowed_functions = self._get_allowed_functions(eval_mode)
+            self._validate_ast(compiled_ast, eval_mode, allowed_functions)
+        except UnsafeExpressionError as e:
+            raise ExpressionEvaluationError(f"表达式不安全: {e}") from e
+
+        # 执行求值
+        try:
+            # 清理上下文
+            sanitized_context = self._sanitize_context_for_advanced_mode(
+                evaluation_context, allowed_functions
+            )
+
+            # 创建安全的全局命名空间
+            safe_globals = {
+                "__builtins__": {},
+                **allowed_functions,
+            }
+
+            # 执行编译后的 AST
+            result = eval(
+                compile(compiled_ast, "<compiled>", "eval"),
+                safe_globals,
+                sanitized_context,
+            )
+
+            return result
+
+        except NameError as e:
+            raise ExpressionEvaluationError(f"变量未定义: {e}") from e
+        except (TypeError, AttributeError, KeyError) as e:
+            raise ExpressionEvaluationError(f"表达式求值错误: {e}") from e
+        except Exception as e:
+            raise ExpressionEvaluationError(f"未知错误: {e}") from e
+
+    def resolve_variables(self, output_dict: dict[str, Any]) -> dict[str, Any]:
+        """扁平化节点输出字典供条件表达式使用
+
+        此方法将嵌套的节点输出字典转换为扁平结构，同时保留原始嵌套结构。
+        这样既支持直接访问键（如 quality），又支持命名空间访问（如 node1.quality）。
+
+        处理策略：
+        1. 保留所有顶层键（命名空间）
+        2. 扁平化所有嵌套字典的键到顶层
+        3. 键冲突时，后者覆盖前者（可通过命名空间访问原值）
+
+        参数：
+            output_dict: 节点输出字典，格式为 {node_id: {output_data}}
+
+        返回：
+            扁平化后的字典，既包含命名空间又包含扁平键
+
+        示例：
+            input = {
+                "node1": {"quality": 0.9, "count": 100},
+                "node2": {"status": "ok"}
+            }
+            output = {
+                "node1": {"quality": 0.9, "count": 100},
+                "quality": 0.9,
+                "count": 100,
+                "node2": {"status": "ok"},
+                "status": "ok"
+            }
+        """
+        if not output_dict:
+            return {}
+
+        resolved: dict[str, Any] = {}
+
+        # 遍历所有节点输出
+        for node_id, output in output_dict.items():
+            # 保留命名空间化的键
+            resolved[node_id] = output
+
+            # 如果输出是字典，扁平化其键
+            if isinstance(output, dict):
+                for key, value in output.items():
+                    # 扁平化到顶层（可能覆盖）
+                    resolved[key] = value
+
+        return resolved
+
     def _check_dangerous_keywords(self, expression: str) -> None:
         """检查表达式是否包含危险关键字
 
