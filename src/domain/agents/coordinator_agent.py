@@ -409,16 +409,10 @@ class CoordinatorAgent:
         self.efficiency_monitor = self._supervision_coordinator.efficiency_monitor
         self.strategy_repository = self._supervision_coordinator.strategy_repository
 
-        # ==================== 提示词版本管理 ====================
-        from src.domain.services.prompt_version_manager import (
-            CoordinatorPromptLoader,
-            PromptVersionManager,
-            VersionConfig,
-        )
+        # ==================== 提示词版本管理（使用 Facade）====================
+        from src.domain.services.prompt_version_facade import PromptVersionFacade
 
-        self._prompt_version_manager: PromptVersionManager | None = None
-        self._prompt_loader: CoordinatorPromptLoader | None = None
-        self._prompt_version_config: VersionConfig | None = None
+        self._prompt_facade = PromptVersionFacade(log_collector=self.log_collector)
 
         # ==================== A/B 测试与实验管理 ====================
         from src.domain.services.ab_testing_system import (
@@ -2146,40 +2140,19 @@ class CoordinatorAgent:
 
         return ValidationResult(is_valid=is_valid, errors=errors, correction=correction)
 
-    # ==================== 提示词版本管理接口 ====================
+    # ==================== 提示词版本管理接口（代理到 PromptVersionFacade）====================
 
     def init_prompt_version_manager(
         self,
         config: dict[str, str] | None = None,
     ) -> None:
-        """初始化提示词版本管理器
-
-        参数：
-            config: 版本配置字典 {module_name: version}
-        """
-        from src.domain.services.prompt_version_manager import (
-            CoordinatorPromptLoader,
-            PromptVersionManager,
-            VersionConfig,
-        )
-
-        self._prompt_version_manager = PromptVersionManager()
-        self._prompt_loader = CoordinatorPromptLoader(self._prompt_version_manager)
-
-        if config:
-            self._prompt_version_config = VersionConfig.from_dict(config)
-            self._prompt_loader.apply_config(self._prompt_version_config)
-
-        self.log_collector.info(
-            "CoordinatorAgent",
-            "提示词版本管理器已初始化",
-            {"config": config or {}},
-        )
+        """初始化提示词版本管理器（代理到 Facade）"""
+        self._prompt_facade.initialize(config)
 
     @property
     def prompt_version_manager(self) -> Any:
-        """获取提示词版本管理器"""
-        return self._prompt_version_manager
+        """获取提示词版本管理器（代理到 Facade）"""
+        return self._prompt_facade.prompt_version_manager
 
     def register_prompt_version(
         self,
@@ -2190,24 +2163,8 @@ class CoordinatorAgent:
         changelog: str,
         author: str = "system",
     ) -> Any:
-        """注册新的提示词版本
-
-        参数：
-            module_name: 模块名称
-            version: 版本号 (语义化版本 x.y.z)
-            template: 模板内容
-            variables: 变量列表
-            changelog: 变更说明
-            author: 作者
-
-        返回：
-            PromptVersion 对象
-        """
-        if self._prompt_version_manager is None:
-            self.init_prompt_version_manager()
-
-        assert self._prompt_version_manager is not None
-        prompt_version = self._prompt_version_manager.register_version(
+        """注册新的提示词版本（代理到 Facade）"""
+        return self._prompt_facade.register_prompt_version(
             module_name=module_name,
             version=version,
             template=template,
@@ -2216,64 +2173,21 @@ class CoordinatorAgent:
             author=author,
         )
 
-        self.log_collector.info(
-            "CoordinatorAgent",
-            f"已注册提示词版本: {module_name}@{version}",
-            {"module_name": module_name, "version": version, "author": author},
-        )
-
-        return prompt_version
-
     def load_prompt_template(
         self,
         module_name: str,
         version: str | None = None,
     ) -> str:
-        """加载提示词模板
-
-        参数：
-            module_name: 模块名称
-            version: 版本号（不指定则使用活跃版本）
-
-        返回：
-            模板内容
-        """
-        if self._prompt_loader is None:
-            self.init_prompt_version_manager()
-
-        assert self._prompt_loader is not None
-        template = self._prompt_loader.load_template(module_name, version)
-
-        self.log_collector.info(
-            "CoordinatorAgent",
-            f"已加载提示词模板: {module_name}@{version or 'active'}",
-            {"module_name": module_name, "version": version},
-        )
-
-        return template
+        """加载提示词模板（代理到 Facade）"""
+        return self._prompt_facade.load_prompt_template(module_name, version)
 
     def switch_prompt_version(
         self,
         module_name: str,
         version: str,
     ) -> None:
-        """切换提示词版本
-
-        参数：
-            module_name: 模块名称
-            version: 目标版本号
-        """
-        if self._prompt_version_manager is None:
-            self.init_prompt_version_manager()
-
-        assert self._prompt_version_manager is not None
-        self._prompt_version_manager.set_active_version(module_name, version)
-
-        self.log_collector.info(
-            "CoordinatorAgent",
-            f"已切换提示词版本: {module_name} -> {version}",
-            {"module_name": module_name, "version": version},
-        )
+        """切换提示词版本（代理到 Facade）"""
+        self._prompt_facade.switch_prompt_version(module_name, version)
 
     def rollback_prompt_version(
         self,
@@ -2281,78 +2195,26 @@ class CoordinatorAgent:
         target_version: str | None = None,
         reason: str = "",
     ) -> Any:
-        """回滚提示词版本
-
-        参数：
-            module_name: 模块名称
-            target_version: 目标版本（不指定则回滚到上一版本）
-            reason: 回滚原因
-
-        返回：
-            RollbackResult 对象
-        """
-        if not self._prompt_version_manager:
-            raise ValueError("提示词版本管理器未初始化")
-
-        result = self._prompt_version_manager.rollback(
+        """回滚提示词版本（代理到 Facade）"""
+        return self._prompt_facade.rollback_prompt_version(
             module_name=module_name,
             target_version=target_version,
             reason=reason,
         )
 
-        if result.success:
-            self.log_collector.warning(
-                "CoordinatorAgent",
-                f"已回滚提示词版本: {module_name} {result.from_version} -> {result.to_version}",
-                {
-                    "module_name": module_name,
-                    "from_version": result.from_version,
-                    "to_version": result.to_version,
-                    "reason": reason,
-                },
-            )
-        else:
-            self.log_collector.error(
-                "CoordinatorAgent",
-                f"提示词版本回滚失败: {module_name}",
-                {"reason": result.reason},
-            )
-
-        return result
-
     def get_prompt_audit_logs(
         self,
         module_name: str,
     ) -> list[Any]:
-        """获取提示词版本审计日志
-
-        参数：
-            module_name: 模块名称
-
-        返回：
-            审计日志列表
-        """
-        if not self._prompt_version_manager:
-            return []
-
-        return self._prompt_version_manager.get_audit_logs(module_name)
+        """获取提示词版本审计日志（代理到 Facade）"""
+        return self._prompt_facade.get_prompt_audit_logs(module_name)
 
     def get_prompt_version_history(
         self,
         module_name: str,
     ) -> list[Any]:
-        """获取提示词版本历史
-
-        参数：
-            module_name: 模块名称
-
-        返回：
-            版本历史列表
-        """
-        if not self._prompt_version_manager:
-            return []
-
-        return self._prompt_version_manager.get_version_history(module_name)
+        """获取提示词版本历史（代理到 Facade）"""
+        return self._prompt_facade.get_prompt_version_history(module_name)
 
     def submit_prompt_change(
         self,
@@ -2363,24 +2225,8 @@ class CoordinatorAgent:
         reason: str,
         author: str,
     ) -> Any:
-        """提交提示词变更申请
-
-        参数：
-            module_name: 模块名称
-            new_version: 新版本号
-            template: 新模板内容
-            variables: 变量列表
-            reason: 变更原因
-            author: 提交者
-
-        返回：
-            VersionChangeRecord 对象
-        """
-        if self._prompt_version_manager is None:
-            self.init_prompt_version_manager()
-
-        assert self._prompt_version_manager is not None
-        record = self._prompt_version_manager.submit_change(
+        """提交提示词变更申请（代理到 Facade）"""
+        return self._prompt_facade.submit_prompt_change(
             module_name=module_name,
             new_version=new_version,
             template=template,
@@ -2389,86 +2235,31 @@ class CoordinatorAgent:
             author=author,
         )
 
-        self.log_collector.info(
-            "CoordinatorAgent",
-            f"已提交提示词变更申请: {module_name}@{new_version}",
-            {"record_id": record.id, "author": author, "reason": reason},
-        )
-
-        return record
-
     def approve_prompt_change(
         self,
         record_id: str,
         comment: str = "",
     ) -> Any:
-        """审批通过提示词变更
-
-        参数：
-            record_id: 变更记录ID
-            comment: 审批意见
-
-        返回：
-            更新后的 VersionChangeRecord 对象
-        """
-        if not self._prompt_version_manager:
-            raise ValueError("提示词版本管理器未初始化")
-
-        result = self._prompt_version_manager.approve_change(
+        """审批通过提示词变更（代理到 Facade）"""
+        return self._prompt_facade.approve_prompt_change(
             record_id=record_id,
-            approver="coordinator",  # Coordinator 作为审批者
             comment=comment,
         )
-
-        self.log_collector.info(
-            "CoordinatorAgent",
-            f"已审批提示词变更: {result.module_name}@{result.to_version}",
-            {"record_id": record_id, "comment": comment},
-        )
-
-        return result
 
     def reject_prompt_change(
         self,
         record_id: str,
         reason: str,
     ) -> Any:
-        """拒绝提示词变更
-
-        参数：
-            record_id: 变更记录ID
-            reason: 拒绝原因
-
-        返回：
-            更新后的 VersionChangeRecord 对象
-        """
-        if not self._prompt_version_manager:
-            raise ValueError("提示词版本管理器未初始化")
-
-        result = self._prompt_version_manager.reject_change(
+        """拒绝提示词变更（代理到 Facade）"""
+        return self._prompt_facade.reject_prompt_change(
             record_id=record_id,
-            approver="coordinator",
             reason=reason,
         )
 
-        self.log_collector.warning(
-            "CoordinatorAgent",
-            f"已拒绝提示词变更: {result.module_name}@{result.to_version}",
-            {"record_id": record_id, "reason": reason},
-        )
-
-        return result
-
     def get_prompt_loading_logs(self) -> list[Any]:
-        """获取提示词加载日志
-
-        返回：
-            加载日志列表
-        """
-        if not self._prompt_loader:
-            return []
-
-        return self._prompt_loader.get_loading_logs()
+        """获取提示词加载日志（代理到 Facade）"""
+        return self._prompt_facade.get_prompt_loading_logs()
 
     # ==================== Phase 8.4: Payload 和 DAG 验证方法 ====================
 
