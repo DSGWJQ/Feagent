@@ -103,6 +103,24 @@ class NodeDefinition:
     resource_limits: dict[str, Any] = field(default_factory=dict)
     inherited_strategy: bool = False
 
+    def __post_init__(self):
+        """dataclass初始化后验证
+
+        自动调用验证逻辑，确保节点定义在创建时就是有效的。
+
+        注意：为了向后兼容，此方法仅验证新增的控制流节点（CONDITION/LOOP）。
+        其他节点类型的验证需要显式调用 validate() 方法。
+        这样可以避免破坏现有的增量构建节点定义的工作流。
+
+        如果验证失败，抛出 ValueError 异常。
+        """
+        # 仅对 CONDITION/LOOP 节点进行强制验证（新功能）
+        # 其他节点类型保持向后兼容，允许增量构建
+        if self.node_type in (NodeType.CONDITION, NodeType.LOOP):
+            errors = self.validate()
+            if errors:
+                raise ValueError(f"节点定义验证失败: {'; '.join(errors)}")
+
     def validate(self) -> list[str]:
         """验证节点定义完整性
 
@@ -136,7 +154,34 @@ class NodeDefinition:
             if not self.code:
                 errors.append("Container 节点需要 code 字段")
 
-        # GENERIC、CONDITION、LOOP、PARALLEL 类型无特殊要求
+        # CONDITION 节点验证：必须有可执行的表达式
+        elif self.node_type == NodeType.CONDITION:
+            expression = self.config.get("expression") if self.config else None
+            if not expression or not str(expression).strip():
+                errors.append("Condition 节点需要 config.expression 字段（用于条件判断）")
+
+        # LOOP 节点验证：必须明确集合来源和循环类型特定要求
+        elif self.node_type == NodeType.LOOP:
+            # 验证集合来源（collection_field 或 collection 至少有一个）
+            collection_field = self.config.get("collection_field") if self.config else None
+            collection_legacy = self.config.get("collection") if self.config else None
+            if not (collection_field or collection_legacy):
+                errors.append(
+                    "Loop 节点需要 config.collection_field 或 config.collection 字段（指定集合来源）"
+                )
+
+            # 根据 loop_type 验证特定字段
+            loop_type = self.config.get("loop_type", "for_each") if self.config else "for_each"
+            if loop_type == "map":
+                transform_expr = self.config.get("transform_expression") if self.config else None
+                if not transform_expr or not str(transform_expr).strip():
+                    errors.append("Loop(map) 节点需要 config.transform_expression 字段（用于转换）")
+            elif loop_type == "filter":
+                filter_cond = self.config.get("filter_condition") if self.config else None
+                if not filter_cond or not str(filter_cond).strip():
+                    errors.append("Loop(filter) 节点需要 config.filter_condition 字段（用于过滤）")
+
+        # GENERIC、PARALLEL 类型无特殊要求
 
         # Phase 9: 父节点策略验证
         # 父节点（GENERIC 类型且有子节点）必须定义 error_strategy 和 resource_limits
@@ -426,7 +471,9 @@ class NodeDefinition:
         return self.children
 
     def apply_inherited_strategy(
-        self, parent_strategy: dict[str, Any] | None = None, parent_resources: dict[str, Any] | None = None
+        self,
+        parent_strategy: dict[str, Any] | None = None,
+        parent_resources: dict[str, Any] | None = None,
     ) -> None:
         """应用继承的策略（合并父节点和子节点配置）
 

@@ -462,8 +462,18 @@ PREDEFINED_SCHEMAS: dict[NodeType, dict[str, Any]] = {
         "properties": {
             "loop_type": {"type": "string", "default": "for_each"},
             "max_iterations": {"type": "integer", "default": 100},
+            # 推荐字段：从上游节点输出中提取集合的字段名
+            "collection_field": {"type": "string"},
+            # 兼容旧字段：直接指定集合名称
             "collection": {"type": "string"},
+            # map类型专用：转换表达式
+            "transform_expression": {"type": "string"},
+            # filter类型专用：过滤条件表达式
+            "filter_condition": {"type": "string"},
+            # while类型专用：循环条件
             "condition": {"type": "string"},
+            # for_each类型专用：迭代时注入的变量名
+            "item_variable": {"type": "string", "default": "current_item"},
         },
         "required": [],
     },

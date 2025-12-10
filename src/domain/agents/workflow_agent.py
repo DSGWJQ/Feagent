@@ -3051,6 +3051,106 @@ class WorkflowAgent:
 
         return {"aborted": False}
 
+    def evaluate_condition_node(
+        self,
+        node: "NodeDefinition",
+        context: "WorkflowContext",
+    ) -> bool:
+        """评估条件节点的表达式并返回布尔结果
+
+        此方法用于执行CONDITION类型节点的条件判断逻辑，支持从多层上下文中
+        获取变量（节点输出、工作流变量、全局变量），并使用安全的表达式求值器
+        进行条件判断。
+
+        评估流程：
+        1. 从节点配置中获取条件表达式（config.expression）
+        2. 构建多层求值上下文：
+           - context: 当前节点的输出数据（如果存在）
+           - workflow_vars: 工作流级别的变量
+           - global_vars: 全局系统配置变量
+        3. 使用 ExpressionEvaluator 安全求值表达式
+        4. 将结果转换为布尔值并返回
+
+        参数：
+            node: 条件节点定义（NodeDefinition），必须包含 config.expression
+            context: 工作流上下文（WorkflowContext），用于获取节点输出和变量
+
+        返回：
+            bool: 条件表达式的求值结果
+                  - True: 条件满足
+                  - False: 条件不满足或发生错误
+
+        异常处理：
+            - 表达式为空：返回 False
+            - 表达式语法错误：抛出异常（由ExpressionEvaluator处理）
+            - 变量不存在：返回 False（由ExpressionEvaluator处理）
+            - 其他运行时错误：抛出异常
+
+        使用示例：
+            >>> condition_node = NodeDefinition(
+            ...     node_type=NodeType.CONDITION,
+            ...     name="quality_check",
+            ...     config={"expression": "quality_score > 0.8"}
+            ... )
+            >>> result = workflow_agent.evaluate_condition_node(
+            ...     node=condition_node,
+            ...     context=workflow_context
+            ... )
+            >>> print(result)  # True or False
+        """
+        # 1. 获取条件表达式
+        expression = node.config.get("expression") if node.config else None
+        if not expression or not str(expression).strip():
+            # 表达式为空，默认返回False（条件不满足）
+            return False
+
+        # 2. 构建求值上下文
+        # 从 WorkflowContext 中收集多层变量
+        eval_context: dict[str, Any] = {}
+        workflow_vars: dict[str, Any] | None = None
+        global_vars: dict[str, Any] | None = None
+
+        # 获取当前工作流上下文中的所有节点输出
+        # 为避免键冲突，使用命名空间化的方式：node_id.key
+        if context:
+            # 方案1：扁平化（如果节点输出是简单字典）
+            # 方案2：保留命名空间（推荐）- 表达式使用 node1.output_key 访问
+            # 这里采用混合策略：既扁平化单层输出，又保留节点命名空间
+            for node_id, output in context.node_data.items():
+                if isinstance(output, dict):
+                    # 扁平化：直接合并到根上下文（与旧版本保持兼容）
+                    eval_context.update(output)
+                    # 命名空间化：同时在节点ID下保留完整输出（避免冲突）
+                    eval_context[node_id] = output
+
+            # 获取工作流变量（set_variable设置的变量）
+            workflow_vars = getattr(context, "variables", None)
+
+            # 获取全局变量（从 session_context -> global_context）
+            if hasattr(context, "session_context") and context.session_context:
+                session_ctx = context.session_context
+                if hasattr(session_ctx, "global_context") and session_ctx.global_context:
+                    global_ctx = session_ctx.global_context
+                    # 尝试获取 system_config 作为全局变量
+                    if hasattr(global_ctx, "system_config"):
+                        global_vars = global_ctx.system_config
+
+        # 3. 使用 ExpressionEvaluator 安全求值
+        evaluator = ExpressionEvaluator()
+        try:
+            result = evaluator.evaluate(
+                expression=str(expression),
+                context=eval_context,
+                workflow_vars=workflow_vars,
+                global_vars=global_vars,
+            )
+            # 4. 转换为布尔值
+            return bool(result)
+        except Exception:
+            # 表达式求值失败（语法错误、变量不存在等），重新抛出异常
+            # 让调用方决定如何处理
+            raise
+
 
 # 导出
 __all__ = [
