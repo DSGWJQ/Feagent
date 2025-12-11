@@ -23,11 +23,17 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
 from typing import Any
 
 from src.domain.services.event_bus import Event, EventBus
 from src.domain.services.safety_guard import ValidationResult
+from src.domain.services.workflow_failure_orchestrator import (
+    FailureHandlingResult,
+    FailureHandlingStrategy,
+    NodeFailureHandledEvent,
+    WorkflowAbortedEvent,
+    WorkflowAdjustmentRequestedEvent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,22 +57,6 @@ MAX_CONTAINER_LOGS_SIZE = 500
 
 MAX_SUBAGENT_RESULTS_SIZE = 100
 """子Agent结果历史最大条目数"""
-
-
-class FailureHandlingStrategy(str, Enum):
-    """失败处理策略枚举
-
-    定义节点失败时的处理方式：
-    - RETRY: 重试执行
-    - SKIP: 跳过节点继续执行
-    - ABORT: 终止工作流
-    - REPLAN: 请求对话Agent重新规划
-    """
-
-    RETRY = "retry"
-    SKIP = "skip"
-    ABORT = "abort"
-    REPLAN = "replan"
 
 
 @dataclass
@@ -159,48 +149,6 @@ class CircuitBreakerAlertEvent(Event):
 
 
 @dataclass
-class WorkflowAdjustmentRequestedEvent(Event):
-    """工作流调整请求事件（Phase 12）
-
-    当节点失败需要重新规划时发布此事件，
-    对话Agent收到后应重新规划工作流。
-    """
-
-    workflow_id: str = ""
-    failed_node_id: str = ""
-    failure_reason: str = ""
-    suggested_action: str = "replan"
-    execution_context: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class NodeFailureHandledEvent(Event):
-    """节点失败处理完成事件（Phase 12）
-
-    记录节点失败处理的结果。
-    """
-
-    workflow_id: str = ""
-    node_id: str = ""
-    strategy: str = ""
-    success: bool = False
-    retry_count: int = 0
-    error_message: str = ""
-
-
-@dataclass
-class WorkflowAbortedEvent(Event):
-    """工作流终止事件（Phase 12）
-
-    当工作流因严重错误被终止时发布。
-    """
-
-    workflow_id: str = ""
-    node_id: str = ""
-    reason: str = ""
-
-
-@dataclass
 class SubAgentCompletedEvent(Event):
     """子Agent完成事件（Phase 3）
 
@@ -229,27 +177,6 @@ class SubAgentCompletedEvent(Event):
     def event_type(self) -> str:
         """事件类型"""
         return "subagent_completed"
-
-
-@dataclass
-class FailureHandlingResult:
-    """失败处理结果（Phase 12）
-
-    属性：
-    - success: 处理是否成功（重试成功或跳过）
-    - skipped: 是否跳过了节点
-    - aborted: 是否终止了工作流
-    - retry_count: 实际重试次数
-    - output: 成功时的输出
-    - error_message: 失败时的错误信息
-    """
-
-    success: bool = False
-    skipped: bool = False
-    aborted: bool = False
-    retry_count: int = 0
-    output: dict[str, Any] = field(default_factory=dict)
-    error_message: str = ""
 
 
 class CoordinatorAgent:
@@ -312,18 +239,30 @@ class CoordinatorAgent:
         # 阶段5新增：上下文桥接器
         self.context_bridge = context_bridge
 
-        # Phase 12: 失败处理策略配置
+        # Phase 34.1: 工作流失败编排器（使用 WorkflowFailureOrchestrator）
+        from src.domain.services.workflow_failure_orchestrator import (
+            WorkflowFailureOrchestrator,
+        )
+
+        # 保留原配置以维持向后兼容性
         self.failure_strategy_config: dict[str, Any] = failure_strategy_config or {
             "default_strategy": FailureHandlingStrategy.RETRY,
             "max_retries": 3,
             "retry_delay": 1.0,
         }
 
-        # Phase 12: 节点级别的失败策略覆盖
+        # 内部状态变量（用于向后兼容属性暴露）
         self._node_failure_strategies: dict[str, FailureHandlingStrategy] = {}
-
-        # Phase 12: 注册的 WorkflowAgent 实例
         self._workflow_agents: dict[str, Any] = {}
+
+        # 创建失败编排器实例
+        self._failure_orchestrator = WorkflowFailureOrchestrator(
+            event_bus=self.event_bus,
+            state_accessor=lambda wf_id: self.workflow_states.get(wf_id),
+            state_mutator=lambda wf_id: self.workflow_states.setdefault(wf_id, {}),
+            workflow_agent_resolver=lambda wf_id: self._workflow_agents.get(wf_id),
+            config=self.failure_strategy_config,
+        )
 
         # Phase 15: 简单消息日志
         self.message_log: list[dict[str, Any]] = []
@@ -2607,7 +2546,9 @@ class CoordinatorAgent:
             node_id: 节点ID
             strategy: 失败处理策略
         """
+        # 同时更新本地状态和编排器（向后兼容）
         self._node_failure_strategies[node_id] = strategy
+        self._failure_orchestrator.set_node_strategy(node_id, strategy)
 
     def get_node_failure_strategy(self, node_id: str) -> FailureHandlingStrategy:
         """获取节点的失败处理策略
@@ -2620,9 +2561,7 @@ class CoordinatorAgent:
         返回：
             失败处理策略
         """
-        if node_id in self._node_failure_strategies:
-            return self._node_failure_strategies[node_id]
-        return self.failure_strategy_config["default_strategy"]
+        return self._failure_orchestrator.get_node_strategy(node_id)
 
     def register_workflow_agent(self, workflow_id: str, agent: Any) -> None:
         """注册 WorkflowAgent 实例
@@ -2633,7 +2572,23 @@ class CoordinatorAgent:
             workflow_id: 工作流ID
             agent: WorkflowAgent 实例
         """
+        # 同时注册到本地和编排器（向后兼容）
         self._workflow_agents[workflow_id] = agent
+        self._failure_orchestrator.register_workflow_agent(workflow_id, agent)
+
+    def _sync_config_to_orchestrator(self) -> None:
+        """同步 failure_strategy_config 到编排器
+
+        当测试或运行时修改配置时，需要同步到编排器。
+        """
+        # 更新编排器的配置
+        self._failure_orchestrator.config = {
+            "default_strategy": self.failure_strategy_config.get(
+                "default_strategy", FailureHandlingStrategy.RETRY
+            ),
+            "max_retries": self.failure_strategy_config.get("max_retries", 3),
+            "retry_delay": self.failure_strategy_config.get("retry_delay", 1.0),
+        }
 
     async def handle_node_failure(
         self,
@@ -2642,7 +2597,7 @@ class CoordinatorAgent:
         error_code: Any,
         error_message: str,
     ) -> FailureHandlingResult:
-        """处理节点失败
+        """处理节点失败（委托给 WorkflowFailureOrchestrator）
 
         根据配置的策略处理节点执行失败：
         - RETRY: 重试执行节点
@@ -2659,203 +2614,15 @@ class CoordinatorAgent:
         返回：
             失败处理结果
         """
+        # 同步配置到编排器（支持运行时修改）
+        self._sync_config_to_orchestrator()
 
-        from src.domain.services.execution_result import ErrorCode
-
-        strategy = self.get_node_failure_strategy(node_id)
-
-        # SKIP 策略
-        if strategy == FailureHandlingStrategy.SKIP:
-            return await self._handle_skip(workflow_id, node_id, error_message)
-
-        # ABORT 策略
-        if strategy == FailureHandlingStrategy.ABORT:
-            return await self._handle_abort(workflow_id, node_id, error_message)
-
-        # REPLAN 策略
-        if strategy == FailureHandlingStrategy.REPLAN:
-            return await self._handle_replan(workflow_id, node_id, error_message)
-
-        # RETRY 策略（默认）
-        if strategy == FailureHandlingStrategy.RETRY:
-            # 检查错误是否可重试
-            if isinstance(error_code, ErrorCode) and not error_code.is_retryable():
-                # 不可重试的错误，根据默认行为处理
-                return FailureHandlingResult(
-                    success=False,
-                    error_message=f"Non-retryable error: {error_message}",
-                )
-
-            return await self._handle_retry(workflow_id, node_id, error_message)
-
-        # 未知策略，返回失败
-        return FailureHandlingResult(
-            success=False,
-            error_message=f"Unknown strategy: {strategy}",
-        )
-
-    async def _handle_retry(
-        self, workflow_id: str, node_id: str, error_message: str
-    ) -> FailureHandlingResult:
-        """处理重试策略"""
-        import asyncio
-
-        max_retries = self.failure_strategy_config.get("max_retries", DEFAULT_MAX_RETRIES)
-        retry_delay = self.failure_strategy_config.get("retry_delay", DEFAULT_RETRY_DELAY)
-
-        agent = self._workflow_agents.get(workflow_id)
-        if not agent:
-            return FailureHandlingResult(
-                success=False,
-                error_message=f"No WorkflowAgent registered for {workflow_id}",
-            )
-
-        retry_count = 0
-        while retry_count < max_retries:
-            await asyncio.sleep(retry_delay)
-
-            result = await agent.execute_node_with_result(node_id)
-
-            if result.success:
-                # 更新执行上下文
-                self._update_context_after_success(workflow_id, node_id, result.output)
-
-                # 发布成功事件
-                if self.event_bus:
-                    event = NodeFailureHandledEvent(
-                        source="coordinator_agent",
-                        workflow_id=workflow_id,
-                        node_id=node_id,
-                        strategy="retry",
-                        success=True,
-                        retry_count=retry_count + 1,
-                    )
-                    await self.event_bus.publish(event)
-
-                return FailureHandlingResult(
-                    success=True,
-                    retry_count=retry_count + 1,
-                    output=result.output,
-                )
-
-            retry_count += 1
-
-        # 重试耗尽
-        return FailureHandlingResult(
-            success=False,
-            retry_count=retry_count,
-            error_message=f"Max retries ({max_retries}) exceeded",
-        )
-
-    async def _handle_skip(
-        self, workflow_id: str, node_id: str, error_message: str
-    ) -> FailureHandlingResult:
-        """处理跳过策略"""
-        # 更新上下文：标记节点为已跳过
-        if workflow_id in self.workflow_states:
-            state = self.workflow_states[workflow_id]
-            if "skipped_nodes" not in state:
-                state["skipped_nodes"] = []
-            if node_id not in state["skipped_nodes"]:
-                state["skipped_nodes"].append(node_id)
-            # 从失败节点中移除
-            if node_id in state.get("failed_nodes", []):
-                state["failed_nodes"].remove(node_id)
-
-        # 发布事件
-        if self.event_bus:
-            event = NodeFailureHandledEvent(
-                source="coordinator_agent",
-                workflow_id=workflow_id,
-                node_id=node_id,
-                strategy="skip",
-                success=True,
-            )
-            await self.event_bus.publish(event)
-
-        return FailureHandlingResult(
-            success=True,
-            skipped=True,
-        )
-
-    async def _handle_abort(
-        self, workflow_id: str, node_id: str, error_message: str
-    ) -> FailureHandlingResult:
-        """处理终止策略"""
-        # 更新上下文
-        if workflow_id in self.workflow_states:
-            self.workflow_states[workflow_id]["status"] = "aborted"
-
-        # 发布终止事件
-        if self.event_bus:
-            event = WorkflowAbortedEvent(
-                source="coordinator_agent",
-                workflow_id=workflow_id,
-                node_id=node_id,
-                reason=error_message,
-            )
-            await self.event_bus.publish(event)
-
-        return FailureHandlingResult(
-            success=False,
-            aborted=True,
+        return await self._failure_orchestrator.handle_node_failure(
+            workflow_id=workflow_id,
+            node_id=node_id,
+            error_code=error_code,
             error_message=error_message,
         )
-
-    async def _handle_replan(
-        self, workflow_id: str, node_id: str, error_message: str
-    ) -> FailureHandlingResult:
-        """处理重新规划策略"""
-        # 获取执行上下文
-        execution_context = {}
-        if workflow_id in self.workflow_states:
-            state = self.workflow_states[workflow_id]
-            execution_context = {
-                "executed_nodes": state.get("executed_nodes", []),
-                "node_outputs": state.get("node_outputs", {}),
-                "failed_nodes": state.get("failed_nodes", []),
-            }
-
-        # 发布重新规划事件
-        if self.event_bus:
-            event = WorkflowAdjustmentRequestedEvent(
-                source="coordinator_agent",
-                workflow_id=workflow_id,
-                failed_node_id=node_id,
-                failure_reason=error_message,
-                suggested_action="replan",
-                execution_context=execution_context,
-            )
-            await self.event_bus.publish(event)
-
-        return FailureHandlingResult(
-            success=False,
-            error_message=f"Replan requested: {error_message}",
-        )
-
-    def _update_context_after_success(
-        self, workflow_id: str, node_id: str, output: dict[str, Any]
-    ) -> None:
-        """重试成功后更新执行上下文"""
-        if workflow_id not in self.workflow_states:
-            return
-
-        state = self.workflow_states[workflow_id]
-
-        # 添加到已执行节点
-        if node_id not in state.get("executed_nodes", []):
-            if "executed_nodes" not in state:
-                state["executed_nodes"] = []
-            state["executed_nodes"].append(node_id)
-
-        # 从失败节点中移除
-        if node_id in state.get("failed_nodes", []):
-            state["failed_nodes"].remove(node_id)
-
-        # 保存输出
-        if "node_outputs" not in state:
-            state["node_outputs"] = {}
-        state["node_outputs"][node_id] = output
 
     # === Phase 15: 简单消息监听 ===
 
