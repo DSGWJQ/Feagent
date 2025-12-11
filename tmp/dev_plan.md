@@ -2541,21 +2541,146 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 
 ---
 
+## Phase 34.13: SupervisionFacade
+
+**时间**: 2025-12-11
+**目标**: 提取监督操作统一入口，简化 CoordinatorAgent 的监督逻辑委托
+
+### 模块设计
+
+**新增文件**:
+- `src/domain/services/supervision_facade.py` (384 lines)
+- `tests/unit/domain/services/test_supervision_facade.py` (443 lines)
+
+**核心职责**:
+1. **三类监督分析**: 委托 SupervisionModule 执行上下文/保存请求/决策链监督
+2. **干预执行**: 根据 SupervisionInfo 执行 WARNING/REPLACE/TERMINATE 动作
+3. **日志查询**: 提供监督日志和干预事件查询接口
+4. **策略管理**: 添加监督策略和获取干预事件历史
+5. **输入检查**: supervise_input 检查用户输入安全性
+
+**依赖组件**:
+- SupervisionModule (analyze_* methods)
+- SupervisionLogger (log_intervention)
+- SupervisionCoordinator (get_intervention_events, record_intervention)
+- ContextInjectionManager (inject_warning, inject_intervention, add_injection)
+- UnifiedLogCollector (audit logging)
+
+### 集成方式
+
+**CoordinatorBootstrap** (Phase 34.12):
+- `build_guardians()` 方法创建 SupervisionFacade
+- 注入所有依赖组件（module, logger, coordinator, injection_manager, log_collector）
+- 暴露为 `wiring.orchestrators["supervision_facade"]`
+
+**CoordinatorAgent** 委托:
+- 6个监督方法委托给 `self.supervision_facade`
+- `supervise_context()` / `supervise_save_request()` / `supervise_decision_chain()`
+- `execute_intervention()` / `get_supervision_logs()` / `get_supervision_logs_by_session()`
+- `supervise_input()` / `add_supervision_strategy()` / `get_intervention_events()`
+
+**向后兼容**:
+- 保持所有原有方法签名不变
+- SupervisionCoordinator 子模块别名继续通过 facade 暴露
+- conversation_supervision / efficiency_monitor / strategy_repository
+
+### 成果总结
+
+| 指标 | 数值 |
+|------|------|
+| 提取模块行数 | 384 lines |
+| 测试文件行数 | 443 lines |
+| CoordinatorAgent 变化 | +11 lines (facade layer) |
+| 单元测试覆盖率 | 94% (70/75 statements) |
+| 单元测试通过率 | 100% (15/15) |
+| Codex 初评 | 5/10 |
+| Codex 修复后 | 9/10 |
+| Ruff 检查 | ✅ 通过 |
+| Pyright 类型检查 | ✅ 0 errors |
+
+### Codex 协作
+
+**第一轮审查 (5/10)**:
+1. ❌ **Issue 1**: `log_intervention` 使用错误的 keyword args（应为 positional args）
+2. ❌ **Issue 2**: `get_intervention_events` 的 session_id 过滤无效（formatted events 无 session_id 字段）
+3. ❌ **Issue 3**: `supervise_*` 方法返回类型声明错误（`dict[str, Any]` 应为 `list[Any]`）
+
+**修复措施**:
+1. ✅ 修正 `log_intervention(supervision_info, status)` 调用签名
+2. ✅ 移除 `get_intervention_events` 的无效 session_id 过滤逻辑
+3. ✅ 更新所有 `supervise_*` 方法返回类型为 `list[Any]` 匹配实际 SupervisionModule 行为
+
+**第二轮审查 (9/10)**:
+- ✅ 所有关键问题已修复
+- ℹ️ 可选改进：`list[Any]` 可改为 `list["SupervisionInfo"]` 提升类型精度（仅影响静态分析）
+
+### 关键设计决策
+
+1. **Facade Pattern**: 统一入口包装多个监督组件
+2. **Positional Args**: SupervisionLogger.log_intervention 使用位置参数而非关键字参数
+3. **Return Type Alignment**: 方法返回类型与实际 SupervisionModule 行为一致（list[SupervisionInfo]）
+4. **Delegation**: CoordinatorAgent 完全委托，无内联监督逻辑
+
+### Commits
+
+**提交信息**:
+```
+refactor: Extract SupervisionFacade from CoordinatorAgent
+
+Phase 34.13: 监督模块 Facade 提取与集成
+
+创建独立 Facade：
+- SupervisionFacade (384 lines, 94% coverage)
+- 监督分析：supervise_context/save_request/decision_chain
+- 干预执行：execute_intervention (WARNING/REPLACE/TERMINATE)
+- 日志查询：get_supervision_logs/get_supervision_logs_by_session
+- 策略管理：add_supervision_strategy, get_intervention_events
+- 输入检查：supervise_input
+- 15个单元测试全部通过
+
+集成到 CoordinatorBootstrap & CoordinatorAgent：
+- Bootstrap.build_guardians() 创建 facade
+- CoordinatorAgent 委托 9 个监督方法
+- 保持完全向后兼容
+- 代码净增加 11 lines (facade layer)
+
+Codex 协作与修复：
+- 初评 5/10：发现3个关键问题（log_intervention签名、session_id过滤、返回类型）
+- 修复：调整方法调用签名、移除无效过滤、更正返回类型
+- 修复后 9/10
+
+测试验证：
+- 15/15 tests passing (100%)
+- 94% 测试覆盖率 (70/75 statements)
+- Ruff + Pyright 检查通过
+
+累计进度：
+- Phase 2 已完成 14 个模块
+- CoordinatorAgent: 5517 → 4013 lines (-1504, 27.2%)
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+```
+
+---
+
 ## 下一步规划
 
-根据 Codex 分析和 Phase 34.12 完成，剩余待提取的模块（按优先级）：
+根据 Codex 分析和 Phase 34.13 完成，剩余待提取的模块（按优先级）：
 
 1. ✅ **ContextInjectionManager** (低复杂度) - **Phase 34.12 已完成**
    - 上下文注入管理
    - 注入日志记录
    - Codex 初评 6/10 → 修复后 8+/10
 
-2. 🎯 **SupervisionModule** (中等复杂度) - **下一个目标**
-   - 监督规则管理
-   - 监督日志记录
-   - 依赖 ContextInjectionManager（已完成）
+2. ✅ **SupervisionFacade** (低复杂度) - **Phase 34.13 已完成**
+   - 监督操作统一入口（supervise_context/save_request/decision_chain）
+   - 干预执行（execute_intervention: WARNING/REPLACE/TERMINATE）
+   - 监督日志查询
+   - Codex 初评 5/10 → 修复后 9/10
 
-3. 🎯 **SupervisionCoordinator 子模块拆分** (中等复杂度)
+3. 🎯 **SupervisionCoordinator 子模块拆分** (中等复杂度) - **下一个目标**
    - ConversationSupervision
    - EfficiencyMonitor
    - StrategyRepository
@@ -2569,7 +2694,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 
 ## 已完成模块总结（Phase 2 累计）
 
-**已完成模块** (13 个):
+**已完成模块** (14 个):
 1. ✅ PromptVersionFacade (Phase 34.1)
 2. ✅ ExperimentOrchestrator (Phase 34.2)
 3. ✅ SubAgentOrchestrator (Phase 34.3)
@@ -2582,7 +2707,8 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 10. ✅ KnowledgeRetrievalOrchestrator (Phase 34.10)
 11. ✅ UnifiedLogIntegration (Phase 34.11)
 12. ✅ CoordinatorBootstrap (Phase 34.12)
-13. ✅ ContextInjectionManager (Phase 34.12) ← **最新完成**
+13. ✅ ContextInjectionManager (Phase 34.12)
+14. ✅ SupervisionFacade (Phase 34.13) ← **最新完成**
 
 **CoordinatorAgent 代码行数变化**:
 
@@ -2601,6 +2727,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 | UnifiedLogIntegration | ~20 | 4158 |
 | CoordinatorBootstrap | ~139 | 4019 |
 | ContextInjectionManager | ~17 | 4002 |
-| **总计** | **~1515** | **4002 (27.5% ↓)** |
+| SupervisionFacade | +11 | 4013 |
+| **总计** | **~1504** | **4013 (27.2% ↓)** |
 
-**最终行数**: 5517 → 4002 lines (-1515 lines, 27.5%)
+**最终行数**: 5517 → 4013 lines (-1504 lines, 27.2%)

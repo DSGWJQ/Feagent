@@ -311,7 +311,7 @@ class CoordinatorBootstrap:
         save_layer = self.build_save_flow(base, infra, knowledge_layer)
 
         # 阶段 8: 守护层
-        guardian_layer = self.build_guardians()
+        guardian_layer = self.build_guardians(infra, agent_layer)
 
         # 汇总别名
         aliases = self._collect_aliases(
@@ -540,7 +540,7 @@ class CoordinatorBootstrap:
             log_collector=infra["log_collector"],
         )
         # 显式暴露 log_collector 属性（满足兼容性测试）
-        subagent_orchestrator.log_collector = infra["log_collector"]
+        subagent_orchestrator.log_collector = infra["log_collector"]  # type: ignore[attr-defined]
 
         # 2. SupervisionCoordinator
         supervision_coordinator = SupervisionCoordinator()
@@ -577,12 +577,12 @@ class CoordinatorBootstrap:
         # 1. PromptVersionFacade（共享 log_collector）
         prompt_facade = PromptVersionFacade(log_collector=infra["log_collector"])
         # 显式暴露 log_collector 属性（满足兼容性测试）
-        prompt_facade.log_collector = infra["log_collector"]
+        prompt_facade.log_collector = infra["log_collector"]  # type: ignore[attr-defined]
 
         # 2. ExperimentOrchestrator（共享 log_collector）
         experiment_orchestrator = ExperimentOrchestrator(log_collector=infra["log_collector"])
         # 显式暴露 log_collector 属性（满足兼容性测试）
-        experiment_orchestrator.log_collector = infra["log_collector"]
+        experiment_orchestrator.log_collector = infra["log_collector"]  # type: ignore[attr-defined]
 
         return {
             "prompt_facade": prompt_facade,
@@ -639,14 +639,18 @@ class CoordinatorBootstrap:
             "_save_receipt_logger": save_receipt_logger,
         }
 
-    def build_guardians(self) -> dict[str, Any]:
+    def build_guardians(self, infra: dict[str, Any], agent_layer: dict[str, Any]) -> dict[str, Any]:
         """构建守护层
 
         创建：
         - ContextInjectionManager Facade（Phase 34.12：包装旧的注入管理器）
-        - SupervisionModule（带 SupervisionLogger）
+        - SupervisionFacade（Phase 34.13：包装 SupervisionModule、Logger、Coordinator）
         - InterventionCoordinator（WorkflowModifier、TaskTerminator、InterventionLogger）
         - SafetyGuard
+
+        参数：
+            infra: 基础设施层组件字典（需要 log_collector）
+            agent_layer: Agent 协调层组件字典（需要 supervision_coordinator）
 
         返回：
             守护层组件字典
@@ -673,7 +677,7 @@ class CoordinatorBootstrap:
             injection_logger=injection_logger,
         )
 
-        # 2. SupervisionModule
+        # 2. SupervisionModule 和 SupervisionLogger
         from src.domain.services.supervision_module import (
             SupervisionLogger as SupLogger,
         )
@@ -683,6 +687,17 @@ class CoordinatorBootstrap:
 
         supervision_logger = SupLogger()
         supervision_module = SupervisionModule(logger=supervision_logger, use_builtin_rules=True)
+
+        # 2.1 SupervisionFacade (Phase 34.13)
+        from src.domain.services.supervision_facade import SupervisionFacade
+
+        supervision_facade = SupervisionFacade(
+            supervision_module=supervision_module,
+            supervision_logger=supervision_logger,
+            supervision_coordinator=agent_layer["supervision_coordinator"],
+            context_injection_manager=context_injection_manager,
+            log_collector=infra["log_collector"],
+        )
 
         # 3. InterventionCoordinator
         from src.domain.services.intervention_system import (
@@ -711,6 +726,7 @@ class CoordinatorBootstrap:
             "context_injection_manager": context_injection_manager,
             "supervision_logger": supervision_logger,
             "supervision_module": supervision_module,
+            "supervision_facade": supervision_facade,  # Phase 34.13
             "intervention_logger": intervention_logger,
             "workflow_modifier": workflow_modifier,
             "task_terminator": task_terminator,
@@ -828,6 +844,7 @@ class CoordinatorBootstrap:
             "injection_logger": guardian["injection_logger"],
             "supervision_module": guardian["supervision_module"],
             "supervision_logger": guardian["supervision_logger"],
+            "supervision_facade": guardian["supervision_facade"],  # Phase 34.13
             "intervention_coordinator": guardian["intervention_coordinator"],
             "intervention_logger": guardian["intervention_logger"],
             "workflow_modifier": guardian["workflow_modifier"],

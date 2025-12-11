@@ -441,6 +441,7 @@ class CoordinatorAgent:
         self._save_request_orchestrator = wiring.orchestrators["save_request_orchestrator"]
         self.injection_manager = wiring.orchestrators["context_injection_manager"]
         self.supervision_module = wiring.orchestrators["supervision_module"]
+        self.supervision_facade = wiring.orchestrators["supervision_facade"]  # Phase 34.13
         self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
         self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
         self.task_terminator = wiring.orchestrators["task_terminator"]
@@ -961,10 +962,10 @@ class CoordinatorAgent:
         """获取指定会话的注入日志（委托到 ContextInjectionManager）"""
         return self.injection_manager.get_injection_logs_by_session(session_id)
 
-    # ==================== Phase 34.4: 监督模块 ====================
+    # ==================== Phase 34.4 → 34.13: 监督模块（委托到 SupervisionFacade）====================
 
     def supervise_context(self, context: dict[str, Any]) -> list[Any]:
-        """监督上下文
+        """监督上下文（委托到 SupervisionFacade）
 
         分析上下文数据，判断是否需要干预。
 
@@ -974,10 +975,10 @@ class CoordinatorAgent:
         返回：
             触发的 SupervisionInfo 列表
         """
-        return self.supervision_module.analyze_context(context)
+        return self.supervision_facade.supervise_context(context)
 
     def supervise_save_request(self, request: dict[str, Any]) -> list[Any]:
-        """监督保存请求
+        """监督保存请求（委托到 SupervisionFacade）
 
         分析保存请求，判断是否需要干预。
 
@@ -987,14 +988,14 @@ class CoordinatorAgent:
         返回：
             触发的 SupervisionInfo 列表
         """
-        return self.supervision_module.analyze_save_request(request)
+        return self.supervision_facade.supervise_save_request(request)
 
     def supervise_decision_chain(
         self,
         decisions: list[dict[str, Any]],
         session_id: str,
     ) -> list[Any]:
-        """监督决策链路
+        """监督决策链路（委托到 SupervisionFacade）
 
         分析决策链路，判断是否需要干预。
 
@@ -1005,10 +1006,10 @@ class CoordinatorAgent:
         返回：
             触发的 SupervisionInfo 列表
         """
-        return self.supervision_module.analyze_decision_chain(decisions, session_id)
+        return self.supervision_facade.supervise_decision_chain(decisions, session_id)
 
     def execute_intervention(self, supervision_info: Any) -> dict[str, Any]:
-        """执行干预
+        """执行干预（委托到 SupervisionFacade）
 
         根据监督信息执行相应的干预动作。
 
@@ -1018,75 +1019,15 @@ class CoordinatorAgent:
         返回：
             干预结果
         """
-        from src.domain.services.supervision_module import SupervisionAction
-
-        action = supervision_info.action
-        session_id = supervision_info.session_id
-        result = {"success": True, "action": action.value}
-
-        if action == SupervisionAction.WARNING:
-            # 注入警告
-            self.inject_warning(
-                session_id=session_id,
-                warning_message=supervision_info.content,
-                rule_id=supervision_info.trigger_rule,
-            )
-            result["intervention_type"] = "warning_injected"
-
-        elif action == SupervisionAction.REPLACE:
-            # 替换内容 - 通过注入 SUPPLEMENT 类型信息
-            replacement = supervision_info.metadata.get("replacement_content", "[REDACTED]")
-            injection = self._create_supplement_injection(session_id, replacement, supervision_info)
-            self.injection_manager.add_injection(injection)
-            result["intervention_type"] = "content_replaced"
-            result["replacement"] = replacement
-
-        elif action == SupervisionAction.TERMINATE:
-            # 注入干预指令
-            self.inject_intervention(
-                session_id=session_id,
-                intervention_message=f"任务已终止: {supervision_info.content}",
-                reason=supervision_info.trigger_condition,
-            )
-            result["intervention_type"] = "task_terminated"
-
-        # 记录干预日志
-        self._supervision_logger.log_intervention(
-            supervision_info,
-            result=result.get("intervention_type", "unknown"),
-        )
-
-        return result
-
-    def _create_supplement_injection(
-        self,
-        session_id: str,
-        replacement: str,
-        supervision_info: Any,
-    ) -> Any:
-        """创建补充注入（内部方法）"""
-        from src.domain.services.context_injection import (
-            ContextInjection,
-            InjectionPoint,
-            InjectionType,
-        )
-
-        return ContextInjection(
-            session_id=session_id,
-            injection_type=InjectionType.SUPPLEMENT,
-            injection_point=InjectionPoint.PRE_THINKING,
-            content=f"内容已被替换为: {replacement}",
-            source="supervisor",
-            reason=supervision_info.trigger_condition,
-        )
+        return self.supervision_facade.execute_intervention(supervision_info)
 
     def get_supervision_logs(self) -> list[dict[str, Any]]:
-        """获取所有监督日志"""
-        return self._supervision_logger.get_logs()
+        """获取所有监督日志（委托到 SupervisionFacade）"""
+        return self.supervision_facade.get_supervision_logs()
 
     def get_supervision_logs_by_session(self, session_id: str) -> list[dict[str, Any]]:
-        """获取指定会话的监督日志"""
-        return self._supervision_logger.get_logs_by_session(session_id)
+        """获取指定会话的监督日志（委托到 SupervisionFacade）"""
+        return self.supervision_facade.get_supervision_logs_by_session(session_id)
 
     # ==================== Phase 34.5: 干预系统 ====================
 
@@ -2546,7 +2487,7 @@ class CoordinatorAgent:
         异常：
             ValueError: 如果没有配置上下文桥接器
         """
-        if not self.context_bridge:
+        if not self.context_bridge:  # type: ignore[has-type]
             raise ValueError("未配置上下文桥接器")
 
         from src.domain.services.context_bridge_enhanced import BridgeRequest
@@ -2558,7 +2499,7 @@ class CoordinatorAgent:
             requester=f"coordinator_{target_workflow_id}",
         )
 
-        result = await self.context_bridge.transfer_with_request(request)
+        result = await self.context_bridge.transfer_with_request(request)  # type: ignore[has-type]
 
         if result.success:
             # 合并所有请求的键的数据
@@ -3802,7 +3743,7 @@ class CoordinatorAgent:
     # ==================== 监督模块代理方法 ====================
 
     def supervise_input(self, text: str) -> dict[str, Any]:
-        """监督用户输入
+        """监督用户输入（委托到 SupervisionFacade）
 
         对输入文本进行全面检查，包括偏见、有害内容、稳定性检测。
 
@@ -3815,50 +3756,7 @@ class CoordinatorAgent:
             - issues: list - 检测到的问题列表
             - action: str - 建议的动作 (allow/warn/block/terminate)
         """
-        from src.domain.services.supervision_modules import ComprehensiveCheckResult
-
-        result: ComprehensiveCheckResult = self.conversation_supervision.check_all(text)
-
-        # 记录日志
-        if result.passed:
-            self.log_collector.debug(
-                "CoordinatorAgent",
-                "输入检查通过",
-                {"text_length": len(text)},
-            )
-        else:
-            self.log_collector.warning(
-                "CoordinatorAgent",
-                f"输入检查发现 {len(result.issues)} 个问题",
-                {
-                    "text_length": len(text),
-                    "issues": [issue.category for issue in result.issues],
-                    "action": result.action,
-                },
-            )
-            # 记录干预事件
-            for issue in result.issues:
-                self._supervision_coordinator.record_intervention(
-                    intervention_type=issue.category,
-                    reason=issue.message,
-                    source="conversation_supervision",
-                    target_id="user_input",
-                    severity=issue.severity,
-                )
-
-        return {
-            "passed": result.passed,
-            "issues": [
-                {
-                    "detected": issue.detected,
-                    "category": issue.category,
-                    "severity": issue.severity,
-                    "message": issue.message,
-                }
-                for issue in result.issues
-            ],
-            "action": result.action,
-        }
+        return self.supervision_facade.supervise_input(text)
 
     def record_workflow_resource(
         self,
@@ -3925,7 +3823,7 @@ class CoordinatorAgent:
         priority: int = 10,
         **kwargs: Any,
     ) -> str:
-        """添加监督策略
+        """添加监督策略（委托到 SupervisionFacade）
 
         注册一个新的监督策略到策略库。
 
@@ -3939,7 +3837,7 @@ class CoordinatorAgent:
         返回：
             策略 ID
         """
-        strategy_id = self.strategy_repository.register(
+        return self.supervision_facade.add_supervision_strategy(
             name=name,
             trigger_conditions=trigger_conditions,
             action=action,
@@ -3947,36 +3845,13 @@ class CoordinatorAgent:
             **kwargs,
         )
 
-        self.log_collector.info(
-            "CoordinatorAgent",
-            f"添加监督策略: {name}",
-            {
-                "strategy_id": strategy_id,
-                "trigger_conditions": trigger_conditions,
-                "action": action,
-            },
-        )
-
-        return strategy_id
-
     def get_intervention_events(self) -> list[dict[str, Any]]:
-        """获取干预事件历史
+        """获取干预事件历史（委托到 SupervisionFacade）
 
         返回：
             干预事件列表
         """
-        events = self._supervision_coordinator.get_intervention_events()
-        return [
-            {
-                "intervention_type": e.intervention_type,
-                "reason": e.reason,
-                "source": e.source,
-                "target_id": e.target_id,
-                "severity": e.severity,
-                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
-            }
-            for e in events
-        ]
+        return self.supervision_facade.get_intervention_events()
 
     # ==================== Section 27: A/B 测试与实验管理（代理到 ExperimentOrchestrator）====================
 
