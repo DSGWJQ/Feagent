@@ -453,10 +453,14 @@ class CoordinatorAgent:
             self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
 
         # 9. 重建内部状态容器（共享bootstrap容器以保持状态一致）
-        self._node_failure_strategies: dict[str, FailureHandlingStrategy] = wiring.base_state["_node_failure_strategies"]
+        self._node_failure_strategies: dict[str, FailureHandlingStrategy] = wiring.base_state[
+            "_node_failure_strategies"
+        ]
         self._workflow_agents: dict[str, Any] = wiring.base_state["_workflow_agents"]
         self.message_log: list[dict[str, Any]] = wiring.base_state["message_log"]
-        self.reflection_contexts: dict[str, dict[str, Any]] = wiring.base_state["reflection_contexts"]
+        self.reflection_contexts: dict[str, dict[str, Any]] = wiring.base_state[
+            "reflection_contexts"
+        ]
         self._compressed_contexts: dict[str, Any] = wiring.base_state["_compressed_contexts"]
         self._knowledge_cache: dict[str, Any] = wiring.base_state["_knowledge_cache"]
 
@@ -476,9 +480,7 @@ class CoordinatorAgent:
         self._intervention_logger = wiring.orchestrators["intervention_logger"]
 
         # 14. 保留原始配置引用（向后兼容）
-        self.failure_strategy_config = (
-            failure_strategy_config or self._failure_orchestrator.config
-        )
+        self.failure_strategy_config = failure_strategy_config or self._failure_orchestrator.config
         self.knowledge_retriever = knowledge_retriever
 
     # =========================================================================
@@ -825,7 +827,7 @@ class CoordinatorAgent:
             return []
         return self._save_request_orchestrator.get_save_audit_logs_by_session(session_id)
 
-    # ==================== Phase 34.3: 上下文注入 ====================
+    # ==================== Phase 34.3 → 34.12: 上下文注入（委托到 ContextInjectionManager Facade）====================
 
     def inject_context(
         self,
@@ -835,7 +837,7 @@ class CoordinatorAgent:
         reason: str,
         priority: int = 30,
     ) -> Any:
-        """向会话注入上下文
+        """向会话注入上下文（委托到 ContextInjectionManager）
 
         参数：
             session_id: 会话 ID
@@ -847,31 +849,13 @@ class CoordinatorAgent:
         返回：
             创建的 ContextInjection
         """
-        from src.domain.services.context_injection import (
-            ContextInjection,
-            InjectionPoint,
-            InjectionType,
-        )
-
-        # 根据类型确定注入点
-        injection_point = InjectionPoint.PRE_LOOP
-        if injection_type == InjectionType.WARNING:
-            injection_point = InjectionPoint.PRE_THINKING
-        elif injection_type == InjectionType.INTERVENTION:
-            injection_point = InjectionPoint.INTERVENTION
-
-        injection = ContextInjection(
+        return self.injection_manager.inject_context(
             session_id=session_id,
             injection_type=injection_type,
-            injection_point=injection_point,
             content=content,
-            source="coordinator",
             reason=reason,
             priority=priority,
         )
-
-        self.injection_manager.add_injection(injection)
-        return injection
 
     def inject_warning(
         self,
@@ -970,12 +954,12 @@ class CoordinatorAgent:
         )
 
     def get_injection_logs(self) -> list[dict[str, Any]]:
-        """获取所有注入日志"""
-        return self._injection_logger.get_logs()
+        """获取所有注入日志（委托到 ContextInjectionManager）"""
+        return self.injection_manager.get_injection_logs()
 
     def get_injection_logs_by_session(self, session_id: str) -> list[dict[str, Any]]:
-        """获取指定会话的注入日志"""
-        return self._injection_logger.get_logs_by_session(session_id)
+        """获取指定会话的注入日志（委托到 ContextInjectionManager）"""
+        return self.injection_manager.get_injection_logs_by_session(session_id)
 
     # ==================== Phase 34.4: 监督模块 ====================
 

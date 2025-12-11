@@ -320,7 +320,13 @@ class CoordinatorBootstrap:
 
         # 汇总编排器
         orchestrators = self._collect_orchestrators(
-            infra, failure_layer, knowledge_layer, agent_layer, prompt_layer, save_layer, guardian_layer
+            infra,
+            failure_layer,
+            knowledge_layer,
+            agent_layer,
+            prompt_layer,
+            save_layer,
+            guardian_layer,
         )
 
         return CoordinatorWiring(
@@ -349,45 +355,37 @@ class CoordinatorBootstrap:
             # 规则与统计
             "_rules": [],
             "_statistics": {"total": 0, "passed": 0, "rejected": 0},
-
             # 工作流状态
             "workflow_states": {},
             "_is_monitoring": False,
             "_current_workflow_id": None,
-
             # 失败处理状态
             "_node_failure_strategies": {},
             "_workflow_agents": {},
             "failure_strategy_config": (
-                self.config.failure_strategy_config or copy.deepcopy(DEFAULT_FAILURE_STRATEGY_CONFIG)
+                self.config.failure_strategy_config
+                or copy.deepcopy(DEFAULT_FAILURE_STRATEGY_CONFIG)
             ),
-
             # 消息日志
             "message_log": [],
             "_is_listening_simple_messages": False,
-
             # 反思上下文
             "reflection_contexts": {},
             "_is_listening_reflections": False,
-
             # 上下文压缩
             "context_compressor": self.config.context_compressor,
             "snapshot_manager": self.config.snapshot_manager,
             "_compressed_contexts": {},
             "_is_compressing_context": False,
-
             # 知识库
             "_knowledge_cache": {},
             "_auto_knowledge_retrieval_enabled": False,
-
             # 工具仓库
             "_tool_repository": None,
-
             # 代码修复
             "_auto_repair_enabled": False,
             "_max_repair_attempts": 3,
             "_code_repair_service": None,
-
             # 保存请求（初始化为 None，在 build_save_flow 中设置）
             "_save_request_handler_enabled": False,
             "_is_listening_save_requests": False,
@@ -397,7 +395,6 @@ class CoordinatorBootstrap:
             "_save_request_queue": None,
             "save_receipt_system": None,
             "_save_receipt_logger": None,
-
             # 子Agent（初始化为 None，在 build_agent_coordination 中设置）
             "_subagent_orchestrator": None,
         }
@@ -520,7 +517,9 @@ class CoordinatorBootstrap:
             "power_compressor_facade": power_compressor_facade,
         }
 
-    def build_agent_coordination(self, base: dict[str, Any], infra: dict[str, Any]) -> dict[str, Any]:
+    def build_agent_coordination(
+        self, base: dict[str, Any], infra: dict[str, Any]
+    ) -> dict[str, Any]:
         """构建 Agent 协调层
 
         创建：
@@ -644,7 +643,7 @@ class CoordinatorBootstrap:
         """构建守护层
 
         创建：
-        - ContextInjectionManager（带 InjectionLogger）
+        - ContextInjectionManager Facade（Phase 34.12：包装旧的注入管理器）
         - SupervisionModule（带 SupervisionLogger）
         - InterventionCoordinator（WorkflowModifier、TaskTerminator、InterventionLogger）
         - SafetyGuard
@@ -652,14 +651,27 @@ class CoordinatorBootstrap:
         返回：
             守护层组件字典
         """
-        # 1. ContextInjectionManager
+        # 1. ContextInjectionManager Facade (Phase 34.12)
+        # 1.1 创建底层注入组件（旧版，仍然需要）
         from src.domain.services.context_injection import (
-            ContextInjectionManager,
+            ContextInjectionManager as OldInjectionManager,
+        )
+        from src.domain.services.context_injection import (
             InjectionLogger,
         )
 
         injection_logger = InjectionLogger()
-        context_injection_manager = ContextInjectionManager(logger=injection_logger)
+        old_injection_manager = OldInjectionManager(logger=injection_logger)
+
+        # 1.2 创建 Facade 包装旧组件（新版，提供统一接口）
+        from src.domain.services.context_injection_manager import (
+            ContextInjectionManager,
+        )
+
+        context_injection_manager = ContextInjectionManager(
+            injection_manager=old_injection_manager,
+            injection_logger=injection_logger,
+        )
 
         # 2. SupervisionModule
         from src.domain.services.supervision_module import (
@@ -744,7 +756,6 @@ class CoordinatorBootstrap:
             "context_compressor": base["context_compressor"],
             "snapshot_manager": base["snapshot_manager"],
             "circuit_breaker": infra["circuit_breaker"],
-
             # 标志位
             "_is_monitoring": base["_is_monitoring"],
             "_is_listening_simple_messages": base["_is_listening_simple_messages"],
@@ -754,16 +765,13 @@ class CoordinatorBootstrap:
             "_auto_knowledge_retrieval_enabled": base["_auto_knowledge_retrieval_enabled"],
             "_save_request_handler_enabled": base["_save_request_handler_enabled"],
             "_is_listening_save_requests": base["_is_listening_save_requests"],
-
             # Placeholder
             "_tool_repository": base["_tool_repository"],
             "_code_repair_service": base["_code_repair_service"],
-
             # SupervisionCoordinator 暴露的别名
             "conversation_supervision": supervision_coordinator.conversation_supervision,
             "efficiency_monitor": supervision_coordinator.efficiency_monitor,
             "strategy_repository": supervision_coordinator.strategy_repository,
-
             # SaveRequest 相关别名
             "_save_request_queue": save["_save_request_queue"],
             "save_receipt_system": save["save_receipt_system"],
@@ -800,27 +808,21 @@ class CoordinatorBootstrap:
             # 基础设施层
             "container_monitor": infra["container_monitor"],
             "log_integration": infra["log_integration"],
-
             # 失败处理层
             "failure_orchestrator": failure["failure_orchestrator"],
-
             # 知识层
             "knowledge_manager": knowledge["knowledge_manager"],
             "knowledge_retrieval_orchestrator": knowledge["knowledge_retrieval_orchestrator"],
             "summary_manager": knowledge["summary_manager"],
             "power_compressor_facade": knowledge["power_compressor_facade"],
-
             # Agent 协调层
             "subagent_orchestrator": agent["subagent_orchestrator"],
             "supervision_coordinator": agent["supervision_coordinator"],
-
             # 提示词与实验层
             "prompt_facade": prompt["prompt_facade"],
             "experiment_orchestrator": prompt["experiment_orchestrator"],
-
             # 保存请求流程
             "save_request_orchestrator": save["save_request_orchestrator"],
-
             # 守护层
             "context_injection_manager": guardian["context_injection_manager"],
             "injection_logger": guardian["injection_logger"],
