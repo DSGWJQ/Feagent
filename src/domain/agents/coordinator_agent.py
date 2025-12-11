@@ -413,14 +413,29 @@ class CoordinatorAgent:
             log_collector=self.log_collector,
         )
 
-        # ==================== Phase 34: 保存请求通道 ====================
-        from src.domain.services.save_request_channel import (
-            SaveRequestQueueManager,
-        )
+        # ==================== Phase 34: 保存请求编排（委托 SaveRequestOrchestrator） ====================
+        from src.domain.services.save_request_orchestrator import SaveRequestOrchestrator
 
-        self._save_request_queue = SaveRequestQueueManager()
+        # 创建 orchestrator，传入 event_bus
+        self._save_request_orchestrator: SaveRequestOrchestrator | None = None
+        if self.event_bus is not None:
+            self._save_request_orchestrator = SaveRequestOrchestrator(
+                event_bus=self.event_bus,
+                knowledge_manager=self.knowledge_manager,
+                log_collector=self.log_collector,
+            )
+
+        # 保持向后兼容的属性访问（代理 orchestrator 内部状态）
+        self._save_request_queue = (
+            self._save_request_orchestrator._save_request_queue
+            if self._save_request_orchestrator
+            else None
+        )
         self._save_request_handler_enabled = False
         self._is_listening_save_requests = False
+        self._save_auditor = None
+        self._save_executor = None
+        self._save_audit_logger = None
 
         # ==================== Phase 34.3: 上下文注入 ====================
         from src.domain.services.context_injection import (
@@ -462,18 +477,15 @@ class CoordinatorAgent:
             logger=self._intervention_logger,
         )
 
-        # ==================== Phase 34.6: 结果回执系统 ====================
-        from src.domain.services.save_request_receipt import (
-            ReceiptLogger as SaveReceiptLogger,
+        # ==================== Phase 34.6: 结果回执系统（委托 SaveRequestOrchestrator） ====================
+        # 回执系统由 SaveRequestOrchestrator 管理，保持属性兼容
+        self.save_receipt_system = (
+            self._save_request_orchestrator.save_receipt_system
+            if self._save_request_orchestrator
+            else None
         )
-        from src.domain.services.save_request_receipt import (
-            SaveResultReceiptSystem,
-        )
-
-        self._save_receipt_logger = SaveReceiptLogger()
-        self.save_receipt_system = SaveResultReceiptSystem(
-            knowledge_manager=self.knowledge_manager,
-            short_term_limit=10,
+        self._save_receipt_logger = (
+            self.save_receipt_system.receipt_logger if self.save_receipt_system else None
         )
 
         # ==================== Phase 5 (七种节点类型): 安全配置（委托给 SafetyGuard）====================
@@ -623,77 +635,86 @@ class CoordinatorAgent:
             metadata=metadata,
         )
 
-    # ==================== Phase 34: 保存请求处理 ====================
+    # ==================== Phase 34: 保存请求处理（委托 SaveRequestOrchestrator） ====================
 
     def enable_save_request_handler(self) -> None:
-        """启用保存请求处理器
+        """启用保存请求处理器（代理到 SaveRequestOrchestrator）
 
         启用后，Coordinator 将订阅 SaveRequest 事件并管理请求队列。
         """
-        from src.domain.services.save_request_channel import SaveRequest
+        if not self._save_request_orchestrator:
+            raise ValueError("SaveRequestOrchestrator not initialized (event_bus required)")
 
-        self._save_request_handler_enabled = True
+        self._save_request_orchestrator.enable_save_request_handler()
 
-        # 订阅 SaveRequest 事件（使用类型）
-        if self.event_bus and not self._is_listening_save_requests:
-            self.event_bus.subscribe(SaveRequest, self._handle_save_request)
-            self._is_listening_save_requests = True
+        # 同步状态标志
+        self._save_request_handler_enabled = (
+            self._save_request_orchestrator._save_request_handler_enabled
+        )
+        self._is_listening_save_requests = (
+            self._save_request_orchestrator._is_listening_save_requests
+        )
 
     def disable_save_request_handler(self) -> None:
-        """禁用保存请求处理器"""
-        self._save_request_handler_enabled = False
+        """禁用保存请求处理器（代理到 SaveRequestOrchestrator）"""
+        if not self._save_request_orchestrator:
+            return
+
+        self._save_request_orchestrator.disable_save_request_handler()
+
+        # 同步状态标志
+        self._save_request_handler_enabled = (
+            self._save_request_orchestrator._save_request_handler_enabled
+        )
+        self._is_listening_save_requests = (
+            self._save_request_orchestrator._is_listening_save_requests
+        )
 
     def _handle_save_request(self, event: Any) -> None:
-        """处理 SaveRequest 事件
+        """处理 SaveRequest 事件（已由 SaveRequestOrchestrator 接管）
+
+        注意：此方法不应被直接调用，event_bus 会直接调用 orchestrator 的异步处理器。
+        保留此方法仅为向后兼容。
 
         参数：
             event: SaveRequest 事件
         """
-        from src.domain.services.save_request_channel import (
-            SaveRequest,
-            SaveRequestReceivedEvent,
-        )
-
-        if not isinstance(event, SaveRequest):
-            return
-
-        # 入队
-        queue_position = self._save_request_queue.enqueue(event)
-
-        # 发布接收确认事件
-        if self.event_bus:
-            received_event = SaveRequestReceivedEvent(
-                request_id=event.request_id,
-                queue_position=queue_position,
-            )
-            self.event_bus.publish(received_event)
+        # 实际处理已由 orchestrator._handle_save_request (async) 完成
+        # 此方法仅用于保持接口兼容，实际不会被调用
+        pass
 
     def has_pending_save_requests(self) -> bool:
-        """检查是否有待处理的保存请求
+        """检查是否有待处理的保存请求（代理到 SaveRequestOrchestrator）
 
         返回：
             True 如果有待处理请求
         """
-        return not self._save_request_queue.is_empty()
+        if not self._save_request_orchestrator:
+            return False
+        return self._save_request_orchestrator.has_pending_save_requests()
 
     def get_pending_save_request_count(self) -> int:
-        """获取待处理保存请求数量
+        """获取待处理保存请求数量（代理到 SaveRequestOrchestrator）
 
         返回：
             待处理请求数量
         """
-        return self._save_request_queue.queue_size()
+        if not self._save_request_orchestrator:
+            return 0
+        return self._save_request_orchestrator.get_pending_save_request_count()
 
     def get_save_request_queue(self) -> list[Any]:
-        """获取保存请求队列（按优先级排序）
+        """获取保存请求队列（按优先级排序）（代理到 SaveRequestOrchestrator）
 
         返回：
             排序后的 SaveRequest 列表
         """
-        return self._save_request_queue.get_all_sorted()
+        if not self._save_request_orchestrator:
+            return []
+        return self._save_request_orchestrator.get_save_request_queue()
 
     def get_save_request_status(self, request_id: str) -> Any:
-        """获取保存请求状态
+        """获取保存请求状态（代理到 SaveRequestOrchestrator）
 
         参数：
             request_id: 请求 ID
@@ -701,13 +722,14 @@ class CoordinatorAgent:
         返回：
             SaveRequestStatus 或 None
         """
-        from src.domain.services.save_request_channel import SaveRequestStatus
+        if not self._save_request_orchestrator:
+            from src.domain.services.save_request_channel import SaveRequestStatus
 
-        status = self._save_request_queue.get_status(request_id)
-        return status if status else SaveRequestStatus.PENDING
+            return SaveRequestStatus.PENDING
+        return self._save_request_orchestrator.get_save_request_status(request_id)
 
     def get_save_requests_by_session(self, session_id: str) -> list[Any]:
-        """获取特定会话的保存请求
+        """获取特定会话的保存请求（代理到 SaveRequestOrchestrator）
 
         参数：
             session_id: 会话 ID
@@ -715,15 +737,19 @@ class CoordinatorAgent:
         返回：
             该会话的 SaveRequest 列表
         """
-        return self._save_request_queue.get_by_session(session_id)
+        if not self._save_request_orchestrator:
+            return []
+        return self._save_request_orchestrator.get_save_requests_by_session(session_id)
 
     def dequeue_save_request(self) -> Any | None:
-        """从队列中取出最高优先级的保存请求
+        """从队列中取出最高优先级的保存请求（代理到 SaveRequestOrchestrator）
 
         返回：
             SaveRequest 或 None
         """
-        return self._save_request_queue.dequeue()
+        if not self._save_request_orchestrator:
+            return None
+        return self._save_request_orchestrator.dequeue_save_request()
 
     # ==================== Phase 34.2: 审核与执行 ====================
 
@@ -735,7 +761,7 @@ class CoordinatorAgent:
         enable_rate_limit: bool = True,
         enable_sensitive_check: bool = True,
     ) -> None:
-        """配置保存请求审核器
+        """配置保存请求审核器（代理到 SaveRequestOrchestrator）
 
         参数：
             path_whitelist: 路径白名单（如果提供，只允许这些路径）
@@ -744,44 +770,24 @@ class CoordinatorAgent:
             enable_rate_limit: 是否启用频率限制
             enable_sensitive_check: 是否启用敏感内容检查
         """
-        from src.domain.services.save_request_audit import (
-            AuditLogger,
-            ContentSizeRule,
-            PathBlacklistRule,
-            PathWhitelistRule,
-            RateLimitRule,
-            SaveExecutor,
-            SaveRequestAuditor,
-            SensitiveContentRule,
+        if not self._save_request_orchestrator:
+            raise ValueError("SaveRequestOrchestrator not initialized (event_bus required)")
+
+        self._save_request_orchestrator.configure_save_auditor(
+            path_whitelist=path_whitelist,
+            path_blacklist=path_blacklist,
+            max_content_size=max_content_size,
+            enable_rate_limit=enable_rate_limit,
+            enable_sensitive_check=enable_sensitive_check,
         )
 
-        rules = []
-
-        # 路径黑名单规则（优先）
-        if path_blacklist:
-            rules.append(PathBlacklistRule(blacklist=path_blacklist))
-
-        # 路径白名单规则
-        if path_whitelist:
-            rules.append(PathWhitelistRule(whitelist=path_whitelist))
-
-        # 内容大小规则
-        rules.append(ContentSizeRule(max_size_bytes=max_content_size))
-
-        # 频率限制规则
-        if enable_rate_limit:
-            rules.append(RateLimitRule())
-
-        # 敏感内容检查规则
-        if enable_sensitive_check:
-            rules.append(SensitiveContentRule())
-
-        self._save_auditor = SaveRequestAuditor(rules=rules)
-        self._save_executor = SaveExecutor()
-        self._save_audit_logger = AuditLogger()
+        # 同步内部组件引用（向后兼容）
+        self._save_auditor = self._save_request_orchestrator._save_auditor
+        self._save_executor = self._save_request_orchestrator._save_executor
+        self._save_audit_logger = self._save_request_orchestrator._save_audit_logger
 
     def process_next_save_request(self) -> Any | None:
-        """处理下一个保存请求
+        """处理下一个保存请求（代理到 SaveRequestOrchestrator）
 
         流程：
         1. 从队列取出请求
@@ -793,87 +799,33 @@ class CoordinatorAgent:
         返回：
             ProcessResult 或 None（队列为空时）
         """
-        from src.domain.services.save_request_audit import (
-            AuditStatus,
-            ProcessResult,
-            SaveRequestCompletedEvent,
-        )
-
-        # 确保审核器已初始化
-        if not hasattr(self, "_save_auditor") or self._save_auditor is None:
-            self.configure_save_auditor()
-
-        # 从队列取出请求
-        request = self.dequeue_save_request()
-        if request is None:
+        if not self._save_request_orchestrator:
             return None
 
-        request_id = request.request_id
+        import asyncio
 
-        # 执行审核
-        audit_result = self._save_auditor.audit(request)
-        self._save_audit_logger.log_audit(request, audit_result)
+        # 同步包装异步方法
+        result = asyncio.run(self._save_request_orchestrator.process_next_save_request())
 
-        # 如果审核未通过
-        if audit_result.status != AuditStatus.APPROVED:
-            result = ProcessResult(
-                request_id=request_id,
-                success=False,
-                audit_status=audit_result.status,
-                error_message=audit_result.reason,
-            )
-
-            # 发布完成事件
-            if self.event_bus:
-                self.event_bus.publish(
-                    SaveRequestCompletedEvent(
-                        request_id=request_id,
-                        success=False,
-                        audit_status=audit_result.status.value,
-                        error_message=audit_result.reason,
-                    )
-                )
-
-            return result
-
-        # 执行写操作
-        exec_result = self._save_executor.execute(request)
-        self._save_audit_logger.log_execution(exec_result)
-
-        result = ProcessResult(
-            request_id=request_id,
-            success=exec_result.success,
-            audit_status=AuditStatus.APPROVED,
-            error_message=exec_result.error_message,
-            bytes_written=exec_result.bytes_written,
-        )
-
-        # 发布完成事件
-        if self.event_bus:
-            self.event_bus.publish(
-                SaveRequestCompletedEvent(
-                    request_id=request_id,
-                    success=exec_result.success,
-                    audit_status=AuditStatus.APPROVED.value,
-                    error_message=exec_result.error_message,
-                    bytes_written=exec_result.bytes_written,
-                )
-            )
+        # 同步内部组件引用（向后兼容）
+        self._save_auditor = self._save_request_orchestrator._save_auditor
+        self._save_executor = self._save_request_orchestrator._save_executor
+        self._save_audit_logger = self._save_request_orchestrator._save_audit_logger
 
         return result
 
     def get_save_audit_logs(self) -> list[dict]:
-        """获取保存审计日志
+        """获取保存审计日志（代理到 SaveRequestOrchestrator）
 
         返回：
             审计日志列表
         """
-        if not hasattr(self, "_save_audit_logger") or self._save_audit_logger is None:
+        if not self._save_request_orchestrator:
             return []
-        return self._save_audit_logger.get_logs()
+        return self._save_request_orchestrator.get_save_audit_logs()
 
     def get_save_audit_logs_by_session(self, session_id: str) -> list[dict]:
-        """获取特定会话的保存审计日志
+        """获取特定会话的保存审计日志（代理到 SaveRequestOrchestrator）
 
         参数：
             session_id: 会话 ID
@@ -881,9 +833,9 @@ class CoordinatorAgent:
         返回：
             该会话的审计日志列表
         """
-        if not hasattr(self, "_save_audit_logger") or self._save_audit_logger is None:
+        if not self._save_request_orchestrator:
             return []
-        return self._save_audit_logger.get_logs_by_session(session_id)
+        return self._save_request_orchestrator.get_save_audit_logs_by_session(session_id)
 
     # ==================== Phase 34.3: 上下文注入 ====================
 
@@ -1094,7 +1046,6 @@ class CoordinatorAgent:
         返回：
             干预结果
         """
-        from src.domain.services.context_injection import InjectionPoint, InjectionType
         from src.domain.services.supervision_module import SupervisionAction
 
         action = supervision_info.action
@@ -1113,18 +1064,8 @@ class CoordinatorAgent:
         elif action == SupervisionAction.REPLACE:
             # 替换内容 - 通过注入 SUPPLEMENT 类型信息
             replacement = supervision_info.metadata.get("replacement_content", "[REDACTED]")
-            self.injection_manager.add_injection(
-                self.injection_manager._create_injection(
-                    session_id=session_id,
-                    injection_type=InjectionType.SUPPLEMENT,
-                    injection_point=InjectionPoint.PRE_THINKING,
-                    content=f"内容已被替换为: {replacement}",
-                    source="supervisor",
-                    reason=supervision_info.trigger_condition,
-                )
-                if hasattr(self.injection_manager, "_create_injection")
-                else self._create_supplement_injection(session_id, replacement, supervision_info)
-            )
+            injection = self._create_supplement_injection(session_id, replacement, supervision_info)
+            self.injection_manager.add_injection(injection)
             result["intervention_type"] = "content_replaced"
             result["replacement"] = replacement
 
@@ -1308,7 +1249,7 @@ class CoordinatorAgent:
         violation_severity: str | None = None,
         audit_trail: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """发送保存结果回执
+        """发送保存结果回执（代理到 SaveRequestOrchestrator）
 
         当 SaveRequest 执行完成后，调用此方法发送回执给 ConversationAgent。
 
@@ -1325,68 +1266,27 @@ class CoordinatorAgent:
         返回：
             处理结果字典
         """
-        from src.domain.services.save_request_receipt import (
-            SaveRequestResult,
-            SaveRequestResultEvent,
-            SaveResultStatus,
-        )
+        if not self._save_request_orchestrator:
+            return {"ok": False, "error": "orchestrator_not_initialized"}
 
-        # 确定状态
-        if success:
-            status = SaveResultStatus.SUCCESS
-        elif violation_severity:
-            status = SaveResultStatus.REJECTED
-        else:
-            status = SaveResultStatus.FAILED
+        import asyncio
 
-        # 记录请求接收日志
-        self._save_receipt_logger.log_request_received(
-            request_id=request_id,
-            session_id=session_id,
-            target_path="",  # 可从 audit_trail 中提取
-        )
-
-        # 创建回执
-        result = SaveRequestResult(
-            request_id=request_id,
-            status=status,
-            message=message,
-            error_code=error_code,
-            error_message=error_message,
-            violation_severity=violation_severity,
-            audit_trail=audit_trail or [],
-        )
-
-        # 记录审核日志
-        self._save_receipt_logger.log_audit_completed(
-            request_id=request_id,
-            approved=success,
-            rules_checked=[t.get("rule", "") for t in (audit_trail or []) if "rule" in t],
-        )
-
-        # 处理结果（记忆更新、知识库写入）
-        processing_result = self.save_receipt_system.process_result(session_id, result)
-
-        # 发布结果事件
-        if self.event_bus:
-            event = SaveRequestResultEvent(
-                result=result,
+        # 同步包装异步方法
+        return asyncio.run(
+            self._save_request_orchestrator.send_save_result_receipt(
                 session_id=session_id,
-                source="coordinator_agent",
+                request_id=request_id,
+                success=success,
+                message=message,
+                error_code=error_code,
+                error_message=error_message,
+                violation_severity=violation_severity,
+                audit_trail=audit_trail,
             )
-            self.event_bus.publish(event)
-
-        logger.info(
-            f"[RECEIPT SENT] request_id={request_id} "
-            f"session_id={session_id} "
-            f"status={status.value} "
-            f"written_to_kb={processing_result['written_to_knowledge_base']}"
         )
-
-        return processing_result
 
     def process_save_request_with_receipt(self) -> dict[str, Any] | None:
-        """处理保存请求并发送回执
+        """处理保存请求并发送回执（代理到 SaveRequestOrchestrator）
 
         完整流程：
         1. 从队列取出请求
@@ -1398,82 +1298,16 @@ class CoordinatorAgent:
         返回：
             处理结果或 None（队列为空时）
         """
-        from src.domain.services.save_request_audit import AuditStatus
-
-        # 确保审核器已初始化
-        if not hasattr(self, "_save_auditor") or self._save_auditor is None:
-            self.configure_save_auditor()
-
-        # 从队列取出请求
-        request = self.dequeue_save_request()
-        if request is None:
+        if not self._save_request_orchestrator:
             return None
 
-        request_id = request.request_id
-        session_id = request.session_id
+        import asyncio
 
-        # 执行审核
-        audit_result = self._save_auditor.audit(request)
-        self._save_audit_logger.log_audit(request, audit_result)
-
-        # 构建审计追踪
-        audit_trail = [
-            {
-                "step": "received",
-                "timestamp": request.timestamp.isoformat(),
-            },
-            {
-                "step": "audited",
-                "status": audit_result.status.value,
-                "reason": audit_result.reason,
-                "rules_matched": audit_result.rules_matched,
-            },
-        ]
-
-        # 如果审核未通过
-        if audit_result.status != AuditStatus.APPROVED:
-            # 确定违规严重级别
-            violation_severity = "low"
-            if "dangerous" in (audit_result.reason or "").lower():
-                violation_severity = "critical"
-            elif "sensitive" in (audit_result.reason or "").lower():
-                violation_severity = "high"
-
-            return self.send_save_result_receipt(
-                session_id=session_id,
-                request_id=request_id,
-                success=False,
-                message=f"审核未通过: {audit_result.reason}",
-                error_code=f"AUDIT_{audit_result.status.value.upper()}",
-                error_message=audit_result.reason,
-                violation_severity=violation_severity,
-                audit_trail=audit_trail,
-            )
-
-        # 执行写操作
-        exec_result = self._save_executor.execute(request)
-        self._save_audit_logger.log_execution(exec_result)
-
-        audit_trail.append(
-            {
-                "step": "executed",
-                "success": exec_result.success,
-                "bytes_written": exec_result.bytes_written,
-            }
-        )
-
-        return self.send_save_result_receipt(
-            session_id=session_id,
-            request_id=request_id,
-            success=exec_result.success,
-            message="保存成功" if exec_result.success else f"执行失败: {exec_result.error_message}",
-            error_code="IO_ERROR" if not exec_result.success else None,
-            error_message=exec_result.error_message,
-            audit_trail=audit_trail,
-        )
+        # 同步包装异步方法
+        return asyncio.run(self._save_request_orchestrator.process_save_request_with_receipt())
 
     def get_save_receipt_context(self, session_id: str) -> dict[str, Any]:
-        """获取保存回执上下文
+        """获取保存回执上下文（代理到 SaveRequestOrchestrator）
 
         为 ConversationAgent 生成保存结果相关的上下文。
 
@@ -1483,10 +1317,12 @@ class CoordinatorAgent:
         返回：
             上下文字典
         """
-        return self.save_receipt_system.generate_context_for_agent(session_id)
+        if not self._save_request_orchestrator:
+            return {}
+        return self._save_request_orchestrator.get_save_receipt_context(session_id)
 
     def get_save_receipt_chain_log(self, request_id: str) -> dict[str, Any] | None:
-        """获取保存请求的完整链路日志
+        """获取保存请求的完整链路日志（代理到 SaveRequestOrchestrator）
 
         参数：
             request_id: 请求 ID
@@ -1494,14 +1330,18 @@ class CoordinatorAgent:
         返回：
             链路日志或 None
         """
-        return self.save_receipt_system.get_receipt_chain_log(request_id)
+        if not self._save_request_orchestrator:
+            return None
+        return self._save_request_orchestrator.get_save_receipt_chain_log(request_id)
 
     def get_save_receipt_logs(self) -> list[dict[str, Any]]:
-        """获取所有回执日志"""
-        return self._save_receipt_logger.get_all_logs()
+        """获取所有回执日志（代理到 SaveRequestOrchestrator）"""
+        if not self._save_request_orchestrator:
+            return []
+        return self._save_request_orchestrator.get_save_receipt_logs()
 
     def get_session_save_statistics(self, session_id: str) -> dict[str, Any]:
-        """获取会话的保存统计
+        """获取会话的保存统计（代理到 SaveRequestOrchestrator）
 
         参数：
             session_id: 会话 ID
@@ -1509,7 +1349,9 @@ class CoordinatorAgent:
         返回：
             统计信息字典
         """
-        return self.save_receipt_system.memory_handler.get_session_statistics(session_id)
+        if not self._save_request_orchestrator:
+            return {"total_requests": 0, "successful": 0, "failed": 0}
+        return self._save_request_orchestrator.get_session_save_statistics(session_id)
 
     # ==================== Phase 1: 上下文服务 ====================
 
