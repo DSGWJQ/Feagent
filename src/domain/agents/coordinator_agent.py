@@ -26,11 +26,6 @@ from datetime import datetime
 from typing import Any
 
 from src.domain.services.event_bus import Event, EventBus
-from src.domain.services.execution_summary_manager import ExecutionSummaryManager
-from src.domain.services.knowledge_retrieval_orchestrator import (
-    KnowledgeRetrievalOrchestrator,
-)
-from src.domain.services.power_compressor_facade import PowerCompressorFacade
 from src.domain.services.safety_guard import ValidationResult
 from src.domain.services.workflow_failure_orchestrator import (
     FailureHandlingResult,
@@ -376,7 +371,7 @@ class CoordinatorAgent:
         snapshot_manager: Any | None = None,
         knowledge_retriever: Any | None = None,
     ):
-        """初始化协调者Agent
+        """初始化协调者Agent（Phase 34.11: 使用 CoordinatorBootstrap）
 
         参数：
             event_bus: 事件总线（用于发布验证/拒绝事件）
@@ -388,246 +383,103 @@ class CoordinatorAgent:
             snapshot_manager: 快照管理器（阶段2新增）
             knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
         """
+        from src.domain.services.coordinator_bootstrap import (
+            CoordinatorBootstrap,
+            CoordinatorConfig,
+        )
+
+        # 1. 创建配置对象
+        config = CoordinatorConfig(
+            event_bus=event_bus,
+            rejection_rate_threshold=rejection_rate_threshold,
+            circuit_breaker_config=circuit_breaker_config,
+            context_bridge=context_bridge,
+            failure_strategy_config=failure_strategy_config,
+            context_compressor=context_compressor,
+            snapshot_manager=snapshot_manager,
+            knowledge_retriever=knowledge_retriever,
+        )
+
+        # 2. 执行依赖装配
+        bootstrap = CoordinatorBootstrap(config=config)
+        wiring = bootstrap.assemble()
+
+        # 3. 解包装配结果：配置属性
         self.event_bus = event_bus
         self.rejection_rate_threshold = rejection_rate_threshold
 
-        self._rules: list[Rule] = []
-        self._statistics = {"total": 0, "passed": 0, "rejected": 0}
+        # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
+        self._rules: list[Rule] = wiring.base_state["_rules"]
+        self._statistics = wiring.base_state["_statistics"]
 
-        # 工作流状态存储
-        self.workflow_states: dict[str, dict[str, Any]] = {}
-        self._is_monitoring = False
-        self._current_workflow_id: str | None = None  # 用于关联节点事件
+        # 5. 解包装配结果：工作流状态（共享bootstrap容器）
+        self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
+        self._is_monitoring = wiring.base_state["_is_monitoring"]
+        self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
 
-        # 阶段5新增：熔断器
-        self.circuit_breaker = None
-        if circuit_breaker_config:
-            from src.domain.services.circuit_breaker import CircuitBreaker
+        # 6. 解包装配结果：共享组件（log_collector）
+        self.log_collector = wiring.log_collector
 
-            self.circuit_breaker = CircuitBreaker(circuit_breaker_config)
+        # 7. 解包装配结果：所有别名
+        for alias_name, alias_value in wiring.aliases.items():
+            setattr(self, alias_name, alias_value)
 
-        # 阶段5新增：上下文桥接器
-        self.context_bridge = context_bridge
+        # 8. 解包装配结果：所有编排器
+        self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
+        self._container_monitor = wiring.orchestrators["container_monitor"]
+        self._log_integration = wiring.orchestrators["log_integration"]
+        self.knowledge_manager = wiring.orchestrators["knowledge_manager"]
+        self._knowledge_retrieval_orchestrator = wiring.orchestrators[
+            "knowledge_retrieval_orchestrator"
+        ]
+        self._summary_manager = wiring.orchestrators["summary_manager"]
+        self._power_compressor_facade = wiring.orchestrators["power_compressor_facade"]
+        self._subagent_orchestrator = wiring.orchestrators["subagent_orchestrator"]
+        self._supervision_coordinator = wiring.orchestrators["supervision_coordinator"]
+        self._prompt_facade = wiring.orchestrators["prompt_facade"]
+        self._experiment_orchestrator = wiring.orchestrators["experiment_orchestrator"]
+        self._save_request_orchestrator = wiring.orchestrators["save_request_orchestrator"]
+        self.injection_manager = wiring.orchestrators["context_injection_manager"]
+        self.supervision_module = wiring.orchestrators["supervision_module"]
+        self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
+        self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
+        self.task_terminator = wiring.orchestrators["task_terminator"]
+        self._safety_guard = wiring.orchestrators["safety_guard"]
 
-        # Phase 34.1: 工作流失败编排器（使用 WorkflowFailureOrchestrator）
-        from src.domain.services.workflow_failure_orchestrator import (
-            WorkflowFailureOrchestrator,
-        )
+        # 可选组件
+        if "alert_rule_manager" in wiring.orchestrators:
+            self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
+        if "circuit_breaker" in wiring.orchestrators:
+            self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
 
-        # 保留原配置以维持向后兼容性
-        self.failure_strategy_config: dict[str, Any] = failure_strategy_config or {
-            "default_strategy": FailureHandlingStrategy.RETRY,
-            "max_retries": 3,
-            "retry_delay": 1.0,
-        }
+        # 9. 重建内部状态容器（共享bootstrap容器以保持状态一致）
+        self._node_failure_strategies: dict[str, FailureHandlingStrategy] = wiring.base_state["_node_failure_strategies"]
+        self._workflow_agents: dict[str, Any] = wiring.base_state["_workflow_agents"]
+        self.message_log: list[dict[str, Any]] = wiring.base_state["message_log"]
+        self.reflection_contexts: dict[str, dict[str, Any]] = wiring.base_state["reflection_contexts"]
+        self._compressed_contexts: dict[str, Any] = wiring.base_state["_compressed_contexts"]
+        self._knowledge_cache: dict[str, Any] = wiring.base_state["_knowledge_cache"]
 
-        # 内部状态变量（用于向后兼容属性暴露）
-        self._node_failure_strategies: dict[str, FailureHandlingStrategy] = {}
-        self._workflow_agents: dict[str, Any] = {}
-
-        # 创建失败编排器实例
-        self._failure_orchestrator = WorkflowFailureOrchestrator(
-            event_bus=self.event_bus,
-            state_accessor=lambda wf_id: self.workflow_states.get(wf_id),
-            state_mutator=lambda wf_id: self.workflow_states.setdefault(wf_id, {}),
-            workflow_agent_resolver=lambda wf_id: self._workflow_agents.get(wf_id),
-            config=self.failure_strategy_config,
-        )
-
-        # Phase 15: 简单消息日志
-        self.message_log: list[dict[str, Any]] = []
-        self._is_listening_simple_messages = False
-
-        # Phase 16: 反思上下文存储
-        self.reflection_contexts: dict[str, dict[str, Any]] = {}
-        self._is_listening_reflections = False
-
-        # 阶段2新增：上下文压缩器
-        self.context_compressor = context_compressor
-        self.snapshot_manager = snapshot_manager
-        self._is_compressing_context = False
-        self._compressed_contexts: dict[str, Any] = {}  # workflow_id -> CompressedContext
-
-        # Phase 3: 子Agent管理（延迟初始化，在 log_collector 设置后）
-        self._subagent_orchestrator: Any = None
-
-        # Phase 4: 容器执行监控（使用 ContainerExecutionMonitor）
-        from src.domain.services.container_execution_monitor import (
-            ContainerExecutionMonitor,
-        )
-
-        self._container_monitor = ContainerExecutionMonitor(
-            event_bus=self.event_bus,
-            max_log_size=MAX_CONTAINER_LOGS_SIZE,
-        )
-
-        # GAP-004: 代码自动修复
-        self._auto_repair_enabled = False
-        self._max_repair_attempts = 3
-        self._code_repair_service: Any | None = None
-
-        # Phase 5 阶段2: 知识库集成
-        self.knowledge_retriever = knowledge_retriever
-        self._knowledge_cache: dict[str, Any] = {}  # workflow_id -> KnowledgeReferences
-        self._auto_knowledge_retrieval_enabled = False
-
-        # Phase 1: 工具仓库
-        self._tool_repository: Any | None = None
-
-        # ==================== 扩展模块 ====================
-
-        # 知识库管理器 (CRUD)
-        from src.domain.services.knowledge_manager import KnowledgeManager
-
-        self.knowledge_manager = KnowledgeManager()
-
-        # 统一日志收集器
-        from src.domain.services.unified_log_collector import UnifiedLogCollector
-
-        self.log_collector = UnifiedLogCollector()
-
-        # Phase 34.10: 统一日志集成（多源日志合并）
-        from src.domain.services.unified_log_integration import UnifiedLogIntegration
-
-        # 创建 accessor 实例
+        # 10. 重建 accessor 和 gateway（依赖共享状态容器）
         self._message_log_accessor = self._MessageLogAccessor(self.message_log)
         self._container_log_accessor = self._ContainerLogAccessor(self._container_monitor)
-
-        # 初始化 UnifiedLogIntegration
-        self._log_integration = UnifiedLogIntegration(
-            log_collector=self.log_collector,
-            message_log_accessor=self._message_log_accessor,
-            container_log_accessor=self._container_log_accessor,
-        )
-
-        # Phase 34.7: 执行总结管理器
-        self._summary_manager = ExecutionSummaryManager(event_bus=self.event_bus)
-
-        # Phase 34.8: PowerCompressor 包装器
-        self._power_compressor_facade = PowerCompressorFacade()
-
-        # Phase 34.9: 知识检索编排器
         self._context_gateway = self._ContextGateway(self._compressed_contexts)
-        self._knowledge_retrieval_orchestrator = KnowledgeRetrievalOrchestrator(
-            knowledge_retriever=self.knowledge_retriever,
-            context_gateway=self._context_gateway,
-        )
 
-        # Phase 3: 子Agent管理（在 log_collector 设置后初始化）
-        from src.domain.services.subagent_orchestrator import SubAgentOrchestrator
-
-        self._subagent_orchestrator = SubAgentOrchestrator(
-            event_bus=self.event_bus,
-            log_collector=self.log_collector,
-        )
-
-        # 动态告警规则管理器
-        from src.domain.services.dynamic_alert_rule_manager import (
-            DynamicAlertRuleManager,
-        )
-
-        self.alert_rule_manager = DynamicAlertRuleManager()
-
-        # 监督模块 (Supervision Modules)
-        from src.domain.services.supervision_modules import SupervisionCoordinator
-
-        self._supervision_coordinator = SupervisionCoordinator()
-        # 暴露子模块以便直接访问
+        # 11. 暴露 SupervisionCoordinator 子模块（向后兼容）
         self.conversation_supervision = self._supervision_coordinator.conversation_supervision
         self.efficiency_monitor = self._supervision_coordinator.efficiency_monitor
         self.strategy_repository = self._supervision_coordinator.strategy_repository
 
-        # ==================== 提示词版本管理（使用 Facade）====================
-        from src.domain.services.prompt_version_facade import PromptVersionFacade
+        # 12. 暴露内部 logger（向后兼容）
+        self._injection_logger = wiring.orchestrators["injection_logger"]
+        self._supervision_logger = wiring.orchestrators["supervision_logger"]
+        self._intervention_logger = wiring.orchestrators["intervention_logger"]
 
-        self._prompt_facade = PromptVersionFacade(log_collector=self.log_collector)
-
-        # ==================== A/B 测试与实验管理（使用 Orchestrator）====================
-        from src.domain.services.experiment_orchestrator import ExperimentOrchestrator
-
-        self._experiment_orchestrator = ExperimentOrchestrator(
-            log_collector=self.log_collector,
+        # 14. 保留原始配置引用（向后兼容）
+        self.failure_strategy_config = (
+            failure_strategy_config or self._failure_orchestrator.config
         )
-
-        # ==================== Phase 34: 保存请求编排（委托 SaveRequestOrchestrator） ====================
-        from src.domain.services.save_request_orchestrator import SaveRequestOrchestrator
-
-        # 创建 orchestrator，传入 event_bus
-        self._save_request_orchestrator: SaveRequestOrchestrator | None = None
-        if self.event_bus is not None:
-            self._save_request_orchestrator = SaveRequestOrchestrator(
-                event_bus=self.event_bus,
-                knowledge_manager=self.knowledge_manager,
-                log_collector=self.log_collector,
-            )
-
-        # 保持向后兼容的属性访问（代理 orchestrator 内部状态）
-        self._save_request_queue = (
-            self._save_request_orchestrator._save_request_queue
-            if self._save_request_orchestrator
-            else None
-        )
-        self._save_request_handler_enabled = False
-        self._is_listening_save_requests = False
-        self._save_auditor = None
-        self._save_executor = None
-        self._save_audit_logger = None
-
-        # ==================== Phase 34.3: 上下文注入 ====================
-        from src.domain.services.context_injection import (
-            ContextInjectionManager,
-            InjectionLogger,
-        )
-
-        self._injection_logger = InjectionLogger()
-        self.injection_manager = ContextInjectionManager(logger=self._injection_logger)
-
-        # ==================== Phase 34.4: 监督模块 ====================
-        from src.domain.services.supervision_module import (
-            SupervisionLogger as SupLogger,
-        )
-        from src.domain.services.supervision_module import (
-            SupervisionModule,
-        )
-
-        self._supervision_logger = SupLogger()
-        self.supervision_module = SupervisionModule(
-            logger=self._supervision_logger,
-            use_builtin_rules=True,
-        )
-
-        # ==================== Phase 34.5: 干预系统 ====================
-        from src.domain.services.intervention_system import (
-            InterventionCoordinator,
-            InterventionLogger,
-            TaskTerminator,
-            WorkflowModifier,
-        )
-
-        self._intervention_logger = InterventionLogger()
-        self.workflow_modifier = WorkflowModifier(logger=self._intervention_logger)
-        self.task_terminator = TaskTerminator(logger=self._intervention_logger)
-        self.intervention_coordinator = InterventionCoordinator(
-            workflow_modifier=self.workflow_modifier,
-            task_terminator=self.task_terminator,
-            logger=self._intervention_logger,
-        )
-
-        # ==================== Phase 34.6: 结果回执系统（委托 SaveRequestOrchestrator） ====================
-        # 回执系统由 SaveRequestOrchestrator 管理，保持属性兼容
-        self.save_receipt_system = (
-            self._save_request_orchestrator.save_receipt_system
-            if self._save_request_orchestrator
-            else None
-        )
-        self._save_receipt_logger = (
-            self.save_receipt_system.receipt_logger if self.save_receipt_system else None
-        )
-
-        # ==================== Phase 5 (七种节点类型): 安全配置（委托给 SafetyGuard）====================
-        from src.domain.services.safety_guard import SafetyGuard
-
-        self._safety_guard = SafetyGuard()
+        self.knowledge_retriever = knowledge_retriever
 
     # =========================================================================
     # P1-6 Fix: 有界列表辅助方法（防止内存泄漏）
