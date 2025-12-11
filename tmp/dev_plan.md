@@ -3044,26 +3044,96 @@ pytest tests/ -v
 |------|------|------|
 | Codex 分析 | ✅ Done | 识别 2 个设计问题 |
 | 方案决策 | ✅ Done | 选择方案 A |
-| 文档更新 | 🔄 进行中 | 记录 Phase 35.0 计划 |
-| 修复 handle_intervention | ⏳ 待开始 | |
-| 统一 InterventionLevel | ⏳ 待开始 | |
-| 补充测试 | ⏳ 待开始 | |
-| 回归测试 | ⏳ 待开始 | |
-| Codex Review | ⏳ 待开始 | |
-| Git Commit | ⏳ 待开始 | |
+| 文档更新 | ✅ Done | Phase 35.0 + 35.0.1 完整记录 |
+| 修复 handle_intervention | ✅ Done | commit 4ab6311 |
+| 统一 InterventionLevel | ✅ Done | commit 25ffc8a |
+| 补充测试 | ✅ Done | 19 个测试 100% 通过 |
+| 回归测试 | ✅ Done | 19/19 通过 |
+| Codex Review Phase 35.0 | ✅ Done | 7/10，识别 3 个优化项 |
+| Git Commit Phase 35.0 | ✅ Done | commit 4ab6311, 25ffc8a |
+| 修复 Phase 35.0.1 Task 6 | ✅ Done | commit 884cdd4 |
+| 修复 Phase 35.0.1 Task 7 | ✅ Done | commit d512077, Codex 9/10 |
+| 修复 Phase 35.0.1 Task 8 | ✅ Done | commit 2a40fc1, Codex 9/10 |
 
 ---
 
-### 预期成果
+### 实际成果
 
-**代码质量**:
+**代码质量**：
 - ✅ 干预链闭合：SupervisionFacade → InterventionCoordinator → WorkflowModifier/TaskTerminator
-- ✅ 枚举统一：单一来源，无重复定义
-- ✅ 测试覆盖：≥ 95%
+- ✅ 枚举统一：InterventionLevel (execution) vs SeverityLevel (strategy)
+- ✅ 测试覆盖：19/19 tests (100% passing)
 
-**为 Phase 35 后续工作奠定基础**:
+**Codex 审查历史**：
+- Phase 35.0 初评：7/10（识别 REPLACE 防御、日志一致性、error_event 3 个问题）
+- Phase 35.0.1 Task 6 修复：REPLACE None 防御 + 向后兼容
+- Phase 35.0.1 Task 7 修复：日志条件化（Codex 9/10）
+- Phase 35.0.1 Task 8 修复：error_event 补充（Codex 9/10）
+
+**提交记录**：
+- 4ab6311: Phase 35.0 Task 1 - InterventionCoordinator 执行修复
+- 25ffc8a: Phase 35.0 Task 2 - 重命名 InterventionLevel → SeverityLevel
+- 884cdd4: Phase 35.0.1 Task 6 - REPLACE 防御性编程
+- d512077: Phase 35.0.1 Task 7 - 日志与结果一致性
+- 2a40fc1: Phase 35.0.1 Task 8 - TERMINATE error_event 补充
+
+**为 Phase 35 后续工作奠定基础**：
 - CoordinatorAgent 当前 4013 lines
 - Phase 35.1-35.6 预计减少 ~910 lines
 - 目标：CoordinatorAgent → 3103 lines (43.7% ↓)
+
+---
+
+## Phase 35.0 + 35.0.1 总结
+
+**完成时间**: 2025-12-12
+**目标**: 修复干预系统设计缺陷，为 Phase 35 模块提取奠定基础
+
+### Phase 35.0: 干预链修复与枚举统一
+
+**修复内容**：
+1. **Task 1**: InterventionCoordinator REPLACE/TERMINATE 级别实际执行（不再仅记录日志）
+2. **Task 2**: InterventionLevel (execution) vs SeverityLevel (strategy) 枚举重命名
+
+**测试覆盖**：
+- 新增 10 个执行测试（REPLACE 5 个 + TERMINATE 5 个）
+- 回归测试：39/39 通过
+
+**Codex 初评**：7/10
+- 识别 3 个优化项（High 1 + Medium 2）
+
+### Phase 35.0.1: Codex 高优先级修复
+
+**Task 6 - High Priority: REPLACE 防御性编程** (commit 884cdd4)
+- None 防御：replacement_config 缺失时使用空字典兜底
+- 向后兼容：支持旧键名 'replacement' → 'replacement_config'
+- 新增 3 个 TDD 测试
+
+**Task 7 - Medium Priority 1: 日志与结果一致性** (commit d512077)
+- 条件化 action_taken：成功 "node_replaced" / 失败 "node_replacement_failed"
+- REPLACE 和 TERMINATE 双向修复
+- 新增 4 个日志一致性测试
+- Codex Review: 9/10
+
+**Task 8 - Medium Priority 2: TERMINATE error_event 补充** (commit 2a40fc1)
+- coordinator.py:119 添加 error_event 字段到 termination details
+- 新增 2 个 TDD 测试（有/无 error_event）
+- Codex Review: 9/10
+  - 识别潜在序列化风险（TaskTerminatedEvent 对象 vs 字典）
+  - 建议添加集成测试验证真实 TaskTerminator
+
+### 最终测试结果
+
+**测试覆盖**：19/19 tests passing (100%)
+- Phase 35.0 原始测试：10 个
+- Phase 35.0.1 Task 6：3 个
+- Phase 35.0.1 Task 7：4 个
+- Phase 35.0.1 Task 8：2 个
+
+**修改文件**：
+- `src/domain/services/intervention/coordinator.py`: REPLACE/TERMINATE 执行逻辑 + None 防御 + 条件日志 + error_event
+- `tests/unit/domain/services/intervention/test_coordinator_execution.py`: 19 个测试
+- `src/domain/services/intervention_strategy.py`: 重命名 InterventionLevel → SeverityLevel
+- `tests/unit/domain/services/test_intervention_strategy.py`: 更新所有 InterventionLevel 引用
 
 ---
