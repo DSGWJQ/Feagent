@@ -589,6 +589,9 @@ def load_prompt_template(self, ...):
 4. ✅ SafetyGuard (安全校验服务)
 5. ✅ ContainerExecutionMonitor (容器执行监控)
 6. ✅ SaveRequestOrchestrator (保存请求编排)
+7. ✅ WorkflowFailureOrchestrator (失败处理编排)
+8. ✅ ExecutionSummaryManager (执行总结管理)
+9. ✅ PowerCompressorFacade (强力压缩器包装)
 
 ### CoordinatorAgent 代码行数变化
 
@@ -600,7 +603,21 @@ def load_prompt_template(self, ...):
 | SafetyGuard | ~270 | ~120 (代理) | ~150 |
 | ContainerExecutionMonitor | ~158 | ~68 (代理 + 属性) | ~90 |
 | SaveRequestOrchestrator | ~310 | ~152 (代理) | ~158 |
-| **总计** | ~1368 | ~445 | ~923 |
+| WorkflowFailureOrchestrator | ~162 | ~50 (代理) | ~112 |
+| ExecutionSummaryManager | ~110 | ~63 (代理) | ~47 |
+| PowerCompressorFacade | ~183 | ~106 (代理) | ~77 |
+| **总计** | ~1823 | ~664 | ~1159 |
+| **CoordinatorAgent** | **5517 → 4320** | **减少 1197 lines (21.7%)** |
+
+### 剩余候选模块
+
+根据之前的分析，剩余待提取的模块（按优先级排序）：
+
+1. 🎯 **KnowledgeRetrievalOrchestrator** (~480 lines, risk 3/10) - **下一个目标**
+   - 位置：lines 3132-3611
+   - 职责：知识检索、缓存、上下文增强（15个方法）
+   - 依赖：`knowledge_retriever`, `_knowledge_cache`, `_compressed_contexts`
+   - 挑战：中等复杂度，需要仔细处理缓存状态
 
 ### 待集成模块
 
@@ -611,6 +628,8 @@ def load_prompt_template(self, ...):
 5. ✅ ContainerExecutionMonitor (已完成)
 6. ✅ SaveRequestOrchestrator (已完成)
 7. ✅ WorkflowFailureOrchestrator (已完成)
+8. ✅ ExecutionSummaryManager (已完成)
+9. ✅ PowerCompressorFacade (已完成)
 
 ---
 
@@ -1163,3 +1182,334 @@ Phase 34.7: 执行总结管理器提取与集成
 
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ```
+
+---
+
+## Phase 34.8: PowerCompressorFacade 提取与集成
+
+> 完成时间: 2025-12-11
+> 目标: 从 CoordinatorAgent 提取 PowerCompressor 包装逻辑
+> 策略: TDD驱动 + 简化包装 + 数据隔离
+
+### 背景
+
+在 Phase 34.7 完成后，CoordinatorAgent 包含约 183 行 PowerCompressor 集成代码（lines 3684-3863），包括：
+- 懒加载初始化逻辑
+- 压缩上下文存储与查询
+- 八段数据查询接口
+- 统计信息生成
+
+**问题**：
+- PowerCompressor 集成分散在多个方法中
+- 懒加载逻辑增加复杂度
+- 数据访问未做副本保护（可能被外部篡改）
+
+**目标**：
+- 提取为独立 PowerCompressorFacade
+- 简化初始化（去除懒加载）
+- 添加数据隔离保护（`copy.deepcopy()`）
+- 保持完全向后兼容
+
+### TDD 设计
+
+#### 测试文件结构
+
+**`tests/unit/domain/services/test_power_compressor_facade.py`**（20 tests, 96% coverage）
+
+测试分类：
+1. **初始化与配置** (2 tests)
+   - 带 PowerCompressor 初始化
+   - 无 PowerCompressor 懒加载
+
+2. **压缩与存储** (3 tests)
+   - 压缩并存储成功
+   - 压缩无 workflow_id
+   - 直接存储压缩上下文
+
+3. **查询接口** (5 tests)
+   - 查询压缩上下文（存在/不存在）
+   - 查询子任务错误（存在/空）
+   - 查询未解决问题
+   - 查询后续计划
+
+4. **对话上下文接口** (3 tests)
+   - 获取对话上下文（存在/不存在）
+   - 获取知识来源（存在/空）
+
+5. **统计接口** (2 tests)
+   - 空统计
+   - 带数据统计
+
+6. **边界场景** (3 tests)
+   - 查询缺失字段
+   - 获取缺失字段对话上下文
+   - 重复 workflow_id 覆盖
+
+#### 核心测试逻辑
+
+```python
+@pytest.fixture
+def mock_power_compressor():
+    """Mock PowerCompressor"""
+    compressor = MagicMock()
+    mock_compressed = MagicMock()
+    mock_compressed.workflow_id = "wf_001"
+    mock_compressed.to_dict.return_value = {
+        "workflow_id": "wf_001",
+        "task_goal": "Test task",
+        "execution_status": {"status": "completed"},
+        "node_summary": [{"node_id": "node1"}],
+        "subtask_errors": [{"error": "test error"}],
+        "unresolved_issues": [{"issue": "test issue"}],
+        "decision_history": [{"decision": "test"}],
+        "next_plan": [{"plan": "next step"}],
+        "knowledge_sources": [{"source": "doc1"}],
+    }
+    compressor.compress_summary.return_value = mock_compressed
+    return compressor
+
+async def test_compress_and_store(facade, mock_execution_summary):
+    result = await facade.compress_and_store(mock_execution_summary)
+
+    assert result.workflow_id == "wf_001"
+    assert "wf_001" in facade._compressed_contexts
+
+def test_query_compressed_context_exists(facade):
+    facade.store_compressed_context("wf_003", {"data": "test"})
+    result = facade.query_compressed_context("wf_003")
+
+    # 验证返回副本（数据隔离）
+    assert result == {"data": "test"}
+    result["data"] = "modified"
+    # 原始数据不受影响
+    assert facade.query_compressed_context("wf_003")["data"] == "test"
+```
+
+### 实现
+
+#### PowerCompressorFacade 结构
+
+**`src/domain/services/power_compressor_facade.py`**（206 lines）
+
+```python
+class PowerCompressorFacade:
+    """PowerCompressor 包装器
+
+    负责压缩上下文的存储、查询和统计。
+    """
+
+    def __init__(self, power_compressor: Any | None = None):
+        """初始化（支持可选注入用于测试）"""
+        self._power_compressor = power_compressor
+        self._compressed_contexts: dict[str, dict[str, Any]] = {}
+
+    @property
+    def power_compressor(self) -> Any:
+        """获取 PowerCompressor 实例（懒加载）"""
+        if self._power_compressor is None:
+            from src.domain.services.power_compressor import PowerCompressor
+            self._power_compressor = PowerCompressor()
+        return self._power_compressor
+
+    async def compress_and_store(self, summary: Any) -> Any:
+        """压缩执行总结并存储"""
+        compressed = self.power_compressor.compress_summary(summary)
+        workflow_id = getattr(compressed, "workflow_id", "")
+        if workflow_id:
+            self._compressed_contexts[workflow_id] = compressed.to_dict()
+        return compressed
+
+    def query_compressed_context(self, workflow_id: str) -> dict[str, Any] | None:
+        """查询压缩上下文（返回副本保护内部状态）"""
+        ctx = self._compressed_contexts.get(workflow_id)
+        return copy.deepcopy(ctx) if ctx is not None else None
+
+    # ... 9 more query/statistics methods
+```
+
+**设计亮点**：
+1. **简化初始化**：直接在 `__init__` 中初始化存储字典，无懒加载逻辑
+2. **可选注入**：支持传入 PowerCompressor 用于测试
+3. **数据隔离**：`query_compressed_context()` 返回 `copy.deepcopy()` 保护内部状态
+4. **懒加载压缩器**：仅对 PowerCompressor 实例使用懒加载（通过 `@property`）
+
+#### CoordinatorAgent 集成
+
+**修改位置**：
+- Import: line 30
+- 初始化: lines 324-325
+- 委托方法: lines 3684-3785 (102 lines delegation)
+
+**删除内容**：
+- `_init_power_compressor_storage()` (11 lines)
+- `_get_power_compressor()` (9 lines)
+- 原有 11 个 PowerCompressor 集成方法 (183 lines)
+
+**新增委托**：
+```python
+# Phase 34.8: PowerCompressor 包装器
+self._power_compressor_facade = PowerCompressorFacade()
+
+async def compress_and_store(self, summary: Any) -> Any:
+    return await self._power_compressor_facade.compress_and_store(summary)
+
+def query_compressed_context(self, workflow_id: str) -> dict[str, Any] | None:
+    return self._power_compressor_facade.query_compressed_context(workflow_id)
+
+# ... 7 more delegation methods
+```
+
+### 测试验证
+
+#### 单元测试
+
+```bash
+pytest tests/unit/domain/services/test_power_compressor_facade.py -v
+```
+
+**结果**：
+- ✅ 20/20 tests passing
+- ✅ 96% coverage (缺失2行未达覆盖：lines 126, 140 - empty return 边界)
+
+#### 代码质量检查
+
+```bash
+ruff check src/domain/services/power_compressor_facade.py src/domain/agents/coordinator_agent.py
+```
+
+**结果**：
+- ✅ All checks passed
+
+### 成果总结
+
+| 指标 | 数值 |
+|------|------|
+| 提取模块行数 | 206 lines |
+| 测试文件行数 | 449 lines |
+| CoordinatorAgent 减少 | 77 lines (4397→4320) |
+| 单元测试覆盖率 | 96% |
+| 单元测试通过率 | 100% (20/20) |
+| Ruff 检查 | ✅ 通过 |
+
+### Commits
+
+**预计提交信息**:
+```
+refactor: Extract PowerCompressorFacade from CoordinatorAgent
+
+Phase 34.8: PowerCompressor 包装器提取与集成
+
+创建独立包装器：
+- PowerCompressorFacade (206 lines, 96% coverage)
+- 支持压缩存储、八段查询、统计接口
+- 数据隔离保护（copy.deepcopy）
+- 可选 PowerCompressor 注入（测试友好）
+- 20个单元测试全部通过
+
+集成到 CoordinatorAgent：
+- 使用委托模式替换 183 行 PowerCompressor 集成代码
+- 移除懒加载初始化逻辑（简化）
+- 新增 106 行委托方法
+- 保持完全向后兼容
+- 代码净减少 77 lines
+
+测试验证：
+- 20/20 tests passing
+- 96% 测试覆盖率
+- Ruff 检查通过
+
+代码质量：
+- 架构清晰，职责单一
+- 数据隔离，防外部篡改
+- 简化初始化，移除懒加载
+- 支持可选依赖注入
+
+累计进度：
+- Phase 2 已完成 9 个模块
+- CoordinatorAgent: 5517 → 4320 lines (-1197, 21.7%)
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+```
+
+
+---
+
+## Phase 34.9: KnowledgeRetrievalOrchestrator 提取与集成
+
+> 完成时间: 2025-12-11
+> 目标: 从 CoordinatorAgent 提取知识检索逻辑到独立编排器
+> 策略: TDD驱动 + Context Gateway + 委托模式
+
+### 背景
+
+在 Phase 34.8 完成后，CoordinatorAgent 包含约 482 行知识检索相关代码（lines 3132-3611），包括：
+- 知识检索方法（query/error/goal）
+- 缓存管理（_knowledge_cache）
+- 上下文增强与注入
+- 自动触发机制
+- 对话Agent上下文生成
+
+**问题**：
+- 知识检索逻辑与 CoordinatorAgent 紧耦合
+- 直接访问 \ 内部状态
+- 缺乏抽象层导致测试困难
+
+**目标**：
+- 提取为独立 KnowledgeRetrievalOrchestrator
+- 使用 Context Gateway 解耦内部状态访问
+- 保持完全向后兼容
+- 通过 TDD 确保正确性
+
+### Codex 分析结论
+
+**代码定位**：
+
+| 方法/变量 | 行号 | 行数 | 职责 |
+|----------|------|------|------|
+| \ | 425 | 1 | workflow_id → KnowledgeReferences |
+| \ | 426 | 1 | 自动检索开关 |
+| \ | 3269-3289 | 21 | 按查询检索知识 |
+| \ | 3291-3311 | 21 | 按错误类型检索 |
+| \ | 3313-3333 | 21 | 按目标检索知识 |
+| \ | 3335-3344 | 10 | 获取缓存 |
+| \ | 3346-3352 | 7 | 清除缓存 |
+| \ | 3354-3376 | 23 | 丰富上下文 |
+| \ | 3378-3395 | 18 | 注入知识到上下文 |
+| \ | 3397-3408 | 12 | 获取知识增强摘要 |
+| \ | 3410-3426 | 17 | 对话Agent上下文 |
+| \ | 3428-3450 | 23 | 错误时自动丰富 |
+| \ | 3452-3459 | 8 | 启用自动检索 |
+| \ | 3461-3465 | 5 | 禁用自动检索 |
+| \ | 3467-3493 | 27 | 处理失败含知识 |
+| \ | 3495-3520 | 26 | 处理反思含知识 |
+| **总计** | | **240** | |
+
+**拆分风险**：**中等** - 直接访问 \ 需要抽象
+
+**Codex 推荐方案**：创建 Context Gateway 提供受控访问接口
+
+### TDD 设计
+
+**测试文件**: \ (25 tests, 590+ lines, 96% coverage)
+
+测试分类：
+1. **初始化与配置** (2 tests) - 验证初始化参数和默认值
+2. **知识检索** (4 tests) - query/error/goal 三种检索方式
+3. **缓存管理** (4 tests) - 缓存读取、清除、不存在场景
+4. **上下文增强与注入** (4 tests) - 丰富上下文、注入、去重验证
+5. **自动触发机制** (3 tests) - 错误触发、节点失败、反思处理
+6. **自动检索开关** (2 tests) - enable/disable 验证
+7. **对话Agent上下文** (2 tests) - 上下文生成、不存在场景
+8. **边界场景** (4 tests) - 无目标无错误、缺失上下文等
+
+**核心 Mock**:
+- \: 模拟 3 个异步检索方法
+- \: 模拟上下文访问和修改，包含去重逻辑
+
+### 实现
+
+**\** (524 lines)
+
+**核心方法**：
