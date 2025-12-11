@@ -126,13 +126,26 @@ class InterventionCoordinator:
 
         返回：
             NodeReplacementRequest
+
+        Phase 35.0.1 修复（Codex High Priority）：
+        - 支持向后兼容的旧键名 'replacement' → 'replacement_config'
+        - 添加 None 防御，使用空字典兜底
         """
         from .models import NodeReplacementRequest
+
+        # Phase 35.0.1: 支持旧键名向后兼容 + None 防御
+        replacement_config = context.get("replacement_config")
+        if replacement_config is None:
+            # 尝试使用旧键名 'replacement'（向后兼容）
+            replacement_config = context.get("replacement")
+        if replacement_config is None:
+            # 兜底：使用空字典（避免 None.copy() AttributeError）
+            replacement_config = {}
 
         return NodeReplacementRequest(
             workflow_id=context.get("workflow_id", ""),
             original_node_id=context.get("node_id", ""),
-            replacement_node_config=context.get("replacement_config"),
+            replacement_node_config=replacement_config,
             reason=context.get("reason", "Intervention triggered"),
             session_id=context.get("session_id", ""),
         )

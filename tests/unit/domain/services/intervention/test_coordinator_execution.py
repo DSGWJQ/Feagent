@@ -125,7 +125,7 @@ def test_replace_level_with_minimal_context(coordinator, mock_workflow_modifier)
         # 缺少其他必要参数，应使用默认值
     }
 
-    result = coordinator.handle_intervention(InterventionLevel.REPLACE, context)
+    coordinator.handle_intervention(InterventionLevel.REPLACE, context)
 
     # 验证仍然调用了 replace_node（使用默认值）
     assert mock_workflow_modifier.replace_node.called
@@ -164,7 +164,7 @@ def test_replace_level_without_workflow_definition(coordinator, mock_workflow_mo
         # 缺少 workflow_definition
     }
 
-    result = coordinator.handle_intervention(InterventionLevel.REPLACE, context)
+    coordinator.handle_intervention(InterventionLevel.REPLACE, context)
 
     # 验证仍然调用了 replace_node（使用空字典）
     assert mock_workflow_modifier.replace_node.called
@@ -238,7 +238,7 @@ def test_terminate_level_with_minimal_context(coordinator, mock_task_terminator)
         # 缺少其他参数，应使用默认值
     }
 
-    result = coordinator.handle_intervention(InterventionLevel.TERMINATE, context)
+    coordinator.handle_intervention(InterventionLevel.TERMINATE, context)
 
     # 验证仍然调用了 terminate（使用默认值）
     assert mock_task_terminator.terminate.called
@@ -282,3 +282,74 @@ def test_terminate_level_default_notify_settings(coordinator, mock_task_terminat
     # 验证默认值
     assert request.notify_agents == ["conversation", "workflow"]
     assert request.notify_user is True
+
+
+# ==================== Phase 35.0.1: 边界场景测试（Codex High Priority 修复）====================
+
+
+def test_replace_level_missing_replacement_config(coordinator, mock_workflow_modifier):
+    """REPLACE 级别应处理缺少 replacement_config 的情况（使用空字典兜底）"""
+    context = {
+        "session_id": "test-session",
+        "workflow_id": "wf-001",
+        "node_id": "node-001",
+        "workflow_definition": {"nodes": []},
+        # ❌ 缺少 replacement_config
+    }
+
+    result = coordinator.handle_intervention(InterventionLevel.REPLACE, context)
+
+    # 验证仍然调用了 replace_node（使用空字典兜底）
+    assert mock_workflow_modifier.replace_node.called
+    call_args = mock_workflow_modifier.replace_node.call_args
+    request = call_args[0][1]
+    # 应该使用空字典作为默认值，而不是 None
+    assert request.replacement_node_config is not None
+    assert request.replacement_node_config == {}
+    # Phase 35.0.1: 验证返回结果
+    assert result.success is True
+    assert result.action_taken == "node_replaced"
+
+
+def test_replace_level_with_legacy_replacement_key(coordinator, mock_workflow_modifier):
+    """REPLACE 级别应支持旧键名 'replacement' 的向后兼容"""
+    context = {
+        "session_id": "test-session",
+        "workflow_id": "wf-001",
+        "node_id": "node-001",
+        "replacement": {"type": "legacy_node"},  # ← 旧键名
+        "workflow_definition": {"nodes": []},
+    }
+
+    result = coordinator.handle_intervention(InterventionLevel.REPLACE, context)
+
+    # 验证 replace_node 被调用，并且使用了旧键名的值
+    assert mock_workflow_modifier.replace_node.called
+    call_args = mock_workflow_modifier.replace_node.call_args
+    request = call_args[0][1]
+    assert request.replacement_node_config == {"type": "legacy_node"}
+    # Phase 35.0.1: 验证向后兼容成功
+    assert result.success is True
+
+
+def test_replace_level_with_none_replacement_config(coordinator, mock_workflow_modifier):
+    """REPLACE 级别应处理显式传入 None 的 replacement_config（使用空字典兜底）"""
+    context = {
+        "session_id": "test-session",
+        "workflow_id": "wf-001",
+        "node_id": "node-001",
+        "replacement_config": None,  # ← 显式传入 None
+        "workflow_definition": {"nodes": []},
+    }
+
+    result = coordinator.handle_intervention(InterventionLevel.REPLACE, context)
+
+    # 验证仍然调用了 replace_node（将 None 转换为空字典）
+    assert mock_workflow_modifier.replace_node.called
+    call_args = mock_workflow_modifier.replace_node.call_args
+    request = call_args[0][1]
+    # 应该将 None 转换为空字典
+    assert request.replacement_node_config is not None
+    assert request.replacement_node_config == {}
+    # Phase 35.0.1: 验证 None 防御成功
+    assert result.action_taken == "node_replaced"
