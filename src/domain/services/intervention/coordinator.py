@@ -77,12 +77,14 @@ class InterventionCoordinator:
             workflow_def = context.get("workflow_definition", {})
             result = self._workflow_modifier.replace_node(workflow_def, request)
 
-            self._logger.log_intervention(level, session_id, "node_replaced", context)
+            # Phase 35.0.1 修复：根据执行结果决定日志动作
+            action_taken = "node_replaced" if result.success else "node_replacement_failed"
+            self._logger.log_intervention(level, session_id, action_taken, context)
 
             # 将 ModificationResult 转换为字典以包含在 details 中
             return InterventionResult(
                 success=result.success,
-                action_taken="node_replaced",
+                action_taken=action_taken,
                 details={
                     "modification": {
                         "success": result.success,
@@ -99,12 +101,14 @@ class InterventionCoordinator:
             request = self._build_termination_request(context)
             result = self._task_terminator.terminate(request)
 
-            self._logger.log_intervention(level, session_id, "task_terminated", context)
+            # Phase 35.0.1 修复：根据执行结果决定日志动作
+            action_taken = "task_terminated" if result.success else "task_termination_failed"
+            self._logger.log_intervention(level, session_id, action_taken, context)
 
             # 将 TerminationResult 转换为字典以包含在 details 中
             return InterventionResult(
                 success=result.success,
-                action_taken="task_terminated",
+                action_taken=action_taken,
                 details={
                     "termination": {
                         "success": result.success,

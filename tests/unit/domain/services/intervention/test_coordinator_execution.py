@@ -113,7 +113,8 @@ def test_replace_level_handles_failure(coordinator, mock_workflow_modifier):
 
     # 验证返回失败结果
     assert result.success is False
-    assert result.action_taken == "node_replaced"
+    # Phase 35.0.1: 修复后应记录失败动作
+    assert result.action_taken == "node_replacement_failed"
     assert "modification" in result.details
     assert result.details["modification"]["success"] is False
 
@@ -226,7 +227,8 @@ def test_terminate_level_handles_failure(coordinator, mock_task_terminator):
 
     # 验证返回失败结果
     assert result.success is False
-    assert result.action_taken == "task_terminated"
+    # Phase 35.0.1: 修复后应记录失败动作
+    assert result.action_taken == "task_termination_failed"
     assert "termination" in result.details
     assert result.details["termination"]["success"] is False
 
@@ -353,3 +355,116 @@ def test_replace_level_with_none_replacement_config(coordinator, mock_workflow_m
     assert request.replacement_node_config == {}
     # Phase 35.0.1: 验证 None 防御成功
     assert result.action_taken == "node_replaced"
+
+
+# ==================== Phase 35.0.1: 日志与结果一致性测试 ====================
+
+
+def test_replace_level_logs_success_action(coordinator, mock_workflow_modifier):
+    """REPLACE 成功时应记录 'node_replaced' 动作"""
+    context = {
+        "session_id": "test-session",
+        "workflow_id": "wf-001",
+        "node_id": "node-001",
+        "replacement_config": {"type": "new_node"},
+        "workflow_definition": {"nodes": []},
+    }
+
+    result = coordinator.handle_intervention(InterventionLevel.REPLACE, context)
+
+    # 验证返回成功
+    assert result.success is True
+    assert result.action_taken == "node_replaced"
+
+    # 验证日志记录了成功动作
+    logs = coordinator.intervention_logger.get_logs()
+    assert len(logs) > 0
+    last_log = logs[-1]
+    assert last_log["action"] == "node_replaced"
+    assert last_log["level"] == InterventionLevel.REPLACE.value
+    assert last_log["session_id"] == "test-session"
+
+
+def test_replace_level_logs_failure_action(coordinator, mock_workflow_modifier):
+    """REPLACE 失败时应记录 'node_replacement_failed' 动作"""
+    # 模拟修改失败
+    mock_result = ModificationResult(
+        success=False,
+        error="Node not found",
+        original_node_id="node-001",
+    )
+    mock_workflow_modifier.replace_node.return_value = mock_result
+
+    context = {
+        "session_id": "test-session-fail",
+        "workflow_id": "wf-002",
+        "node_id": "node-002",
+        "replacement_config": {"type": "new_node"},
+        "workflow_definition": {"nodes": []},
+    }
+
+    result = coordinator.handle_intervention(InterventionLevel.REPLACE, context)
+
+    # 验证返回失败
+    assert result.success is False
+    assert result.action_taken == "node_replacement_failed"
+
+    # 验证日志记录了失败动作
+    logs = coordinator.intervention_logger.get_logs()
+    assert len(logs) > 0
+    last_log = logs[-1]
+    assert last_log["action"] == "node_replacement_failed"
+    assert last_log["level"] == InterventionLevel.REPLACE.value
+    assert last_log["session_id"] == "test-session-fail"
+
+
+def test_terminate_level_logs_success_action(coordinator, mock_task_terminator):
+    """TERMINATE 成功时应记录 'task_terminated' 动作"""
+    context = {
+        "session_id": "test-session-term",
+        "reason": "Test termination",
+        "error_code": "TEST_ERROR",
+    }
+
+    result = coordinator.handle_intervention(InterventionLevel.TERMINATE, context)
+
+    # 验证返回成功
+    assert result.success is True
+    assert result.action_taken == "task_terminated"
+
+    # 验证日志记录了成功动作
+    logs = coordinator.intervention_logger.get_logs()
+    assert len(logs) > 0
+    last_log = logs[-1]
+    assert last_log["action"] == "task_terminated"
+    assert last_log["level"] == InterventionLevel.TERMINATE.value
+    assert last_log["session_id"] == "test-session-term"
+
+
+def test_terminate_level_logs_failure_action(coordinator, mock_task_terminator):
+    """TERMINATE 失败时应记录 'task_termination_failed' 动作"""
+    # 模拟终止失败
+    mock_result = TerminationResult(
+        success=False,
+        session_id="test-session-term-fail",
+    )
+    mock_task_terminator.terminate.return_value = mock_result
+
+    context = {
+        "session_id": "test-session-term-fail",
+        "reason": "Test termination failure",
+    }
+
+    result = coordinator.handle_intervention(InterventionLevel.TERMINATE, context)
+
+    # 验证返回失败
+    assert result.success is False
+    assert result.action_taken == "task_termination_failed"
+
+    # 验证日志记录了失败动作
+    logs = coordinator.intervention_logger.get_logs()
+    assert len(logs) > 0
+    last_log = logs[-1]
+    assert last_log["action"] == "task_termination_failed"
+    assert last_log["level"] == InterventionLevel.TERMINATE.value
+    assert last_log["session_id"] == "test-session-term-fail"
