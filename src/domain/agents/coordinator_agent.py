@@ -353,15 +353,8 @@ class CoordinatorAgent:
         self._is_compressing_context = False
         self._compressed_contexts: dict[str, Any] = {}  # workflow_id -> CompressedContext
 
-        # Phase 3: 子Agent管理
-        from src.domain.services.sub_agent_scheduler import SubAgentRegistry
-
-        self.subagent_registry = SubAgentRegistry()
-        self.active_subagents: dict[str, dict[str, Any]] = {}
-        self._is_listening_subagent_events = False
-
-        # Phase 3: 子Agent结果存储（按会话ID分组）
-        self.subagent_results: dict[str, list[dict[str, Any]]] = {}
+        # Phase 3: 子Agent管理（延迟初始化，在 log_collector 设置后）
+        self._subagent_orchestrator: Any = None
 
         # Phase 4: 容器执行监控
         self.container_executions: dict[str, list[dict[str, Any]]] = {}  # workflow_id -> executions
@@ -392,6 +385,14 @@ class CoordinatorAgent:
         from src.domain.services.unified_log_collector import UnifiedLogCollector
 
         self.log_collector = UnifiedLogCollector()
+
+        # Phase 3: 子Agent管理（在 log_collector 设置后初始化）
+        from src.domain.services.subagent_orchestrator import SubAgentOrchestrator
+
+        self._subagent_orchestrator = SubAgentOrchestrator(
+            event_bus=self.event_bus,
+            log_collector=self.log_collector,
+        )
 
         # 动态告警规则管理器
         from src.domain.services.dynamic_alert_rule_manager import (
@@ -3528,58 +3529,39 @@ class CoordinatorAgent:
                 },
             )
 
-    # ==================== Phase 3: 子Agent管理 ====================
+    # ==================== Phase 3: 子Agent管理（代理到 SubAgentOrchestrator）====================
+
+    # 向后兼容属性（只读代理到 orchestrator 内部状态）
+    @property
+    def subagent_registry(self) -> Any:
+        """子Agent注册表（向后兼容，只读）"""
+        return self._subagent_orchestrator._registry
+
+    @property
+    def active_subagents(self) -> dict[str, dict[str, Any]]:
+        """活跃子Agent状态（向后兼容，只读）"""
+        return self._subagent_orchestrator._active_subagents
+
+    @property
+    def subagent_results(self) -> dict[str, list[dict[str, Any]]]:
+        """子Agent执行结果（向后兼容，只读）"""
+        return self._subagent_orchestrator._results
 
     def register_subagent_type(self, agent_type: Any, agent_class: type) -> None:
-        """注册子Agent类型
-
-        参数：
-            agent_type: SubAgentType 枚举值
-            agent_class: 子Agent类
-        """
-        self.subagent_registry.register(agent_type, agent_class)
+        """注册子Agent类型（代理到 SubAgentOrchestrator）"""
+        self._subagent_orchestrator.register_type(agent_type, agent_class)
 
     def get_registered_subagent_types(self) -> list[Any]:
-        """获取已注册的子Agent类型列表
-
-        返回：
-            SubAgentType 列表
-        """
-        return self.subagent_registry.list_types()
+        """获取已注册的子Agent类型列表（代理到 SubAgentOrchestrator）"""
+        return self._subagent_orchestrator.list_types()
 
     def start_subagent_listener(self) -> None:
-        """启动子Agent事件监听器
-
-        订阅 SpawnSubAgentEvent 以处理子Agent生成请求。
-        """
-        if self._is_listening_subagent_events:
-            return
-
-        if self.event_bus:
-            from src.domain.agents.conversation_agent import SpawnSubAgentEvent
-
-            self.event_bus.subscribe(SpawnSubAgentEvent, self._handle_spawn_subagent_event_wrapper)
-            self._is_listening_subagent_events = True
-
-    async def _handle_spawn_subagent_event_wrapper(self, event: Any) -> None:
-        """SpawnSubAgentEvent 处理器包装器"""
-        await self.handle_spawn_subagent_event(event)
+        """启动子Agent事件监听器（代理到 SubAgentOrchestrator）"""
+        self._subagent_orchestrator.start_listening()
 
     async def handle_spawn_subagent_event(self, event: Any) -> Any:
-        """处理子Agent生成事件
-
-        参数：
-            event: SpawnSubAgentEvent 事件
-
-        返回：
-            SubAgentResult 执行结果
-        """
-        return await self.execute_subagent(
-            subagent_type=event.subagent_type,
-            task_payload=event.task_payload,
-            context=event.context_snapshot,
-            session_id=event.session_id,
-        )
+        """处理子Agent生成事件（代理到 SubAgentOrchestrator）"""
+        return await self._subagent_orchestrator.handle_spawn_event(event)
 
     async def execute_subagent(
         self,
@@ -3588,149 +3570,21 @@ class CoordinatorAgent:
         context: dict[str, Any] | None = None,
         session_id: str = "",
     ) -> Any:
-        """执行子Agent任务
-
-        参数：
-            subagent_type: 子Agent类型（字符串）
-            task_payload: 任务负载
-            context: 执行上下文
-            session_id: 会话ID
-
-        返回：
-            SubAgentResult 执行结果
-        """
-        from datetime import datetime
-
-        from src.domain.services.sub_agent_scheduler import (
-            SubAgentResult,
-            SubAgentType,
+        """执行子Agent任务（代理到 SubAgentOrchestrator）"""
+        return await self._subagent_orchestrator.execute(
+            subagent_type=subagent_type,
+            task_payload=task_payload,
+            context=context,
+            session_id=session_id,
         )
 
-        # 转换类型字符串为枚举
-        try:
-            agent_type_enum = SubAgentType(subagent_type)
-        except ValueError:
-            return SubAgentResult(
-                agent_id="",
-                agent_type=subagent_type,
-                success=False,
-                error=f"Unknown subagent type: {subagent_type}",
-            )
-
-        # 创建子Agent实例
-        agent = self.subagent_registry.create_instance(agent_type_enum)
-        if agent is None:
-            return SubAgentResult(
-                agent_id="",
-                agent_type=subagent_type,
-                success=False,
-                error=f"SubAgent type not registered: {subagent_type}",
-            )
-
-        subagent_id = agent.agent_id
-
-        # 记录活跃子Agent
-        self.active_subagents[subagent_id] = {
-            "type": subagent_type,
-            "status": "running",
-            "started_at": datetime.now().isoformat(),
-            "session_id": session_id,
-        }
-
-        try:
-            # 执行子Agent
-            result = await agent.execute(task_payload, context or {})
-
-            # 更新状态
-            self.active_subagents[subagent_id]["status"] = (
-                "completed" if result.success else "failed"
-            )
-            self.active_subagents[subagent_id]["completed_at"] = datetime.now().isoformat()
-
-            # 存储结果到会话
-            if session_id:
-                if session_id not in self.subagent_results:
-                    self.subagent_results[session_id] = []
-                self.subagent_results[session_id].append(
-                    {
-                        "subagent_id": subagent_id,
-                        "subagent_type": subagent_type,
-                        "success": result.success,
-                        "result": result.output,
-                        "error": result.error,
-                        "execution_time": result.execution_time,
-                    }
-                )
-
-            # 发布完成事件
-            if self.event_bus:
-                await self.event_bus.publish(
-                    SubAgentCompletedEvent(
-                        subagent_id=subagent_id,
-                        subagent_type=subagent_type,
-                        session_id=session_id,
-                        success=result.success,
-                        result=result.output,
-                        error=result.error,
-                        execution_time=result.execution_time,
-                        source="coordinator_agent",
-                    )
-                )
-
-            # 清理已完成的子Agent
-            del self.active_subagents[subagent_id]
-
-            return result
-
-        except Exception as e:
-            # 记录失败
-            self.active_subagents[subagent_id]["status"] = "failed"
-            self.active_subagents[subagent_id]["error"] = str(e)
-
-            # 发布失败事件
-            if self.event_bus:
-                await self.event_bus.publish(
-                    SubAgentCompletedEvent(
-                        subagent_id=subagent_id,
-                        subagent_type=subagent_type,
-                        session_id=session_id,
-                        success=False,
-                        error=str(e),
-                        source="coordinator_agent",
-                    )
-                )
-
-            # 清理
-            del self.active_subagents[subagent_id]
-
-            return SubAgentResult(
-                agent_id=subagent_id,
-                agent_type=subagent_type,
-                success=False,
-                error=str(e),
-            )
-
     def get_subagent_status(self, subagent_id: str) -> dict[str, Any] | None:
-        """获取子Agent状态
-
-        参数：
-            subagent_id: 子Agent实例ID
-
-        返回：
-            状态字典，如果不存在返回None
-        """
-        return self.active_subagents.get(subagent_id)
+        """获取子Agent状态（代理到 SubAgentOrchestrator）"""
+        return self._subagent_orchestrator.get_status(subagent_id)
 
     def get_session_subagent_results(self, session_id: str) -> list[dict[str, Any]]:
-        """获取会话的子Agent执行结果列表
-
-        参数：
-            session_id: 会话ID
-
-        返回：
-            该会话的所有子Agent执行结果列表，如果不存在返回空列表
-        """
-        return self.subagent_results.get(session_id, [])
+        """获取会话的子Agent执行结果列表（代理到 SubAgentOrchestrator）"""
+        return self._subagent_orchestrator.get_session_results(session_id)
 
     # ==================== Phase 4: 容器执行监控 ====================
 
