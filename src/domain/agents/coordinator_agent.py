@@ -27,6 +27,10 @@ from typing import Any
 
 from src.domain.services.event_bus import Event, EventBus
 from src.domain.services.execution_summary_manager import ExecutionSummaryManager
+from src.domain.services.knowledge_retrieval_orchestrator import (
+    KnowledgeRetrievalOrchestrator,
+)
+from src.domain.services.power_compressor_facade import PowerCompressorFacade
 from src.domain.services.safety_guard import ValidationResult
 from src.domain.services.workflow_failure_orchestrator import (
     FailureHandlingResult,
@@ -196,6 +200,125 @@ class CoordinatorAgent:
         event_bus.add_middleware(agent.as_middleware())
     """
 
+    # ===================== Phase 34.9: ContextGateway ====================
+    class _ContextGateway:
+        """Context Gateway for KnowledgeRetrievalOrchestrator
+
+        提供对 _compressed_contexts 的访问接口，解耦编排器与内部状态。
+        支持 CompressedContext 数据类和字典两种格式。
+        """
+
+        def __init__(self, contexts_dict: dict[str, Any]):
+            self._contexts = contexts_dict
+
+        def get_context(self, workflow_id: str) -> Any:
+            """获取压缩上下文
+
+            参数：
+                workflow_id: 工作流ID
+
+            返回：
+                压缩上下文（CompressedContext 或 dict），如果不存在返回 None
+            """
+            return self._contexts.get(workflow_id)
+
+        def update_knowledge_refs(self, workflow_id: str, refs: list[dict[str, Any]]) -> None:
+            """更新知识引用（去重合并）
+
+            参数：
+                workflow_id: 工作流ID
+                refs: 新的知识引用列表
+            """
+            if workflow_id not in self._contexts:
+                return
+
+            ctx = self._contexts[workflow_id]
+
+            # 处理 CompressedContext 数据类
+            if hasattr(ctx, "knowledge_references"):
+                existing_refs = getattr(ctx, "knowledge_references", [])
+                if not isinstance(existing_refs, list):
+                    existing_refs = []
+
+                # 去重合并（按 source_id）
+                seen_ids = {r.get("source_id") for r in existing_refs if isinstance(r, dict)}
+                for ref in refs:
+                    if isinstance(ref, dict) and ref.get("source_id") not in seen_ids:
+                        existing_refs.append(ref)
+                        seen_ids.add(ref.get("source_id"))
+
+                # 直接修改属性（数据类是可变的）
+                ctx.knowledge_references = existing_refs
+
+            # 处理字典格式（兜底）
+            elif isinstance(ctx, dict):
+                existing_refs = ctx.get("knowledge_references", [])
+                if not isinstance(existing_refs, list):
+                    existing_refs = []
+
+                seen_ids = {r.get("source_id") for r in existing_refs if isinstance(r, dict)}
+                for ref in refs:
+                    if isinstance(ref, dict) and ref.get("source_id") not in seen_ids:
+                        existing_refs.append(ref)
+                        seen_ids.add(ref.get("source_id"))
+
+                ctx["knowledge_references"] = existing_refs
+
+        def update_error_log(self, workflow_id: str, error: dict[str, Any]) -> None:
+            """添加错误日志
+
+            参数：
+                workflow_id: 工作流ID
+                error: 错误信息dict
+            """
+            if workflow_id not in self._contexts:
+                return
+
+            ctx = self._contexts[workflow_id]
+
+            # 处理 CompressedContext 数据类
+            if hasattr(ctx, "error_log"):
+                error_log = getattr(ctx, "error_log", [])
+                if not isinstance(error_log, list):
+                    error_log = []
+                error_log.append(error)
+                ctx.error_log = error_log
+
+            # 处理字典格式（兜底）
+            elif isinstance(ctx, dict):
+                error_log = ctx.get("error_log", [])
+                if not isinstance(error_log, list):
+                    error_log = []
+                error_log.append(error)
+                ctx["error_log"] = error_log
+
+        def update_reflection(self, workflow_id: str, reflection: dict[str, Any]) -> None:
+            """更新反思摘要
+
+            参数：
+                workflow_id: 工作流ID
+                reflection: 反思内容dict
+            """
+            if workflow_id not in self._contexts:
+                return
+
+            ctx = self._contexts[workflow_id]
+
+            # 处理 CompressedContext 数据类
+            if hasattr(ctx, "reflection_summary"):
+                ctx.reflection_summary = reflection
+                # 如果有建议，更新 next_actions
+                if "recommendations" in reflection and hasattr(ctx, "next_actions"):
+                    ctx.next_actions = reflection["recommendations"]
+
+            # 处理字典格式（兜底）
+            elif isinstance(ctx, dict):
+                ctx["reflection_summary"] = reflection
+                if "recommendations" in reflection:
+                    ctx["next_actions"] = reflection["recommendations"]
+
+    # =====================================================================
+
     def __init__(
         self,
         event_bus: EventBus | None = None,
@@ -319,6 +442,16 @@ class CoordinatorAgent:
 
         # Phase 34.7: 执行总结管理器
         self._summary_manager = ExecutionSummaryManager(event_bus=self.event_bus)
+
+        # Phase 34.8: PowerCompressor 包装器
+        self._power_compressor_facade = PowerCompressorFacade()
+
+        # Phase 34.9: 知识检索编排器
+        self._context_gateway = self._ContextGateway(self._compressed_contexts)
+        self._knowledge_retrieval_orchestrator = KnowledgeRetrievalOrchestrator(
+            knowledge_retriever=self.knowledge_retriever,
+            context_gateway=self._context_gateway,
+        )
 
         # Phase 3: 子Agent管理（在 log_collector 设置后初始化）
         from src.domain.services.subagent_orchestrator import SubAgentOrchestrator
@@ -3131,7 +3264,7 @@ class CoordinatorAgent:
         """
         self._container_monitor.reset_all()
 
-    # ==================== Phase 5 阶段2: 知识库集成 ====================
+    # ==================== Phase 34.9: 知识库集成（委托到 KnowledgeRetrievalOrchestrator）====================
 
     async def retrieve_knowledge(
         self,
@@ -3139,7 +3272,7 @@ class CoordinatorAgent:
         workflow_id: str | None = None,
         top_k: int = 5,
     ) -> Any:
-        """按查询检索知识
+        """按查询检索知识（委托）
 
         参数：
             query: 查询文本
@@ -3149,40 +3282,11 @@ class CoordinatorAgent:
         返回：
             KnowledgeReferences 知识引用集合
         """
-        from src.domain.services.knowledge_reference import (
-            KnowledgeReference,
-            KnowledgeReferences,
-        )
-
-        refs = KnowledgeReferences()
-
-        if not self.knowledge_retriever:
-            return refs
-
-        # 检索知识
-        results = await self.knowledge_retriever.retrieve_by_query(
+        return await self._knowledge_retrieval_orchestrator.retrieve_knowledge(
             query=query,
             workflow_id=workflow_id,
             top_k=top_k,
         )
-
-        # 转换为 KnowledgeReference
-        for result in results:
-            ref = KnowledgeReference(
-                source_id=result.get("source_id", ""),
-                title=result.get("title", ""),
-                content_preview=result.get("content_preview", ""),
-                relevance_score=result.get("relevance_score", 0.0),
-                document_id=result.get("document_id"),
-                source_type=result.get("source_type", "knowledge_base"),
-            )
-            refs.add(ref)
-
-        # 如果指定了 workflow_id，缓存结果
-        if workflow_id:
-            self._knowledge_cache[workflow_id] = refs
-
-        return refs
 
     async def retrieve_knowledge_by_error(
         self,
@@ -3190,7 +3294,7 @@ class CoordinatorAgent:
         error_message: str | None = None,
         top_k: int = 3,
     ) -> Any:
-        """按错误类型检索解决方案
+        """按错误类型检索解决方案（委托）
 
         参数：
             error_type: 错误类型
@@ -3200,35 +3304,11 @@ class CoordinatorAgent:
         返回：
             KnowledgeReferences 知识引用集合
         """
-        from src.domain.services.knowledge_reference import (
-            KnowledgeReference,
-            KnowledgeReferences,
-        )
-
-        refs = KnowledgeReferences()
-
-        if not self.knowledge_retriever:
-            return refs
-
-        # 检索错误相关知识
-        results = await self.knowledge_retriever.retrieve_by_error(
+        return await self._knowledge_retrieval_orchestrator.retrieve_knowledge_by_error(
             error_type=error_type,
             error_message=error_message,
             top_k=top_k,
         )
-
-        # 转换为 KnowledgeReference
-        for result in results:
-            ref = KnowledgeReference(
-                source_id=result.get("source_id", ""),
-                title=result.get("title", ""),
-                content_preview=result.get("content_preview", ""),
-                relevance_score=result.get("relevance_score", 0.0),
-                source_type=result.get("source_type", "error_solution"),
-            )
-            refs.add(ref)
-
-        return refs
 
     async def retrieve_knowledge_by_goal(
         self,
@@ -3236,7 +3316,7 @@ class CoordinatorAgent:
         workflow_id: str | None = None,
         top_k: int = 3,
     ) -> Any:
-        """按目标检索相关知识
+        """按目标检索相关知识（委托）
 
         参数：
             goal_text: 目标描述文本
@@ -3246,39 +3326,14 @@ class CoordinatorAgent:
         返回：
             KnowledgeReferences 知识引用集合
         """
-        from src.domain.services.knowledge_reference import (
-            KnowledgeReference,
-            KnowledgeReferences,
-        )
-
-        refs = KnowledgeReferences()
-
-        if not self.knowledge_retriever:
-            return refs
-
-        # 检索目标相关知识
-        results = await self.knowledge_retriever.retrieve_by_goal(
+        return await self._knowledge_retrieval_orchestrator.retrieve_knowledge_by_goal(
             goal_text=goal_text,
             workflow_id=workflow_id,
             top_k=top_k,
         )
 
-        # 转换为 KnowledgeReference
-        for result in results:
-            ref = KnowledgeReference(
-                source_id=result.get("source_id", ""),
-                title=result.get("title", ""),
-                content_preview=result.get("content_preview", ""),
-                relevance_score=result.get("relevance_score", 0.0),
-                document_id=result.get("document_id"),
-                source_type=result.get("source_type", "goal_related"),
-            )
-            refs.add(ref)
-
-        return refs
-
     def get_cached_knowledge(self, workflow_id: str) -> Any:
-        """获取缓存的知识引用
+        """获取缓存的知识引用（委托）
 
         参数：
             workflow_id: 工作流ID
@@ -3286,16 +3341,15 @@ class CoordinatorAgent:
         返回：
             KnowledgeReferences 或 None
         """
-        return self._knowledge_cache.get(workflow_id)
+        return self._knowledge_retrieval_orchestrator.get_cached_knowledge(workflow_id)
 
     def clear_cached_knowledge(self, workflow_id: str) -> None:
-        """清除缓存的知识引用
+        """清除缓存的知识引用（委托）
 
         参数：
             workflow_id: 工作流ID
         """
-        if workflow_id in self._knowledge_cache:
-            del self._knowledge_cache[workflow_id]
+        self._knowledge_retrieval_orchestrator.clear_cached_knowledge(workflow_id)
 
     async def enrich_context_with_knowledge(
         self,
@@ -3303,7 +3357,7 @@ class CoordinatorAgent:
         goal: str | None = None,
         errors: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """根据目标和错误丰富上下文
+        """根据目标和错误丰富上下文（委托）
 
         自动检索与目标和错误相关的知识，并将结果附加到上下文中。
 
@@ -3315,41 +3369,11 @@ class CoordinatorAgent:
         返回：
             包含 knowledge_references 的上下文字典
         """
-        from src.domain.services.knowledge_reference import KnowledgeReferences
-
-        all_refs = KnowledgeReferences()
-
-        # 基于目标检索知识
-        if goal and self.knowledge_retriever:
-            goal_refs = await self.retrieve_knowledge_by_goal(
-                goal_text=goal,
-                workflow_id=workflow_id,
-            )
-            all_refs = all_refs.merge(goal_refs)
-
-        # 基于错误检索知识
-        if errors and self.knowledge_retriever:
-            for error in errors:
-                error_type = error.get("error_type", "")
-                error_message = error.get("message", "")
-                if error_type:
-                    error_refs = await self.retrieve_knowledge_by_error(
-                        error_type=error_type,
-                        error_message=error_message,
-                    )
-                    all_refs = all_refs.merge(error_refs)
-
-        # 去重
-        all_refs = all_refs.deduplicate()
-
-        # 缓存结果
-        self._knowledge_cache[workflow_id] = all_refs
-
-        # 返回包含知识引用的上下文
-        return {
-            "workflow_id": workflow_id,
-            "knowledge_references": all_refs.to_dict_list(),
-        }
+        return await self._knowledge_retrieval_orchestrator.enrich_context_with_knowledge(
+            workflow_id=workflow_id,
+            goal=goal,
+            errors=errors,
+        )
 
     async def inject_knowledge_to_context(
         self,
@@ -3357,39 +3381,21 @@ class CoordinatorAgent:
         goal: str | None = None,
         errors: list[dict[str, Any]] | None = None,
     ) -> None:
-        """向现有压缩上下文注入知识
+        """向现有压缩上下文注入知识（委托）
 
         参数：
             workflow_id: 工作流ID
             goal: 任务目标（可选）
             errors: 错误列表（可选）
         """
-        # 检索知识
-        enriched = await self.enrich_context_with_knowledge(
+        await self._knowledge_retrieval_orchestrator.inject_knowledge_to_context(
             workflow_id=workflow_id,
             goal=goal,
             errors=errors,
         )
 
-        # 如果有压缩上下文，注入知识引用
-        if workflow_id in self._compressed_contexts:
-            ctx = self._compressed_contexts[workflow_id]
-            if hasattr(ctx, "knowledge_references"):
-                # 合并现有和新的知识引用
-                existing_refs = ctx.knowledge_references or []
-                new_refs = enriched.get("knowledge_references", [])
-
-                # 去重合并（按 source_id）
-                seen_ids = {r.get("source_id") for r in existing_refs}
-                for ref in new_refs:
-                    if ref.get("source_id") not in seen_ids:
-                        existing_refs.append(ref)
-                        seen_ids.add(ref.get("source_id"))
-
-                ctx.knowledge_references = existing_refs
-
     def get_knowledge_enhanced_summary(self, workflow_id: str) -> str | None:
-        """获取知识增强的上下文摘要
+        """获取知识增强的上下文摘要（委托）
 
         返回包含知识引用信息的人类可读摘要。
 
@@ -3399,36 +3405,13 @@ class CoordinatorAgent:
         返回：
             摘要文本，如果不存在返回None
         """
-        # 获取压缩上下文
-        ctx = self.get_compressed_context(workflow_id)
-        if not ctx:
-            return None
-
-        # 生成基础摘要
-        summary_parts = []
-        if hasattr(ctx, "to_summary_text"):
-            summary_parts.append(ctx.to_summary_text())
-
-        # 添加知识引用详情
-        if hasattr(ctx, "knowledge_references") and ctx.knowledge_references:
-            refs = ctx.knowledge_references
-            ref_summaries = []
-            for ref in refs[:3]:  # 最多显示3条
-                title = ref.get("title", "未知")
-                score = ref.get("relevance_score", 0)
-                ref_summaries.append(f"  - {title} (相关度: {score:.0%})")
-
-            if ref_summaries:
-                summary_parts.append("知识引用:")
-                summary_parts.extend(ref_summaries)
-
-        return "\n".join(summary_parts) if summary_parts else None
+        return self._knowledge_retrieval_orchestrator.get_knowledge_enhanced_summary(workflow_id)
 
     def get_context_for_conversation_agent(
         self,
         workflow_id: str,
     ) -> dict[str, Any] | None:
-        """获取用于对话Agent的上下文
+        """获取用于对话Agent的上下文（委托）
 
         将压缩上下文转换为对话Agent可用的格式。
 
@@ -3438,34 +3421,9 @@ class CoordinatorAgent:
         返回：
             对话Agent可用的上下文字典，如果不存在返回None
         """
-        ctx = self.get_compressed_context(workflow_id)
-        if not ctx:
-            return None
-
-        # 构建对话Agent可用的上下文
-        agent_context = {
-            "workflow_id": workflow_id,
-            "goal": getattr(ctx, "task_goal", ""),
-            "task_goal": getattr(ctx, "task_goal", ""),
-            "execution_status": getattr(ctx, "execution_status", {}),
-            "node_summary": getattr(ctx, "node_summary", []),
-            "errors": getattr(ctx, "error_log", []),
-            "next_actions": getattr(ctx, "next_actions", []),
-            "conversation_summary": getattr(ctx, "conversation_summary", ""),
-            "reflection_summary": getattr(ctx, "reflection_summary", {}),
-        }
-
-        # 添加知识引用
-        if hasattr(ctx, "knowledge_references"):
-            agent_context["knowledge_references"] = ctx.knowledge_references
-            agent_context["references"] = ctx.knowledge_references
-
-        # 添加缓存的知识
-        cached = self.get_cached_knowledge(workflow_id)
-        if cached and hasattr(cached, "to_dict_list"):
-            agent_context["cached_knowledge"] = cached.to_dict_list()
-
-        return agent_context
+        return self._knowledge_retrieval_orchestrator.get_context_for_conversation_agent(
+            workflow_id
+        )
 
     async def auto_enrich_context_on_error(
         self,
@@ -3473,7 +3431,7 @@ class CoordinatorAgent:
         error_type: str,
         error_message: str | None = None,
     ) -> dict[str, Any]:
-        """错误发生时自动丰富上下文
+        """错误发生时自动丰富上下文（委托）
 
         当节点执行失败时，自动检索相关的错误解决方案知识。
 
@@ -3485,39 +3443,25 @@ class CoordinatorAgent:
         返回：
             丰富后的上下文字典
         """
-        # 构建错误列表
-        errors = [{"error_type": error_type, "message": error_message or ""}]
-
-        # 获取现有目标
-        goal = None
-        if workflow_id in self._compressed_contexts:
-            ctx = self._compressed_contexts[workflow_id]
-            goal = getattr(ctx, "task_goal", None)
-
-        # 丰富上下文
-        enriched = await self.enrich_context_with_knowledge(
+        return await self._knowledge_retrieval_orchestrator.auto_enrich_context_on_error(
             workflow_id=workflow_id,
-            goal=goal,
-            errors=errors,
+            error_type=error_type,
+            error_message=error_message,
         )
-
-        # 注入到压缩上下文
-        await self.inject_knowledge_to_context(
-            workflow_id=workflow_id,
-            errors=errors,
-        )
-
-        return enriched
 
     def enable_auto_knowledge_retrieval(self) -> None:
-        """启用自动知识检索
+        """启用自动知识检索（委托）
 
-        启用后，在节点失败和反思事��时会自动检索相关知识。
+        启用后，在节点失败和反思事件时会自动检索相关知识。
         """
+        self._knowledge_retrieval_orchestrator.enable_auto_knowledge_retrieval()
+        # 同步 CoordinatorAgent 的标志（向后兼容）
         self._auto_knowledge_retrieval_enabled = True
 
     def disable_auto_knowledge_retrieval(self) -> None:
-        """禁用自动知识检索"""
+        """禁用自动知识检索（委托）"""
+        self._knowledge_retrieval_orchestrator.disable_auto_knowledge_retrieval()
+        # 同步 CoordinatorAgent 的标志（向后兼容）
         self._auto_knowledge_retrieval_enabled = False
 
     async def handle_node_failure_with_knowledge(
@@ -3527,7 +3471,7 @@ class CoordinatorAgent:
         error_type: str,
         error_message: str | None = None,
     ) -> dict[str, Any]:
-        """处理节点失败并检索相关知识
+        """处理节点失败并检索相关知识（委托）
 
         当节点执行失败时调用此方法，会自动检索与错误相关的知识，
         并将其添加到压缩上下文中。
@@ -3541,26 +3485,12 @@ class CoordinatorAgent:
         返回：
             包含知识引用的结果字典
         """
-        # 记录错误到错误日志
-        if workflow_id in self._compressed_contexts:
-            ctx = self._compressed_contexts[workflow_id]
-            if hasattr(ctx, "error_log"):
-                ctx.error_log.append(
-                    {
-                        "node_id": node_id,
-                        "error_type": error_type,
-                        "error_message": error_message or "",
-                    }
-                )
-
-        # 自动检索错误相关知识
-        result = await self.auto_enrich_context_on_error(
+        return await self._knowledge_retrieval_orchestrator.handle_node_failure_with_knowledge(
             workflow_id=workflow_id,
+            node_id=node_id,
             error_type=error_type,
             error_message=error_message,
         )
-
-        return result
 
     async def handle_reflection_with_knowledge(
         self,
@@ -3569,7 +3499,7 @@ class CoordinatorAgent:
         confidence: float = 0.0,
         recommendations: list[str] | None = None,
     ) -> dict[str, Any]:
-        """处理反思事件并检索相关知识
+        """处理反思事件并检索相关知识（委托）
 
         当收到反思事件时调用此方法，会基于工作流目标检索相关知识。
 
@@ -3582,37 +3512,12 @@ class CoordinatorAgent:
         返回：
             包含知识引用的结果字典
         """
-        # 更新反思摘要
-        if workflow_id in self._compressed_contexts:
-            ctx = self._compressed_contexts[workflow_id]
-            if hasattr(ctx, "reflection_summary"):
-                ctx.reflection_summary = {
-                    "assessment": assessment,
-                    "confidence": confidence,
-                    "recommendations": recommendations or [],
-                }
-            if hasattr(ctx, "next_actions") and recommendations:
-                ctx.next_actions = recommendations
-
-        # 获取目标并检索相关知识
-        goal = None
-        if workflow_id in self._compressed_contexts:
-            ctx = self._compressed_contexts[workflow_id]
-            goal = getattr(ctx, "task_goal", None)
-
-        # 基于目标和评估检索知识
-        result = await self.enrich_context_with_knowledge(
+        return await self._knowledge_retrieval_orchestrator.handle_reflection_with_knowledge(
             workflow_id=workflow_id,
-            goal=goal or assessment,  # 如果没有目标，使用评估内容
+            assessment=assessment,
+            confidence=confidence,
+            recommendations=recommendations,
         )
-
-        # 注入到上下文
-        await self.inject_knowledge_to_context(
-            workflow_id=workflow_id,
-            goal=goal or assessment,
-        )
-
-        return result
 
     # ==================== Phase 5: 执行总结管理 ====================
 
@@ -3677,23 +3582,7 @@ class CoordinatorAgent:
         """
         return self._summary_manager.get_all_summaries()
 
-    # ==================== Phase 6: 强力压缩器与查询接口 ====================
-
-    def _init_power_compressor_storage(self) -> None:
-        """初始化强力压缩器存储（懒加载）"""
-        if not hasattr(self, "_power_compressed_contexts"):
-            self._power_compressed_contexts: dict[str, dict[str, Any]] = {}
-        if not hasattr(self, "_power_compressor"):
-            self._power_compressor: Any | None = None
-
-    def _get_power_compressor(self) -> Any:
-        """获取强力压缩器实例"""
-        self._init_power_compressor_storage()
-        if self._power_compressor is None:
-            from src.domain.services.power_compressor import PowerCompressor
-
-            self._power_compressor = PowerCompressor()
-        return self._power_compressor
+    # ==================== Phase 34.8: PowerCompressor 包装（委托到 PowerCompressorFacade）====================
 
     async def compress_and_store(self, summary: Any) -> Any:
         """压缩执行总结并存储
@@ -3707,19 +3596,7 @@ class CoordinatorAgent:
         返回：
             PowerCompressedContext 实例
         """
-
-        compressor = self._get_power_compressor()
-        self._init_power_compressor_storage()
-
-        # 使用压缩器压缩总结
-        compressed = compressor.compress_summary(summary)
-
-        # 转换为字典并存储
-        workflow_id = compressed.workflow_id
-        if workflow_id:
-            self._power_compressed_contexts[workflow_id] = compressed.to_dict()
-
-        return compressed
+        return await self._power_compressor_facade.compress_and_store(summary)
 
     def store_compressed_context(self, workflow_id: str, data: dict[str, Any]) -> None:
         """存储压缩上下文
@@ -3730,8 +3607,7 @@ class CoordinatorAgent:
             workflow_id: 工作流ID
             data: 压缩上下文数据字典
         """
-        self._init_power_compressor_storage()
-        self._power_compressed_contexts[workflow_id] = data
+        self._power_compressor_facade.store_compressed_context(workflow_id, data)
 
     def query_compressed_context(self, workflow_id: str) -> dict[str, Any] | None:
         """查询压缩上下文
@@ -3742,8 +3618,7 @@ class CoordinatorAgent:
         返回：
             压缩上下文字典，如果不存在返回 None
         """
-        self._init_power_compressor_storage()
-        return self._power_compressed_contexts.get(workflow_id)
+        return self._power_compressor_facade.query_compressed_context(workflow_id)
 
     def query_subtask_errors(self, workflow_id: str) -> list[dict[str, Any]]:
         """查询子任务错误
@@ -3754,11 +3629,7 @@ class CoordinatorAgent:
         返回：
             子任务错误列表
         """
-        self._init_power_compressor_storage()
-        ctx = self._power_compressed_contexts.get(workflow_id)
-        if ctx:
-            return ctx.get("subtask_errors", [])
-        return []
+        return self._power_compressor_facade.query_subtask_errors(workflow_id)
 
     def query_unresolved_issues(self, workflow_id: str) -> list[dict[str, Any]]:
         """查询未解决问题
@@ -3769,11 +3640,7 @@ class CoordinatorAgent:
         返回：
             未解决问题列表
         """
-        self._init_power_compressor_storage()
-        ctx = self._power_compressed_contexts.get(workflow_id)
-        if ctx:
-            return ctx.get("unresolved_issues", [])
-        return []
+        return self._power_compressor_facade.query_unresolved_issues(workflow_id)
 
     def query_next_plan(self, workflow_id: str) -> list[dict[str, Any]]:
         """查询后续计划
@@ -3784,11 +3651,7 @@ class CoordinatorAgent:
         返回：
             后续计划列表
         """
-        self._init_power_compressor_storage()
-        ctx = self._power_compressed_contexts.get(workflow_id)
-        if ctx:
-            return ctx.get("next_plan", [])
-        return []
+        return self._power_compressor_facade.query_next_plan(workflow_id)
 
     def get_context_for_conversation(self, workflow_id: str) -> dict[str, Any] | None:
         """获取用于对话Agent下一轮输入的上下文
@@ -3801,23 +3664,7 @@ class CoordinatorAgent:
         返回：
             对话Agent可用的上下文字典，如果不存在返回 None
         """
-        self._init_power_compressor_storage()
-        ctx = self._power_compressed_contexts.get(workflow_id)
-        if not ctx:
-            return None
-
-        # 返回完整的八段上下文
-        return {
-            "workflow_id": ctx.get("workflow_id", workflow_id),
-            "task_goal": ctx.get("task_goal", ""),
-            "execution_status": ctx.get("execution_status", {}),
-            "node_summary": ctx.get("node_summary", []),
-            "subtask_errors": ctx.get("subtask_errors", []),
-            "unresolved_issues": ctx.get("unresolved_issues", []),
-            "decision_history": ctx.get("decision_history", []),
-            "next_plan": ctx.get("next_plan", []),
-            "knowledge_sources": ctx.get("knowledge_sources", []),
-        }
+        return self._power_compressor_facade.get_context_for_conversation(workflow_id)
 
     def get_knowledge_for_conversation(self, workflow_id: str) -> list[dict[str, Any]]:
         """获取用于对话Agent引用的知识来源
@@ -3828,11 +3675,7 @@ class CoordinatorAgent:
         返回：
             知识来源列表
         """
-        self._init_power_compressor_storage()
-        ctx = self._power_compressed_contexts.get(workflow_id)
-        if ctx:
-            return ctx.get("knowledge_sources", [])
-        return []
+        return self._power_compressor_facade.get_knowledge_for_conversation(workflow_id)
 
     def get_power_compression_statistics(self) -> dict[str, Any]:
         """获取强力压缩器统计
@@ -3840,26 +3683,7 @@ class CoordinatorAgent:
         返回：
             包含统计信息的字典
         """
-        self._init_power_compressor_storage()
-
-        total = len(self._power_compressed_contexts)
-        total_errors = sum(
-            len(ctx.get("subtask_errors", [])) for ctx in self._power_compressed_contexts.values()
-        )
-        total_issues = sum(
-            len(ctx.get("unresolved_issues", []))
-            for ctx in self._power_compressed_contexts.values()
-        )
-        total_plans = sum(
-            len(ctx.get("next_plan", [])) for ctx in self._power_compressed_contexts.values()
-        )
-
-        return {
-            "total_contexts": total,
-            "total_subtask_errors": total_errors,
-            "total_unresolved_issues": total_issues,
-            "total_next_plan_items": total_plans,
-        }
+        return self._power_compressor_facade.get_statistics()
 
     # ==================== 扩展模块：知识库 CRUD ====================
 
