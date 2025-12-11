@@ -899,3 +899,267 @@ Phase 34.1: 工作流失败编排器提取与集成
 
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ```
+
+---
+
+## Phase 34.7: ExecutionSummaryManager 提取
+
+> **日期**: 2025-12-11
+> **重构目标**: 提取执行总结管理功能，减少 CoordinatorAgent 职责
+
+### 背景
+
+在 Phase 34.1 (WorkflowFailureOrchestrator) 完成后，CoordinatorAgent 仍有 4444 行代码。识别出执行总结管理模块（~110 lines）作为下一个提取目标：
+- 低耦合：仅依赖 EventBus
+- 完整功能：存储、查询、事件发布、前端推送
+- 低风险：独立功能边界清晰
+
+### 实施步骤
+
+#### 1. 模块提取
+
+**创建 ExecutionSummaryManager** (`src/domain/services/execution_summary_manager.py`):
+```python
+class ExecutionSummaryManager:
+    """执行总结管理器
+
+    职责：
+    - 存储与查询执行总结
+    - 发布执行总结记录事件
+    - 提供统计信息
+    - 集成通道桥接器推送到前端
+    """
+
+    def __init__(self, event_bus: Any | None = None):
+        self.event_bus = event_bus
+        self._execution_summaries: dict[str, Any] = {}
+        self._channel_bridge: Any | None = None
+
+    # 7 个公共方法：
+    def set_channel_bridge(self, bridge: Any) -> None
+    def record_execution_summary(self, summary: Any) -> None
+    async def record_execution_summary_async(self, summary: Any) -> None
+    def get_execution_summary(self, workflow_id: str) -> Any | None
+    def get_summary_statistics(self) -> dict[str, Any]
+    async def record_and_push_summary(self, summary: Any) -> None
+    def get_all_summaries(self) -> dict[str, Any]
+```
+
+**关键设计**:
+- **懒加载移除**: 直接在 `__init__` 中初始化，简化逻辑
+- **可选依赖**: EventBus 和 ChannelBridge 均为可选
+- **数据隔离**: `get_all_summaries()` 返回副本防止外部修改
+- **事件发布**: 异步方法发布 `ExecutionSummaryRecordedEvent`
+- **前端集成**: `record_and_push_summary()` 同时记录和推送
+
+#### 2. TDD 测试套件
+
+**创建测试文件** (`tests/unit/domain/services/test_execution_summary_manager.py`):
+
+**测试覆盖**:
+1. **初始化与存储** (3 tests):
+   - 初始化验证
+   - 懒加载初始化
+   - ChannelBridge 设置
+
+2. **同步操作** (4 tests):
+   - 记录总结（有 workflow_id）
+   - 记录总结（无 workflow_id，应忽略）
+   - 查询存在的总结
+   - 查询不存在的总结
+
+3. **异步操作** (2 tests):
+   - 异步记录并发布事件
+   - 无 EventBus 时异步记录
+
+4. **统计功能** (4 tests):
+   - 空统计
+   - 带数据的统计（成功/失败/总数）
+   - 获取所有总结
+   - 验证返回副本（数据隔离）
+
+5. **通道桥接** (3 tests):
+   - 记录并推送（有 bridge 和 session_id）
+   - 记录并推送（无 bridge）
+   - 记录并推送（无 session_id）
+
+6. **边界场景** (2 tests):
+   - 重复 workflow_id 覆写
+   - 缺失属性处理
+
+7. **无 EventBus 场景** (2 tests):
+   - 创建 manager 不传 EventBus
+   - 异步操作不发布事件
+
+**测试结果**: 20/20 tests passing, 100% coverage
+
+#### 3. CoordinatorAgent 集成
+
+**修改 CoordinatorAgent**:
+
+**导入语句**:
+```python
+from src.domain.services.execution_summary_manager import ExecutionSummaryManager
+```
+
+**初始化** (line 321):
+```python
+# Phase 34.7: 执行总结管理器
+self._summary_manager = ExecutionSummaryManager(event_bus=self.event_bus)
+```
+
+**委托方法替换** (lines 3619-3678):
+```python
+# ==================== Phase 34.7: 执行总结管理（委托到 ExecutionSummaryManager）====================
+
+def set_channel_bridge(self, bridge: Any) -> None:
+    self._summary_manager.set_channel_bridge(bridge)
+
+def record_execution_summary(self, summary: Any) -> None:
+    self._summary_manager.record_execution_summary(summary)
+
+async def record_execution_summary_async(self, summary: Any) -> None:
+    await self._summary_manager.record_execution_summary_async(summary)
+
+def get_execution_summary(self, workflow_id: str) -> Any | None:
+    return self._summary_manager.get_execution_summary(workflow_id)
+
+def get_summary_statistics(self) -> dict[str, Any]:
+    return self._summary_manager.get_summary_statistics()
+
+async def record_and_push_summary(self, summary: Any) -> None:
+    await self._summary_manager.record_and_push_summary(summary)
+
+def get_all_summaries(self) -> dict[str, Any]:
+    return self._summary_manager.get_all_summaries()
+```
+
+**删除代码**:
+- `_init_summary_storage()` 方法
+- 原 7 个方法的实现（110 lines）
+
+#### 4. 代码行数减少
+
+**删除的代码** (110 lines):
+- `_init_summary_storage()` - 7 lines
+- `set_channel_bridge()` - 8 lines
+- `record_execution_summary()` - 10 lines
+- `record_execution_summary_async()` - 27 lines
+- `get_execution_summary()` - 11 lines
+- `get_summary_statistics()` - 18 lines
+- `record_and_push_summary()` - 16 lines
+- `get_all_summaries()` - 8 lines
+- 删除注释 - 5 lines
+
+**新增代码** (约63 lines):
+- Manager 初始化 - 2 lines
+- 委托方法 - 56 lines
+- 注释 - 5 lines
+- 导入语句 - 1 line
+
+**净减少**: 47 lines (4444 → 4397)
+
+### 测试结果
+
+**ExecutionSummaryManager 单元测试** (20/20):
+```bash
+tests/unit/domain/services/test_execution_summary_manager.py
+- test_manager_initialization ✅
+- test_lazy_storage_initialization ✅
+- test_set_channel_bridge ✅
+- test_record_execution_summary_sync ✅
+- test_record_summary_without_workflow_id ✅
+- test_get_execution_summary_exists ✅
+- test_get_execution_summary_not_exists ✅
+- test_record_execution_summary_async ✅
+- test_record_async_without_event_bus ✅
+- test_get_summary_statistics_empty ✅
+- test_get_summary_statistics_with_data ✅
+- test_get_all_summaries ✅
+- test_get_all_summaries_returns_copy ✅
+- test_record_and_push_summary_with_bridge ✅
+- test_record_and_push_summary_without_bridge ✅
+- test_record_and_push_summary_without_session_id ✅
+- test_record_duplicate_workflow_id_overwrites ✅
+- test_record_async_with_missing_attributes ✅
+- test_manager_without_event_bus ✅
+- test_manager_without_event_bus_async ✅
+```
+
+**ExecutionSummary 集成测试** (9/9):
+```bash
+tests/integration/test_execution_summary_e2e.py
+- test_complete_summary_flow_success ✅
+- test_complete_summary_flow_failure ✅
+- test_summary_event_published ✅
+- test_human_readable_summary_generation ✅
+- test_multiple_workflows_summary_tracking ✅
+- test_summary_includes_execution_timing ✅
+- test_websocket_push_with_full_payload ✅
+- test_summary_serialization_roundtrip ✅
+- test_correct_order_task_summary_coordinator_push ✅
+```
+
+**代码质量检查**:
+```bash
+ruff check src/domain/agents/coordinator_agent.py src/domain/services/execution_summary_manager.py
+✅ All checks passed!
+```
+
+**总计**: 29/29 tests passing (100%)
+
+### 文件清单
+
+**新增文件**:
+- `src/domain/services/execution_summary_manager.py` (140 lines)
+- `tests/unit/domain/services/test_execution_summary_manager.py` (331 lines)
+
+**修改文件**:
+- `src/domain/agents/coordinator_agent.py` (4444 → 4397 lines, -47)
+- `tmp/dev_plan.md` (新增 Phase 34.7 文档)
+
+### 成果总结
+
+| 指标 | 数值 |
+|------|------|
+| 提取模块行数 | 140 lines |
+| 测试文件行数 | 331 lines |
+| CoordinatorAgent 减少 | 47 lines |
+| 单元测试覆盖率 | 100% |
+| 集成测试通过率 | 100% |
+| Ruff 检查 | ✅ 通过 |
+
+### Commits
+
+**预计提交信息**:
+```
+refactor: Extract ExecutionSummaryManager from CoordinatorAgent
+
+Phase 34.7: 执行总结管理器提取与集成
+
+创建独立管理器：
+- ExecutionSummaryManager (140 lines, 100% coverage)
+- 支持同步/异步操作、统计、前端推送
+- 可选 EventBus 和 ChannelBridge 依赖
+- 20个单元测试全部通过
+
+集成到 CoordinatorAgent：
+- 使用委托模式替换110行总结管理代码
+- 移除懒加载逻辑，简化初始化
+- 保持完全向后兼容
+- 代码净减少 47 lines
+
+测试验证：
+- 29/29 tests passing (20 manager + 9 e2e)
+- 100% 测试覆盖率
+- Ruff 检查通过
+
+代码质量：
+- 架构清晰，职责单一
+- 数据隔离，返回副本防篡改
+- 支持可选依赖，灵活配置
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+```

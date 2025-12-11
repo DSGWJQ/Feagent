@@ -26,6 +26,7 @@ from datetime import datetime
 from typing import Any
 
 from src.domain.services.event_bus import Event, EventBus
+from src.domain.services.execution_summary_manager import ExecutionSummaryManager
 from src.domain.services.safety_guard import ValidationResult
 from src.domain.services.workflow_failure_orchestrator import (
     FailureHandlingResult,
@@ -315,6 +316,9 @@ class CoordinatorAgent:
         from src.domain.services.unified_log_collector import UnifiedLogCollector
 
         self.log_collector = UnifiedLogCollector()
+
+        # Phase 34.7: 执行总结管理器
+        self._summary_manager = ExecutionSummaryManager(event_bus=self.event_bus)
 
         # Phase 3: 子Agent管理（在 log_collector 设置后初始化）
         from src.domain.services.subagent_orchestrator import SubAgentOrchestrator
@@ -3612,12 +3616,7 @@ class CoordinatorAgent:
 
     # ==================== Phase 5: 执行总结管理 ====================
 
-    def _init_summary_storage(self) -> None:
-        """初始化总结存储（懒加载）"""
-        if not hasattr(self, "_execution_summaries"):
-            self._execution_summaries: dict[str, Any] = {}
-        if not hasattr(self, "_channel_bridge"):
-            self._channel_bridge: Any | None = None
+    # ==================== Phase 34.7: 执行总结管理（委托到 ExecutionSummaryManager）====================
 
     def set_channel_bridge(self, bridge: Any) -> None:
         """设置通信桥接器
@@ -3625,8 +3624,7 @@ class CoordinatorAgent:
         参数：
             bridge: AgentChannelBridge 实例
         """
-        self._init_summary_storage()
-        self._channel_bridge = bridge
+        self._summary_manager.set_channel_bridge(bridge)
 
     def record_execution_summary(self, summary: Any) -> None:
         """同步记录执行总结
@@ -3634,10 +3632,7 @@ class CoordinatorAgent:
         参数：
             summary: ExecutionSummary 实例
         """
-        self._init_summary_storage()
-        workflow_id = getattr(summary, "workflow_id", "")
-        if workflow_id:
-            self._execution_summaries[workflow_id] = summary
+        self._summary_manager.record_execution_summary(summary)
 
     async def record_execution_summary_async(self, summary: Any) -> None:
         """异步记录执行总结并发布事件
@@ -3645,27 +3640,7 @@ class CoordinatorAgent:
         参数：
             summary: ExecutionSummary 实例
         """
-        from src.domain.agents.execution_summary import ExecutionSummaryRecordedEvent
-
-        self._init_summary_storage()
-        workflow_id = getattr(summary, "workflow_id", "")
-        session_id = getattr(summary, "session_id", "")
-        success = getattr(summary, "success", True)
-        summary_id = getattr(summary, "summary_id", "")
-
-        if workflow_id:
-            self._execution_summaries[workflow_id] = summary
-
-        # 发布事件
-        if self.event_bus:
-            event = ExecutionSummaryRecordedEvent(
-                source="coordinator_agent",
-                workflow_id=workflow_id,
-                session_id=session_id,
-                success=success,
-                summary_id=summary_id,
-            )
-            await self.event_bus.publish(event)
+        await self._summary_manager.record_execution_summary_async(summary)
 
     def get_execution_summary(self, workflow_id: str) -> Any | None:
         """获取执行总结
@@ -3676,8 +3651,7 @@ class CoordinatorAgent:
         返回：
             ExecutionSummary 实例，如果不存在返回 None
         """
-        self._init_summary_storage()
-        return self._execution_summaries.get(workflow_id)
+        return self._summary_manager.get_execution_summary(workflow_id)
 
     def get_summary_statistics(self) -> dict[str, Any]:
         """获取总结统计
@@ -3685,19 +3659,7 @@ class CoordinatorAgent:
         返回：
             包含统计信息的字典
         """
-        self._init_summary_storage()
-
-        total = len(self._execution_summaries)
-        successful = sum(
-            1 for s in self._execution_summaries.values() if getattr(s, "success", False)
-        )
-        failed = total - successful
-
-        return {
-            "total": total,
-            "successful": successful,
-            "failed": failed,
-        }
+        return self._summary_manager.get_summary_statistics()
 
     async def record_and_push_summary(self, summary: Any) -> None:
         """记录总结并推送到前端
@@ -3705,15 +3667,7 @@ class CoordinatorAgent:
         参数：
             summary: ExecutionSummary 实例
         """
-        # 记录总结
-        await self.record_execution_summary_async(summary)
-
-        # 推送到前端（如果有桥接器）
-        self._init_summary_storage()
-        if self._channel_bridge:
-            session_id = getattr(summary, "session_id", "")
-            if session_id:
-                await self._channel_bridge.push_execution_summary(session_id, summary)
+        await self._summary_manager.record_and_push_summary(summary)
 
     def get_all_summaries(self) -> dict[str, Any]:
         """获取所有总结
@@ -3721,8 +3675,7 @@ class CoordinatorAgent:
         返回：
             工作流ID到总结的映射
         """
-        self._init_summary_storage()
-        return self._execution_summaries.copy()
+        return self._summary_manager.get_all_summaries()
 
     # ==================== Phase 6: 强力压缩器与查询接口 ====================
 
