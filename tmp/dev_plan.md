@@ -2680,12 +2680,13 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
    - 监督日志查询
    - Codex 初评 5/10 → 修复后 9/10
 
-3. 🎯 **SupervisionCoordinator 子模块拆分** (中等复杂度) - **下一个目标**
-   - ConversationSupervision
-   - EfficiencyMonitor
-   - StrategyRepository
+3. ✅ **SupervisionCoordinator 子模块拆分** (Phase 34.14) - **最新完成**
+   - supervision_modules.py (854行) → supervision/ 包 (7个文件)
+   - 向后兼容 shim (66行)
+   - 测试: 53 passed
+   - Codex 审查: 9/10
 
-4. 🎯 **InterventionCoordinator** (中等复杂度)
+4. 🎯 **InterventionCoordinator** (中等复杂度) - **下一个目标**
    - WorkflowModifier
    - TaskTerminator
    - 干预日志记录
@@ -2694,7 +2695,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 
 ## 已完成模块总结（Phase 2 累计）
 
-**已完成模块** (14 个):
+**已完成模块** (15 个):
 1. ✅ PromptVersionFacade (Phase 34.1)
 2. ✅ ExperimentOrchestrator (Phase 34.2)
 3. ✅ SubAgentOrchestrator (Phase 34.3)
@@ -2708,7 +2709,8 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 11. ✅ UnifiedLogIntegration (Phase 34.11)
 12. ✅ CoordinatorBootstrap (Phase 34.12)
 13. ✅ ContextInjectionManager (Phase 34.12)
-14. ✅ SupervisionFacade (Phase 34.13) ← **最新完成**
+14. ✅ SupervisionFacade (Phase 34.13)
+15. ✅ SupervisionCoordinator 包拆分 (Phase 34.14) ← **最新完成**
 
 **CoordinatorAgent 代码行数变化**:
 
@@ -2728,6 +2730,9 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 | CoordinatorBootstrap | ~139 | 4019 |
 | ContextInjectionManager | ~17 | 4002 |
 | SupervisionFacade | +11 | 4013 |
+| SupervisionCoordinator 包拆分 | ~0 | 4013 |
 | **总计** | **~1504** | **4013 (27.2% ↓)** |
+
+**说明**: Phase 34.14 是对 supervision_modules.py (854行) 的模块化重构，不直接影响 CoordinatorAgent 行数。
 
 **最终行数**: 5517 → 4013 lines (-1504 lines, 27.2%)
