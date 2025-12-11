@@ -468,3 +468,58 @@ def test_terminate_level_logs_failure_action(coordinator, mock_task_terminator):
     assert last_log["action"] == "task_termination_failed"
     assert last_log["level"] == InterventionLevel.TERMINATE.value
     assert last_log["session_id"] == "test-session-term-fail"
+
+
+# ==================== Phase 35.0.1 Task 8: TERMINATE error_event 测试 ====================
+
+
+def test_terminate_level_includes_error_event_in_details(coordinator, mock_task_terminator):
+    """TERMINATE 应在 details 中包含 error_event 字段"""
+    # 模拟 TerminationResult 包含 error_event
+    mock_error_event = {"type": "error", "code": "TEST_ERROR", "message": "Test error"}
+    mock_result = TerminationResult(
+        success=True,
+        session_id="test-session-with-event",
+        notified_agents=["conversation"],
+        user_notified=True,
+        user_message="Task terminated",
+        error_event=mock_error_event,
+    )
+    mock_task_terminator.terminate.return_value = mock_result
+
+    context = {
+        "session_id": "test-session-with-event",
+        "reason": "Test with error event",
+    }
+
+    result = coordinator.handle_intervention(InterventionLevel.TERMINATE, context)
+
+    # 验证返回结果包含 error_event
+    assert result.success is True
+    assert "termination" in result.details
+    assert "error_event" in result.details["termination"]
+    assert result.details["termination"]["error_event"] == mock_error_event
+
+
+def test_terminate_level_handles_none_error_event(coordinator, mock_task_terminator):
+    """TERMINATE 应正确处理 error_event 为 None 的情况"""
+    # 模拟 TerminationResult 的 error_event 为 None
+    mock_result = TerminationResult(
+        success=True,
+        session_id="test-session-no-event",
+        error_event=None,  # 显式 None
+    )
+    mock_task_terminator.terminate.return_value = mock_result
+
+    context = {
+        "session_id": "test-session-no-event",
+        "reason": "Test without error event",
+    }
+
+    result = coordinator.handle_intervention(InterventionLevel.TERMINATE, context)
+
+    # 验证返回结果包含 error_event（值为 None）
+    assert result.success is True
+    assert "termination" in result.details
+    assert "error_event" in result.details["termination"]
+    assert result.details["termination"]["error_event"] is None

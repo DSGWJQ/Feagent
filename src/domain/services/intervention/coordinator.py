@@ -116,6 +116,7 @@ class InterventionCoordinator:
                         "notified_agents": result.notified_agents,
                         "user_notified": result.user_notified,
                         "user_message": result.user_message,
+                        "error_event": result.error_event,  # Phase 35.0.1 Task 8: 补充 error_event
                     }
                 },
             )
