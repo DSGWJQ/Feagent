@@ -2741,3 +2741,329 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 - Phase 34.15 是对 intervention_system.py (770行) 的模块化重构，不直接影响 CoordinatorAgent 行数。
 
 **最终行数**: 5517 → 4013 lines (-1504 lines, 27.2%)
+
+---
+
+## Phase 34 → Phase 35 过渡：Codex 分析与方案选择
+
+> 完成时间: 2025-12-12
+> 决策：选择**方案 A - 先修复设计问题（稳健路径）**
+
+### Codex 深度分析结果
+
+**分析时间**: 2025-12-12
+**分析对象**: CoordinatorAgent (4013 lines) + 干预系统设计缺陷
+**Session ID**: 019b0e42-2a09-7183-8ec1-0e3139764d2d
+
+#### 1. 可继续提取的模块（按优先级）
+
+| 优先级 | 模块名称 | 代码位置 | 预计减少 | 风险 | 说明 |
+|--------|---------|---------|---------|------|------|
+| **P1** | **ContextService/ContextBuilder** | `:1373`, `:1420`, `:1462`, `:1510` | ~250 行 | 低 | 上下文查询与工具/知识筛选，已解耦，易抽离 |
+| P2 | Payload/DAG 规则构建器 | `:1853`, `:2131` | ~180 行 | 低 | 纯规则生成逻辑，迁到 SafetyGuard 子包 |
+| P3 | MessageLogListener | `:2603`, `:2632`, `:2654` | ~80 行 | 低 | 简单消息监听与统计 |
+| P4 | ReflectionContextManager | `:2675`, `:2711`, `:2797` | ~150 行 | 中 | 反思上下文追踪 + 压缩集成 |
+| P5 | WorkflowStateMonitor | `:2264`, `:2321`, `:2364`, `:2426` | ~200 行 | 中 | 工作流状态监控与系统状态汇总 |
+| P6 | CodeRepairFacade | `:1293`, `:1312` | ~50 行 | 低 | 自动代码修复接入 |
+| **总计** | | | **~910 行** | | |
+
+#### 2. 设计问题评估
+
+##### 🔴 问题 1: 干预链执行缺失（高风险）
+
+**位置**: `src/domain/services/intervention/coordinator.py:47`
+
+**问题描述**:
+```python
+# 当前实现 - 仅记录日志，未实际执行干预
+def handle_intervention(self, level: InterventionLevel, context: dict[str, Any]) -> InterventionResult:
+    session_id = context.get("session_id", "unknown")
+
+    if level == InterventionLevel.REPLACE:
+        self._logger.log_intervention(level, session_id, "node_replaced", context)
+        return InterventionResult(success=True, action_taken="node_replaced")  # ❌ 未调用 WorkflowModifier
+
+    elif level == InterventionLevel.TERMINATE:
+        self._logger.log_intervention(level, session_id, "task_terminated", context)
+        return InterventionResult(success=True, action_taken="task_terminated")  # ❌ 未调用 TaskTerminator
+```
+
+**影响**:
+- 监督/告警系统无法实际阻断或调整任务
+- 干预链空转：SupervisionFacade → InterventionCoordinator → 仅日志
+- REPLACE 级别不会调用 `WorkflowModifier.replace_node()`
+- TERMINATE 级别不会调用 `TaskTerminator.terminate()`
+
+**Codex 评估**: 优先修复（应在继续模块拆分前完成）
+
+---
+
+##### 🟡 问题 2: InterventionLevel 枚举重复（中风险）
+
+**位置 1**: `src/domain/services/intervention/models.py:29`
+```python
+class InterventionLevel(str, Enum):
+    NONE = "none"
+    NOTIFY = "notify"
+    WARN = "warn"
+    REPLACE = "replace"
+    TERMINATE = "terminate"
+```
+
+**位置 2**: `src/domain/services/intervention_strategy.py:22`
+```python
+class InterventionLevel(str, Enum):
+    NONE = "none"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+```
+
+**问题**:
+- 两处定义，含义不同（执行层 vs 策略层）
+- 容易造成策略与执行不一致
+- 导入路径混淆
+
+**Codex 建议**: 统一来源或建立映射，淘汰其中一份
+
+---
+
+#### 3. 后续规划建议
+
+**Codex 推荐路径**:
+```
+阶段 1: 修复设计缺陷（优先）⭐ 当前选择
+├─ Phase 35.0: 干预链修复与枚举统一
+│  ├─ 修复 InterventionCoordinator.handle_intervention 执行逻辑
+│  ├─ 统一 InterventionLevel 枚举（保留 intervention/models.py 版本）
+│  └─ 补充回归测试验证干预链闭合
+│
+阶段 2: Phase 35 - "决策与状态轻量化"
+├─ Phase 35.1: 提取 ContextService/ContextBuilder (~250 行)
+├─ Phase 35.2: 提取 Payload/DAG 规则构建器 (~180 行)
+├─ Phase 35.3: 提取 MessageLogListener (~80 行)
+├─ Phase 35.4: 提取 ReflectionContextManager (~150 行)
+├─ Phase 35.5: 提取 WorkflowStateMonitor (~200 行)
+├─ Phase 35.6: 提取 CodeRepairFacade (~50 行)
+└─ CoordinatorAgent 预计减少 ~910 行 → 3103 lines (43.7% ↓)
+│
+阶段 3: 新功能开发（等收敛完成后）
+├─ 动态策略引擎增强
+├─ 更细粒度的实验控制
+└─ 其他新 Phase
+```
+
+### 决策：方案 A - 先修复设计问题（稳健路径）
+
+**理由**:
+1. ✅ 确保系统功能完整性，避免技术债累积
+2. ✅ 干预链是监督系统的核心，必须保证闭合
+3. ✅ 修复后可作为 Phase 35 模块提取的基准测试
+4. ✅ 预计耗时 1-2 小时，不影响整体进度
+
+**替代方案**（已拒绝）:
+- ❌ 方案 B：直接进入 Phase 35 - 风险：干预功能仍不完整
+
+---
+
+## Phase 35.0: 干预链修复与枚举统一
+
+> 开始时间: 2025-12-12
+> 目标: 修复 InterventionCoordinator 执行缺失，统一 InterventionLevel 枚举
+> 策略: TDD驱动 + Codex协作 + 向后兼容
+
+### 修复任务清单
+
+#### 任务 1: 修复 InterventionCoordinator.handle_intervention
+
+**目标**: 使 REPLACE/TERMINATE 级别真正执行干预动作
+
+**修改文件**: `src/domain/services/intervention/coordinator.py`
+
+**实现计划**:
+```python
+def handle_intervention(
+    self, level: InterventionLevel, context: dict[str, Any]
+) -> InterventionResult:
+    session_id = context.get("session_id", "unknown")
+
+    if level == InterventionLevel.NONE:
+        return InterventionResult(success=True, action_taken="none")
+
+    elif level == InterventionLevel.NOTIFY:
+        self._logger.log_intervention(level, session_id, "logged", context)
+        return InterventionResult(success=True, action_taken="logged")
+
+    elif level == InterventionLevel.WARN:
+        self._logger.log_intervention(level, session_id, "warning_injected", context)
+        return InterventionResult(success=True, action_taken="warning_injected")
+
+    elif level == InterventionLevel.REPLACE:
+        # ✅ 修复：实际调用 WorkflowModifier
+        request = self._build_replacement_request(context)
+        workflow_def = context.get("workflow_definition", {})
+        result = self._workflow_modifier.replace_node(workflow_def, request)
+
+        self._logger.log_intervention(level, session_id, "node_replaced", context)
+
+        return InterventionResult(
+            success=result.success,
+            action_taken="node_replaced",
+            details={"modification": result.to_dict()}
+        )
+
+    elif level == InterventionLevel.TERMINATE:
+        # ✅ 修复：实际调用 TaskTerminator
+        request = self._build_termination_request(context)
+        result = self._task_terminator.terminate(request)
+
+        self._logger.log_intervention(level, session_id, "task_terminated", context)
+
+        return InterventionResult(
+            success=result.success,
+            action_taken="task_terminated",
+            details={"termination": result.__dict__}
+        )
+
+    return InterventionResult(success=False, action_taken="unknown")
+```
+
+**新增辅助方法**:
+```python
+def _build_replacement_request(self, context: dict[str, Any]) -> NodeReplacementRequest:
+    """从上下文构建节点替换请求"""
+    return NodeReplacementRequest(
+        workflow_id=context.get("workflow_id", ""),
+        original_node_id=context.get("node_id", ""),
+        replacement_node_config=context.get("replacement_config"),
+        reason=context.get("reason", "Intervention triggered"),
+        session_id=context.get("session_id", ""),
+    )
+
+def _build_termination_request(self, context: dict[str, Any]) -> TaskTerminationRequest:
+    """从上下文构建任务终止请求"""
+    return TaskTerminationRequest(
+        session_id=context.get("session_id", ""),
+        reason=context.get("reason", "Intervention triggered"),
+        error_code=context.get("error_code", "INTERVENTION_TERMINATE"),
+        notify_agents=context.get("notify_agents", ["conversation", "workflow"]),
+        notify_user=context.get("notify_user", True),
+    )
+```
+
+---
+
+#### 任务 2: 统一 InterventionLevel 枚举
+
+**决策**: 保留 `intervention/models.py` 版本（执行层），废弃 `intervention_strategy.py` 版本
+
+**原因**:
+1. `intervention/models.py` 是 Phase 34.15 刚刚标准化的版本
+2. 执行层枚举（NONE/NOTIFY/WARN/REPLACE/TERMINATE）更符合干预操作语义
+3. 策略层可使用相同枚举或映射到执行层
+
+**修改文件**:
+1. `src/domain/services/intervention_strategy.py` - 移除重复枚举，导入统一版本
+2. 所有引用 `intervention_strategy.InterventionLevel` 的文件 - 更新导入路径
+
+**实现**:
+```python
+# intervention_strategy.py
+from src.domain.services.intervention import InterventionLevel  # 统一导入
+
+# 移除本地定义的 InterventionLevel
+# class InterventionLevel(str, Enum): ...  # ❌ 删除
+
+# 如需策略层专用映射，添加转换函数
+def strategy_to_intervention_level(strategy: str) -> InterventionLevel:
+    """策略级别映射到干预级别"""
+    mapping = {
+        "none": InterventionLevel.NONE,
+        "low": InterventionLevel.NOTIFY,
+        "medium": InterventionLevel.WARN,
+        "high": InterventionLevel.REPLACE,
+        "critical": InterventionLevel.TERMINATE,
+    }
+    return mapping.get(strategy.lower(), InterventionLevel.NOTIFY)
+```
+
+---
+
+#### 任务 3: 补充测试
+
+**新增测试文件**: `tests/unit/domain/services/intervention/test_coordinator_execution.py`
+
+**测试覆盖**:
+1. **REPLACE 级别执行测试** (5 tests)
+   - 成功替换节点
+   - 替换节点失败
+   - 缺少必要上下文参数
+   - 工作流定义验证失败
+   - 日志正确记录
+
+2. **TERMINATE 级别执行测试** (5 tests)
+   - 成功终止任务
+   - 通知所有 Agent
+   - 通知用户
+   - 创建错误事件
+   - 日志正确记录
+
+3. **枚举统一性测试** (2 tests)
+   - 策略层映射正确
+   - 不存在重复枚举定义
+
+**测试目标**: ≥ 95% 覆盖率
+
+---
+
+#### 任务 4: 回归测试验证
+
+**运行测试套件**:
+```bash
+# 干预系统单元测试
+pytest tests/unit/domain/services/intervention/ -v
+
+# SupervisionFacade 集成测试（依赖干预链）
+pytest tests/unit/domain/services/test_supervision_facade.py -v
+
+# 全量回归测试
+pytest tests/ -v
+```
+
+**验证点**:
+- ✅ 所有现有测试通过
+- ✅ 新增测试通过
+- ✅ 无新增告警或错误
+
+---
+
+### 进度跟踪
+
+| 阶段 | 状态 | 备注 |
+|------|------|------|
+| Codex 分析 | ✅ Done | 识别 2 个设计问题 |
+| 方案决策 | ✅ Done | 选择方案 A |
+| 文档更新 | 🔄 进行中 | 记录 Phase 35.0 计划 |
+| 修复 handle_intervention | ⏳ 待开始 | |
+| 统一 InterventionLevel | ⏳ 待开始 | |
+| 补充测试 | ⏳ 待开始 | |
+| 回归测试 | ⏳ 待开始 | |
+| Codex Review | ⏳ 待开始 | |
+| Git Commit | ⏳ 待开始 | |
+
+---
+
+### 预期成果
+
+**代码质量**:
+- ✅ 干预链闭合：SupervisionFacade → InterventionCoordinator → WorkflowModifier/TaskTerminator
+- ✅ 枚举统一：单一来源，无重复定义
+- ✅ 测试覆盖：≥ 95%
+
+**为 Phase 35 后续工作奠定基础**:
+- CoordinatorAgent 当前 4013 lines
+- Phase 35.1-35.6 预计减少 ~910 lines
+- 目标：CoordinatorAgent → 3103 lines (43.7% ↓)
+
+---
