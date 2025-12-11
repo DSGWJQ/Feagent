@@ -342,10 +342,15 @@ class CoordinatorAgent:
         # Phase 3: 子Agent管理（延迟初始化，在 log_collector 设置后）
         self._subagent_orchestrator: Any = None
 
-        # Phase 4: 容器执行监控
-        self.container_executions: dict[str, list[dict[str, Any]]] = {}  # workflow_id -> executions
-        self.container_logs: dict[str, list[dict[str, Any]]] = {}  # container_id -> logs
-        self._is_listening_container_events = False
+        # Phase 4: 容器执行监控（使用 ContainerExecutionMonitor）
+        from src.domain.services.container_execution_monitor import (
+            ContainerExecutionMonitor,
+        )
+
+        self._container_monitor = ContainerExecutionMonitor(
+            event_bus=self.event_bus,
+            max_log_size=MAX_CONTAINER_LOGS_SIZE,
+        )
 
         # GAP-004: 代码自动修复
         self._auto_repair_enabled = False
@@ -3421,112 +3426,49 @@ class CoordinatorAgent:
         """获取会话的子Agent执行结果列表（代理到 SubAgentOrchestrator）"""
         return self._subagent_orchestrator.get_session_results(session_id)
 
-    # ==================== Phase 4: 容器执行监控 ====================
+    # ==================== Phase 4: 容器执行监控（代理到 ContainerExecutionMonitor）====================
+
+    # 向后兼容属性（只读代理到 monitor 内部状态）
+    @property
+    def container_executions(self) -> dict[str, list[dict[str, Any]]]:
+        """容器执行记录（向后兼容，只读）"""
+        return self._container_monitor.container_executions
+
+    @property
+    def container_logs(self) -> dict[str, list[dict[str, Any]]]:
+        """容器日志（向后兼容，只读）"""
+        return self._container_monitor.container_logs
+
+    @property
+    def _is_listening_container_events(self) -> bool:
+        """监听状态（向后兼容，只读）"""
+        return self._container_monitor._is_listening_container_events
 
     def start_container_execution_listening(self) -> None:
-        """启动容器执行事件监听
+        """启动容器执行事件监听（代理到 ContainerExecutionMonitor）
 
         订阅容器执行相关事件。
         """
-        if self._is_listening_container_events:
-            return
-
-        if not self.event_bus:
-            raise ValueError("EventBus is required for container execution listening")
-
-        from src.domain.agents.container_events import (
-            ContainerExecutionCompletedEvent,
-            ContainerExecutionStartedEvent,
-            ContainerLogEvent,
-        )
-
-        self.event_bus.subscribe(ContainerExecutionStartedEvent, self._handle_container_started)
-        self.event_bus.subscribe(ContainerExecutionCompletedEvent, self._handle_container_completed)
-        self.event_bus.subscribe(ContainerLogEvent, self._handle_container_log)
-
-        self._is_listening_container_events = True
+        self._container_monitor.start_container_execution_listening()
 
     def stop_container_execution_listening(self) -> None:
-        """停止容器执行事件监听"""
-        if not self._is_listening_container_events:
-            return
-
-        if not self.event_bus:
-            return
-
-        from src.domain.agents.container_events import (
-            ContainerExecutionCompletedEvent,
-            ContainerExecutionStartedEvent,
-            ContainerLogEvent,
-        )
-
-        self.event_bus.unsubscribe(ContainerExecutionStartedEvent, self._handle_container_started)
-        self.event_bus.unsubscribe(
-            ContainerExecutionCompletedEvent, self._handle_container_completed
-        )
-        self.event_bus.unsubscribe(ContainerLogEvent, self._handle_container_log)
-
-        self._is_listening_container_events = False
+        """停止容器执行事件监听（代理到 ContainerExecutionMonitor）"""
+        self._container_monitor.stop_container_execution_listening()
 
     async def _handle_container_started(self, event: Any) -> None:
-        """处理容器执行开始事件"""
-        workflow_id = event.workflow_id
-
-        if workflow_id not in self.container_executions:
-            self.container_executions[workflow_id] = []
-
-        self.container_executions[workflow_id].append(
-            {
-                "container_id": event.container_id,
-                "node_id": event.node_id,
-                "image": event.image,
-                "status": "running",
-                "started_at": event.timestamp,
-            }
-        )
+        """处理容器执行开始事件（代理到 ContainerExecutionMonitor）"""
+        await self._container_monitor._handle_container_started(event)
 
     async def _handle_container_completed(self, event: Any) -> None:
-        """处理容器执行完成事件"""
-        workflow_id = event.workflow_id
-
-        if workflow_id not in self.container_executions:
-            self.container_executions[workflow_id] = []
-
-        self.container_executions[workflow_id].append(
-            {
-                "container_id": event.container_id,
-                "node_id": event.node_id,
-                "success": event.success,
-                "exit_code": event.exit_code,
-                "stdout": event.stdout,
-                "stderr": event.stderr,
-                "execution_time": event.execution_time,
-                "status": "completed" if event.success else "failed",
-                "completed_at": event.timestamp,
-            }
-        )
+        """处理容器执行完成事件（代理到 ContainerExecutionMonitor）"""
+        await self._container_monitor._handle_container_completed(event)
 
     async def _handle_container_log(self, event: Any) -> None:
-        """处理容器日志事件（带大小限制防止内存泄漏）"""
-        container_id = event.container_id
-
-        if container_id not in self.container_logs:
-            self.container_logs[container_id] = []
-
-        # P1-6 Fix: 使用有界列表防止内存泄漏
-        self._add_to_bounded_list(
-            self.container_logs[container_id],
-            {
-                "level": event.log_level,
-                "message": event.message,
-                "timestamp": event.timestamp,
-                "node_id": event.node_id,
-            },
-            MAX_CONTAINER_LOGS_SIZE,
-        )
+        """处理容器日志事件（代理到 ContainerExecutionMonitor）"""
+        await self._container_monitor._handle_container_log(event)
 
     def get_workflow_container_executions(self, workflow_id: str) -> list[dict[str, Any]]:
-        """获取工作流的容器执行记录
+        """获取工作流的容器执行记录（代理到 ContainerExecutionMonitor）
 
         参数：
             workflow_id: 工作流ID
@@ -3534,10 +3476,10 @@ class CoordinatorAgent:
         返回：
             容器执行记录列表
         """
-        return self.container_executions.get(workflow_id, [])
+        return self._container_monitor.get_workflow_container_executions(workflow_id)
 
     def get_container_logs(self, container_id: str) -> list[dict[str, Any]]:
-        """获取容器日志
+        """获取容器日志（代理到 ContainerExecutionMonitor）
 
         参数：
             container_id: 容器ID
@@ -3545,39 +3487,36 @@ class CoordinatorAgent:
         返回：
             日志列表
         """
-        return self.container_logs.get(container_id, [])
+        return self._container_monitor.get_container_logs(container_id)
 
     def get_container_execution_statistics(self) -> dict[str, Any]:
-        """获取容器执行统计
+        """获取容器执行统计（代理到 ContainerExecutionMonitor）
 
         返回：
             包含执行统计的字典
         """
-        total = 0
-        successful = 0
-        failed = 0
-        total_time = 0.0
+        return self._container_monitor.get_container_execution_statistics()
 
-        for _workflow_id, executions in self.container_executions.items():
-            for execution in executions:
-                # 兼容两种格式：有 status 字段或只有 success 字段
-                status = execution.get("status")
-                has_result = status in ["completed", "failed"] or "success" in execution
+    def reset_container_executions(self) -> None:
+        """重置所有容器执行记录（代理到 ContainerExecutionMonitor）
 
-                if has_result:
-                    total += 1
-                    if execution.get("success", False):
-                        successful += 1
-                    else:
-                        failed += 1
-                    total_time += execution.get("execution_time", 0.0)
+        用于测试或清理场景。
+        """
+        self._container_monitor.reset_executions()
 
-        return {
-            "total_executions": total,
-            "successful": successful,
-            "failed": failed,
-            "total_execution_time": total_time,
-        }
+    def reset_container_logs(self) -> None:
+        """重置所有容器日志（代理到 ContainerExecutionMonitor）
+
+        用于测试或清理场景。
+        """
+        self._container_monitor.reset_logs()
+
+    def reset_all_container_data(self) -> None:
+        """重置所有容器数据（代理到 ContainerExecutionMonitor）
+
+        包括执行记录和日志。用于测试或清理场景。
+        """
+        self._container_monitor.reset_all()
 
     # ==================== Phase 5 阶段2: 知识库集成 ====================
 

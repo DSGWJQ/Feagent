@@ -389,11 +389,111 @@ def load_prompt_template(self, ...):
 
 ---
 
+## Phase 2 阶段4: SafetyGuard 提取与集成
+
+### 进度跟踪
+
+| 阶段 | 状态 | 备注 |
+|------|------|------|
+| Codex 分析 | ✅ Done | 识别 5 个方法 |
+| 创建测试 | ✅ Done | 25 个 TDD 测试 |
+| 实现 SafetyGuard | ✅ Done | 367 行 |
+| Codex Review | ✅ Done | 7/10 评分，已修复依赖和大小写问题 |
+| 集成到 Coordinator | ✅ Done | 向后兼容代理已添加 |
+
+### 修复项
+
+1. **循环依赖问题** - ValidationResult 从 CoordinatorAgent 迁移到 SafetyGuard
+2. **DNS大小写敏感** - 域名比较改为不区分大小写
+3. **向后兼容** - 保留所有公开接口，方法签名完全一致
+
+### Commits
+
+7. `1ec06e6` - refactor: Extract SafetyGuard from CoordinatorAgent
+
+---
+
+## Phase 2 阶段5: ContainerExecutionMonitor 提取计划
+
+### Codex 分析结果
+
+**代码定位**：
+
+| 方法/变量 | 行号 | 行数 | 职责 |
+|----------|------|------|------|
+| `container_executions` | 345 | 1 | workflow→执行记录列表 |
+| `container_logs` | 347 | 1 | container→日志列表 |
+| `_is_listening_container_events` | 348 | 1 | 监听状态标记 |
+| `start_container_execution_listening()` | 3426-3447 | 22 | 订阅容器事件 |
+| `stop_container_execution_listening()` | 3449-3469 | 21 | 取消订阅 |
+| `_handle_container_started()` | 3471-3487 | 17 | 处理容器开始 |
+| `_handle_container_completed()` | 3488-3507 | 20 | 处理容器完成 |
+| `_handle_container_log()` | 3509-3526 | 18 | 处理容器日志（有界） |
+| `get_workflow_container_executions()` | 3528-3537 | 10 | 查询执行记录 |
+| `get_container_logs()` | 3539-3548 | 10 | 查询日志 |
+| `get_container_execution_statistics()` | 3550-3580 | 31 | 统计汇总 |
+| **总计** | | **158** | |
+
+**依赖关系**：
+- EventBus（订阅/取消订阅）
+- ContainerExecutionStartedEvent, ContainerExecutionCompletedEvent, ContainerLogEvent
+- 辅助方法：`_add_to_bounded_list`（防内存泄漏）
+- 常量：`MAX_CONTAINER_LOGS_SIZE`
+
+**拆分风险**：**低**
+- 同步操作，边界清晰
+- 不与其他模块共享状态
+- 事件懒加载，无循环依赖
+- 已有完整测试覆盖
+
+**现有测试**：
+- `tests/unit/domain/agents/test_container_execution_feedback.py` - 覆盖所有功能点
+
+### 提取方案
+
+**新文件**: `src/domain/services/container_execution_monitor.py`
+
+**新类**: `ContainerExecutionMonitor`
+
+**迁移内容**:
+- 11个方法（3个public + 3个event handler + 3个查询 + 2个监听控制）
+- 3个状态变量
+- 有界列表辅助方法（可内联或共享）
+
+**向后兼容**:
+- CoordinatorAgent 保留所有11个方法作为代理
+- 方法签名完全一致
+- 返回结构完全一致
+
+### 进度跟踪
+
+| 阶段 | 状态 | 备注 |
+|------|------|------|
+| Codex 分析 | ✅ Done | 158行，低风险 |
+| 创建测试 | ✅ Done | 27 个 TDD 测试 |
+| 实现 Monitor | ✅ Done | 331 行（含重置方法） |
+| Codex Review | ✅ Done | 9/10 评分，已修复 2 个问题 |
+| 集成到 Coordinator | ✅ Done | 向后兼容属性已添加 |
+
+### 修复项
+
+1. **统计逻辑 Bug** - `get_container_execution_statistics()` 现在正确处理只有 `status` 字段的旧数据
+2. **向后兼容性** - 添加 `reset_executions()`, `reset_logs()`, `reset_all()` 方法
+3. **CoordinatorAgent 集成** - 添加 3 个向后兼容属性和 11 个代理方法
+
+### Commits
+
+8. `[pending]` - refactor: Extract ContainerExecutionMonitor from CoordinatorAgent
+
+---
+
 ## 已完成模块总结
 
 1. ✅ PromptVersionFacade (提示词版本管理)
 2. ✅ ExperimentOrchestrator (A/B 实验管理)
 3. ✅ SubAgentOrchestrator (子Agent管理)
+4. ✅ SafetyGuard (安全校验服务)
+5. ✅ ContainerExecutionMonitor (容器执行监控)
 
 ### CoordinatorAgent 代码行数变化
 
@@ -402,10 +502,13 @@ def load_prompt_template(self, ...):
 | PromptVersionFacade | ~200 | ~30 (代理) | ~170 |
 | ExperimentOrchestrator | ~230 | ~30 (代理) | ~200 |
 | SubAgentOrchestrator | ~200 | ~45 (代理) | ~155 |
-| **总计** | ~630 | ~105 | ~525 |
+| SafetyGuard | ~270 | ~120 (代理) | ~150 |
+| ContainerExecutionMonitor | ~158 | ~68 (代理 + 属性) | ~90 |
+| **总计** | ~900 | ~225 | ~675 |
 
 ### 待集成模块
 
 1. ✅ PromptVersionFacade (已完成)
 2. ✅ ExperimentOrchestrator (已完成)
 3. ✅ SubAgentOrchestrator (已完成)
+4. ✅ SafetyGuard (已完成)
