@@ -72,14 +72,89 @@ class InterventionCoordinator:
             return InterventionResult(success=True, action_taken="warning_injected")
 
         elif level == InterventionLevel.REPLACE:
+            # ✅ Phase 35.0 修复：实际调用 WorkflowModifier
+            request = self._build_replacement_request(context)
+            workflow_def = context.get("workflow_definition", {})
+            result = self._workflow_modifier.replace_node(workflow_def, request)
+
             self._logger.log_intervention(level, session_id, "node_replaced", context)
-            return InterventionResult(success=True, action_taken="node_replaced")
+
+            # 将 ModificationResult 转换为字典以包含在 details 中
+            return InterventionResult(
+                success=result.success,
+                action_taken="node_replaced",
+                details={
+                    "modification": {
+                        "success": result.success,
+                        "modified_workflow": result.modified_workflow,
+                        "error": result.error,
+                        "original_node_id": result.original_node_id,
+                        "replacement_node_id": result.replacement_node_id,
+                    }
+                },
+            )
 
         elif level == InterventionLevel.TERMINATE:
+            # ✅ Phase 35.0 修复：实际调用 TaskTerminator
+            request = self._build_termination_request(context)
+            result = self._task_terminator.terminate(request)
+
             self._logger.log_intervention(level, session_id, "task_terminated", context)
-            return InterventionResult(success=True, action_taken="task_terminated")
+
+            # 将 TerminationResult 转换为字典以包含在 details 中
+            return InterventionResult(
+                success=result.success,
+                action_taken="task_terminated",
+                details={
+                    "termination": {
+                        "success": result.success,
+                        "session_id": result.session_id,
+                        "notified_agents": result.notified_agents,
+                        "user_notified": result.user_notified,
+                        "user_message": result.user_message,
+                    }
+                },
+            )
 
         return InterventionResult(success=False, action_taken="unknown")
+
+    def _build_replacement_request(self, context: dict[str, Any]):
+        """从上下文构建节点替换请求
+
+        参数：
+            context: 上下文数据
+
+        返回：
+            NodeReplacementRequest
+        """
+        from .models import NodeReplacementRequest
+
+        return NodeReplacementRequest(
+            workflow_id=context.get("workflow_id", ""),
+            original_node_id=context.get("node_id", ""),
+            replacement_node_config=context.get("replacement_config"),
+            reason=context.get("reason", "Intervention triggered"),
+            session_id=context.get("session_id", ""),
+        )
+
+    def _build_termination_request(self, context: dict[str, Any]):
+        """从上下文构建任务终止请求
+
+        参数：
+            context: 上下文数据
+
+        返回：
+            TaskTerminationRequest
+        """
+        from .models import TaskTerminationRequest
+
+        return TaskTerminationRequest(
+            session_id=context.get("session_id", ""),
+            reason=context.get("reason", "Intervention triggered"),
+            error_code=context.get("error_code", "INTERVENTION_TERMINATE"),
+            notify_agents=context.get("notify_agents", ["conversation", "workflow"]),
+            notify_user=context.get("notify_user", True),
+        )
 
     def escalate_intervention(
         self,
