@@ -1,0 +1,372 @@
+name: data_analysis_pipeline
+kind: node
+description: 数据分析父节点，封装完整的数据分析流程（加载→清洗→分析→可视化→报告）
+version: "1.0.0"
+author: feagent
+tags:
+  - data-science
+  - analytics
+  - reusable
+  - parent-node
+category: analytics
+
+executor_type: generic
+
+# 输入参数（父节点层面）
+parameters:
+  - name: data_source
+    type: object
+    description: 数据源配置（type: csv/json/database, path/url）
+    required: true
+    constraints:
+      properties:
+        type:
+          enum: [csv, json, database, api]
+        path:
+          type: string
+
+  - name: analysis_config
+    type: object
+    description: 分析配置（目标列、分析类型、输出格式等）
+    required: false
+    default:
+      analysis_type: summary
+      chart_types: [distribution, correlation]
+      output_format: markdown
+
+# 返回值（父节点层面）
+returns:
+  type: object
+  properties:
+    report_path:
+      type: string
+      description: 生成的Markdown报告路径
+    charts:
+      type: array
+      description: 生成的图表文件路径列表
+    metrics:
+      type: object
+      description: 关键指标统计摘要
+    success:
+      type: boolean
+      description: 流程是否成功完成
+
+# === 父节点统一错误策略 ===
+error_strategy:
+  retry:
+    max_attempts: 2
+    delay_seconds: 5.0
+    backoff_multiplier: 2.0
+  on_failure: abort  # 任一子节点失败即终止整个流程
+  fallback:
+    action: log_and_notify
+    notification:
+      channels: [email, webhook]
+      recipients: [admin@example.com]
+
+# === 父节点统一资源限制（所有子节点自动继承）===
+resource_limits:
+  cpu_limit: "2.0"          # 2核CPU
+  memory_limit: "4Gi"       # 4GB内存
+  timeout_seconds: 600      # 10分钟超时
+  max_concurrent_children: 3  # 最多3个子节点并行执行
+  disk_limit: "10Gi"        # 临时存储限制
+
+# === 容器化配置 ===
+container_config:
+  image: "python:3.11-slim"
+  pip_packages:
+    - pandas==2.0.3
+    - numpy==1.24.3
+    - matplotlib==3.7.2
+    - scikit-learn==1.3.0
+    - seaborn==0.12.2
+    - openpyxl==3.1.2
+  environment:
+    PYTHONUNBUFFERED: "1"
+    MPLBACKEND: "Agg"  # 无GUI后端
+    PANDAS_MAX_ROWS: "100000"
+  network_mode: none  # 禁用网络访问（数据隔离）
+  working_dir: /workspace
+  volumes:
+    - /tmp/analysis_workspace:/workspace
+
+# === 嵌套子节点（顺序执行）===
+nested:
+  parallel: false  # 子节点按顺序执行
+  children:
+    # 1. 数据加载节点
+    - name: load_data
+      executor_type: code
+      language: python
+      description: 从数据源加载数据到DataFrame
+      parameters:
+        - name: data_source
+          type: object
+          required: true
+      returns:
+        type: object
+        properties:
+          data:
+            type: object
+            description: pandas DataFrame (序列化)
+          row_count:
+            type: integer
+          column_names:
+            type: array
+      code: |
+        import pandas as pd
+        import json
+
+        data_source = input_data['data_source']
+        source_type = data_source.get('type', 'csv')
+        path = data_source.get('path')
+
+        # 根据数据源类型加载数据
+        if source_type == 'csv':
+            df = pd.read_csv(path)
+        elif source_type == 'json':
+            df = pd.read_json(path)
+        elif source_type == 'database':
+            # 数据库加载逻辑（简化示例）
+            df = pd.DataFrame({'placeholder': [1, 2, 3]})
+        else:
+            raise ValueError(f"Unsupported data source type: {source_type}")
+
+        # 返回结果
+        output = {
+            'data': df.to_dict(orient='records'),
+            'row_count': len(df),
+            'column_names': df.columns.tolist()
+        }
+
+    # 2. 数据清洗节点
+    - name: clean_data
+      executor_type: code
+      language: python
+      description: 清洗数据（去重、处理缺失值、过滤异常值）
+      parameters:
+        - name: data
+          type: object
+          required: true
+      returns:
+        type: object
+        properties:
+          cleaned_data:
+            type: object
+          removed_rows:
+            type: integer
+          clean_ratio:
+            type: number
+      code: |
+        import pandas as pd
+
+        # 重建DataFrame
+        data = input_data.get('data', [])
+        df = pd.DataFrame(data)
+
+        original_count = len(df)
+
+        # 1. 去重
+        df = df.drop_duplicates()
+
+        # 2. 处理缺失值（删除包含缺失值的行）
+        df = df.dropna()
+
+        # 3. 过滤异常值（简化：删除数值列中的极端值）
+        for col in df.select_dtypes(include=['number']).columns:
+            q1 = df[col].quantile(0.25)
+            q3 = df[col].quantile(0.75)
+            iqr = q3 - q1
+            lower_bound = q1 - 1.5 * iqr
+            upper_bound = q3 + 1.5 * iqr
+            df = df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]
+
+        cleaned_count = len(df)
+        removed = original_count - cleaned_count
+
+        output = {
+            'cleaned_data': df.to_dict(orient='records'),
+            'removed_rows': removed,
+            'clean_ratio': cleaned_count / original_count if original_count > 0 else 0
+        }
+
+    # 3. 探索性分析节点
+    - name: analyze_data
+      executor_type: code
+      language: python
+      description: 执行探索性数据分析（EDA），计算统计摘要
+      parameters:
+        - name: cleaned_data
+          type: object
+          required: true
+        - name: analysis_config
+          type: object
+          required: false
+      returns:
+        type: object
+        properties:
+          statistics:
+            type: object
+          correlations:
+            type: object
+          insights:
+            type: array
+      code: |
+        import pandas as pd
+        import numpy as np
+
+        # 重建DataFrame
+        data = input_data.get('cleaned_data', [])
+        df = pd.DataFrame(data)
+
+        # 1. 基础统计
+        statistics = {}
+        for col in df.columns:
+            if df[col].dtype in ['int64', 'float64']:
+                statistics[col] = {
+                    'mean': float(df[col].mean()),
+                    'median': float(df[col].median()),
+                    'std': float(df[col].std()),
+                    'min': float(df[col].min()),
+                    'max': float(df[col].max())
+                }
+
+        # 2. 相关性分析
+        numeric_df = df.select_dtypes(include=['number'])
+        correlations = numeric_df.corr().to_dict() if not numeric_df.empty else {}
+
+        # 3. 生成洞察
+        insights = []
+        for col, stats in statistics.items():
+            if stats['std'] > stats['mean'] * 0.5:
+                insights.append(f"{col} 列具有较高的变异性（标准差 > 均值的50%）")
+
+        output = {
+            'statistics': statistics,
+            'correlations': correlations,
+            'insights': insights
+        }
+
+    # 4. 数据可视化节点
+    - name: visualize_data
+      executor_type: code
+      language: python
+      description: 生成数据可视化图表
+      parameters:
+        - name: cleaned_data
+          type: object
+          required: true
+        - name: statistics
+          type: object
+          required: true
+      returns:
+        type: object
+        properties:
+          charts:
+            type: array
+            description: 生成的图表文件路径
+      code: |
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import os
+
+        # 重建DataFrame
+        data = input_data.get('cleaned_data', [])
+        df = pd.DataFrame(data)
+
+        charts = []
+        output_dir = '/workspace/charts'
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 1. 分布图（针对数值列）
+        numeric_cols = df.select_dtypes(include=['number']).columns
+        if len(numeric_cols) > 0:
+            fig, axes = plt.subplots(len(numeric_cols), 1, figsize=(10, 4 * len(numeric_cols)))
+            if len(numeric_cols) == 1:
+                axes = [axes]
+
+            for idx, col in enumerate(numeric_cols):
+                axes[idx].hist(df[col].dropna(), bins=30, alpha=0.7)
+                axes[idx].set_title(f'{col} 分布图')
+                axes[idx].set_xlabel(col)
+                axes[idx].set_ylabel('频率')
+
+            dist_path = os.path.join(output_dir, 'distributions.png')
+            plt.tight_layout()
+            plt.savefig(dist_path, dpi=300)
+            plt.close()
+            charts.append(dist_path)
+
+        # 2. 相关性热力图
+        if len(numeric_cols) > 1:
+            plt.figure(figsize=(10, 8))
+            corr_matrix = df[numeric_cols].corr()
+            sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0)
+            plt.title('相关性热力图')
+            corr_path = os.path.join(output_dir, 'correlation_heatmap.png')
+            plt.tight_layout()
+            plt.savefig(corr_path, dpi=300)
+            plt.close()
+            charts.append(corr_path)
+
+        output = {'charts': charts}
+
+    # 5. 报告生成节点
+    - name: generate_report
+      executor_type: llm
+      description: 使用LLM生成Markdown分析报告
+      model: gpt-4
+      temperature: 0.7
+      parameters:
+        - name: statistics
+          type: object
+          required: true
+        - name: insights
+          type: array
+          required: true
+        - name: charts
+          type: array
+          required: true
+      prompt: |
+        请基于以下数据分析结果生成一份专业的Markdown分析报告：
+
+        ## 数据统计
+        {statistics}
+
+        ## 关键洞察
+        {insights}
+
+        ## 生成的图表
+        {charts}
+
+        要求：
+        1. 使用清晰的Markdown格式
+        2. 包含执行摘要（Executive Summary）部分
+        3. 突出关键发现和建议
+        4. 引用具体的统计数据和图表
+        5. 总结部分提供3-5条可执行的建议
+
+        请生成报告内容：
+
+# === 输出聚合策略 ===
+output_aggregation: merge  # 合并所有子节点的输出
+
+# === 监控与日志 ===
+monitoring:
+  enabled: true
+  metrics:
+    - execution_time
+    - memory_usage
+    - success_rate
+  log_level: INFO
+  tracing: true
+
+# === 元数据 ===
+metadata:
+  creation_date: "2025-12-09"
+  last_modified: "2025-12-09"
+  maintainer: feagent-team
+  license: MIT
+  documentation_url: https://docs.example.com/nodes/data_analysis_pipeline

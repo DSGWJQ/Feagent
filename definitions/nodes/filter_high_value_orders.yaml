@@ -1,0 +1,116 @@
+# Filter集合操作工作流 - 高价值订单筛选
+# 过滤订单列表，保留高价值订单
+
+name: filter_high_value_orders
+kind: workflow
+description: 过滤订单列表，只保留价值超过阈值的订单进行特殊处理
+version: "1.0.0"
+author: feagent
+tags:
+  - filter
+  - orders
+  - value-based
+category: data_filtering
+
+executor_type: workflow
+
+# 输入参数
+parameters:
+  - name: order_source
+    type: string
+    description: 订单数据源
+    required: true
+  - name: value_threshold
+    type: number
+    description: 订单价值阈值
+    required: false
+    default: 1000.0
+    constraints:
+      min: 0.0
+
+# 返回值
+returns:
+  type: object
+  properties:
+    total_orders:
+      type: integer
+      description: 总订单数
+    high_value_orders:
+      type: integer
+      description: 高价值订单数
+    total_value:
+      type: number
+      description: 高价值订单总金额
+
+# 工作流节点定义
+nodes:
+  # 节点1: 加载订单
+  - id: load_orders
+    type: generic
+    name: 加载订单列表
+    config:
+      action: load
+      source: "{{order_source}}"
+    outputs:
+      - orders  # 订单列表
+
+  # 节点2: Filter过滤高价值订单
+  - id: filter_high_value
+    type: loop
+    name: 过滤高价值订单
+    config:
+      loop_type: filter
+      collection_field: orders  # 从load_orders输出中提取
+      filter_condition: "total_amount > value_threshold"  # 过滤条件表达式
+    outputs:
+      - filtered_collection  # 过滤后的订单列表
+
+  # 节点3: VIP处理
+  - id: vip_processing
+    type: generic
+    name: VIP订单处理
+    config:
+      action: vip_process
+      priority: high
+      notification: true
+    outputs:
+      - processing_status
+
+  # 节点4: 生成分析报告
+  - id: generate_analytics
+    type: generic
+    name: 生成价值分析
+    config:
+      action: analyze
+      metrics:
+        - total_value
+        - average_value
+        - top_customers
+    outputs:
+      - analytics_report
+
+# 工作流连接
+edges:
+  # load_orders -> filter_high_value
+  - source: load_orders
+    target: filter_high_value
+
+  # filter_high_value -> vip_processing
+  - source: filter_high_value
+    target: vip_processing
+
+  # vip_processing -> generate_analytics
+  - source: vip_processing
+    target: generate_analytics
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 2
+    delay_seconds: 3.0
+  on_failure: skip
+
+# 执行配置
+execution:
+  timeout_seconds: 180
+  parallel: false

@@ -1,0 +1,192 @@
+# 保存请求审核规则配置示例
+# Save Request Audit Rules Configuration Example
+
+version: "1.0"
+description: "保存请求审核规则配置示例"
+
+rules:
+  # ===========================================================================
+  # 路径规则 (Path Rules)
+  # 基于文件路径判断是否允许写入
+  # ===========================================================================
+  path_rules:
+    # 系统路径保护
+    - id: block_system_paths
+      pattern: "/etc/*"
+      action: terminate
+      message: "系统配置路径禁止写入"
+
+    - id: block_root
+      pattern: "/root/*"
+      action: terminate
+      message: "root 目录禁止写入"
+
+    - id: block_boot
+      pattern: "/boot/*"
+      action: terminate
+      message: "引导分区禁止写入"
+
+    # 配置文件警告
+    - id: warn_config_files
+      pattern: "*.config"
+      action: warn
+      message: "配置文件修改需谨慎"
+
+    - id: warn_env_files
+      pattern: "**/.env*"
+      action: warn
+      message: "环境变量文件修改需谨慎"
+
+    # Python 文件警告
+    - id: warn_python_files
+      pattern: "**/*.py"
+      action: warn
+      message: "Python 文件修改"
+
+  # ===========================================================================
+  # 内容规则 (Content Rules)
+  # 基于内容模式判断或进行内容替换
+  # ===========================================================================
+  content_rules:
+    # 敏感信息终止规则
+    - id: block_hardcoded_passwords
+      patterns:
+        - 'password\s*=\s*[''"][^''"]+[''"]'
+        - 'passwd\s*=\s*[''"][^''"]+[''"]'
+        - 'pwd\s*=\s*[''"][^''"]+[''"]'
+      action: terminate
+      message: "禁止写入硬编码密码"
+
+    - id: block_api_keys
+      patterns:
+        - 'api_key\s*=\s*[''"][^''"]+[''"]'
+        - 'apikey\s*=\s*[''"][^''"]+[''"]'
+        - 'secret_key\s*=\s*[''"][^''"]+[''"]'
+        - 'sk-[a-zA-Z0-9]{20,}'  # OpenAI API Key 格式
+      action: terminate
+      message: "禁止写入 API 密钥"
+
+    - id: block_private_keys
+      patterns:
+        - '-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----'
+        - '-----BEGIN\s+EC\s+PRIVATE\s+KEY-----'
+      action: terminate
+      message: "禁止写入私钥"
+
+    - id: block_aws_credentials
+      patterns:
+        - 'aws_access_key_id\s*=\s*[A-Z0-9]{20}'
+        - 'aws_secret_access_key\s*=\s*[A-Za-z0-9/+=]{40}'
+      action: terminate
+      message: "禁止写入 AWS 凭证"
+
+    # 数据脱敏替换规则
+    - id: redact_emails
+      patterns:
+        - '\b[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}\b'
+      action: replace
+      replacement: "[EMAIL_REDACTED]"
+      message: "邮箱地址已脱敏"
+
+    - id: redact_phone_numbers
+      patterns:
+        - '\b1[3-9]\d{9}\b'  # 中国手机号
+        - '\b\d{3}-\d{4}-\d{4}\b'  # 带分隔符格式
+      action: replace
+      replacement: "[PHONE_REDACTED]"
+      message: "手机号已脱敏"
+
+    - id: redact_id_card
+      patterns:
+        - '\b[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]\b'
+      action: replace
+      replacement: "[ID_CARD_REDACTED]"
+      message: "身份证号已脱敏"
+
+    # 调试代码警告
+    - id: warn_debug_logs
+      patterns:
+        - 'console\.log\('
+        - 'print\(.*debug'
+        - 'debugger;'
+      action: warn
+      case_insensitive: true
+      message: "检测到调试代码"
+
+  # ===========================================================================
+  # 用户级别规则 (User Level Rules)
+  # 基于用户权限级别控制访问
+  # 级别层级: system > admin > user
+  # ===========================================================================
+  user_level_rules:
+    - id: admin_only_config
+      required_level: admin
+      paths:
+        - "/admin/*"
+        - "/config/admin/*"
+        - "/settings/advanced/*"
+      action: terminate
+      message: "需要管理员权限"
+
+    - id: system_only_core
+      required_level: system
+      paths:
+        - "/system/*"
+        - "/core/*"
+        - "/internal/*"
+      action: terminate
+      message: "需要系统级权限"
+
+  # ===========================================================================
+  # 敏感命令规则 (Command Rules)
+  # 检测内容中的危险命令
+  # ===========================================================================
+  command_rules:
+    # 危险 Shell 命令
+    - id: block_destructive_shell
+      commands:
+        - "rm -rf"
+        - "rm -r /"
+        - "mkfs"
+        - "dd if="
+        - ":(){:|:&};:"  # Fork bomb
+      action: terminate
+      message: "危险的 Shell 命令被阻止"
+
+    # 危险 SQL 命令
+    - id: block_destructive_sql
+      commands:
+        - "DROP TABLE"
+        - "DROP DATABASE"
+        - "TRUNCATE TABLE"
+        - "DELETE FROM"
+        - "ALTER TABLE"
+      action: terminate
+      message: "危险的 SQL 命令被阻止"
+
+    # 网络命令警告
+    - id: warn_network_commands
+      commands:
+        - "curl"
+        - "wget"
+        - "nc "
+        - "netcat"
+      action: warn
+      message: "检测到网络命令"
+
+    # sudo 警告
+    - id: warn_sudo
+      commands:
+        - "sudo"
+      action: warn
+      message: "检测到 sudo 命令"
+
+# ===========================================================================
+# 默认配置 (Defaults)
+# ===========================================================================
+defaults:
+  # 未知路径的默认动作
+  unknown_path_action: allow
+
+  # 最大内容大小（KB）
+  max_content_size_kb: 10240  # 10MB

@@ -1,0 +1,122 @@
+# API Orchestration 嵌套节点模板
+# 版本: 1.0.0
+# 并行执行多个API调用 + 结果聚合
+
+name: api_orchestration
+kind: node
+description: API编排节点，并行调用多个外部API并聚合结果
+version: "1.0.0"
+author: feagent
+tags:
+  - api
+  - orchestration
+  - parallel
+  - integration
+category: integration
+
+executor_type: parallel
+
+# 输入参数
+parameters:
+  - name: api_configs
+    type: array
+    description: API配置列表
+    required: true
+  - name: timeout_per_api
+    type: integer
+    description: 每个API调用的超时时间（秒）
+    default: 30
+  - name: fail_fast
+    type: boolean
+    description: 是否在第一个失败时立即停止
+    default: false
+
+# 返回值
+returns:
+  type: object
+  properties:
+    responses:
+      type: object
+      description: 各API响应结果
+    success_count:
+      type: integer
+      description: 成功的API调用数
+    failed_apis:
+      type: array
+      description: 失败的API列表
+    aggregated_data:
+      type: object
+      description: 聚合后的数据
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 2
+    delay_seconds: 1.0
+  on_failure: skip
+
+# 执行配置
+execution:
+  timeout_seconds: 120
+  sandbox: false
+
+# 嵌套节点声明 - 并行执行
+nested:
+  parallel: true
+  children:
+    - name: user_service_api
+      executor_type: api
+      parameters:
+        - name: endpoint
+          type: string
+          required: true
+        - name: method
+          type: string
+          default: "GET"
+          enum:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+        - name: headers
+          type: object
+          required: false
+        - name: body
+          type: object
+          required: false
+    - name: product_service_api
+      executor_type: api
+      parameters:
+        - name: endpoint
+          type: string
+          required: true
+        - name: method
+          type: string
+          default: "GET"
+        - name: query_params
+          type: object
+          required: false
+    - name: inventory_service_api
+      executor_type: api
+      parameters:
+        - name: endpoint
+          type: string
+          required: true
+        - name: method
+          type: string
+          default: "GET"
+    - name: pricing_service_api
+      executor_type: api
+      parameters:
+        - name: endpoint
+          type: string
+          required: true
+        - name: method
+          type: string
+          default: "POST"
+        - name: body
+          type: object
+          required: false
+
+# 输出聚合策略
+output_aggregation: merge

@@ -1,0 +1,100 @@
+# ETL Pipeline 嵌套节点模板
+# 版本: 1.0.0
+# 顺序执行: extract -> transform -> load
+
+name: etl_pipeline
+kind: node
+description: ETL数据管道，顺序执行提取、转换、加载三个阶段
+version: "1.0.0"
+author: feagent
+tags:
+  - etl
+  - pipeline
+  - data
+category: data_processing
+
+executor_type: sequential
+
+# 输入参数
+parameters:
+  - name: source_config
+    type: object
+    description: 数据源配置
+    required: true
+  - name: transform_rules
+    type: array
+    description: 数据转换规则列表
+    required: false
+    default: []
+  - name: target_config
+    type: object
+    description: 目标存储配置
+    required: true
+
+# 返回值
+returns:
+  type: object
+  properties:
+    records_extracted:
+      type: integer
+      description: 提取的记录数
+    records_transformed:
+      type: integer
+      description: 转换后的记录数
+    records_loaded:
+      type: integer
+      description: 加载的记录数
+    execution_time:
+      type: number
+      description: 总执行时间（秒）
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 3
+    delay_seconds: 5.0
+    backoff_multiplier: 2.0
+  on_failure: abort
+
+# 执行配置
+execution:
+  timeout_seconds: 600
+  sandbox: true
+
+# 嵌套节点声明 - 顺序执行
+nested:
+  parallel: false
+  children:
+    - name: extract
+      executor_type: code
+      language: python
+      parameters:
+        - name: source_config
+          type: object
+          required: true
+        - name: batch_size
+          type: integer
+          default: 1000
+    - name: transform
+      executor_type: code
+      language: python
+      parameters:
+        - name: data
+          type: array
+          required: true
+        - name: transform_rules
+          type: array
+          required: false
+    - name: load
+      executor_type: code
+      language: python
+      parameters:
+        - name: data
+          type: array
+          required: true
+        - name: target_config
+          type: object
+          required: true
+
+# 输出聚合策略
+output_aggregation: last

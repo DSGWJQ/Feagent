@@ -28,7 +28,10 @@
       "Bash(powershell:*)",
       "Bash(D:)",
       "Bash(cd:*)",
-      "Bash(del \"D:\\My_Project\\agent_data\\docs\\architecture\\section_38_injection.md\")"
+      "Bash(del \"D:\\My_Project\\agent_data\\docs\\architecture\\section_38_injection.md\")",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

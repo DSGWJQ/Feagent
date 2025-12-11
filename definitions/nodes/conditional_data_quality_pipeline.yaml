@@ -1,0 +1,126 @@
+# 条件分支工作流 - 数据质量检查流水线
+# 根据数据质量分数决定处理路径
+
+name: conditional_data_quality_pipeline
+kind: workflow
+description: 数据质量检查流水线，根据质量分数自动选择清洗或直接处理路径
+version: "1.0.0"
+author: feagent
+tags:
+  - conditional
+  - data-quality
+  - pipeline
+category: data_processing
+
+executor_type: workflow
+
+# 输入参数
+parameters:
+  - name: data_source
+    type: string
+    description: 数据源路径或连接字符串
+    required: true
+  - name: quality_threshold
+    type: number
+    description: 质量分数阈值（0-1之间）
+    required: false
+    default: 0.7
+    constraints:
+      min: 0.0
+      max: 1.0
+
+# 返回值
+returns:
+  type: object
+  properties:
+    processed_records:
+      type: integer
+      description: 处理的记录数
+    quality_score:
+      type: number
+      description: 最终数据质量分数
+    cleaning_applied:
+      type: boolean
+      description: 是否应用了数据清洗
+
+# 工作流节点定义
+nodes:
+  # 节点1: 加载数据
+  - id: load_data
+    type: generic
+    name: 加载数据源
+    config:
+      action: load
+      source: "{{data_source}}"
+    outputs:
+      - raw_data
+      - record_count
+
+  # 节点2: 质量检查
+  - id: quality_check
+    type: generic
+    name: 数据质量评估
+    config:
+      action: validate
+      checks:
+        - completeness
+        - accuracy
+        - consistency
+    outputs:
+      - quality_score
+      - validation_report
+
+  # 节点3: 数据清洗（条件执行）
+  - id: clean_data
+    type: generic
+    name: 数据清洗
+    config:
+      action: clean
+      operations:
+        - remove_duplicates
+        - fill_missing_values
+        - normalize_format
+    outputs:
+      - cleaned_data
+
+  # 节点4: 数据处理
+  - id: process_data
+    type: generic
+    name: 数据处理
+    config:
+      action: transform
+    outputs:
+      - processed_data
+      - processing_stats
+
+# 工作流连接（含条件分支）
+edges:
+  # load_data -> quality_check
+  - source: load_data
+    target: quality_check
+
+  # quality_check -> clean_data (当质量分数低于阈值时)
+  - source: quality_check
+    target: clean_data
+    condition: "quality_score < quality_threshold"
+
+  # quality_check -> process_data (当质量分数达标时)
+  - source: quality_check
+    target: process_data
+    condition: "quality_score >= quality_threshold"
+
+  # clean_data -> process_data (清洗后继续处理)
+  - source: clean_data
+    target: process_data
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 2
+    delay_seconds: 3.0
+  on_failure: abort
+
+# 执行配置
+execution:
+  timeout_seconds: 300
+  parallel: false

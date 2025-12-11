@@ -1,0 +1,124 @@
+# Loop集合操作工作流 - 批量用户处理
+# 遍历用户列表，对每个用户执行处理任务
+
+name: loop_batch_user_processing
+kind: workflow
+description: 批量用户处理工作流，遍历用户列表并执行个性化处理
+version: "1.0.0"
+author: feagent
+tags:
+  - loop
+  - batch-processing
+  - users
+category: batch_operations
+
+executor_type: workflow
+
+# 输入参数
+parameters:
+  - name: user_source
+    type: string
+    description: 用户数据源
+    required: true
+  - name: batch_size
+    type: integer
+    description: 批处理大小
+    required: false
+    default: 100
+    constraints:
+      min: 1
+      max: 1000
+
+# 返回值
+returns:
+  type: object
+  properties:
+    total_processed:
+      type: integer
+      description: 处理的用户总数
+    success_count:
+      type: integer
+      description: 成功处理的用户数
+    failed_count:
+      type: integer
+      description: 失败的用户数
+    processing_time:
+      type: number
+      description: 总处理时间（秒）
+
+# 工作流节点定义
+nodes:
+  # 节点1: 加载用户列表
+  - id: load_users
+    type: generic
+    name: 加载用户列表
+    config:
+      action: load
+      source: "{{user_source}}"
+      limit: "{{batch_size}}"
+    outputs:
+      - users  # 输出用户列表
+
+  # 节点2: Loop遍历用户（for_each类型）
+  - id: loop_users
+    type: loop
+    name: 遍历处理用户
+    config:
+      loop_type: for_each
+      collection_field: users  # 从load_users的输出中提取users字段
+      item_variable: current_user  # 当前元素变量名
+      max_iterations: 1000  # 最大迭代次数
+    outputs:
+      - aggregated_results  # 聚合所有迭代结果
+      - iteration_count  # 实际迭代次数
+
+  # 节点3: 处理单个用户（Loop的子节点）
+  - id: process_user
+    type: generic
+    name: 处理用户
+    config:
+      action: process
+      # 可以访问 current_user 变量
+      user_id: "{{current_user.id}}"
+      user_name: "{{current_user.name}}"
+    outputs:
+      - processing_result
+      - status
+
+  # 节点4: 生成报告
+  - id: generate_report
+    type: generic
+    name: 生成处理报告
+    config:
+      action: report
+      include_details: true
+    outputs:
+      - report_url
+      - summary
+
+# 工作流连接
+edges:
+  # load_users -> loop_users
+  - source: load_users
+    target: loop_users
+
+  # loop_users -> process_user (Loop内部执行)
+  - source: loop_users
+    target: process_user
+
+  # loop_users -> generate_report (Loop完成后)
+  - source: loop_users
+    target: generate_report
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 3
+    delay_seconds: 2.0
+    backoff_multiplier: 2.0
+  on_failure: continue  # 单个用户失败时继续处理其他用户
+
+# 执行配置
+execution:
+  timeout_seconds: 600
+  parallel: false

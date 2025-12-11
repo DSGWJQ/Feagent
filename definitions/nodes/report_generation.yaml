@@ -1,0 +1,155 @@
+# Report Generation 嵌套节点模板
+# 版本: 1.0.0
+# 多层嵌套: 支持二级子节点
+
+name: report_generation
+kind: node
+description: 报表生成节点，支持多层嵌套的数据收集、处理和渲染
+version: "1.0.0"
+author: feagent
+tags:
+  - report
+  - generation
+  - nested
+  - visualization
+category: reporting
+
+executor_type: sequential
+
+# 输入参数
+parameters:
+  - name: report_config
+    type: object
+    description: 报表配置
+    required: true
+  - name: data_sources
+    type: array
+    description: 数据源列表
+    required: true
+  - name: output_format
+    type: string
+    description: 输出格式
+    default: "pdf"
+    enum:
+      - pdf
+      - html
+      - excel
+      - json
+
+# 返回值
+returns:
+  type: object
+  properties:
+    report_id:
+      type: string
+      description: 生成的报表ID
+    report_url:
+      type: string
+      description: 报表下载URL
+    sections:
+      type: array
+      description: 报表各章节信息
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 2
+    delay_seconds: 5.0
+  on_failure: abort
+
+# 执行配置
+execution:
+  timeout_seconds: 300
+  sandbox: true
+
+# 嵌套节点声明 - 多层嵌套
+nested:
+  parallel: false
+  children:
+    - name: data_collection
+      executor_type: code
+      language: python
+      parameters:
+        - name: data_sources
+          type: array
+          required: true
+      # 二级嵌套 - 数据收集包含多个并行数据源
+      nested:
+        parallel: true
+        children:
+          - name: database_fetch
+            executor_type: code
+            parameters:
+              - name: connection_string
+                type: string
+                required: true
+              - name: query
+                type: string
+                required: true
+          - name: api_fetch
+            executor_type: api
+            parameters:
+              - name: endpoint
+                type: string
+                required: true
+          - name: file_fetch
+            executor_type: code
+            parameters:
+              - name: file_path
+                type: string
+                required: true
+    - name: data_processing
+      executor_type: code
+      language: python
+      parameters:
+        - name: raw_data
+          type: object
+          required: true
+        - name: processing_rules
+          type: array
+          required: false
+      # 二级嵌套 - 数据处理包含顺序执行的清洗和聚合
+      nested:
+        parallel: false
+        children:
+          - name: data_cleaning
+            executor_type: code
+            parameters:
+              - name: data
+                type: object
+                required: true
+          - name: data_aggregation
+            executor_type: code
+            parameters:
+              - name: cleaned_data
+                type: object
+                required: true
+              - name: aggregation_config
+                type: object
+                required: false
+    - name: visualization
+      executor_type: code
+      language: python
+      parameters:
+        - name: processed_data
+          type: object
+          required: true
+        - name: chart_configs
+          type: array
+          required: false
+    - name: report_rendering
+      executor_type: code
+      language: python
+      parameters:
+        - name: visualizations
+          type: array
+          required: true
+        - name: output_format
+          type: string
+          required: true
+        - name: template
+          type: string
+          required: false
+
+# 输出聚合策略
+output_aggregation: merge

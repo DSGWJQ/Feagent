@@ -1,0 +1,275 @@
+# 复杂组合工作流 - 智能订单处理系统
+# 结合条件分支、Filter和Loop的完整示例
+
+name: smart_order_processing_system
+kind: workflow
+description: 智能订单处理系统：根据订单状态和金额智能路由，批量处理订单
+version: "1.0.0"
+author: feagent
+tags:
+  - conditional
+  - filter
+  - loop
+  - complex
+  - order-processing
+category: business_automation
+
+executor_type: workflow
+
+# 输入参数
+parameters:
+  - name: order_source
+    type: string
+    description: 订单数据源
+    required: true
+  - name: high_value_threshold
+    type: number
+    description: 高价值订单阈值
+    required: false
+    default: 5000.0
+  - name: processing_mode
+    type: string
+    description: 处理模式（fast/careful）
+    required: false
+    default: "fast"
+    constraints:
+      enum: ["fast", "careful"]
+
+# 返回值
+returns:
+  type: object
+  properties:
+    total_orders:
+      type: integer
+    processed_orders:
+      type: integer
+    high_value_count:
+      type: integer
+    processing_time:
+      type: number
+
+# 工作流节点定义
+nodes:
+  # === 阶段1: 数据加载与初步检查 ===
+
+  - id: load_orders
+    type: generic
+    name: 加载订单数据
+    config:
+      action: load
+      source: "{{order_source}}"
+      include_metadata: true
+    outputs:
+      - orders
+      - metadata
+
+  - id: validate_orders
+    type: generic
+    name: 订单数据验证
+    config:
+      action: validate
+      checks:
+        - schema_validation
+        - data_integrity
+    outputs:
+      - validation_result
+      - error_count
+
+  # === 阶段2: 条件分支 - 根据错误数量决定是否继续 ===
+
+  - id: check_quality
+    type: generic
+    name: 质量检查
+    config:
+      action: check
+    outputs:
+      - can_proceed
+      - quality_report
+
+  - id: handle_errors
+    type: generic
+    name: 错误处理
+    config:
+      action: fix_errors
+      auto_fix: true
+    outputs:
+      - fixed_orders
+
+  # === 阶段3: Filter - 筛选待处理订单 ===
+
+  - id: filter_pending
+    type: loop
+    name: 筛选待处理订单
+    config:
+      loop_type: filter
+      collection_field: orders
+      filter_condition: "status == 'pending'"
+    outputs:
+      - filtered_collection
+
+  # === 阶段4: 条件分支 - 根据订单金额分类 ===
+
+  - id: classify_orders
+    type: generic
+    name: 订单分类
+    config:
+      action: classify
+      criteria:
+        - field: total_amount
+          threshold: "{{high_value_threshold}}"
+    outputs:
+      - high_value_orders
+      - regular_orders
+      - classification_stats
+
+  # === 阶段5: Loop - 批量处理高价值订单 ===
+
+  - id: loop_high_value
+    type: loop
+    name: 处理高价值订单
+    config:
+      loop_type: for_each
+      collection_field: high_value_orders
+      item_variable: order
+      max_iterations: 100
+    outputs:
+      - aggregated_results
+
+  - id: process_high_value
+    type: generic
+    name: 高价值订单处理
+    config:
+      action: vip_process
+      priority: high
+      manual_review: true
+      order_id: "{{order.id}}"
+    outputs:
+      - processing_status
+
+  # === 阶段6: Loop - 批量处理普通订单 ===
+
+  - id: loop_regular
+    type: loop
+    name: 处理普通订单
+    config:
+      loop_type: for_each
+      collection_field: regular_orders
+      item_variable: order
+      max_iterations: 500
+    outputs:
+      - aggregated_results
+
+  - id: process_regular
+    type: generic
+    name: 普通订单处理
+    config:
+      action: standard_process
+      priority: normal
+      auto_approve: true
+      order_id: "{{order.id}}"
+    outputs:
+      - processing_status
+
+  # === 阶段7: 结果汇总与报告 ===
+
+  - id: aggregate_results
+    type: generic
+    name: 汇总处理结果
+    config:
+      action: aggregate
+      metrics:
+        - total_processed
+        - success_rate
+        - average_processing_time
+    outputs:
+      - summary_report
+
+  - id: generate_report
+    type: generic
+    name: 生成最终报告
+    config:
+      action: report
+      format: pdf
+      include_charts: true
+    outputs:
+      - report_url
+
+# 工作流连接（复杂的条件分支和循环组合）
+edges:
+  # 阶段1: 加载和验证
+  - source: load_orders
+    target: validate_orders
+
+  - source: validate_orders
+    target: check_quality
+
+  # 阶段2: 条件分支 - 质量检查
+  - source: check_quality
+    target: handle_errors
+    condition: "error_count > 0"  # 有错误时先处理
+
+  - source: check_quality
+    target: filter_pending
+    condition: "error_count == 0"  # 无错误时直接过滤
+
+  - source: handle_errors
+    target: filter_pending  # 错误处理后继续
+
+  # 阶段3: Filter筛选
+  - source: filter_pending
+    target: classify_orders
+
+  # 阶段4-5: 高价值订单Loop处理
+  - source: classify_orders
+    target: loop_high_value
+    condition: "len(high_value_orders) > 0"  # 有高价值订单时
+
+  - source: loop_high_value
+    target: process_high_value  # Loop内部执行
+
+  # 阶段6: 普通订单Loop处理
+  - source: classify_orders
+    target: loop_regular
+    condition: "len(regular_orders) > 0"  # 有普通订单时
+
+  - source: loop_regular
+    target: process_regular  # Loop内部执行
+
+  # 阶段7: 结果汇总
+  - source: loop_high_value
+    target: aggregate_results
+
+  - source: loop_regular
+    target: aggregate_results
+
+  - source: aggregate_results
+    target: generate_report
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 3
+    delay_seconds: 5.0
+    backoff_multiplier: 2.0
+  on_failure: abort
+  fallback:
+    notification:
+      - email: "ops@company.com"
+        subject: "订单处理流程失败"
+
+# 执行配置
+execution:
+  timeout_seconds: 1800  # 30分钟
+  parallel: false  # 顺序执行确保数据一致性
+
+# 监控配置
+monitoring:
+  enabled: true
+  metrics:
+    - processing_time
+    - success_rate
+    - error_rate
+  alerts:
+    - condition: "processing_time > 600"
+      action: notify
+      recipients: ["ops@company.com"]

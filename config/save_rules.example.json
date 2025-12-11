@@ -1,0 +1,132 @@
+{
+  "version": "1.0",
+  "description": "保存请求审核规则配置示例",
+  "rules": {
+    "path_rules": [
+      {
+        "id": "block_system_paths",
+        "pattern": "/etc/*",
+        "action": "terminate",
+        "message": "系统配置路径禁止写入"
+      },
+      {
+        "id": "block_root",
+        "pattern": "/root/*",
+        "action": "terminate",
+        "message": "root 目录禁止写入"
+      },
+      {
+        "id": "warn_config_files",
+        "pattern": "*.config",
+        "action": "warn",
+        "message": "配置文件修改需谨慎"
+      },
+      {
+        "id": "warn_env_files",
+        "pattern": "**/.env*",
+        "action": "warn",
+        "message": "环境变量文件修改需谨慎"
+      }
+    ],
+    "content_rules": [
+      {
+        "id": "block_hardcoded_passwords",
+        "patterns": [
+          "password\\s*=\\s*['\"][^'\"]+['\"]",
+          "passwd\\s*=\\s*['\"][^'\"]+['\"]"
+        ],
+        "action": "terminate",
+        "message": "禁止写入硬编码密码"
+      },
+      {
+        "id": "block_api_keys",
+        "patterns": [
+          "api_key\\s*=\\s*['\"][^'\"]+['\"]",
+          "apikey\\s*=\\s*['\"][^'\"]+['\"]",
+          "sk-[a-zA-Z0-9]{20,}"
+        ],
+        "action": "terminate",
+        "message": "禁止写入 API 密钥"
+      },
+      {
+        "id": "block_private_keys",
+        "patterns": [
+          "-----BEGIN\\s+(RSA\\s+)?PRIVATE\\s+KEY-----"
+        ],
+        "action": "terminate",
+        "message": "禁止写入私钥"
+      },
+      {
+        "id": "redact_emails",
+        "patterns": [
+          "\\b[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}\\b"
+        ],
+        "action": "replace",
+        "replacement": "[EMAIL_REDACTED]",
+        "message": "邮箱地址已脱敏"
+      },
+      {
+        "id": "redact_phone_numbers",
+        "patterns": [
+          "\\b1[3-9]\\d{9}\\b",
+          "\\b\\d{3}-\\d{4}-\\d{4}\\b"
+        ],
+        "action": "replace",
+        "replacement": "[PHONE_REDACTED]",
+        "message": "手机号已脱敏"
+      }
+    ],
+    "user_level_rules": [
+      {
+        "id": "admin_only_config",
+        "required_level": "admin",
+        "paths": ["/admin/*", "/config/admin/*"],
+        "action": "terminate",
+        "message": "需要管理员权限"
+      },
+      {
+        "id": "system_only_core",
+        "required_level": "system",
+        "paths": ["/system/*", "/core/*"],
+        "action": "terminate",
+        "message": "需要系统级权限"
+      }
+    ],
+    "command_rules": [
+      {
+        "id": "block_destructive_shell",
+        "commands": [
+          "rm -rf",
+          "rm -r /",
+          "mkfs",
+          "dd if="
+        ],
+        "action": "terminate",
+        "message": "危险的 Shell 命令被阻止"
+      },
+      {
+        "id": "block_destructive_sql",
+        "commands": [
+          "DROP TABLE",
+          "DROP DATABASE",
+          "TRUNCATE TABLE",
+          "DELETE FROM"
+        ],
+        "action": "terminate",
+        "message": "危险的 SQL 命令被阻止"
+      },
+      {
+        "id": "warn_sudo",
+        "commands": [
+          "sudo"
+        ],
+        "action": "warn",
+        "message": "检测到 sudo 命令"
+      }
+    ]
+  },
+  "defaults": {
+    "unknown_path_action": "allow",
+    "max_content_size_kb": 10240
+  }
+}

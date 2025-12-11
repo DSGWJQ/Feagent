@@ -1,0 +1,133 @@
+# ML Training Pipeline 嵌套节点模板
+# 版本: 1.0.0
+# 混合执行: 顺序 + LLM分析节点
+
+name: ml_training_pipeline
+kind: node
+description: 机器学习训练管道，包含数据预处理、模型训练、评估和LLM辅助分析
+version: "1.0.0"
+author: feagent
+tags:
+  - ml
+  - training
+  - pipeline
+  - ai
+category: machine_learning
+
+executor_type: sequential
+
+# 输入参数
+parameters:
+  - name: dataset_path
+    type: string
+    description: 训练数据集路径
+    required: true
+  - name: model_type
+    type: string
+    description: 模型类型
+    required: true
+    enum:
+      - classification
+      - regression
+      - clustering
+  - name: hyperparameters
+    type: object
+    description: 超参数配置
+    required: false
+    default: {}
+  - name: validation_split
+    type: number
+    description: 验证集比例
+    default: 0.2
+
+# 返回值
+returns:
+  type: object
+  properties:
+    model_id:
+      type: string
+      description: 训练后的模型ID
+    metrics:
+      type: object
+      description: 评估指标
+    analysis_report:
+      type: string
+      description: LLM生成的分析报告
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 2
+    delay_seconds: 10.0
+  on_failure: retry
+
+# 执行配置
+execution:
+  timeout_seconds: 3600
+  sandbox: true
+
+# 嵌套节点声明 - 混合执行
+nested:
+  parallel: false
+  children:
+    - name: data_preprocessing
+      executor_type: code
+      language: python
+      parameters:
+        - name: dataset_path
+          type: string
+          required: true
+        - name: validation_split
+          type: number
+          default: 0.2
+    - name: feature_engineering
+      executor_type: code
+      language: python
+      parameters:
+        - name: train_data
+          type: object
+          required: true
+        - name: feature_config
+          type: object
+          required: false
+    - name: model_training
+      executor_type: code
+      language: python
+      parameters:
+        - name: features
+          type: object
+          required: true
+        - name: labels
+          type: array
+          required: true
+        - name: model_type
+          type: string
+          required: true
+        - name: hyperparameters
+          type: object
+          required: false
+    - name: model_evaluation
+      executor_type: code
+      language: python
+      parameters:
+        - name: model
+          type: object
+          required: true
+        - name: test_data
+          type: object
+          required: true
+    - name: results_analysis
+      executor_type: llm
+      parameters:
+        - name: metrics
+          type: object
+          required: true
+        - name: model_type
+          type: string
+          required: true
+        - name: prompt_template
+          type: string
+          default: "分析以下机器学习模型的训练结果并给出改进建议"
+
+# 输出聚合策略
+output_aggregation: merge

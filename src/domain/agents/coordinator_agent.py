@@ -27,6 +27,7 @@ from enum import Enum
 from typing import Any
 
 from src.domain.services.event_bus import Event, EventBus
+from src.domain.services.safety_guard import ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -89,21 +90,6 @@ class Rule:
     priority: int = 10
     error_message: str | Callable[[dict[str, Any]], str] = "验证失败"
     correction: Callable[[dict[str, Any]], dict[str, Any]] | None = None
-
-
-@dataclass
-class ValidationResult:
-    """验证结果
-
-    属性：
-    - is_valid: 是否验证通过
-    - errors: 错误信息列表
-    - correction: 可选的修正后决策
-    """
-
-    is_valid: bool = True
-    errors: list[str] = field(default_factory=list)
-    correction: dict[str, Any] | None = None
 
 
 @dataclass
@@ -485,20 +471,10 @@ class CoordinatorAgent:
             short_term_limit=10,
         )
 
-        # ==================== Phase 5 (七种节点类型): 安全配置 ====================
-        # 文件操作安全配置
-        self._file_security_config = {
-            "whitelist": [],
-            "blacklist": ["/etc", "/sys", "/proc", "/root", "/boot", "/dev"],
-            "max_content_bytes": 2 * 1024 * 1024,  # 2MB
-            "allowed_operations": {"read", "write", "append", "delete", "list"},
-        }
-        # API请求安全配置
-        self._api_domain_whitelist: set[str] = set()
-        self._api_domain_blacklist: set[str] = set()
-        self._allowed_api_schemes = {"http", "https"}
-        # 人机交互内容安全配置
-        self._human_sensitive_patterns: list[str] | None = None
+        # ==================== Phase 5 (七种节点类型): 安全配置（委托给 SafetyGuard）====================
+        from src.domain.services.safety_guard import SafetyGuard
+
+        self._safety_guard = SafetyGuard()
 
     # =========================================================================
     # P1-6 Fix: 有界列表辅助方法（防止内存泄漏）
@@ -521,7 +497,7 @@ class CoordinatorAgent:
         while len(target_list) > max_size:
             target_list.pop(0)  # 移除最旧的
 
-    # ==================== Phase 5 (七种节点类型): 安全规则配置与验证 ====================
+    # ==================== Phase 5 (七种节点类型): 安全规则配置与验证（委托给 SafetyGuard）====================
 
     def configure_file_security(
         self,
@@ -530,7 +506,7 @@ class CoordinatorAgent:
         max_content_bytes: int | None = None,
         allowed_operations: set[str] | None = None,
     ) -> None:
-        """配置文件操作安全规则
+        """配置文件操作安全规则（代理到 SafetyGuard）
 
         参数:
             whitelist: 允许访问的路径白名单
@@ -538,14 +514,12 @@ class CoordinatorAgent:
             max_content_bytes: 内容最大字节数限制
             allowed_operations: 允许的操作类型集合
         """
-        if whitelist is not None:
-            self._file_security_config["whitelist"] = whitelist
-        if blacklist is not None:
-            self._file_security_config["blacklist"] = blacklist
-        if max_content_bytes is not None:
-            self._file_security_config["max_content_bytes"] = max_content_bytes
-        if allowed_operations is not None:
-            self._file_security_config["allowed_operations"] = allowed_operations
+        self._safety_guard.configure_file_security(
+            whitelist=whitelist,
+            blacklist=blacklist,
+            max_content_bytes=max_content_bytes,
+            allowed_operations=allowed_operations,
+        )
 
     def configure_api_domains(
         self,
@@ -553,19 +527,18 @@ class CoordinatorAgent:
         blacklist: list[str] | None = None,
         allowed_schemes: set[str] | None = None,
     ) -> None:
-        """配置API域名白名单规则
+        """配置API域名白名单规则（代理到 SafetyGuard）
 
         参数:
             whitelist: 允许访问的域名白名单
             blacklist: 禁止访问的域名黑名单
             allowed_schemes: 允许的URL scheme集合
         """
-        if whitelist is not None:
-            self._api_domain_whitelist = set(whitelist)
-        if blacklist is not None:
-            self._api_domain_blacklist = set(blacklist)
-        if allowed_schemes is not None:
-            self._allowed_api_schemes = allowed_schemes
+        self._safety_guard.configure_api_domains(
+            whitelist=whitelist,
+            blacklist=blacklist,
+            allowed_schemes=allowed_schemes,
+        )
 
     async def validate_file_operation(
         self,
@@ -574,7 +547,7 @@ class CoordinatorAgent:
         path: str | None,
         config: dict[str, Any] | None = None,
     ) -> ValidationResult:
-        """验证文件操作安全性
+        """验证文件操作安全性（代理到 SafetyGuard）
 
         参数:
             node_id: 节点ID
@@ -585,85 +558,12 @@ class CoordinatorAgent:
         返回:
             ValidationResult: 验证结果
         """
-        from pathlib import Path
-
-        errors: list[str] = []
-
-        # 检查operation合法性
-        if not operation or operation not in self._file_security_config["allowed_operations"]:
-            errors.append(f"invalid operation: {operation}")
-
-        # 检查path必填
-        if not path:
-            errors.append("path is required")
-            return ValidationResult(is_valid=False, errors=errors)
-
-        # 路径遍历检测（Phase 5 Codex审查修复：无论是否配置whitelist都检测）
-        raw_path = Path(path)
-        if ".." in raw_path.parts:
-            errors.append("path contains traversal segments")
-
-        # 规范化路径
-        try:
-            target_path = Path(path).expanduser().resolve()
-        except Exception as e:
-            errors.append(f"invalid path format: {e}")
-            return ValidationResult(is_valid=False, errors=errors)
-
-        # 黑名单检查
-        for blacklist_pattern in self._file_security_config["blacklist"]:
-            try:
-                if target_path.is_relative_to(Path(blacklist_pattern).resolve()):
-                    errors.append(f"path is blacklisted: {blacklist_pattern}")
-                    break
-            except Exception:
-                # 如果黑名单路径不存在，仍然检查字符串匹配
-                if str(target_path).startswith(blacklist_pattern):
-                    errors.append(f"path is blacklisted: {blacklist_pattern}")
-                    break
-
-        # 白名单检查
-        whitelist = self._file_security_config["whitelist"]
-        if whitelist:
-            is_in_whitelist = False
-            for allowed_root in whitelist:
-                try:
-                    if target_path.is_relative_to(Path(allowed_root).expanduser().resolve()):
-                        is_in_whitelist = True
-                        break
-                except Exception:
-                    # 如果白名单路径不存在，检查字符串匹配
-                    if str(target_path).startswith(allowed_root):
-                        is_in_whitelist = True
-                        break
-
-            if not is_in_whitelist:
-                errors.append("path not in whitelist")
-
-        # 内容检查（write/append操作）
-        config = config or {}
-        if operation in {"write", "append"}:
-            content = config.get("content")
-            if content is None:
-                errors.append("content required for write/append")
-            else:
-                # 大小检查
-                content_bytes = len(str(content).encode("utf-8"))
-                max_bytes = self._file_security_config["max_content_bytes"]
-                if content_bytes > max_bytes:
-                    errors.append(f"content too large: {content_bytes} > {max_bytes}")
-
-                # 敏感信息检查
-                from src.domain.services.save_request_audit import SensitiveContentRule
-
-                sens_rule = SensitiveContentRule()
-                # 创建一个简单的mock对象传递给evaluate
-                mock_request = type("Request", (), {"content": str(content)})()
-                sens_result = sens_rule.evaluate(mock_request)
-                if not sens_result.passed:
-                    errors.append("content contains sensitive info")
-
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors)
+        return await self._safety_guard.validate_file_operation(
+            node_id=node_id,
+            operation=operation,
+            path=path,
+            config=config,
+        )
 
     async def validate_api_request(
         self,
@@ -673,7 +573,7 @@ class CoordinatorAgent:
         headers: dict[str, Any] | None = None,
         body: Any | None = None,
     ) -> ValidationResult:
-        """验证API请求安全性
+        """验证API请求安全性（代理到 SafetyGuard）
 
         参数:
             node_id: 节点ID
@@ -685,49 +585,13 @@ class CoordinatorAgent:
         返回:
             ValidationResult: 验证结果
         """
-        import ipaddress
-        from urllib.parse import urlparse
-
-        errors: list[str] = []
-
-        # 检查URL必填
-        if not url:
-            return ValidationResult(is_valid=False, errors=["url is required"])
-
-        # 解析URL
-        try:
-            parsed = urlparse(url)
-        except Exception as e:
-            return ValidationResult(is_valid=False, errors=[f"invalid url: {e}"])
-
-        # 检查scheme
-        if parsed.scheme not in self._allowed_api_schemes:
-            errors.append(f"scheme not allowed: {parsed.scheme}")
-
-        # 检查hostname
-        host = parsed.hostname or ""
-        if not host:
-            errors.append("hostname is required")
-            return ValidationResult(is_valid=False, errors=errors)
-
-        # 黑名单检查
-        if host in self._api_domain_blacklist:
-            errors.append(f"domain blacklisted: {host}")
-
-        # 白名单检查
-        if self._api_domain_whitelist and host not in self._api_domain_whitelist:
-            errors.append(f"domain not in whitelist: {host}")
-
-        # SSRF防护：检查是否为内网/环回地址
-        try:
-            ip = ipaddress.ip_address(host)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
-                errors.append(f"private or loopback address not allowed: {host}")
-        except ValueError:
-            # 不是IP地址，是域名，继续
-            pass
-
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors)
+        return await self._safety_guard.validate_api_request(
+            node_id=node_id,
+            url=url,
+            method=method,
+            headers=headers,
+            body=body,
+        )
 
     async def validate_human_interaction(
         self,
@@ -736,7 +600,7 @@ class CoordinatorAgent:
         expected_inputs: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ValidationResult:
-        """验证人机交互内容安全性
+        """验证人机交互内容安全性（代理到 SafetyGuard）
 
         参数:
             node_id: 节点ID
@@ -747,41 +611,12 @@ class CoordinatorAgent:
         返回:
             ValidationResult: 验证结果
         """
-        from src.domain.services.save_request_audit import SensitiveContentRule
-
-        errors: list[str] = []
-
-        # 检查prompt必填
-        if not prompt or not prompt.strip():
-            errors.append("prompt is required")
-            return ValidationResult(is_valid=False, errors=errors)
-
-        # 长度检查
-        if len(prompt) > 4000:
-            errors.append("prompt too long")
-
-        # 注入关键词检查
-        lower_prompt = prompt.lower()
-        injection_keywords = [
-            "ignore previous instructions",
-            "bypass safety",
-            "disable filter",
-            "override system",
-            "disregard all",
-        ]
-        for keyword in injection_keywords:
-            if keyword in lower_prompt:
-                errors.append(f"prompt contains instruction injection: {keyword}")
-                break
-
-        # 敏感信息检查
-        sens_rule = SensitiveContentRule(additional_patterns=self._human_sensitive_patterns or [])
-        mock_request = type("Request", (), {"content": prompt})()
-        sens_result = sens_rule.evaluate(mock_request)
-        if not sens_result.passed:
-            errors.append("prompt contains sensitive info")
-
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors)
+        return await self._safety_guard.validate_human_interaction(
+            node_id=node_id,
+            prompt=prompt,
+            expected_inputs=expected_inputs,
+            metadata=metadata,
+        )
 
     # ==================== Phase 34: 保存请求处理 ====================
 

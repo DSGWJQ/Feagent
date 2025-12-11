@@ -1,0 +1,115 @@
+# Map集合操作工作流 - 价格折扣转换
+# 对商品列表应用折扣转换
+
+name: map_price_discount
+kind: workflow
+description: 对商品列表应用折扣，转换价格
+version: "1.0.0"
+author: feagent
+tags:
+  - map
+  - pricing
+  - transformation
+category: data_transformation
+
+executor_type: workflow
+
+# 输入参数
+parameters:
+  - name: product_source
+    type: string
+    description: 商品数据源
+    required: true
+  - name: discount_rate
+    type: number
+    description: 折扣率（0-1之间）
+    required: false
+    default: 0.1  # 默认10%折扣
+    constraints:
+      min: 0.0
+      max: 1.0
+
+# 返回值
+returns:
+  type: object
+  properties:
+    products_transformed:
+      type: integer
+      description: 转换的商品数
+    total_savings:
+      type: number
+      description: 总节省金额
+
+# 工作流节点定义
+nodes:
+  # 节点1: 加载商品
+  - id: load_products
+    type: generic
+    name: 加载商品列表
+    config:
+      action: load
+      source: "{{product_source}}"
+    outputs:
+      - products  # 商品列表
+
+  # 节点2: Map应用折扣
+  - id: apply_discount
+    type: loop
+    name: 应用价格折扣
+    config:
+      loop_type: map
+      collection_field: products  # 从load_products输出中提取
+      transform_expression: "price * (1 - discount_rate)"  # 转换表达式
+    outputs:
+      - transformed_collection  # 转换后的商品列表
+
+  # 节点3: 更新数据库
+  - id: update_prices
+    type: generic
+    name: 更新商品价格
+    config:
+      action: update
+      target_table: products
+      update_field: price
+    outputs:
+      - update_count
+      - status
+
+  # 节点4: 通知相关人员
+  - id: send_notification
+    type: generic
+    name: 发送价格更新通知
+    config:
+      action: notify
+      channels:
+        - email
+        - slack
+      recipients: ["sales@company.com", "marketing@company.com"]
+    outputs:
+      - notification_sent
+
+# 工作流连接
+edges:
+  # load_products -> apply_discount
+  - source: load_products
+    target: apply_discount
+
+  # apply_discount -> update_prices
+  - source: apply_discount
+    target: update_prices
+
+  # update_prices -> send_notification
+  - source: update_prices
+    target: send_notification
+
+# 错误处理策略
+error_strategy:
+  retry:
+    max_attempts: 3
+    delay_seconds: 2.0
+  on_failure: abort
+
+# 执行配置
+execution:
+  timeout_seconds: 120
+  parallel: false

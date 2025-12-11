@@ -383,9 +383,9 @@ def load_prompt_template(self, ...):
 2. **日志兜底** - 添加标准 logging 兜底
 3. **向后兼容属性** - 添加 `subagent_registry`, `active_subagents`, `subagent_results` 只读属性
 
-### 待提交
+### Commits
 
-6. `pending` - refactor: Extract SubAgentOrchestrator from CoordinatorAgent
+6. `a07a37f` - refactor: Extract SubAgentOrchestrator from CoordinatorAgent
 
 ---
 
