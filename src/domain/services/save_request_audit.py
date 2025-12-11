@@ -617,9 +617,7 @@ class SaveExecutor:
             execution_time = (time.time() - start_time) * 1000
             error_message = str(e)
 
-            logger.error(
-                f"Execution failed for request {request_id}: {error_message}"
-            )
+            logger.error(f"Execution failed for request {request_id}: {error_message}")
 
             return ExecutionResult(
                 request_id=request_id,
@@ -629,9 +627,7 @@ class SaveExecutor:
                 execution_time_ms=execution_time,
             )
 
-    def _write_file(
-        self, path: str, content: str | bytes, is_binary: bool
-    ) -> int:
+    def _write_file(self, path: str, content: str | bytes, is_binary: bool) -> int:
         """写入文件"""
         # 创建父目录
         parent_dir = os.path.dirname(path)
@@ -653,9 +649,7 @@ class SaveExecutor:
                 return len(content.encode("utf-8"))
             return len(content)
 
-    def _append_file(
-        self, path: str, content: str | bytes, is_binary: bool
-    ) -> int:
+    def _append_file(self, path: str, content: str | bytes, is_binary: bool) -> int:
         """追加文件"""
         mode = "ab" if is_binary else "a"
         encoding = None if is_binary else "utf-8"
@@ -755,8 +749,7 @@ class AuditLogger:
             )
         else:
             logger.error(
-                f"[EXEC] FAILED request={result.request_id} "
-                f"error={result.error_message}"
+                f"[EXEC] FAILED request={result.request_id} " f"error={result.error_message}"
             )
 
     def get_logs(self) -> list[dict[str, Any]]:
@@ -765,17 +758,11 @@ class AuditLogger:
 
     def get_logs_by_session(self, session_id: str) -> list[dict[str, Any]]:
         """按会话获取日志"""
-        return [
-            log for log in self._logs
-            if log.get("session_id") == session_id
-        ]
+        return [log for log in self._logs if log.get("session_id") == session_id]
 
     def get_logs_by_request(self, request_id: str) -> list[dict[str, Any]]:
         """按请求获取日志"""
-        return [
-            log for log in self._logs
-            if log.get("request_id") == request_id
-        ]
+        return [log for log in self._logs if log.get("request_id") == request_id]
 
     def clear(self) -> None:
         """清空日志"""

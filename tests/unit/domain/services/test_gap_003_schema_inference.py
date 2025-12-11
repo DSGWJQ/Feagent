@@ -8,9 +8,6 @@
 TDD 阶段：Red（测试先行）
 """
 
-import pytest
-from typing import Any
-
 
 class TestSchemaInferenceFromData:
     """从数据推断 Schema 测试"""
@@ -89,13 +86,7 @@ class TestSchemaInferenceFromData:
         from src.domain.services.schema_inference import SchemaInference
 
         service = SchemaInference()
-        data = {
-            "user": {
-                "name": "Alice",
-                "age": 30
-            },
-            "active": True
-        }
+        data = {"user": {"name": "Alice", "age": 30}, "active": True}
         schema = service.infer_from_data(data)
 
         assert schema["type"] == "object"
@@ -132,10 +123,10 @@ class TestSchemaInferenceFromCode:
         from src.domain.services.schema_inference import SchemaInference
 
         service = SchemaInference()
-        code = '''
+        code = """
 def process(data):
     return {"result": 123, "status": "ok"}
-'''
+"""
         schema = service.infer_from_code(code)
 
         assert schema is not None
@@ -147,10 +138,10 @@ def process(data):
         from src.domain.services.schema_inference import SchemaInference
 
         service = SchemaInference()
-        code = '''
+        code = """
 def process(data: dict) -> dict[str, int]:
     return {"count": len(data)}
-'''
+"""
         schema = service.infer_from_code(code)
 
         assert schema is not None
@@ -161,7 +152,7 @@ def process(data: dict) -> dict[str, int]:
         from src.domain.services.schema_inference import SchemaInference
 
         service = SchemaInference()
-        code = '''
+        code = """
 from dataclasses import dataclass
 
 @dataclass
@@ -171,7 +162,7 @@ class Result:
 
 def process() -> Result:
     return Result(value=42, message="done")
-'''
+"""
         schema = service.infer_from_code(code)
 
         assert schema is not None
@@ -191,18 +182,13 @@ class TestSchemaCompatibility:
 
         output_schema = {
             "type": "object",
-            "properties": {
-                "data": {"type": "array"},
-                "count": {"type": "integer"}
-            }
+            "properties": {"data": {"type": "array"}, "count": {"type": "integer"}},
         }
 
         input_schema = {
             "type": "object",
-            "properties": {
-                "data": {"type": "array"}
-            },
-            "required": ["data"]
+            "properties": {"data": {"type": "array"}},
+            "required": ["data"],
         }
 
         is_compatible = service.check_compatibility(output_schema, input_schema)
@@ -214,19 +200,12 @@ class TestSchemaCompatibility:
 
         service = SchemaInference()
 
-        output_schema = {
-            "type": "object",
-            "properties": {
-                "result": {"type": "string"}
-            }
-        }
+        output_schema = {"type": "object", "properties": {"result": {"type": "string"}}}
 
         input_schema = {
             "type": "object",
-            "properties": {
-                "data": {"type": "array"}
-            },
-            "required": ["data"]
+            "properties": {"data": {"type": "array"}},
+            "required": ["data"],
         }
 
         is_compatible = service.check_compatibility(output_schema, input_schema)
@@ -242,7 +221,7 @@ class TestSchemaCompatibility:
             "type": "object",
             "properties": {
                 "value": {"type": "string"}  # 字符串
-            }
+            },
         }
 
         input_schema = {
@@ -250,7 +229,7 @@ class TestSchemaCompatibility:
             "properties": {
                 "value": {"type": "integer"}  # 期望整数
             },
-            "required": ["value"]
+            "required": ["value"],
         }
 
         is_compatible = service.check_compatibility(output_schema, input_schema)
@@ -262,9 +241,9 @@ class TestNodeSchemaValidation:
 
     def test_validate_workflow_schema_flow(self):
         """测试工作流中的 Schema 流验证"""
-        from src.domain.services.schema_inference import SchemaInference
-        from src.domain.agents.workflow_plan import WorkflowPlan, EdgeDefinition
         from src.domain.agents.node_definition import NodeDefinition, NodeType
+        from src.domain.agents.workflow_plan import EdgeDefinition, WorkflowPlan
+        from src.domain.services.schema_inference import SchemaInference
 
         service = SchemaInference()
 
@@ -273,10 +252,7 @@ class TestNodeSchemaValidation:
             node_type=NodeType.PYTHON,
             name="producer",
             code="return {'data': [1,2,3]}",
-            output_schema={
-                "type": "object",
-                "properties": {"data": {"type": "array"}}
-            }
+            output_schema={"type": "object", "properties": {"data": {"type": "array"}}},
         )
 
         node2 = NodeDefinition(
@@ -286,15 +262,15 @@ class TestNodeSchemaValidation:
             input_schema={
                 "type": "object",
                 "properties": {"data": {"type": "array"}},
-                "required": ["data"]
-            }
+                "required": ["data"],
+            },
         )
 
         plan = WorkflowPlan(
             name="test",
             goal="test",
             nodes=[node1, node2],
-            edges=[EdgeDefinition(source_node="producer", target_node="consumer")]
+            edges=[EdgeDefinition(source_node="producer", target_node="consumer")],
         )
 
         # 验证 Schema 流
@@ -303,9 +279,9 @@ class TestNodeSchemaValidation:
 
     def test_detect_schema_mismatch_in_workflow(self):
         """测试检测工作流中的 Schema 不匹配"""
-        from src.domain.services.schema_inference import SchemaInference
-        from src.domain.agents.workflow_plan import WorkflowPlan, EdgeDefinition
         from src.domain.agents.node_definition import NodeDefinition, NodeType
+        from src.domain.agents.workflow_plan import EdgeDefinition, WorkflowPlan
+        from src.domain.services.schema_inference import SchemaInference
 
         service = SchemaInference()
 
@@ -313,10 +289,7 @@ class TestNodeSchemaValidation:
             node_type=NodeType.PYTHON,
             name="producer",
             code="return {'result': 'text'}",
-            output_schema={
-                "type": "object",
-                "properties": {"result": {"type": "string"}}
-            }
+            output_schema={"type": "object", "properties": {"result": {"type": "string"}}},
         )
 
         node2 = NodeDefinition(
@@ -326,15 +299,15 @@ class TestNodeSchemaValidation:
             input_schema={
                 "type": "object",
                 "properties": {"data": {"type": "array"}},  # 期望 array
-                "required": ["data"]
-            }
+                "required": ["data"],
+            },
         )
 
         plan = WorkflowPlan(
             name="test",
             goal="test",
             nodes=[node1, node2],
-            edges=[EdgeDefinition(source_node="producer", target_node="consumer")]
+            edges=[EdgeDefinition(source_node="producer", target_node="consumer")],
         )
 
         schema_errors = service.validate_workflow_schema_flow(plan)
@@ -346,22 +319,22 @@ class TestAutoSchemaInference:
 
     def test_auto_infer_node_output_schema(self):
         """测试自动推断节点输出 Schema"""
-        from src.domain.services.schema_inference import SchemaInference
         from src.domain.agents.node_definition import NodeDefinition, NodeType
+        from src.domain.services.schema_inference import SchemaInference
 
         service = SchemaInference()
 
         node = NodeDefinition(
             node_type=NodeType.PYTHON,
             name="test",
-            code='''
+            code="""
 def execute(input_data):
     return {
         "total": sum(input_data),
         "count": len(input_data),
         "average": sum(input_data) / len(input_data)
     }
-'''
+""",
         )
 
         # 自动推断输出 Schema

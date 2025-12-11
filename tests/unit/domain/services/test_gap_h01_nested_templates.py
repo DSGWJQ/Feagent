@@ -9,11 +9,11 @@
 TDD 阶段：Red（测试先行）
 """
 
-import pytest
-import yaml
 from pathlib import Path
 
-from src.domain.agents.node_definition import NodeDefinition, NodeType
+import pytest
+import yaml
+
 from src.domain.services.self_describing_node import SelfDescribingNodeDefinition
 
 
@@ -28,7 +28,7 @@ class TestNestedTemplateETLPipeline:
     def test_etl_pipeline_has_sequential_children(self):
         """测试 ETL Pipeline 包含顺序执行的子节点"""
         yaml_path = Path("definitions/nodes/etl_pipeline.yaml")
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # 验证嵌套结构
@@ -45,7 +45,7 @@ class TestNestedTemplateETLPipeline:
     def test_etl_pipeline_child_order_matters(self):
         """测试 ETL Pipeline 子节点顺序正确"""
         yaml_path = Path("definitions/nodes/etl_pipeline.yaml")
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         children = config["nested"]["children"]
@@ -56,18 +56,22 @@ class TestNestedTemplateETLPipeline:
         transform_idx = child_names.index("transform")
         load_idx = child_names.index("load")
 
-        assert extract_idx < transform_idx < load_idx, \
-            "ETL 子节点顺序应该是 extract -> transform -> load"
+        assert (
+            extract_idx < transform_idx < load_idx
+        ), "ETL 子节点顺序应该是 extract -> transform -> load"
 
     def test_etl_pipeline_has_error_strategy(self):
         """测试 ETL Pipeline 有错误处理策略"""
         yaml_path = Path("definitions/nodes/etl_pipeline.yaml")
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         assert "error_strategy" in config, "ETL Pipeline 应该有错误策略"
-        assert config["error_strategy"].get("on_failure") in ["abort", "retry", "skip"], \
-            "ETL Pipeline 失败策略应该是 abort/retry/skip"
+        assert config["error_strategy"].get("on_failure") in [
+            "abort",
+            "retry",
+            "skip",
+        ], "ETL Pipeline 失败策略应该是 abort/retry/skip"
 
 
 class TestNestedTemplateMLPipeline:
@@ -81,7 +85,7 @@ class TestNestedTemplateMLPipeline:
     def test_ml_pipeline_has_mixed_execution(self):
         """测试 ML Pipeline 支持混合执行（部分并行部分顺序）"""
         yaml_path = Path("definitions/nodes/ml_training_pipeline.yaml")
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # 验证嵌套结构
@@ -98,7 +102,7 @@ class TestNestedTemplateMLPipeline:
     def test_ml_pipeline_has_llm_node(self):
         """测试 ML Pipeline 包含 LLM 类型节点（用于分析）"""
         yaml_path = Path("definitions/nodes/ml_training_pipeline.yaml")
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         children = config["nested"]["children"]
@@ -118,7 +122,7 @@ class TestNestedTemplateAPIOrchestration:
     def test_api_orchestration_parallel_calls(self):
         """测试 API Orchestration 支持并行调用"""
         yaml_path = Path("definitions/nodes/api_orchestration.yaml")
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         assert "nested" in config, "API Orchestration 应该有嵌套结构"
@@ -127,13 +131,13 @@ class TestNestedTemplateAPIOrchestration:
     def test_api_orchestration_has_aggregation(self):
         """测试 API Orchestration 有输出聚合策略"""
         yaml_path = Path("definitions/nodes/api_orchestration.yaml")
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # 应该有聚合策略
-        assert "output_aggregation" in config or \
-               config["nested"].get("output_aggregation") is not None, \
-            "API Orchestration 应该有输出聚合策略"
+        assert (
+            "output_aggregation" in config or config["nested"].get("output_aggregation") is not None
+        ), "API Orchestration 应该有输出聚合策略"
 
 
 class TestNestedTemplateReportGeneration:
@@ -147,7 +151,7 @@ class TestNestedTemplateReportGeneration:
     def test_report_generation_multi_level_nesting(self):
         """测试 Report Generation 支持多层嵌套"""
         yaml_path = Path("definitions/nodes/report_generation.yaml")
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         assert "nested" in config, "Report Generation 应该有嵌套结构"
@@ -183,7 +187,7 @@ class TestNestedTemplateValidation:
         for path in all_nested_templates:
             yaml_path = Path(path)
             assert yaml_path.exists(), f"模板文件 {path} 必须存在"
-            with open(yaml_path, "r", encoding="utf-8") as f:
+            with open(yaml_path, encoding="utf-8") as f:
                 config = yaml.safe_load(f)
             assert config is not None, f"{path} 应该是有效的 YAML"
 
@@ -194,7 +198,7 @@ class TestNestedTemplateValidation:
         for path in all_nested_templates:
             yaml_path = Path(path)
             assert yaml_path.exists(), f"模板文件 {path} 必须存在"
-            with open(yaml_path, "r", encoding="utf-8") as f:
+            with open(yaml_path, encoding="utf-8") as f:
                 config = yaml.safe_load(f)
 
             for field in required_fields:
@@ -205,7 +209,7 @@ class TestNestedTemplateValidation:
         for path in all_nested_templates:
             yaml_path = Path(path)
             assert yaml_path.exists(), f"模板文件 {path} 必须存在"
-            with open(yaml_path, "r", encoding="utf-8") as f:
+            with open(yaml_path, encoding="utf-8") as f:
                 yaml_content = f.read()
 
             # 应该能成功解析
@@ -254,7 +258,7 @@ class TestNestedTemplateCount:
         nested_count = 0
 
         for yaml_file in nodes_dir.glob("*.yaml"):
-            with open(yaml_file, "r", encoding="utf-8") as f:
+            with open(yaml_file, encoding="utf-8") as f:
                 config = yaml.safe_load(f)
 
             if config and "nested" in config and config["nested"].get("children"):

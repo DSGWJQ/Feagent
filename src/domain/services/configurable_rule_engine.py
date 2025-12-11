@@ -37,10 +37,10 @@ class RuleAction(str, Enum):
     动作优先级: TERMINATE > REPLACE > WARN > ALLOW
     """
 
-    ALLOW = "allow"           # 允许
-    WARN = "warn"             # 警告但允许
-    REPLACE = "replace"       # 替换内容后允许
-    TERMINATE = "terminate"   # 终止任务
+    ALLOW = "allow"  # 允许
+    WARN = "warn"  # 警告但允许
+    REPLACE = "replace"  # 替换内容后允许
+    TERMINATE = "terminate"  # 终止任务
 
     @property
     def priority(self) -> int:
@@ -334,13 +334,15 @@ class ConfigurableRuleEngine:
                 except re.error as e:
                     logger.warning(f"Invalid regex pattern '{pattern}': {e}")
 
-            compiled.append({
-                "id": rule["id"],
-                "patterns": patterns,
-                "action": RuleAction(rule["action"]),
-                "message": rule.get("message", ""),
-                "replacement": rule.get("replacement"),
-            })
+            compiled.append(
+                {
+                    "id": rule["id"],
+                    "patterns": patterns,
+                    "action": RuleAction(rule["action"]),
+                    "message": rule.get("message", ""),
+                    "replacement": rule.get("replacement"),
+                }
+            )
 
         return compiled
 
@@ -366,6 +368,7 @@ class ConfigurableRuleEngine:
         if path.suffix.lower() in (".yaml", ".yml"):
             try:
                 import yaml
+
                 config = yaml.safe_load(content)
             except ImportError:
                 raise ImportError("PyYAML is required for YAML configuration files")
@@ -402,20 +405,20 @@ class ConfigurableRuleEngine:
                 size = len(content)
 
             if size > max_size_kb * 1024:
-                matches.append(RuleMatch(
-                    rule_id="default_max_size",
-                    action=RuleAction.TERMINATE,
-                    message=f"Content size ({size} bytes) exceeds limit ({max_size_kb}KB)",
-                ))
+                matches.append(
+                    RuleMatch(
+                        rule_id="default_max_size",
+                        action=RuleAction.TERMINATE,
+                        message=f"Content size ({size} bytes) exceeds limit ({max_size_kb}KB)",
+                    )
+                )
 
         # 2. 评估路径规则
         path_matches = self._evaluate_path_rules(request)
         matches.extend(path_matches)
 
         # 3. 评估内容规则（同时处理替换）
-        content_matches, modified_content = self._evaluate_content_rules(
-            request, modified_content
-        )
+        content_matches, modified_content = self._evaluate_content_rules(request, modified_content)
         matches.extend(content_matches)
 
         # 4. 评估用户级别规则
@@ -458,12 +461,14 @@ class ConfigurableRuleEngine:
             pattern = rule["pattern"]
 
             if self._match_path(target_path, pattern):
-                matches.append(RuleMatch(
-                    rule_id=rule["id"],
-                    action=RuleAction(rule["action"]),
-                    message=rule.get("message", f"Path matched pattern: {pattern}"),
-                    replacement=rule.get("replacement"),
-                ))
+                matches.append(
+                    RuleMatch(
+                        rule_id=rule["id"],
+                        action=RuleAction(rule["action"]),
+                        message=rule.get("message", f"Path matched pattern: {pattern}"),
+                        replacement=rule.get("replacement"),
+                    )
+                )
 
         return matches
 
@@ -515,9 +520,7 @@ class ConfigurableRuleEngine:
 
         return False
 
-    def _evaluate_content_rules(
-        self, request: Any, content: str
-    ) -> tuple[list[RuleMatch], str]:
+    def _evaluate_content_rules(self, request: Any, content: str) -> tuple[list[RuleMatch], str]:
         """评估内容规则并处理替换"""
         matches = []
         modified = content
@@ -525,12 +528,14 @@ class ConfigurableRuleEngine:
         for rule in self._compiled_content_rules:
             for pattern in rule["patterns"]:
                 if pattern.search(content):
-                    matches.append(RuleMatch(
-                        rule_id=rule["id"],
-                        action=rule["action"],
-                        message=rule["message"],
-                        replacement=rule["replacement"],
-                    ))
+                    matches.append(
+                        RuleMatch(
+                            rule_id=rule["id"],
+                            action=rule["action"],
+                            message=rule["message"],
+                            replacement=rule["replacement"],
+                        )
+                    )
 
                     # 处理替换
                     if rule["action"] == RuleAction.REPLACE and rule["replacement"]:
@@ -563,12 +568,14 @@ class ConfigurableRuleEngine:
 
             # 检查用户级别是否满足要求
             if user_level.level < required_level.level:
-                matches.append(RuleMatch(
-                    rule_id=rule["id"],
-                    action=RuleAction(rule["action"]),
-                    message=rule.get("message", f"Requires {required_level.value} permission"),
-                    replacement=rule.get("replacement"),
-                ))
+                matches.append(
+                    RuleMatch(
+                        rule_id=rule["id"],
+                        action=RuleAction(rule["action"]),
+                        message=rule.get("message", f"Requires {required_level.value} permission"),
+                        replacement=rule.get("replacement"),
+                    )
+                )
 
         return matches
 
@@ -588,12 +595,14 @@ class ConfigurableRuleEngine:
 
             for cmd in commands:
                 if cmd.lower() in content.lower():
-                    matches.append(RuleMatch(
-                        rule_id=rule["id"],
-                        action=RuleAction(rule["action"]),
-                        message=rule.get("message", f"Dangerous command detected: {cmd}"),
-                        replacement=rule.get("replacement"),
-                    ))
+                    matches.append(
+                        RuleMatch(
+                            rule_id=rule["id"],
+                            action=RuleAction(rule["action"]),
+                            message=rule.get("message", f"Dangerous command detected: {cmd}"),
+                            replacement=rule.get("replacement"),
+                        )
+                    )
                     break  # 一个规则只匹配一次
 
         return matches

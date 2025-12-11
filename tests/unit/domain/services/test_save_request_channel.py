@@ -16,7 +16,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # =============================================================================
 # 测试辅助类：简化的同步事件总线（仅用于测试）
 # =============================================================================
@@ -59,21 +58,20 @@ class SyncEventBus:
 def create_test_global_context():
     """创建测试用全局上下文"""
     from src.domain.services.context_manager import GlobalContext
+
     return GlobalContext(
         user_id="test-user",
         user_preferences={"language": "zh-CN"},
-        system_config={"max_tokens": 4096}
+        system_config={"max_tokens": 4096},
     )
 
 
 def create_test_session_context(session_id: str = "test-session"):
     """创建测试用会话上下文"""
     from src.domain.services.context_manager import SessionContext
+
     global_context = create_test_global_context()
-    return SessionContext(
-        session_id=session_id,
-        global_context=global_context
-    )
+    return SessionContext(session_id=session_id, global_context=global_context)
 
 
 # =============================================================================
@@ -147,12 +145,15 @@ class TestSaveRequestPriorityEnum:
             SaveRequestPriority.CRITICAL,
         ]
         # 验证枚举值可用于比较
-        assert SaveRequestPriority.get_priority_order(SaveRequestPriority.CRITICAL) > \
-               SaveRequestPriority.get_priority_order(SaveRequestPriority.HIGH)
-        assert SaveRequestPriority.get_priority_order(SaveRequestPriority.HIGH) > \
-               SaveRequestPriority.get_priority_order(SaveRequestPriority.NORMAL)
-        assert SaveRequestPriority.get_priority_order(SaveRequestPriority.NORMAL) > \
-               SaveRequestPriority.get_priority_order(SaveRequestPriority.LOW)
+        assert SaveRequestPriority.get_priority_order(
+            SaveRequestPriority.CRITICAL
+        ) > SaveRequestPriority.get_priority_order(SaveRequestPriority.HIGH)
+        assert SaveRequestPriority.get_priority_order(
+            SaveRequestPriority.HIGH
+        ) > SaveRequestPriority.get_priority_order(SaveRequestPriority.NORMAL)
+        assert SaveRequestPriority.get_priority_order(
+            SaveRequestPriority.NORMAL
+        ) > SaveRequestPriority.get_priority_order(SaveRequestPriority.LOW)
 
 
 class TestSaveRequestEvent:
@@ -162,7 +163,6 @@ class TestSaveRequestEvent:
         """测试：创建 SaveRequest 需要必填字段"""
         from src.domain.services.save_request_channel import (
             SaveRequest,
-            SaveRequestPriority,
             SaveRequestType,
         )
 
@@ -543,8 +543,9 @@ class TestConversationAgentSaveRequestGeneration:
             )
 
             # 验证文件没有被直接创建
-            assert not os.path.exists(target_path), \
-                "ConversationAgent should NOT write file directly"
+            assert not os.path.exists(
+                target_path
+            ), "ConversationAgent should NOT write file directly"
 
     def test_save_request_includes_source_agent_info(self):
         """测试：SaveRequest 包含来源 Agent 信息"""
@@ -702,10 +703,7 @@ class TestCoordinatorSaveRequestQueue:
         coordinator.enable_save_request_handler()
 
         received_events = []
-        event_bus.subscribe(
-            SaveRequestReceivedEvent,
-            lambda e: received_events.append(e)
-        )
+        event_bus.subscribe(SaveRequestReceivedEvent, lambda e: received_events.append(e))
 
         request = SaveRequest(
             target_path="/tmp/test.txt",
@@ -860,31 +858,35 @@ class TestSaveRequestQueueManager:
         """测试：队列管理器最大容量限制"""
         from src.domain.services.save_request_channel import (
             SaveRequest,
+            SaveRequestQueueFullError,
             SaveRequestQueueManager,
             SaveRequestType,
-            SaveRequestQueueFullError,
         )
 
         manager = SaveRequestQueueManager(max_size=2)
 
         for i in range(2):
-            manager.enqueue(SaveRequest(
-                target_path=f"/tmp/{i}.txt",
-                content=str(i),
-                operation_type=SaveRequestType.FILE_WRITE,
-                session_id="s1",
-                reason=str(i),
-            ))
+            manager.enqueue(
+                SaveRequest(
+                    target_path=f"/tmp/{i}.txt",
+                    content=str(i),
+                    operation_type=SaveRequestType.FILE_WRITE,
+                    session_id="s1",
+                    reason=str(i),
+                )
+            )
 
         # 第三个应该抛出错误
         with pytest.raises(SaveRequestQueueFullError):
-            manager.enqueue(SaveRequest(
-                target_path="/tmp/overflow.txt",
-                content="overflow",
-                operation_type=SaveRequestType.FILE_WRITE,
-                session_id="s1",
-                reason="overflow",
-            ))
+            manager.enqueue(
+                SaveRequest(
+                    target_path="/tmp/overflow.txt",
+                    content="overflow",
+                    operation_type=SaveRequestType.FILE_WRITE,
+                    session_id="s1",
+                    reason="overflow",
+                )
+            )
 
 
 # =============================================================================
@@ -899,10 +901,6 @@ class TestSaveRequestEndToEndScenarios:
         """测试：完整的保存请求流程"""
         from src.domain.agents.conversation_agent import ConversationAgent
         from src.domain.agents.coordinator_agent import CoordinatorAgent
-        from src.domain.services.save_request_channel import (
-            SaveRequest,
-            SaveRequestStatus,
-        )
 
         # 设置
         event_bus = SyncEventBus()
@@ -984,7 +982,7 @@ class TestSaveRequestEndToEndScenarios:
             SaveRequestType,
         )
 
-        binary_content = b'\x89PNG\r\n\x1a\n\x00\x00\x00'
+        binary_content = b"\x89PNG\r\n\x1a\n\x00\x00\x00"
 
         request = SaveRequest(
             target_path="/tmp/image.png",

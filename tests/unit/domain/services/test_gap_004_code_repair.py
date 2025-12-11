@@ -8,9 +8,9 @@
 TDD 阶段：Red（测试先行）
 """
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from typing import Any
 
 
 class TestCodeRepairService:
@@ -41,10 +41,10 @@ class TestErrorAnalysis:
 
         service = CodeRepair()
 
-        code = '''
+        code = """
 def process(data):
     return data +  # 语法错误：缺少操作数
-'''
+"""
         error = SyntaxError("invalid syntax")
 
         analysis = service.analyze_error(code, error)
@@ -59,10 +59,10 @@ def process(data):
 
         service = CodeRepair()
 
-        code = '''
+        code = """
 def process(data):
     return undefined_variable
-'''
+"""
         error = NameError("name 'undefined_variable' is not defined")
 
         analysis = service.analyze_error(code, error)
@@ -77,11 +77,11 @@ def process(data):
 
         service = CodeRepair()
 
-        code = '''
+        code = """
 def process(data):
     return "string" + 123
-'''
-        error = TypeError("can only concatenate str (not \"int\") to str")
+"""
+        error = TypeError('can only concatenate str (not "int") to str')
 
         analysis = service.analyze_error(code, error)
 
@@ -94,9 +94,9 @@ def process(data):
 
         service = CodeRepair()
 
-        code = '''
+        code = """
 import nonexistent_module
-'''
+"""
         error = ModuleNotFoundError("No module named 'nonexistent_module'")
 
         analysis = service.analyze_error(code, error)
@@ -113,10 +113,12 @@ class TestCodeRepairWithLLM:
     def mock_llm(self):
         """创建模拟 LLM"""
         llm = Mock()
-        llm.repair_code = AsyncMock(return_value='''
+        llm.repair_code = AsyncMock(
+            return_value="""
 def process(data):
     return data + 1
-''')
+"""
+        )
         return llm
 
     @pytest.mark.asyncio
@@ -126,10 +128,10 @@ def process(data):
 
         service = CodeRepair(llm=mock_llm)
 
-        original_code = '''
+        original_code = """
 def process(data):
     return data +
-'''
+"""
         error = SyntaxError("invalid syntax")
 
         repaired_code = await service.repair_code(original_code, error)
@@ -148,10 +150,7 @@ def process(data):
 
         original_code = "def f(): return x"
         error = NameError("name 'x' is not defined")
-        context = {
-            "available_variables": ["data", "config"],
-            "expected_output_type": "int"
-        }
+        context = {"available_variables": ["data", "config"], "expected_output_type": "int"}
 
         await service.repair_code(original_code, error, context=context)
 
@@ -198,9 +197,7 @@ class TestRepairValidation:
         service = CodeRepair(llm=mock_llm)
 
         result = await service.repair_code(
-            "def f(): return",
-            SyntaxError("invalid syntax"),
-            validate=True
+            "def f(): return", SyntaxError("invalid syntax"), validate=True
         )
 
         assert result is not None
@@ -218,17 +215,17 @@ class TestRepairRetry:
 
         # 第一次返回无效代码，第二次返回有效代码
         mock_llm = Mock()
-        mock_llm.repair_code = AsyncMock(side_effect=[
-            "def f(): return",  # 无效
-            "def f(): return 1"  # 有效
-        ])
+        mock_llm.repair_code = AsyncMock(
+            side_effect=[
+                "def f(): return",  # 无效
+                "def f(): return 1",  # 有效
+            ]
+        )
 
         service = CodeRepair(llm=mock_llm, max_repair_attempts=3)
 
         result = await service.repair_code(
-            "def f(): return",
-            SyntaxError("invalid syntax"),
-            validate=True
+            "def f(): return", SyntaxError("invalid syntax"), validate=True
         )
 
         assert result is not None
@@ -246,9 +243,7 @@ class TestRepairRetry:
         service = CodeRepair(llm=mock_llm, max_repair_attempts=3)
 
         result = await service.repair_code(
-            "def f(): return",
-            SyntaxError("invalid syntax"),
-            validate=True
+            "def f(): return", SyntaxError("invalid syntax"), validate=True
         )
 
         # 达到最大重试次数后应该返回 None 或抛出异常
@@ -269,8 +264,7 @@ class TestRepairResult:
         service = CodeRepair(llm=mock_llm)
 
         result = await service.repair_code_with_result(
-            "def f(): return",
-            SyntaxError("invalid syntax")
+            "def f(): return", SyntaxError("invalid syntax")
         )
 
         assert isinstance(result, RepairResult)
@@ -291,8 +285,7 @@ class TestRepairResult:
         service = CodeRepair(llm=mock_llm)
 
         result = await service.repair_code_with_result(
-            "def f(): return",
-            SyntaxError("invalid syntax")
+            "def f(): return", SyntaxError("invalid syntax")
         )
 
         assert result.success is True
@@ -317,7 +310,7 @@ class TestCoordinatorIntegration:
             "node_id": "test_node",
             "code": "def f(): return undefined",
             "error": NameError("name 'undefined' is not defined"),
-            "execution_context": {"input_data": [1, 2, 3]}
+            "execution_context": {"input_data": [1, 2, 3]},
         }
 
         # Coordinator 应该能处理失败并尝试修复
@@ -356,8 +349,7 @@ class TestRepairFallback:
         service = CodeRepair(llm=mock_llm, max_repair_attempts=1)
 
         result = await service.repair_code_with_result(
-            "completely broken code @#$%",
-            Exception("Unknown error")
+            "completely broken code @#$%", Exception("Unknown error")
         )
 
         assert result.success is False
@@ -371,8 +363,7 @@ class TestRepairFallback:
         service = CodeRepair(llm=None)  # 没有 LLM
 
         result = await service.repair_code_with_result(
-            "def f(): return",
-            SyntaxError("invalid syntax")
+            "def f(): return", SyntaxError("invalid syntax")
         )
 
         # 应该返回失败结果而不是抛出异常

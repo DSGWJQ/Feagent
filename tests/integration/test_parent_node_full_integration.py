@@ -85,9 +85,7 @@ class TestParentNodeFullIntegration:
         assert result.is_valid, f"YAML 验证失败: {result.errors}"
 
         # 2. 从 schema 创建 NodeDefinition
-        parent = NodeDefinition.from_parent_schema(
-            sample_parent_yaml, child_registry, validator
-        )
+        parent = NodeDefinition.from_parent_schema(sample_parent_yaml, child_registry, validator)
 
         # 3. 验证父节点属性
         assert parent.name == "data_processing_pipeline"
@@ -109,15 +107,15 @@ class TestParentNodeFullIntegration:
 
         # 6. 验证策略传播成功
         for child in parent.children:
-            assert child.error_strategy == parent.error_strategy, (
-                f"子节点 {child.name} 未继承 error_strategy"
-            )
-            assert child.resource_limits == parent.resource_limits, (
-                f"子节点 {child.name} 未继承 resource_limits"
-            )
-            assert child.inherited_strategy is True, (
-                f"子节点 {child.name} inherited_strategy 标志未设置"
-            )
+            assert (
+                child.error_strategy == parent.error_strategy
+            ), f"子节点 {child.name} 未继承 error_strategy"
+            assert (
+                child.resource_limits == parent.resource_limits
+            ), f"子节点 {child.name} 未继承 resource_limits"
+            assert (
+                child.inherited_strategy is True
+            ), f"子节点 {child.name} inherited_strategy 标志未设置"
 
     def test_nested_parent_strategy_propagation(self, child_registry):
         """测试多层嵌套的策略传播"""

@@ -317,6 +317,52 @@ class CoordinatorAgent:
                 if "recommendations" in reflection:
                     ctx["next_actions"] = reflection["recommendations"]
 
+    # ===================== Phase 34.10: Log Integration Accessors ====================
+
+    class _MessageLogAccessor:
+        """Message Log Accessor for UnifiedLogIntegration
+
+        提供对 message_log 的只读访问接口。
+        """
+
+        def __init__(self, messages_ref: list[dict[str, Any]]):
+            """初始化访问器
+
+            参数：
+                messages_ref: message_log 引用（append-only list）
+            """
+            self._messages = messages_ref
+
+        def get_messages(self) -> list[dict[str, Any]]:
+            """获取消息日志列表
+
+            返回：
+                消息日志列表（只读访问）
+            """
+            return self._messages
+
+    class _ContainerLogAccessor:
+        """Container Log Accessor for UnifiedLogIntegration
+
+        提供对 container_logs 的只读访问接口。
+        """
+
+        def __init__(self, container_monitor: Any):
+            """初始化访问器
+
+            参数：
+                container_monitor: ContainerExecutionMonitor 实例
+            """
+            self._monitor = container_monitor
+
+        def get_container_logs(self) -> dict[str, list[dict[str, Any]]]:
+            """获取容器日志字典
+
+            返回：
+                容器日志字典 {container_id: [logs]}
+            """
+            return self._monitor.container_logs
+
     # =====================================================================
 
     def __init__(
@@ -439,6 +485,20 @@ class CoordinatorAgent:
         from src.domain.services.unified_log_collector import UnifiedLogCollector
 
         self.log_collector = UnifiedLogCollector()
+
+        # Phase 34.10: 统一日志集成（多源日志合并）
+        from src.domain.services.unified_log_integration import UnifiedLogIntegration
+
+        # 创建 accessor 实例
+        self._message_log_accessor = self._MessageLogAccessor(self.message_log)
+        self._container_log_accessor = self._ContainerLogAccessor(self._container_monitor)
+
+        # 初始化 UnifiedLogIntegration
+        self._log_integration = UnifiedLogIntegration(
+            log_collector=self.log_collector,
+            message_log_accessor=self._message_log_accessor,
+            container_log_accessor=self._container_log_accessor,
+        )
 
         # Phase 34.7: 执行总结管理器
         self._summary_manager = ExecutionSummaryManager(event_bus=self.event_bus)
@@ -3581,6 +3641,27 @@ class CoordinatorAgent:
             工作流ID到总结的映射
         """
         return self._summary_manager.get_all_summaries()
+
+    # ==================== Phase 34.10: 统一日志集成（委托到 UnifiedLogIntegration）====================
+
+    def get_merged_logs(self) -> list[dict[str, Any]]:
+        """获取合并后的多源日志
+
+        合并以下日志源：
+        1. UnifiedLogCollector 的日志
+        2. message_log（消息日志）
+        3. container_logs（容器日志）
+
+        返回：
+            统一格式的日志列表，按时间从旧到新排序
+            每条日志包含：
+            - level: 日志级别
+            - source: 日志来源
+            - message: 日志消息
+            - timestamp: 时间戳（ISO格式）
+            - context: 上下文信息字典
+        """
+        return self._log_integration.get_merged_logs()
 
     # ==================== Phase 34.8: PowerCompressor 包装（委托到 PowerCompressorFacade）====================
 

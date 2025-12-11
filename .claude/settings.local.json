@@ -31,7 +31,11 @@
       "Bash(del \"D:\\My_Project\\agent_data\\docs\\architecture\\section_38_injection.md\")",
       "Bash(ls:*)",
       "Bash(find:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(ruff format:*)",
+      "Bash(Select-String -Pattern \"(PASSED|FAILED|test_|====)\")",
+      "Bash(git stash:*)",
+      "Bash(del tmpreplace_knowledge_methods.py)"
     ],
     "deny": [],
     "ask": []

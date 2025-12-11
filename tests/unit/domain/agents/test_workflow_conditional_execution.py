@@ -15,7 +15,7 @@
 
 import pytest
 
-from src.domain.agents.workflow_agent import WorkflowAgent, Edge
+from src.domain.agents.workflow_agent import WorkflowAgent
 from src.domain.services.context_manager import WorkflowContext
 from src.domain.services.event_bus import EventBus
 from src.domain.services.node_registry import NodeFactory, NodeType
@@ -54,12 +54,10 @@ class TestConditionalBranchExecution:
         # 创建最小化的上下文层次结构
         self.global_context = GlobalContext(user_id="test_user")
         self.session_context = SessionContext(
-            session_id="test_session",
-            global_context=self.global_context
+            session_id="test_session", global_context=self.global_context
         )
         self.workflow_context = WorkflowContext(
-            workflow_id="test_wf",
-            session_context=self.session_context
+            workflow_id="test_wf", session_context=self.session_context
         )
 
         # 创建NodeFactory（需要registry）
@@ -96,9 +94,7 @@ class TestConditionalBranchExecution:
 
         # 创建条件边
         edge = self.agent.connect_nodes(
-            source_id=node_a.id,
-            target_id=node_b.id,
-            condition="score > 0.8"
+            source_id=node_a.id, target_id=node_b.id, condition="score > 0.8"
         )
 
         # 执行工作流
@@ -128,11 +124,7 @@ class TestConditionalBranchExecution:
         self.node_executor.set_node_output(node_a.id, {"score": 0.7})
 
         # 创建条件边
-        self.agent.connect_nodes(
-            source_id=node_a.id,
-            target_id=node_b.id,
-            condition="score > 0.8"
-        )
+        self.agent.connect_nodes(source_id=node_a.id, target_id=node_b.id, condition="score > 0.8")
 
         # 执行工作流
         result = await self.agent.execute_workflow_with_conditions()
@@ -168,14 +160,10 @@ class TestConditionalBranchExecution:
 
         # 创建条件边
         self.agent.connect_nodes(
-            source_id=node_a.id,
-            target_id=node_analysis.id,
-            condition="quality > 0.8"
+            source_id=node_a.id, target_id=node_analysis.id, condition="quality > 0.8"
         )
         self.agent.connect_nodes(
-            source_id=node_a.id,
-            target_id=node_clean.id,
-            condition="quality <= 0.8"
+            source_id=node_a.id, target_id=node_clean.id, condition="quality <= 0.8"
         )
 
         # 执行工作流
@@ -203,14 +191,10 @@ class TestConditionalBranchExecution:
 
         # 创建条件边
         self.agent.connect_nodes(
-            source_id=node_a.id,
-            target_id=node_analysis.id,
-            condition="quality > 0.8"
+            source_id=node_a.id, target_id=node_analysis.id, condition="quality > 0.8"
         )
         self.agent.connect_nodes(
-            source_id=node_a.id,
-            target_id=node_clean.id,
-            condition="quality <= 0.8"
+            source_id=node_a.id, target_id=node_clean.id, condition="quality <= 0.8"
         )
 
         # 执行工作流
@@ -249,17 +233,13 @@ class TestConditionalBranchExecution:
         self.agent.connect_nodes(
             source_id=node_a.id,
             target_id=high_handler.id,
-            condition="priority == 'high' and status == 'pending'"
+            condition="priority == 'high' and status == 'pending'",
         )
         self.agent.connect_nodes(
-            source_id=node_a.id,
-            target_id=medium_handler.id,
-            condition="priority == 'medium'"
+            source_id=node_a.id, target_id=medium_handler.id, condition="priority == 'medium'"
         )
         self.agent.connect_nodes(
-            source_id=node_a.id,
-            target_id=low_handler.id,
-            condition="priority == 'low'"
+            source_id=node_a.id, target_id=low_handler.id, condition="priority == 'low'"
         )
 
         # 执行工作流
@@ -292,11 +272,7 @@ class TestConditionalBranchExecution:
         self.node_executor.set_node_output(node_a.id, {"value": 42})
 
         # 创建无条件边（condition=None）
-        self.agent.connect_nodes(
-            source_id=node_a.id,
-            target_id=node_b.id,
-            condition=None
-        )
+        self.agent.connect_nodes(source_id=node_a.id, target_id=node_b.id, condition=None)
 
         # 执行工作流
         result = await self.agent.execute_workflow_with_conditions()
@@ -394,7 +370,7 @@ class TestConditionalBranchExecution:
         self.agent.connect_nodes(
             source_id=node_a.id,
             target_id=node_b.id,
-            condition="score > 0.8"  # score不存在
+            condition="score > 0.8",  # score不存在
         )
 
         # 执行工作流

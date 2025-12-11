@@ -14,10 +14,7 @@ TDD 测试用例，覆盖：
 实现日期：2025-12-08
 """
 
-import pytest
-from datetime import datetime, timedelta
-from unittest.mock import Mock, MagicMock, patch
-
+from datetime import datetime
 
 # =============================================================================
 # TestSupervisionAction - 监督动作枚举测试
@@ -49,10 +46,12 @@ class TestSupervisionAction:
         """测试：动作优先级顺序 TERMINATE > REPLACE > WARNING"""
         from src.domain.services.supervision_module import SupervisionAction
 
-        assert SupervisionAction.get_priority(SupervisionAction.TERMINATE) > \
-               SupervisionAction.get_priority(SupervisionAction.REPLACE)
-        assert SupervisionAction.get_priority(SupervisionAction.REPLACE) > \
-               SupervisionAction.get_priority(SupervisionAction.WARNING)
+        assert SupervisionAction.get_priority(
+            SupervisionAction.TERMINATE
+        ) > SupervisionAction.get_priority(SupervisionAction.REPLACE)
+        assert SupervisionAction.get_priority(
+            SupervisionAction.REPLACE
+        ) > SupervisionAction.get_priority(SupervisionAction.WARNING)
 
     def test_all_actions_are_string_enum(self):
         """测试：所有动作都是字符串枚举"""
@@ -73,8 +72,8 @@ class TestSupervisionInfo:
     def test_info_creation_basic(self):
         """测试：基本创建"""
         from src.domain.services.supervision_module import (
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
         )
 
         info = SupervisionInfo(
@@ -95,8 +94,8 @@ class TestSupervisionInfo:
     def test_info_with_duration(self):
         """测试：带持续时间的监督信息"""
         from src.domain.services.supervision_module import (
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
         )
 
         info = SupervisionInfo(
@@ -113,8 +112,8 @@ class TestSupervisionInfo:
     def test_info_with_metadata(self):
         """测试：带元数据的监督信息"""
         from src.domain.services.supervision_module import (
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
         )
 
         info = SupervisionInfo(
@@ -132,8 +131,8 @@ class TestSupervisionInfo:
     def test_info_to_dict(self):
         """测试：序列化为字典"""
         from src.domain.services.supervision_module import (
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
         )
 
         info = SupervisionInfo(
@@ -156,8 +155,8 @@ class TestSupervisionInfo:
     def test_info_mark_resolved(self):
         """测试：标记为已解决"""
         from src.domain.services.supervision_module import (
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
         )
 
         info = SupervisionInfo(
@@ -175,8 +174,8 @@ class TestSupervisionInfo:
     def test_info_timestamp_auto_generated(self):
         """测试：时间戳自动生成"""
         from src.domain.services.supervision_module import (
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
         )
 
         before = datetime.now()
@@ -203,8 +202,8 @@ class TestSupervisionRule:
     def test_rule_creation(self):
         """测试：规则创建"""
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
 
         rule = SupervisionRule(
@@ -224,8 +223,8 @@ class TestSupervisionRule:
     def test_rule_disabled(self):
         """测试：禁用规则"""
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
 
         rule = SupervisionRule(
@@ -241,8 +240,8 @@ class TestSupervisionRule:
     def test_rule_check_method(self):
         """测试：规则检查方法"""
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
 
         # 创建一个检查条件的规则
@@ -266,9 +265,9 @@ class TestSupervisionRule:
     def test_rule_check_returns_supervision_info(self):
         """测试：规则检查返回 SupervisionInfo"""
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
             SupervisionInfo,
+            SupervisionRule,
         )
 
         rule = SupervisionRule(
@@ -306,9 +305,9 @@ class TestSupervisionModule:
     def test_module_add_rule(self):
         """测试：添加规则"""
         from src.domain.services.supervision_module import (
+            SupervisionAction,
             SupervisionModule,
             SupervisionRule,
-            SupervisionAction,
         )
 
         module = SupervisionModule()
@@ -348,21 +347,23 @@ class TestSupervisionModule:
     def test_analyze_context_with_warning(self):
         """测试：分析上下文 - 触发警告"""
         from src.domain.services.supervision_module import (
+            SupervisionAction,
             SupervisionModule,
             SupervisionRule,
-            SupervisionAction,
         )
 
         module = SupervisionModule()
 
         # 添加一个会触发的规则
-        module.add_rule(SupervisionRule(
-            rule_id="high-usage",
-            name="高上下文使用率",
-            description="上下文使用率过高时警告",
-            action=SupervisionAction.WARNING,
-            condition=lambda ctx: ctx.get("usage_ratio", 0) > 0.8,
-        ))
+        module.add_rule(
+            SupervisionRule(
+                rule_id="high-usage",
+                name="高上下文使用率",
+                description="上下文使用率过高时警告",
+                action=SupervisionAction.WARNING,
+                condition=lambda ctx: ctx.get("usage_ratio", 0) > 0.8,
+            )
+        )
 
         context = {
             "session_id": "session-123",
@@ -377,21 +378,23 @@ class TestSupervisionModule:
     def test_analyze_context_with_terminate(self):
         """测试：分析上下文 - 触发终止"""
         from src.domain.services.supervision_module import (
+            SupervisionAction,
             SupervisionModule,
             SupervisionRule,
-            SupervisionAction,
         )
 
         module = SupervisionModule()
 
         # 添加一个终止规则
-        module.add_rule(SupervisionRule(
-            rule_id="critical-usage",
-            name="临界上下文使用率",
-            description="上下文使用率临界时终止",
-            action=SupervisionAction.TERMINATE,
-            condition=lambda ctx: ctx.get("usage_ratio", 0) > 0.95,
-        ))
+        module.add_rule(
+            SupervisionRule(
+                rule_id="critical-usage",
+                name="临界上下文使用率",
+                description="上下文使用率临界时终止",
+                action=SupervisionAction.TERMINATE,
+                condition=lambda ctx: ctx.get("usage_ratio", 0) > 0.95,
+            )
+        )
 
         context = {
             "session_id": "session-123",
@@ -423,21 +426,23 @@ class TestSupervisionModule:
     def test_analyze_save_request_dangerous_path(self):
         """测试：分析保存请求 - 危险路径"""
         from src.domain.services.supervision_module import (
+            SupervisionAction,
             SupervisionModule,
             SupervisionRule,
-            SupervisionAction,
         )
 
         module = SupervisionModule()
 
         # 添加危险路径检测规则
-        module.add_rule(SupervisionRule(
-            rule_id="dangerous-path",
-            name="危险路径检测",
-            description="检测对系统路径的写入",
-            action=SupervisionAction.TERMINATE,
-            condition=lambda req: req.get("target_path", "").startswith("/etc/"),
-        ))
+        module.add_rule(
+            SupervisionRule(
+                rule_id="dangerous-path",
+                name="危险路径检测",
+                description="检测对系统路径的写入",
+                action=SupervisionAction.TERMINATE,
+                condition=lambda req: req.get("target_path", "").startswith("/etc/"),
+            )
+        )
 
         request = {
             "request_id": "req-001",
@@ -470,22 +475,24 @@ class TestSupervisionModule:
     def test_analyze_decision_chain_loop_detection(self):
         """测试：分析决策链路 - 循环检测"""
         from src.domain.services.supervision_module import (
+            SupervisionAction,
             SupervisionModule,
             SupervisionRule,
-            SupervisionAction,
         )
 
         module = SupervisionModule()
 
         # 添加循环检测规则
-        module.add_rule(SupervisionRule(
-            rule_id="loop-detection",
-            name="循环检测",
-            description="检测重复决策模式",
-            action=SupervisionAction.WARNING,
-            condition=lambda ctx: len(ctx.get("decisions", [])) > 3 and
-                                  len(set(d.get("action") for d in ctx.get("decisions", []))) == 1,
-        ))
+        module.add_rule(
+            SupervisionRule(
+                rule_id="loop-detection",
+                name="循环检测",
+                description="检测重复决策模式",
+                action=SupervisionAction.WARNING,
+                condition=lambda ctx: len(ctx.get("decisions", [])) > 3
+                and len(set(d.get("action") for d in ctx.get("decisions", []))) == 1,
+            )
+        )
 
         # 模拟重复决策
         decisions = [
@@ -502,28 +509,32 @@ class TestSupervisionModule:
     def test_multiple_rules_triggered(self):
         """测试：多个规则同时触发"""
         from src.domain.services.supervision_module import (
+            SupervisionAction,
             SupervisionModule,
             SupervisionRule,
-            SupervisionAction,
         )
 
         module = SupervisionModule()
 
         # 添加多个规则
-        module.add_rule(SupervisionRule(
-            rule_id="rule-1",
-            name="规则1",
-            description="描述1",
-            action=SupervisionAction.WARNING,
-            condition=lambda ctx: True,
-        ))
-        module.add_rule(SupervisionRule(
-            rule_id="rule-2",
-            name="规则2",
-            description="描述2",
-            action=SupervisionAction.WARNING,
-            condition=lambda ctx: True,
-        ))
+        module.add_rule(
+            SupervisionRule(
+                rule_id="rule-1",
+                name="规则1",
+                description="描述1",
+                action=SupervisionAction.WARNING,
+                condition=lambda ctx: True,
+            )
+        )
+        module.add_rule(
+            SupervisionRule(
+                rule_id="rule-2",
+                name="规则2",
+                description="描述2",
+                action=SupervisionAction.WARNING,
+                condition=lambda ctx: True,
+            )
+        )
 
         context = {"session_id": "session-123"}
         results = module.analyze_context(context)
@@ -541,29 +552,31 @@ class TestSupervisionModule:
     def test_should_intervene_with_warning(self):
         """测试：判断是否干预 - 有警告"""
         from src.domain.services.supervision_module import (
-            SupervisionModule,
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
+            SupervisionModule,
         )
 
         module = SupervisionModule()
 
-        infos = [SupervisionInfo(
-            session_id="session-123",
-            action=SupervisionAction.WARNING,
-            content="警告",
-            trigger_rule="rule-001",
-            trigger_condition="条件",
-        )]
+        infos = [
+            SupervisionInfo(
+                session_id="session-123",
+                action=SupervisionAction.WARNING,
+                content="警告",
+                trigger_rule="rule-001",
+                trigger_condition="条件",
+            )
+        ]
 
         assert module.should_intervene(infos) is True
 
     def test_get_highest_priority_action(self):
         """测试：获取最高优先级动作"""
         from src.domain.services.supervision_module import (
-            SupervisionModule,
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
+            SupervisionModule,
         )
 
         module = SupervisionModule()
@@ -602,7 +615,6 @@ class TestBuiltinRules:
         """测试：内置上下文长度规则"""
         from src.domain.services.supervision_module import (
             SupervisionModule,
-            SupervisionAction,
         )
 
         module = SupervisionModule(use_builtin_rules=True)
@@ -623,7 +635,6 @@ class TestBuiltinRules:
         """测试：内置敏感内容规则"""
         from src.domain.services.supervision_module import (
             SupervisionModule,
-            SupervisionAction,
         )
 
         module = SupervisionModule(use_builtin_rules=True)
@@ -644,7 +655,6 @@ class TestBuiltinRules:
         """测试：内置危险命令规则"""
         from src.domain.services.supervision_module import (
             SupervisionModule,
-            SupervisionAction,
         )
 
         module = SupervisionModule(use_builtin_rules=True)
@@ -694,9 +704,9 @@ class TestSupervisionLogger:
     def test_log_trigger(self):
         """测试：记录触发"""
         from src.domain.services.supervision_module import (
-            SupervisionLogger,
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
+            SupervisionLogger,
         )
 
         logger = SupervisionLogger()
@@ -720,9 +730,9 @@ class TestSupervisionLogger:
     def test_log_intervention(self):
         """测试：记录干预"""
         from src.domain.services.supervision_module import (
-            SupervisionLogger,
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
+            SupervisionLogger,
         )
 
         logger = SupervisionLogger()
@@ -745,9 +755,9 @@ class TestSupervisionLogger:
     def test_get_logs_by_session(self):
         """测试：按会话获取日志"""
         from src.domain.services.supervision_module import (
-            SupervisionLogger,
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
+            SupervisionLogger,
         )
 
         logger = SupervisionLogger()
@@ -782,9 +792,9 @@ class TestSupervisionLogger:
     def test_log_contains_timestamp(self):
         """测试：日志包含时间戳"""
         from src.domain.services.supervision_module import (
-            SupervisionLogger,
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
+            SupervisionLogger,
         )
 
         logger = SupervisionLogger()
@@ -839,20 +849,22 @@ class TestCoordinatorIntegration:
         """测试：Coordinator 监督返回警告"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
 
         coordinator = CoordinatorAgent()
 
         # 添加会触发的规则
-        coordinator.supervision_module.add_rule(SupervisionRule(
-            rule_id="test-warning",
-            name="测试警告",
-            description="测试",
-            action=SupervisionAction.WARNING,
-            condition=lambda ctx: ctx.get("trigger_warning", False),
-        ))
+        coordinator.supervision_module.add_rule(
+            SupervisionRule(
+                rule_id="test-warning",
+                name="测试警告",
+                description="测试",
+                action=SupervisionAction.WARNING,
+                condition=lambda ctx: ctx.get("trigger_warning", False),
+            )
+        )
 
         context = {
             "session_id": "session-123",
@@ -868,20 +880,22 @@ class TestCoordinatorIntegration:
         """测试：Coordinator 监督返回替换"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
 
         coordinator = CoordinatorAgent()
 
         # 添加替换规则
-        coordinator.supervision_module.add_rule(SupervisionRule(
-            rule_id="test-replace",
-            name="测试替换",
-            description="测试",
-            action=SupervisionAction.REPLACE,
-            condition=lambda ctx: ctx.get("trigger_replace", False),
-        ))
+        coordinator.supervision_module.add_rule(
+            SupervisionRule(
+                rule_id="test-replace",
+                name="测试替换",
+                description="测试",
+                action=SupervisionAction.REPLACE,
+                condition=lambda ctx: ctx.get("trigger_replace", False),
+            )
+        )
 
         context = {
             "session_id": "session-123",
@@ -897,20 +911,22 @@ class TestCoordinatorIntegration:
         """测试：Coordinator 监督返回终止"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
 
         coordinator = CoordinatorAgent()
 
         # 添加终止规则
-        coordinator.supervision_module.add_rule(SupervisionRule(
-            rule_id="test-terminate",
-            name="测试终止",
-            description="测试",
-            action=SupervisionAction.TERMINATE,
-            condition=lambda ctx: ctx.get("trigger_terminate", False),
-        ))
+        coordinator.supervision_module.add_rule(
+            SupervisionRule(
+                rule_id="test-terminate",
+                name="测试终止",
+                description="测试",
+                action=SupervisionAction.TERMINATE,
+                condition=lambda ctx: ctx.get("trigger_terminate", False),
+            )
+        )
 
         context = {
             "session_id": "session-123",
@@ -962,21 +978,22 @@ class TestEndToEndIntervention:
         """测试：警告干预流程"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
-        from src.domain.services.context_injection import InjectionType
 
         coordinator = CoordinatorAgent()
 
         # 添加警告规则
-        coordinator.supervision_module.add_rule(SupervisionRule(
-            rule_id="warn-rule",
-            name="警告规则",
-            description="测试警告",
-            action=SupervisionAction.WARNING,
-            condition=lambda ctx: ctx.get("should_warn", False),
-        ))
+        coordinator.supervision_module.add_rule(
+            SupervisionRule(
+                rule_id="warn-rule",
+                name="警告规则",
+                description="测试警告",
+                action=SupervisionAction.WARNING,
+                condition=lambda ctx: ctx.get("should_warn", False),
+            )
+        )
 
         # 执行监督并触发干预
         context = {"session_id": "session-123", "should_warn": True}
@@ -993,27 +1010,30 @@ class TestEndToEndIntervention:
         injections = coordinator.injection_manager.get_pending_injections(
             "session-123",
             coordinator.injection_manager._injections.get("session-123", [{}])[0].injection_point
-            if coordinator.injection_manager._injections.get("session-123") else None
+            if coordinator.injection_manager._injections.get("session-123")
+            else None,
         )
 
     def test_terminate_intervention_flow(self):
         """测试：终止干预流程"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
 
         coordinator = CoordinatorAgent()
 
         # 添加终止规则
-        coordinator.supervision_module.add_rule(SupervisionRule(
-            rule_id="terminate-rule",
-            name="终止规则",
-            description="测试终止",
-            action=SupervisionAction.TERMINATE,
-            condition=lambda ctx: ctx.get("should_terminate", False),
-        ))
+        coordinator.supervision_module.add_rule(
+            SupervisionRule(
+                rule_id="terminate-rule",
+                name="终止规则",
+                description="测试终止",
+                action=SupervisionAction.TERMINATE,
+                condition=lambda ctx: ctx.get("should_terminate", False),
+            )
+        )
 
         # 执行监督
         context = {"session_id": "session-123", "should_terminate": True}
@@ -1033,21 +1053,23 @@ class TestEndToEndIntervention:
         """测试：替换干预流程"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
 
         coordinator = CoordinatorAgent()
 
         # 添加替换规则
-        coordinator.supervision_module.add_rule(SupervisionRule(
-            rule_id="replace-rule",
-            name="替换规则",
-            description="测试替换",
-            action=SupervisionAction.REPLACE,
-            condition=lambda ctx: ctx.get("should_replace", False),
-            replacement_content="[REDACTED]",
-        ))
+        coordinator.supervision_module.add_rule(
+            SupervisionRule(
+                rule_id="replace-rule",
+                name="替换规则",
+                description="测试替换",
+                action=SupervisionAction.REPLACE,
+                condition=lambda ctx: ctx.get("should_replace", False),
+                replacement_content="[REDACTED]",
+            )
+        )
 
         # 执行监督
         context = {"session_id": "session-123", "should_replace": True}
@@ -1071,9 +1093,9 @@ class TestInterventionLogging:
     def test_intervention_log_contains_trigger_condition(self):
         """测试：干预日志包含触发条件"""
         from src.domain.services.supervision_module import (
-            SupervisionLogger,
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
+            SupervisionLogger,
         )
 
         logger = SupervisionLogger()
@@ -1094,9 +1116,9 @@ class TestInterventionLogging:
     def test_intervention_log_contains_rule_id(self):
         """测试：干预日志包含规则 ID"""
         from src.domain.services.supervision_module import (
-            SupervisionLogger,
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
+            SupervisionLogger,
         )
 
         logger = SupervisionLogger()
@@ -1118,20 +1140,22 @@ class TestInterventionLogging:
         """测试：干预日志可追踪"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
 
         coordinator = CoordinatorAgent()
 
         # 添加规则
-        coordinator.supervision_module.add_rule(SupervisionRule(
-            rule_id="traceable-rule",
-            name="可追踪规则",
-            description="测试追踪",
-            action=SupervisionAction.WARNING,
-            condition=lambda ctx: True,
-        ))
+        coordinator.supervision_module.add_rule(
+            SupervisionRule(
+                rule_id="traceable-rule",
+                name="可追踪规则",
+                description="测试追踪",
+                action=SupervisionAction.WARNING,
+                condition=lambda ctx: True,
+            )
+        )
 
         # 执行监督
         context = {"session_id": "session-123"}
@@ -1155,9 +1179,9 @@ class TestSupervisionEvents:
     def test_supervision_triggered_event(self):
         """测试：监督触发事件"""
         from src.domain.services.supervision_module import (
-            SupervisionTriggeredEvent,
-            SupervisionInfo,
             SupervisionAction,
+            SupervisionInfo,
+            SupervisionTriggeredEvent,
         )
 
         info = SupervisionInfo(

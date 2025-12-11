@@ -13,12 +13,8 @@ TDD 测试用例，验证：
 
 import os
 import tempfile
-from datetime import datetime
 from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
-
+from unittest.mock import MagicMock
 
 # =============================================================================
 # 测试辅助类
@@ -52,21 +48,20 @@ class SyncEventBus:
 def create_test_global_context():
     """创建测试用全局上下文"""
     from src.domain.services.context_manager import GlobalContext
+
     return GlobalContext(
         user_id="test-user",
         user_preferences={"language": "zh-CN"},
-        system_config={"max_tokens": 4096}
+        system_config={"max_tokens": 4096},
     )
 
 
 def create_test_session_context(session_id: str = "test-session"):
     """创建测试用会话上下文"""
     from src.domain.services.context_manager import SessionContext
+
     global_context = create_test_global_context()
-    return SessionContext(
-        session_id=session_id,
-        global_context=global_context
-    )
+    return SessionContext(session_id=session_id, global_context=global_context)
 
 
 # =============================================================================
@@ -234,7 +229,6 @@ class TestPathBlacklistRule:
     def test_reject_blacklisted_path(self):
         """测试：拒绝黑名单路径"""
         from src.domain.services.save_request_audit import (
-            AuditStatus,
             PathBlacklistRule,
         )
         from src.domain.services.save_request_channel import (
@@ -242,9 +236,7 @@ class TestPathBlacklistRule:
             SaveRequestType,
         )
 
-        rule = PathBlacklistRule(
-            blacklist=["/etc", "/sys", "/proc", "/root"]
-        )
+        rule = PathBlacklistRule(blacklist=["/etc", "/sys", "/proc", "/root"])
 
         request = SaveRequest(
             target_path="/etc/passwd",
@@ -270,9 +262,7 @@ class TestPathBlacklistRule:
             SaveRequestType,
         )
 
-        rule = PathBlacklistRule(
-            blacklist=["/etc", "/sys"]
-        )
+        rule = PathBlacklistRule(blacklist=["/etc", "/sys"])
 
         request = SaveRequest(
             target_path="/tmp/output.txt",
@@ -300,9 +290,7 @@ class TestPathWhitelistRule:
             SaveRequestType,
         )
 
-        rule = PathWhitelistRule(
-            whitelist=["/tmp", "/data/output", "/home/user"]
-        )
+        rule = PathWhitelistRule(whitelist=["/tmp", "/data/output", "/home/user"])
 
         request = SaveRequest(
             target_path="/data/output/result.json",
@@ -326,9 +314,7 @@ class TestPathWhitelistRule:
             SaveRequestType,
         )
 
-        rule = PathWhitelistRule(
-            whitelist=["/tmp", "/data/output"]
-        )
+        rule = PathWhitelistRule(whitelist=["/tmp", "/data/output"])
 
         request = SaveRequest(
             target_path="/var/log/app.log",
@@ -593,10 +579,12 @@ class TestSaveRequestAuditor:
             SaveRequestType,
         )
 
-        auditor = SaveRequestAuditor(rules=[
-            PathBlacklistRule(blacklist=["/etc"]),
-            ContentSizeRule(max_size_bytes=1024),
-        ])
+        auditor = SaveRequestAuditor(
+            rules=[
+                PathBlacklistRule(blacklist=["/etc"]),
+                ContentSizeRule(max_size_bytes=1024),
+            ]
+        )
 
         request = SaveRequest(
             target_path="/tmp/test.txt",
@@ -623,10 +611,12 @@ class TestSaveRequestAuditor:
             SaveRequestType,
         )
 
-        auditor = SaveRequestAuditor(rules=[
-            PathBlacklistRule(blacklist=["/etc"]),
-            ContentSizeRule(max_size_bytes=1024),
-        ])
+        auditor = SaveRequestAuditor(
+            rules=[
+                PathBlacklistRule(blacklist=["/etc"]),
+                ContentSizeRule(max_size_bytes=1024),
+            ]
+        )
 
         request = SaveRequest(
             target_path="/etc/passwd",  # 黑名单路径
@@ -704,7 +694,7 @@ class TestSaveExecutor:
             assert result.error_message is None
             assert os.path.exists(target_path)
 
-            with open(target_path, "r") as f:
+            with open(target_path) as f:
                 assert f.read() == "Hello, World!"
 
     def test_execute_file_append_success(self):
@@ -736,7 +726,7 @@ class TestSaveExecutor:
 
             assert result.success is True
 
-            with open(target_path, "r") as f:
+            with open(target_path) as f:
                 assert f.read() == "Initial. Appended."
 
     def test_execute_file_delete_success(self):
@@ -809,7 +799,7 @@ class TestSaveExecutor:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             target_path = os.path.join(tmpdir, "binary.bin")
-            binary_content = b'\x89PNG\r\n\x1a\n\x00\x00\x00'
+            binary_content = b"\x89PNG\r\n\x1a\n\x00\x00\x00"
 
             request = SaveRequest(
                 target_path=target_path,
@@ -876,7 +866,10 @@ class TestSaveExecutor:
 
         # 删除不存在的文件应该报错
         assert result.success is False
-        assert "not found" in result.error_message.lower() or "not exist" in result.error_message.lower()
+        assert (
+            "not found" in result.error_message.lower()
+            or "not exist" in result.error_message.lower()
+        )
 
 
 # =============================================================================
@@ -1018,7 +1011,7 @@ class TestAuditLogger:
                     status=AuditStatus.APPROVED,
                     rule_id=None,
                     reason="OK",
-                )
+                ),
             )
 
         session_a_logs = logger.get_logs_by_session("session-A")
@@ -1126,10 +1119,7 @@ class TestCoordinatorAuditExecution:
 
         # 订阅完成事件
         completed_events = []
-        event_bus.subscribe(
-            SaveRequestCompletedEvent,
-            lambda e: completed_events.append(e)
-        )
+        event_bus.subscribe(SaveRequestCompletedEvent, lambda e: completed_events.append(e))
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # 配置审核器允许临时目录路径
@@ -1266,7 +1256,7 @@ class TestAuditExecutionEndToEnd:
             assert result.success is True
             assert os.path.exists(target_path)
 
-            with open(target_path, "r") as f:
+            with open(target_path) as f:
                 content = f.read()
                 assert "success" in content
 

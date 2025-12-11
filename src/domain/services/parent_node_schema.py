@@ -28,7 +28,6 @@ from typing import Any
 
 import yaml
 
-
 # ============================================================================
 # 异常类
 # ============================================================================
@@ -214,7 +213,9 @@ class InheritanceMerger:
         # Step 1: 按顺序合并所有继承源
         for source in sources:
             self._deep_merge(
-                result, source, path="",
+                result,
+                source,
+                path="",
                 check_conflict=self.strict_conflict,
                 skip_conflict_paths=override_paths,
             )
@@ -274,8 +275,7 @@ class InheritanceMerger:
             # 对象深合并
             if isinstance(existing, dict) and isinstance(value, dict):
                 self._deep_merge(
-                    existing, value, current_path, force,
-                    check_conflict, skip_conflict_paths
+                    existing, value, current_path, force, check_conflict, skip_conflict_paths
                 )
 
             # 数组合并
@@ -310,8 +310,16 @@ VALID_KINDS = {"node", "workflow", "template"}
 
 # 有效的 executor_type 枚举
 VALID_EXECUTOR_TYPES = {
-    "python", "llm", "http", "database", "container",
-    "condition", "loop", "parallel", "sequential", "api"
+    "python",
+    "llm",
+    "http",
+    "database",
+    "container",
+    "condition",
+    "loop",
+    "parallel",
+    "sequential",
+    "api",
 }
 
 # 有效的参数类型
@@ -321,7 +329,14 @@ VALID_PARAM_TYPES = {"string", "number", "integer", "boolean", "array", "object"
 VALID_ON_FAILURE = {"retry", "skip", "abort", "replan", "fallback"}
 
 # 允许的 inherit/override 块字段
-ALLOWED_INHERIT_FIELDS = {"parameters", "returns", "error_strategy", "resources", "tags", "execution"}
+ALLOWED_INHERIT_FIELDS = {
+    "parameters",
+    "returns",
+    "error_strategy",
+    "resources",
+    "tags",
+    "execution",
+}
 
 # 资源格式正则
 CPU_PATTERN = re.compile(r"^(\d+(\.\d+)?)(m)?$")
@@ -453,13 +468,13 @@ class ParentNodeValidator:
         parent_schemas: list[dict[str, Any]] = []
 
         for parent_id in inherit_from:
-            parent_schema = self.resolve_inheritance(
-                parent_id, visited.copy(), depth + 1
-            )
+            parent_schema = self.resolve_inheritance(parent_id, visited.copy(), depth + 1)
             parent_schemas.append(parent_schema)
 
         # 合并继承
-        child_local = {k: v for k, v in schema.items() if k not in ("inherit_from", "inherit", "override")}
+        child_local = {
+            k: v for k, v in schema.items() if k not in ("inherit_from", "inherit", "override")
+        }
         child_inherit = schema.get("inherit", {})
         child_override = schema.get("override", {})
 
@@ -494,10 +509,7 @@ class ParentNodeValidator:
         """验证 kind 字段"""
         kind = schema.get("kind")
         if kind is not None and kind not in VALID_KINDS:
-            result.add_error(
-                "kind",
-                f"无效的 kind 值: {kind!r}，允许值: {VALID_KINDS}"
-            )
+            result.add_error("kind", f"无效的 kind 值: {kind!r}，允许值: {VALID_KINDS}")
 
     def _validate_name(self, schema: dict[str, Any], result: ValidationResult) -> None:
         """验证 name 字段"""
@@ -517,7 +529,7 @@ class ParentNodeValidator:
         if executor_type is not None and executor_type not in VALID_EXECUTOR_TYPES:
             result.add_error(
                 "executor_type",
-                f"无效的 executor_type: {executor_type!r}，允许值: {VALID_EXECUTOR_TYPES}"
+                f"无效的 executor_type: {executor_type!r}，允许值: {VALID_EXECUTOR_TYPES}",
             )
 
     def _validate_inherit_from(self, schema: dict[str, Any], result: ValidationResult) -> None:
@@ -533,14 +545,11 @@ class ParentNodeValidator:
         elif isinstance(inherit_from, list):
             for i, item in enumerate(inherit_from):
                 if not isinstance(item, str) or not item.strip():
-                    result.add_error(
-                        f"inherit_from[{i}]",
-                        "inherit_from 列表元素必须是非空字符串"
-                    )
+                    result.add_error(f"inherit_from[{i}]", "inherit_from 列表元素必须是非空字符串")
         else:
             result.add_error(
                 "inherit_from",
-                f"inherit_from 必须是字符串或字符串列表，收到: {type(inherit_from).__name__}"
+                f"inherit_from 必须是字符串或字符串列表，收到: {type(inherit_from).__name__}",
             )
 
     def _validate_inherit_block(self, schema: dict[str, Any], result: ValidationResult) -> None:
@@ -556,16 +565,15 @@ class ParentNodeValidator:
         # 检查未知字段
         for key in inherit:
             if key not in ALLOWED_INHERIT_FIELDS:
-                result.add_error(
-                    f"inherit.{key}",
-                    f"inherit 块包含未知字段: {key!r}"
-                )
+                result.add_error(f"inherit.{key}", f"inherit 块包含未知字段: {key!r}")
 
         # 验证 parameters
         self._validate_parameters(inherit.get("parameters"), "inherit.parameters", result)
 
         # 验证 error_strategy
-        self._validate_error_strategy(inherit.get("error_strategy"), "inherit.error_strategy", result)
+        self._validate_error_strategy(
+            inherit.get("error_strategy"), "inherit.error_strategy", result
+        )
 
         # 验证 resources
         self._validate_resources(inherit.get("resources"), "inherit.resources", result)
@@ -609,18 +617,14 @@ class ParentNodeValidator:
             if param_type is None:
                 result.add_error(f"{param_path}.type", "参数缺少必填字段 'type'")
             elif param_type not in VALID_PARAM_TYPES:
-                result.add_error(
-                    f"{param_path}.type",
-                    f"无效的参数类型: {param_type!r}"
-                )
+                result.add_error(f"{param_path}.type", f"无效的参数类型: {param_type!r}")
 
             # 检查 default 类型匹配
             default = param_def.get("default")
             if default is not None and param_type is not None:
                 if not self._check_type_match(default, param_type):
                     result.add_error(
-                        f"{param_path}.default",
-                        f"default 值类型与 type '{param_type}' 不匹配"
+                        f"{param_path}.default", f"default 值类型与 type '{param_type}' 不匹配"
                     )
 
     def _validate_error_strategy(
@@ -647,17 +651,13 @@ class ParentNodeValidator:
                 if max_attempts is not None:
                     if not isinstance(max_attempts, int) or max_attempts < 0:
                         result.add_error(
-                            f"{path}.retry.max_attempts",
-                            "max_attempts 必须是非负整数"
+                            f"{path}.retry.max_attempts", "max_attempts 必须是非负整数"
                         )
 
         # 验证 on_failure
         on_failure = error_strategy.get("on_failure")
         if on_failure is not None and on_failure not in VALID_ON_FAILURE:
-            result.add_error(
-                f"{path}.on_failure",
-                f"无效的 on_failure 值: {on_failure!r}"
-            )
+            result.add_error(f"{path}.on_failure", f"无效的 on_failure 值: {on_failure!r}")
 
     def _validate_resources(
         self,
@@ -712,10 +712,7 @@ class ParentNodeValidator:
             alias = child.get("alias")
             if alias is not None:
                 if alias in aliases:
-                    result.add_error(
-                        f"{child_path}.alias",
-                        f"子节点 alias 重复: {alias!r}"
-                    )
+                    result.add_error(f"{child_path}.alias", f"子节点 alias 重复: {alias!r}")
                 else:
                     aliases.add(alias)
 
@@ -742,10 +739,7 @@ class ParentNodeValidator:
         children = schema.get("children")
 
         if is_parallel and (children is None or len(children) == 0):
-            result.add_error(
-                "children",
-                "并行工作流 (nested.parallel=true) 必须定义 children"
-            )
+            result.add_error("children", "并行工作流 (nested.parallel=true) 必须定义 children")
 
     def _is_valid_cpu(self, value: Any) -> bool:
         """检查 cpu 格式是否有效"""

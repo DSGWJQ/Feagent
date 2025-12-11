@@ -17,13 +17,13 @@ from __future__ import annotations
 import pytest
 
 from src.domain.services.parent_node_schema import (
+    ConflictingInheritanceError,
+    CyclicInheritanceError,
+    InheritanceError,
+    InheritanceMerger,
+    InvalidSchemaError,
     ParentNodeSchema,
     ParentNodeValidator,
-    InheritanceMerger,
-    InheritanceError,
-    CyclicInheritanceError,
-    ConflictingInheritanceError,
-    InvalidSchemaError,
 )
 
 
@@ -37,9 +37,7 @@ class TestParentNodeSchemaBasicValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "children": [
-                {"ref": "node.extract", "alias": "extract"}
-            ]
+            "children": [{"ref": "node.extract", "alias": "extract"}],
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -56,29 +54,17 @@ class TestParentNodeSchemaBasicValidation:
             "executor_type": "parallel",
             "inherit_from": ["tpl.base.io", "tpl.base.resources"],
             "inherit": {
-                "parameters": {
-                    "input_path": {"type": "string", "required": True}
-                },
-                "returns": {
-                    "output_path": {"type": "string"}
-                },
-                "error_strategy": {
-                    "retry": {"max_attempts": 3, "delay_seconds": 5.0}
-                },
-                "resources": {
-                    "cpu": "2",
-                    "memory": "4g"
-                },
-                "tags": ["team:data", "tier:batch"]
+                "parameters": {"input_path": {"type": "string", "required": True}},
+                "returns": {"output_path": {"type": "string"}},
+                "error_strategy": {"retry": {"max_attempts": 3, "delay_seconds": 5.0}},
+                "resources": {"cpu": "2", "memory": "4g"},
+                "tags": ["team:data", "tier:batch"],
             },
-            "override": {
-                "resources": {"cpu": "4"},
-                "tags": ["owner:alice"]
-            },
+            "override": {"resources": {"cpu": "4"}, "tags": ["owner:alice"]},
             "children": [
                 {"ref": "node.extract", "alias": "extract"},
-                {"ref": "node.transform", "alias": "transform"}
-            ]
+                {"ref": "node.transform", "alias": "transform"},
+            ],
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -87,11 +73,7 @@ class TestParentNodeSchemaBasicValidation:
 
     def test_missing_kind_field(self):
         """缺少 kind 字段"""
-        schema = {
-            "name": "test_workflow",
-            "version": "1.0.0",
-            "executor_type": "sequential"
-        }
+        schema = {"name": "test_workflow", "version": "1.0.0", "executor_type": "sequential"}
         validator = ParentNodeValidator()
         result = validator.validate(schema)
         assert not result.is_valid
@@ -103,7 +85,7 @@ class TestParentNodeSchemaBasicValidation:
             "name": "test_workflow",
             "kind": "invalid_kind",
             "version": "1.0.0",
-            "executor_type": "sequential"
+            "executor_type": "sequential",
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -112,11 +94,7 @@ class TestParentNodeSchemaBasicValidation:
 
     def test_missing_name_field(self):
         """缺少 name 字段"""
-        schema = {
-            "kind": "workflow",
-            "version": "1.0.0",
-            "executor_type": "sequential"
-        }
+        schema = {"kind": "workflow", "version": "1.0.0", "executor_type": "sequential"}
         validator = ParentNodeValidator()
         result = validator.validate(schema)
         assert not result.is_valid
@@ -124,11 +102,7 @@ class TestParentNodeSchemaBasicValidation:
 
     def test_missing_version_field(self):
         """缺少 version 字段"""
-        schema = {
-            "name": "test_workflow",
-            "kind": "workflow",
-            "executor_type": "sequential"
-        }
+        schema = {"name": "test_workflow", "kind": "workflow", "executor_type": "sequential"}
         validator = ParentNodeValidator()
         result = validator.validate(schema)
         assert not result.is_valid
@@ -145,7 +119,7 @@ class TestInheritFromValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit_from": "tpl.base"
+            "inherit_from": "tpl.base",
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -162,7 +136,7 @@ class TestInheritFromValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit_from": ["tpl.base.io", "tpl.base.resources"]
+            "inherit_from": ["tpl.base.io", "tpl.base.resources"],
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -179,13 +153,14 @@ class TestInheritFromValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit_from": ""
+            "inherit_from": "",
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
         assert not result.is_valid
-        assert any("inherit_from" in str(e).lower() or "empty" in str(e).lower()
-                   for e in result.errors)
+        assert any(
+            "inherit_from" in str(e).lower() or "empty" in str(e).lower() for e in result.errors
+        )
 
     def test_inherit_from_invalid_type(self):
         """inherit_from 类型非法（数字）"""
@@ -194,13 +169,14 @@ class TestInheritFromValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit_from": 123
+            "inherit_from": 123,
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
         assert not result.is_valid
-        assert any("inherit_from" in str(e).lower() or "type" in str(e).lower()
-                   for e in result.errors)
+        assert any(
+            "inherit_from" in str(e).lower() or "type" in str(e).lower() for e in result.errors
+        )
 
 
 class TestInheritBlockValidation:
@@ -216,9 +192,9 @@ class TestInheritBlockValidation:
             "inherit": {
                 "parameters": {
                     "input_path": {"type": "string", "required": True},
-                    "batch_size": {"type": "integer", "default": 100}
+                    "batch_size": {"type": "integer", "default": 100},
                 }
-            }
+            },
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -235,7 +211,7 @@ class TestInheritBlockValidation:
                 "parameters": {
                     "input_path": {"required": True}  # 缺少 type
                 }
-            }
+            },
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -249,11 +225,7 @@ class TestInheritBlockValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit": {
-                "parameters": {
-                    "input_path": {"type": "invalid_type", "required": True}
-                }
-            }
+            "inherit": {"parameters": {"input_path": {"type": "invalid_type", "required": True}}},
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -268,16 +240,15 @@ class TestInheritBlockValidation:
             "version": "1.0.0",
             "executor_type": "sequential",
             "inherit": {
-                "parameters": {
-                    "batch_size": {"type": "integer", "default": "not_a_number"}
-                }
-            }
+                "parameters": {"batch_size": {"type": "integer", "default": "not_a_number"}}
+            },
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
         assert not result.is_valid
-        assert any("default" in str(e).lower() or "mismatch" in str(e).lower()
-                   for e in result.errors)
+        assert any(
+            "default" in str(e).lower() or "mismatch" in str(e).lower() for e in result.errors
+        )
 
     def test_inherit_unknown_field(self):
         """inherit 包含未知字段"""
@@ -286,15 +257,14 @@ class TestInheritBlockValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit": {
-                "unknown_field": {"value": 123}
-            }
+            "inherit": {"unknown_field": {"value": 123}},
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
         assert not result.is_valid
-        assert any("unknown" in str(e).lower() or "unexpected" in str(e).lower()
-                   for e in result.errors)
+        assert any(
+            "unknown" in str(e).lower() or "unexpected" in str(e).lower() for e in result.errors
+        )
 
 
 class TestErrorStrategyValidation:
@@ -309,14 +279,10 @@ class TestErrorStrategyValidation:
             "executor_type": "sequential",
             "inherit": {
                 "error_strategy": {
-                    "retry": {
-                        "max_attempts": 3,
-                        "delay_seconds": 5.0,
-                        "backoff_multiplier": 2.0
-                    },
-                    "on_failure": "abort"
+                    "retry": {"max_attempts": 3, "delay_seconds": 5.0, "backoff_multiplier": 2.0},
+                    "on_failure": "abort",
                 }
-            }
+            },
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -329,11 +295,7 @@ class TestErrorStrategyValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit": {
-                "error_strategy": {
-                    "retry": {"max_attempts": -1}
-                }
-            }
+            "inherit": {"error_strategy": {"retry": {"max_attempts": -1}}},
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -347,11 +309,7 @@ class TestErrorStrategyValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit": {
-                "error_strategy": {
-                    "on_failure": "invalid_action"
-                }
-            }
+            "inherit": {"error_strategy": {"on_failure": "invalid_action"}},
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -369,12 +327,7 @@ class TestResourcesValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit": {
-                "resources": {
-                    "cpu": "2",
-                    "memory": "4g"
-                }
-            }
+            "inherit": {"resources": {"cpu": "2", "memory": "4g"}},
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -387,11 +340,7 @@ class TestResourcesValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit": {
-                "resources": {
-                    "memory": "invalid_format"
-                }
-            }
+            "inherit": {"resources": {"memory": "invalid_format"}},
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -405,11 +354,7 @@ class TestResourcesValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "sequential",
-            "inherit": {
-                "resources": {
-                    "cpu": "invalid"
-                }
-            }
+            "inherit": {"resources": {"cpu": "invalid"}},
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -429,8 +374,8 @@ class TestChildrenValidation:
             "executor_type": "parallel",
             "children": [
                 {"ref": "node.extract", "alias": "extract"},
-                {"ref": "node.transform", "alias": "transform"}
-            ]
+                {"ref": "node.transform", "alias": "transform"},
+            ],
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -445,7 +390,7 @@ class TestChildrenValidation:
             "executor_type": "parallel",
             "children": [
                 {"alias": "extract"}  # 缺少 ref
-            ]
+            ],
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -461,14 +406,15 @@ class TestChildrenValidation:
             "executor_type": "parallel",
             "children": [
                 {"ref": "node.extract", "alias": "step1"},
-                {"ref": "node.transform", "alias": "step1"}  # 重复
-            ]
+                {"ref": "node.transform", "alias": "step1"},  # 重复
+            ],
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
         assert not result.is_valid
-        assert any("alias" in str(e).lower() or "duplicate" in str(e).lower()
-                   for e in result.errors)
+        assert any(
+            "alias" in str(e).lower() or "duplicate" in str(e).lower() for e in result.errors
+        )
 
     def test_children_with_override(self):
         """children 带 override"""
@@ -481,11 +427,9 @@ class TestChildrenValidation:
                 {
                     "ref": "node.extract",
                     "alias": "extract",
-                    "override": {
-                        "resources": {"memory": "8g"}
-                    }
+                    "override": {"resources": {"memory": "8g"}},
                 }
-            ]
+            ],
         }
         validator = ParentNodeValidator()
         result = validator.validate(schema)
@@ -498,7 +442,7 @@ class TestChildrenValidation:
             "kind": "workflow",
             "version": "1.0.0",
             "executor_type": "parallel",
-            "nested": {"parallel": True}
+            "nested": {"parallel": True},
             # 缺少 children
         }
         validator = ParentNodeValidator()
@@ -513,16 +457,11 @@ class TestInheritanceMerger:
     def test_merge_single_source(self):
         """单源继承合并"""
         base = {
-            "parameters": {
-                "input_path": {"type": "string", "required": True}
-            },
+            "parameters": {"input_path": {"type": "string", "required": True}},
             "resources": {"cpu": "1", "memory": "2g"},
-            "tags": ["base"]
+            "tags": ["base"],
         }
-        child = {
-            "resources": {"cpu": "2"},
-            "tags": ["child"]
-        }
+        child = {"resources": {"cpu": "2"}, "tags": ["child"]}
         merger = InheritanceMerger()
         result = merger.merge([base], child)
 
@@ -534,14 +473,8 @@ class TestInheritanceMerger:
 
     def test_merge_multiple_sources(self):
         """多源继承合并（后者覆盖前者）"""
-        source1 = {
-            "resources": {"cpu": "1", "memory": "1g"},
-            "tags": ["source1"]
-        }
-        source2 = {
-            "resources": {"cpu": "2"},
-            "tags": ["source2"]
-        }
+        source1 = {"resources": {"cpu": "1", "memory": "1g"}, "tags": ["source1"]}
+        source2 = {"resources": {"cpu": "2"}, "tags": ["source2"]}
         child = {}
         merger = InheritanceMerger()
         result = merger.merge([source1, source2], child)
@@ -553,14 +486,11 @@ class TestInheritanceMerger:
 
     def test_override_explicit(self):
         """显式 override 覆盖继承"""
-        base = {
-            "resources": {"cpu": "1", "memory": "2g"},
-            "tags": ["base", "inherited"]
-        }
+        base = {"resources": {"cpu": "1", "memory": "2g"}, "tags": ["base", "inherited"]}
         child = {}
         override = {
             "resources": {"cpu": "4"},
-            "tags": ["explicit_only"]  # 完全覆盖数组
+            "tags": ["explicit_only"],  # 完全覆盖数组
         }
         merger = InheritanceMerger()
         result = merger.merge([base], child, override)
@@ -574,14 +504,10 @@ class TestInheritanceMerger:
         base = {
             "error_strategy": {
                 "retry": {"max_attempts": 3, "delay_seconds": 5.0},
-                "on_failure": "abort"
+                "on_failure": "abort",
             }
         }
-        child = {
-            "error_strategy": {
-                "retry": {"max_attempts": 5}
-            }
-        }
+        child = {"error_strategy": {"retry": {"max_attempts": 5}}}
         merger = InheritanceMerger()
         result = merger.merge([base], child)
 
@@ -604,9 +530,7 @@ class TestCyclicInheritanceDetection:
 
     def test_detect_direct_cycle(self):
         """检测直接循环 A -> A"""
-        registry = {
-            "node.a": {"inherit_from": "node.a"}
-        }
+        registry = {"node.a": {"inherit_from": "node.a"}}
         validator = ParentNodeValidator(registry=registry)
 
         with pytest.raises(CyclicInheritanceError) as exc_info:
@@ -619,7 +543,7 @@ class TestCyclicInheritanceDetection:
         registry = {
             "node.a": {"inherit_from": "node.b"},
             "node.b": {"inherit_from": "node.c"},
-            "node.c": {"inherit_from": "node.a"}
+            "node.c": {"inherit_from": "node.a"},
         }
         validator = ParentNodeValidator(registry=registry)
 
@@ -666,11 +590,7 @@ class TestReferenceResolution:
 
     def test_resolve_existing_reference(self):
         """解析存在的引用"""
-        registry = {
-            "tpl.base": {
-                "resources": {"cpu": "1", "memory": "1g"}
-            }
-        }
+        registry = {"tpl.base": {"resources": {"cpu": "1", "memory": "1g"}}}
         validator = ParentNodeValidator(registry=registry)
         resolved = validator.resolve_reference("tpl.base")
 
@@ -696,9 +616,7 @@ class TestInheritanceDepth:
         registry = {}
         for i in range(10):
             parent_key = f"node.level{i+1}" if i < 9 else None
-            registry[f"node.level{i}"] = {
-                "inherit_from": parent_key
-            } if parent_key else {}
+            registry[f"node.level{i}"] = {"inherit_from": parent_key} if parent_key else {}
 
         validator = ParentNodeValidator(registry=registry, max_depth=5)
 
@@ -764,9 +682,9 @@ class TestParentNodeSchemaToYaml:
             executor_type="sequential",
             inherit={
                 "parameters": {"input": {"type": "string", "required": True}},
-                "resources": {"cpu": "1"}
+                "resources": {"cpu": "1"},
             },
-            children=[{"ref": "node.step1", "alias": "step1"}]
+            children=[{"ref": "node.step1", "alias": "step1"}],
         )
 
         yaml_file = tmp_path / "output.yaml"
@@ -789,13 +707,8 @@ class TestIntegrationWithExistingSchema:
             "kind": "node",
             "version": "1.0.0",
             "executor_type": "http",
-            "parameters": [
-                {"name": "url", "type": "string", "required": True}
-            ],
-            "returns": {
-                "type": "object",
-                "properties": {"response": {"type": "object"}}
-            }
+            "parameters": [{"name": "url", "type": "string", "required": True}],
+            "returns": {"type": "object", "properties": {"response": {"type": "object"}}},
         }
         validator = ParentNodeValidator()
         result = validator.validate(existing_node)
@@ -810,16 +723,10 @@ class TestIntegrationWithExistingSchema:
             "executor_type": "sequential",
             # 继承相关字段（新增）
             "inherit_from": "tpl.base",
-            "inherit": {
-                "error_strategy": {"retry": {"max_attempts": 3}}
-            },
+            "inherit": {"error_strategy": {"retry": {"max_attempts": 3}}},
             # 现有字段
-            "parameters": [
-                {"name": "source", "type": "string", "required": True}
-            ],
-            "children": [
-                {"ref": "node.extract", "alias": "extract"}
-            ]
+            "parameters": [{"name": "source", "type": "string", "required": True}],
+            "children": [{"ref": "node.extract", "alias": "extract"}],
         }
         validator = ParentNodeValidator()
         result = validator.validate(parent_node)

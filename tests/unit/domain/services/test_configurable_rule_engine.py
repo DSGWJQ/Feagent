@@ -18,10 +18,8 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
-
 
 # =============================================================================
 # 测试数据结构
@@ -745,16 +743,12 @@ class TestUserLevelRules:
         engine = ConfigurableRuleEngine(config)
 
         # 普通用户访问管理路径 - 拒绝
-        req_user = MockSaveRequest(
-            target_path="/admin/settings.json", user_level="user"
-        )
+        req_user = MockSaveRequest(target_path="/admin/settings.json", user_level="user")
         result_user = engine.evaluate(req_user)
         assert result_user.final_action == RuleAction.TERMINATE
 
         # 管理员访问管理路径 - 允许
-        req_admin = MockSaveRequest(
-            target_path="/admin/settings.json", user_level="admin"
-        )
+        req_admin = MockSaveRequest(target_path="/admin/settings.json", user_level="admin")
         result_admin = engine.evaluate(req_admin)
         assert result_admin.final_action == RuleAction.ALLOW
 
@@ -783,16 +777,12 @@ class TestUserLevelRules:
         engine = ConfigurableRuleEngine(config)
 
         # 管理员也不能访问系统路径
-        req_admin = MockSaveRequest(
-            target_path="/system/core.dat", user_level="admin"
-        )
+        req_admin = MockSaveRequest(target_path="/system/core.dat", user_level="admin")
         result = engine.evaluate(req_admin)
         assert result.final_action == RuleAction.TERMINATE
 
         # 系统级别可以访问
-        req_system = MockSaveRequest(
-            target_path="/system/core.dat", user_level="system"
-        )
+        req_system = MockSaveRequest(target_path="/system/core.dat", user_level="system")
         result_sys = engine.evaluate(req_system)
         assert result_sys.final_action == RuleAction.ALLOW
 
@@ -1014,9 +1004,7 @@ class TestActionPriority:
         }
 
         engine = ConfigurableRuleEngine(config)
-        request = MockSaveRequest(
-            content="Contact: test@example.com, Phone: 138-1234-5678"
-        )
+        request = MockSaveRequest(content="Contact: test@example.com, Phone: 138-1234-5678")
 
         result = engine.evaluate(request)
 
@@ -1056,9 +1044,7 @@ class TestConfigFileLoading:
             },
         }
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(config, f)
             config_path = f.name
 
@@ -1087,9 +1073,7 @@ rules:
       message: "System path blocked"
 """
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             config_path = f.name
 
@@ -1138,9 +1122,7 @@ rules:
         """测试无效 JSON 格式"""
         from src.domain.services.configurable_rule_engine import ConfigurableRuleEngine
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("{ invalid json }")
             config_path = f.name
 
@@ -1211,7 +1193,6 @@ class TestIntegrationWithAuditSystem:
         """测试可配置引擎作为审核规则"""
         from src.domain.services.configurable_rule_engine import (
             ConfigurableRuleEngine,
-            RuleAction,
         )
         from src.domain.services.save_request_audit import (
             AuditStatus,
@@ -1257,9 +1238,7 @@ class TestIntegrationWithAuditSystem:
         """测试引擎评估结果转审核结果"""
         from src.domain.services.configurable_rule_engine import (
             ConfigurableRuleEngine,
-            RuleAction,
         )
-        from src.domain.services.save_request_audit import AuditStatus
         from src.domain.services.save_request_channel import (
             SaveRequest,
             SaveRequestType,
@@ -1380,9 +1359,7 @@ class TestCompleteWorkflow:
         assert engine.evaluate(req3).final_action == RuleAction.TERMINATE
 
         # 场景4: 包含邮箱 - 替换
-        req4 = MockSaveRequest(
-            target_path="/tmp/data.txt", content="Contact: user@example.com"
-        )
+        req4 = MockSaveRequest(target_path="/tmp/data.txt", content="Contact: user@example.com")
         result4 = engine.evaluate(req4)
         assert result4.final_action == RuleAction.REPLACE
         assert "[EMAIL]" in result4.modified_content
@@ -1415,7 +1392,6 @@ class TestCompleteWorkflow:
         """测试规则评估顺序"""
         from src.domain.services.configurable_rule_engine import (
             ConfigurableRuleEngine,
-            RuleAction,
         )
 
         config = {

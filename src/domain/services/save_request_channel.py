@@ -26,7 +26,6 @@ from uuid import uuid4
 
 from src.domain.services.event_bus import Event
 
-
 # =============================================================================
 # 异常定义
 # =============================================================================
@@ -154,14 +153,10 @@ class SaveRequest(Event):
         """初始化后验证"""
         # 验证必填字段
         if not self.target_path:
-            raise SaveRequestValidationError(
-                "target_path is required and cannot be empty"
-            )
+            raise SaveRequestValidationError("target_path is required and cannot be empty")
 
         if not self.session_id:
-            raise SaveRequestValidationError(
-                "session_id is required and cannot be empty"
-            )
+            raise SaveRequestValidationError("session_id is required and cannot be empty")
 
         # 检查写操作的空内容警告
         if (
@@ -431,9 +426,7 @@ class SaveRequestQueueManager:
         """
         with self._lock:
             if len(self._queue) >= self._max_size:
-                raise SaveRequestQueueFullError(
-                    f"Queue is full (max_size={self._max_size})"
-                )
+                raise SaveRequestQueueFullError(f"Queue is full (max_size={self._max_size})")
 
             # 优先级取负数，因为 heapq 是最小堆
             priority = -SaveRequestPriority.get_priority_order(request.priority)
@@ -480,10 +473,7 @@ class SaveRequestQueueManager:
             该会话的请求列表
         """
         with self._lock:
-            return [
-                item[2] for item in self._queue
-                if item[2].session_id == session_id
-            ]
+            return [item[2] for item in self._queue if item[2].session_id == session_id]
 
     def get_status(self, request_id: str) -> SaveRequestStatus | None:
         """获取请求状态

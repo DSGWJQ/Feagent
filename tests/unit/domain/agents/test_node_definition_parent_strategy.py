@@ -7,8 +7,6 @@
 4. resource_limits 字段验证
 """
 
-import pytest
-
 from src.domain.agents.node_definition import NodeDefinition, NodeType
 
 
@@ -389,15 +387,15 @@ class TestEdgeCases:
 
         # 验证所有子节点都继承了策略
         for child in children:
-            assert child.error_strategy == parent.error_strategy, (
-                f"Child {child.name} did not inherit error_strategy"
-            )
-            assert child.resource_limits == parent.resource_limits, (
-                f"Child {child.name} did not inherit resource_limits"
-            )
-            assert child.inherited_strategy is True, (
-                f"Child {child.name} inherited_strategy flag not set"
-            )
+            assert (
+                child.error_strategy == parent.error_strategy
+            ), f"Child {child.name} did not inherit error_strategy"
+            assert (
+                child.resource_limits == parent.resource_limits
+            ), f"Child {child.name} did not inherit resource_limits"
+            assert (
+                child.inherited_strategy is True
+            ), f"Child {child.name} inherited_strategy flag not set"
 
     def test_parent_node_with_empty_resource_limits(self):
         """空的 resource_limits 字典应该被视为无效"""
@@ -413,6 +411,6 @@ class TestEdgeCases:
 
         errors = parent.validate()
         # 空的 resource_limits 应该被视为未定义
-        assert any("resource_limits" in err.lower() for err in errors), (
-            f"Expected resource_limits validation error, but got: {errors}"
-        )
+        assert any(
+            "resource_limits" in err.lower() for err in errors
+        ), f"Expected resource_limits validation error, but got: {errors}"

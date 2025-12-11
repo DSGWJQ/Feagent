@@ -3,8 +3,9 @@
 测试 ConversationAgent 创建包含父子节点的工作流计划。
 """
 
-import pytest
 from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from src.domain.agents.conversation_agent import ConversationAgent
 from src.domain.agents.node_definition import NodeType
@@ -45,9 +46,7 @@ class TestConversationAgentParentNodeIntegration:
         )
 
     @pytest.mark.asyncio
-    async def test_create_workflow_plan_with_parent_node(
-        self, conversation_agent, mock_llm
-    ):
+    async def test_create_workflow_plan_with_parent_node(self, conversation_agent, mock_llm):
         """测试创建包含父节点的工作流计划"""
         # 模拟 LLM 返回包含父节点的规划
         mock_llm.plan_workflow.return_value = {
@@ -89,9 +88,7 @@ class TestConversationAgentParentNodeIntegration:
         }
 
         # 创建工作流计划
-        plan = await conversation_agent.create_workflow_plan(
-            "创建数据分析流程"
-        )
+        plan = await conversation_agent.create_workflow_plan("创建数据分析流程")
 
         # 验证计划创建成功
         assert plan is not None
@@ -115,20 +112,18 @@ class TestConversationAgentParentNodeIntegration:
 
         # 验证策略传播
         for child in parent_node.children:
-            assert child.error_strategy == parent_node.error_strategy, (
-                f"子节点 {child.name} 未继承 error_strategy"
-            )
-            assert child.resource_limits == parent_node.resource_limits, (
-                f"子节点 {child.name} 未继承 resource_limits"
-            )
-            assert child.inherited_strategy is True, (
-                f"子节点 {child.name} inherited_strategy 标志未设置"
-            )
+            assert (
+                child.error_strategy == parent_node.error_strategy
+            ), f"子节点 {child.name} 未继承 error_strategy"
+            assert (
+                child.resource_limits == parent_node.resource_limits
+            ), f"子节点 {child.name} 未继承 resource_limits"
+            assert (
+                child.inherited_strategy is True
+            ), f"子节点 {child.name} inherited_strategy 标志未设置"
 
     @pytest.mark.asyncio
-    async def test_decompose_to_nodes_with_parent_node(
-        self, conversation_agent, mock_llm
-    ):
+    async def test_decompose_to_nodes_with_parent_node(self, conversation_agent, mock_llm):
         """测试分解目标为包含父节点的节点列表"""
         # 模拟 LLM 返回包含父节点的节点列表
         mock_llm.decompose_to_nodes.return_value = [
@@ -161,9 +156,7 @@ class TestConversationAgentParentNodeIntegration:
         ]
 
         # 分解目标
-        nodes = await conversation_agent.decompose_to_nodes(
-            "创建 ETL 流程"
-        )
+        nodes = await conversation_agent.decompose_to_nodes("创建 ETL 流程")
 
         # 验证节点列表
         assert len(nodes) == 1
@@ -187,9 +180,7 @@ class TestConversationAgentParentNodeIntegration:
             assert child.inherited_strategy is True
 
     @pytest.mark.asyncio
-    async def test_create_plan_with_mixed_nodes(
-        self, conversation_agent, mock_llm
-    ):
+    async def test_create_plan_with_mixed_nodes(self, conversation_agent, mock_llm):
         """测试创建混合节点（父节点 + 普通节点）的计划"""
         mock_llm.plan_workflow.return_value = {
             "name": "混合工作流",
@@ -255,9 +246,7 @@ class TestConversationAgentParentNodeIntegration:
         assert plan.nodes[2].error_strategy is None
 
     @pytest.mark.asyncio
-    async def test_parent_node_without_strategy(
-        self, conversation_agent, mock_llm
-    ):
+    async def test_parent_node_without_strategy(self, conversation_agent, mock_llm):
         """测试没有策略的父节点（应该触发验证错误）"""
         mock_llm.plan_workflow.return_value = {
             "name": "无策略父节点",

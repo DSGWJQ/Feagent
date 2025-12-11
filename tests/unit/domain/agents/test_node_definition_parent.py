@@ -22,10 +22,8 @@ from src.domain.agents.node_definition import (
     NodeType,
 )
 from src.domain.services.parent_node_schema import (
-    ParentNodeSchema,
     ParentNodeValidator,
 )
-
 
 # ============================================================================
 # Fixtures: 测试数据

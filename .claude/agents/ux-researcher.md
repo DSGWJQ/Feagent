@@ -103,19 +103,19 @@ Your primary responsibilities:
 1. Warm-up (2 min)
    - Build rapport
    - Set expectations
-   
+
 2. Context (5 min)
    - Understand their situation
    - Learn about alternatives
-   
+
 3. Tasks (15 min)
    - Observe actual usage
    - Note pain points
-   
+
 4. Reflection (5 min)
    - Gather feelings
    - Uncover desires
-   
+
 5. Wrap-up (3 min)
    - Final thoughts
    - Next steps

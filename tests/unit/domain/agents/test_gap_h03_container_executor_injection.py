@@ -8,11 +8,12 @@
 TDD 阶段：Red（测试先行）
 """
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
-from src.domain.agents.workflow_agent import WorkflowAgent
+import pytest
+
 from src.domain.agents.node_definition import NodeDefinition, NodeType
+from src.domain.agents.workflow_agent import WorkflowAgent
 from src.domain.services.event_bus import EventBus
 
 
@@ -31,8 +32,9 @@ class TestContainerExecutorAutoInjection:
 
     def test_workflow_agent_has_container_executor_factory(self, workflow_agent):
         """测试 WorkflowAgent 有容器执行器工厂方法"""
-        assert hasattr(workflow_agent, "get_container_executor"), \
-            "WorkflowAgent 应该有 get_container_executor 方法"
+        assert hasattr(
+            workflow_agent, "get_container_executor"
+        ), "WorkflowAgent 应该有 get_container_executor 方法"
 
     def test_container_executor_lazy_loaded(self, workflow_agent):
         """测试容器执行器是懒加载的"""
@@ -48,13 +50,11 @@ class TestContainerExecutorAutoInjection:
             return Mock()
 
         # 保存原始方法（如果存在）
-        if hasattr(workflow_agent, '_create_container_executor'):
+        if hasattr(workflow_agent, "_create_container_executor"):
             original_create = workflow_agent._create_container_executor
 
         with patch.object(
-            workflow_agent,
-            '_create_container_executor',
-            side_effect=counting_factory
+            workflow_agent, "_create_container_executor", side_effect=counting_factory
         ):
             # 初始化后，工厂不应被调用
             assert call_count == 0, "初始化时不应创建执行器（懒加载）"
@@ -96,10 +96,7 @@ class TestContainerExecutorAutoInjection:
         custom_executor = Mock()
         custom_executor.execute_async = AsyncMock(return_value={"success": True})
 
-        agent = WorkflowAgent(
-            event_bus=event_bus,
-            container_executor=custom_executor
-        )
+        agent = WorkflowAgent(event_bus=event_bus, container_executor=custom_executor)
 
         executor = agent.get_container_executor()
         assert executor is custom_executor, "应该使用传入的自定义执行器"
@@ -124,11 +121,7 @@ class TestContainerNodeExecution:
             name="test_container",
             code="print('Hello from container')",
             is_container=True,
-            container_config={
-                "image": "python:3.11-slim",
-                "timeout": 30,
-                "memory_limit": "128m"
-            }
+            container_config={"image": "python:3.11-slim", "timeout": 30, "memory_limit": "128m"},
         )
 
     @pytest.mark.asyncio
@@ -140,11 +133,13 @@ class TestContainerNodeExecution:
 
         # 模拟执行器
         mock_executor = Mock()
-        mock_executor.execute_async = AsyncMock(return_value=Mock(
-            success=True,
-            output={"result": "test"},
-            to_dict=Mock(return_value={"success": True, "output": {"result": "test"}})
-        ))
+        mock_executor.execute_async = AsyncMock(
+            return_value=Mock(
+                success=True,
+                output={"result": "test"},
+                to_dict=Mock(return_value={"success": True, "output": {"result": "test"}}),
+            )
+        )
 
         with patch.object(workflow_agent, "get_container_executor", return_value=mock_executor):
             result = await workflow_agent.execute_container_node(container_node.id)
@@ -164,8 +159,9 @@ class TestContainerNodeExecution:
 
         # 即使执行失败（无 Docker），也不应该是配置错误
         if not result.get("success", True):
-            assert "No container executor configured" not in result.get("error", ""), \
-                "不应该报配置错误，执行器应该自动注入"
+            assert "No container executor configured" not in result.get(
+                "error", ""
+            ), "不应该报配置错误，执行器应该自动注入"
 
 
 class TestContainerExecutorFactory:
@@ -214,9 +210,9 @@ class TestContainerExecutorFallback:
 
         # 如果 Docker 不可用，应该有回退机制
         if not executor.is_available():
-            assert hasattr(executor, "fallback_executor") or \
-                   hasattr(agent, "get_sandbox_executor"), \
-                "Docker 不可用时应该有回退机制"
+            assert hasattr(executor, "fallback_executor") or hasattr(
+                agent, "get_sandbox_executor"
+            ), "Docker 不可用时应该有回退机制"
 
     @pytest.mark.asyncio
     async def test_container_node_uses_sandbox_fallback(self, event_bus):
@@ -228,7 +224,7 @@ class TestContainerExecutorFallback:
             name="test_fallback",
             code="result = 1 + 1",
             is_container=True,
-            container_config={"image": "python:3.11-slim"}
+            container_config={"image": "python:3.11-slim"},
         )
 
         agent.add_node(node)

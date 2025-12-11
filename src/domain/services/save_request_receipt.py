@@ -468,8 +468,8 @@ class ViolationKnowledgeWriter:
             格式化的违规内容
         """
         lines = [
-            f"# Violation Report",
-            f"",
+            "# Violation Report",
+            "",
             f"**Request ID:** {result.request_id}",
             f"**Session ID:** {session_id}",
             f"**Status:** {result.status.value}",
@@ -477,8 +477,8 @@ class ViolationKnowledgeWriter:
             f"**Error Code:** {result.error_code or 'N/A'}",
             f"**Error Message:** {result.error_message or 'N/A'}",
             f"**Timestamp:** {result.timestamp.isoformat()}",
-            f"",
-            f"## Audit Trail",
+            "",
+            "## Audit Trail",
         ]
 
         for i, trail in enumerate(result.audit_trail, 1):

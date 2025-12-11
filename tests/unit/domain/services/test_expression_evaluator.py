@@ -16,8 +16,8 @@
 import pytest
 
 from src.domain.services.expression_evaluator import (
-    ExpressionEvaluator,
     ExpressionEvaluationError,
+    ExpressionEvaluator,
     UnsafeExpressionError,
 )
 
@@ -65,23 +65,13 @@ class TestExpressionEvaluator:
 
     def test_nested_field_access(self):
         """测试嵌套字段访问"""
-        context = {
-            "node_output": {
-                "result": {
-                    "quality_score": 0.95
-                }
-            }
-        }
+        context = {"node_output": {"result": {"quality_score": 0.95}}}
         result = self.evaluator.evaluate("node_output['result']['quality_score'] > 0.9", context)
         assert result is True
 
     def test_dot_notation_field_access(self):
         """测试点号字段访问（如果支持）"""
-        context = {
-            "node_output": {
-                "quality_score": 0.95
-            }
-        }
+        context = {"node_output": {"quality_score": 0.95}}
         # 使用字典访问语法
         result = self.evaluator.evaluate("node_output['quality_score'] > 0.9", context)
         assert result is True
@@ -116,8 +106,7 @@ class TestExpressionEvaluator:
         """测试复杂逻辑表达式"""
         context = {"score": 0.85, "count": 120, "status": "completed"}
         result = self.evaluator.evaluate(
-            "(score > 0.8 and count > 100) or status == 'completed'",
-            context
+            "(score > 0.8 and count > 100) or status == 'completed'", context
         )
         assert result is True
 
@@ -229,26 +218,16 @@ class TestExpressionEvaluator:
         场景：数据质量评分 > 0.8 则直接分析，否则需要清洗
         """
         # 高质量数据
-        high_quality_context = {
-            "data_quality_score": 0.95,
-            "completeness": 0.98,
-            "accuracy": 0.97
-        }
+        high_quality_context = {"data_quality_score": 0.95, "completeness": 0.98, "accuracy": 0.97}
         result = self.evaluator.evaluate(
-            "data_quality_score > 0.8 and completeness > 0.9",
-            high_quality_context
+            "data_quality_score > 0.8 and completeness > 0.9", high_quality_context
         )
         assert result is True  # 应该直接分析
 
         # 低质量数据
-        low_quality_context = {
-            "data_quality_score": 0.65,
-            "completeness": 0.85,
-            "accuracy": 0.70
-        }
+        low_quality_context = {"data_quality_score": 0.65, "completeness": 0.85, "accuracy": 0.70}
         result = self.evaluator.evaluate(
-            "data_quality_score > 0.8 and completeness > 0.9",
-            low_quality_context
+            "data_quality_score > 0.8 and completeness > 0.9", low_quality_context
         )
         assert result is False  # 需要清洗
 
@@ -257,10 +236,7 @@ class TestExpressionEvaluator:
 
         场景：错误率 < 5% 继续执行，否则终止
         """
-        context = {
-            "error_count": 3,
-            "total_count": 100
-        }
+        context = {"error_count": 3, "total_count": 100}
         # 计算错误率
         context["error_rate"] = context["error_count"] / context["total_count"]
 
@@ -274,18 +250,12 @@ class TestExpressionEvaluator:
         """
         # 高优先级且待处理
         context1 = {"priority": "high", "status": "pending"}
-        result1 = self.evaluator.evaluate(
-            "priority == 'high' and status == 'pending'",
-            context1
-        )
+        result1 = self.evaluator.evaluate("priority == 'high' and status == 'pending'", context1)
         assert result1 is True
 
         # 低优先级或已完成
         context2 = {"priority": "low", "status": "completed"}
-        result2 = self.evaluator.evaluate(
-            "priority == 'high' and status == 'pending'",
-            context2
-        )
+        result2 = self.evaluator.evaluate("priority == 'high' and status == 'pending'", context2)
         assert result2 is False
 
 
@@ -299,45 +269,29 @@ class TestExpressionEvaluatorWithNodeOutputs:
         """测试评估包含节点输出结构的表达式"""
         # 模拟工作流上下文：包含多个节点的输出
         context = {
-            "node_a_output": {
-                "score": 0.95,
-                "count": 150
-            },
-            "node_b_output": {
-                "status": "completed",
-                "errors": []
-            }
+            "node_a_output": {"score": 0.95, "count": 150},
+            "node_b_output": {"status": "completed", "errors": []},
         }
 
         # 测试基于node_a输出的条件
         result = self.evaluator.evaluate(
-            "node_a_output['score'] > 0.9 and node_a_output['count'] > 100",
-            context
+            "node_a_output['score'] > 0.9 and node_a_output['count'] > 100", context
         )
         assert result is True
 
         # 测试基于node_b输出的条件
-        result = self.evaluator.evaluate(
-            "node_b_output['status'] == 'completed'",
-            context
-        )
+        result = self.evaluator.evaluate("node_b_output['status'] == 'completed'", context)
         assert result is True
 
     def test_evaluate_cross_node_conditions(self):
         """测试跨节点条件评估"""
         context = {
-            "validation_output": {
-                "is_valid": True,
-                "confidence": 0.92
-            },
-            "processing_output": {
-                "result_count": 120
-            }
+            "validation_output": {"is_valid": True, "confidence": 0.92},
+            "processing_output": {"result_count": 120},
         }
 
         # 跨节点条件：验证通过且结果数量充足
         result = self.evaluator.evaluate(
-            "validation_output['is_valid'] and processing_output['result_count'] > 100",
-            context
+            "validation_output['is_valid'] and processing_output['result_count'] > 100", context
         )
         assert result is True

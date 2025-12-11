@@ -102,9 +102,7 @@ class ContainerExecutionMonitor:
         )
 
         self.event_bus.subscribe(ContainerExecutionStartedEvent, self._handle_container_started)
-        self.event_bus.subscribe(
-            ContainerExecutionCompletedEvent, self._handle_container_completed
-        )
+        self.event_bus.subscribe(ContainerExecutionCompletedEvent, self._handle_container_completed)
         self.event_bus.subscribe(ContainerLogEvent, self._handle_container_log)
 
         self._is_listening_container_events = True

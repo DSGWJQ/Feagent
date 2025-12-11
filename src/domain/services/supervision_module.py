@@ -16,10 +16,11 @@
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 from uuid import uuid4
 
 from src.domain.services.event_bus import Event
@@ -39,9 +40,9 @@ class SupervisionAction(str, Enum):
     优先级：TERMINATE > REPLACE > WARNING
     """
 
-    WARNING = "warning"        # 警告 - 注入警告信息
-    REPLACE = "replace"        # 替换 - 替换内容/节点
-    TERMINATE = "terminate"    # 终止 - 终止任务
+    WARNING = "warning"  # 警告 - 注入警告信息
+    REPLACE = "replace"  # 替换 - 替换内容/节点
+    TERMINATE = "terminate"  # 终止 - 终止任务
 
     @staticmethod
     def get_priority(action: "SupervisionAction") -> int:
@@ -184,13 +185,15 @@ class SupervisionTriggeredEvent(Event):
     当监督规则被触发时发布。
     """
 
-    supervision_info: SupervisionInfo = field(default_factory=lambda: SupervisionInfo(
-        session_id="",
-        action=SupervisionAction.WARNING,
-        content="",
-        trigger_rule="",
-        trigger_condition="",
-    ))
+    supervision_info: SupervisionInfo = field(
+        default_factory=lambda: SupervisionInfo(
+            session_id="",
+            action=SupervisionAction.WARNING,
+            content="",
+            trigger_rule="",
+            trigger_condition="",
+        )
+    )
 
     @property
     def event_type(self) -> str:
@@ -311,24 +314,28 @@ def _create_builtin_rules() -> list[SupervisionRule]:
     rules = []
 
     # 1. 高上下文使用率警告规则
-    rules.append(SupervisionRule(
-        rule_id="builtin-high-usage-warning",
-        name="高上下文使用率警告",
-        description="上下文使用率超过80%时警告",
-        action=SupervisionAction.WARNING,
-        priority=30,
-        condition=lambda ctx: ctx.get("usage_ratio", 0) > 0.8,
-    ))
+    rules.append(
+        SupervisionRule(
+            rule_id="builtin-high-usage-warning",
+            name="高上下文使用率警告",
+            description="上下文使用率超过80%时警告",
+            action=SupervisionAction.WARNING,
+            priority=30,
+            condition=lambda ctx: ctx.get("usage_ratio", 0) > 0.8,
+        )
+    )
 
     # 2. 临界上下文使用率终止规则
-    rules.append(SupervisionRule(
-        rule_id="builtin-critical-usage-terminate",
-        name="临界上下文使用率终止",
-        description="上下文使用率超过95%时终止",
-        action=SupervisionAction.TERMINATE,
-        priority=90,
-        condition=lambda ctx: ctx.get("usage_ratio", 0) > 0.95,
-    ))
+    rules.append(
+        SupervisionRule(
+            rule_id="builtin-critical-usage-terminate",
+            name="临界上下文使用率终止",
+            description="上下文使用率超过95%时终止",
+            action=SupervisionAction.TERMINATE,
+            priority=90,
+            condition=lambda ctx: ctx.get("usage_ratio", 0) > 0.95,
+        )
+    )
 
     # 3. 敏感路径检测规则
     def _check_dangerous_path(ctx: dict[str, Any]) -> bool:
@@ -336,14 +343,16 @@ def _create_builtin_rules() -> list[SupervisionRule]:
         dangerous_prefixes = ["/etc/", "/boot/", "/root/", "/sys/", "/proc/"]
         return any(path.startswith(prefix) for prefix in dangerous_prefixes)
 
-    rules.append(SupervisionRule(
-        rule_id="builtin-dangerous-path",
-        name="危险路径检测",
-        description="检测对系统关键路径的写入",
-        action=SupervisionAction.TERMINATE,
-        priority=100,
-        condition=_check_dangerous_path,
-    ))
+    rules.append(
+        SupervisionRule(
+            rule_id="builtin-dangerous-path",
+            name="危险路径检测",
+            description="检测对系统关键路径的写入",
+            action=SupervisionAction.TERMINATE,
+            priority=100,
+            condition=_check_dangerous_path,
+        )
+    )
 
     # 4. 敏感内容检测规则
     def _check_sensitive_content(ctx: dict[str, Any]) -> bool:
@@ -352,21 +361,23 @@ def _create_builtin_rules() -> list[SupervisionRule]:
             r'password\s*=\s*[\'"][^\'"]+[\'"]',
             r'api_key\s*=\s*[\'"][^\'"]+[\'"]',
             r'secret\s*=\s*[\'"][^\'"]+[\'"]',
-            r'-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----',
+            r"-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----",
         ]
         for pattern in patterns:
             if re.search(pattern, content, re.IGNORECASE):
                 return True
         return False
 
-    rules.append(SupervisionRule(
-        rule_id="builtin-sensitive-content",
-        name="敏感内容检测",
-        description="检测密码、API密钥等敏感信息",
-        action=SupervisionAction.WARNING,
-        priority=70,
-        condition=_check_sensitive_content,
-    ))
+    rules.append(
+        SupervisionRule(
+            rule_id="builtin-sensitive-content",
+            name="敏感内容检测",
+            description="检测密码、API密钥等敏感信息",
+            action=SupervisionAction.WARNING,
+            priority=70,
+            condition=_check_sensitive_content,
+        )
+    )
 
     # 5. 危险命令检测规则
     def _check_dangerous_command(ctx: dict[str, Any]) -> bool:
@@ -380,14 +391,16 @@ def _create_builtin_rules() -> list[SupervisionRule]:
         ]
         return any(cmd in content for cmd in dangerous_commands)
 
-    rules.append(SupervisionRule(
-        rule_id="builtin-dangerous-command",
-        name="危险命令检测",
-        description="检测可能造成系统损坏的命令",
-        action=SupervisionAction.TERMINATE,
-        priority=100,
-        condition=_check_dangerous_command,
-    ))
+    rules.append(
+        SupervisionRule(
+            rule_id="builtin-dangerous-command",
+            name="危险命令检测",
+            description="检测可能造成系统损坏的命令",
+            action=SupervisionAction.TERMINATE,
+            priority=100,
+            condition=_check_dangerous_command,
+        )
+    )
 
     # 6. 循环检测规则
     def _check_loop_pattern(ctx: dict[str, Any]) -> bool:
@@ -398,28 +411,32 @@ def _create_builtin_rules() -> list[SupervisionRule]:
         recent_actions = [d.get("action") for d in decisions[-5:]]
         return len(set(recent_actions)) == 1 and recent_actions[0] is not None
 
-    rules.append(SupervisionRule(
-        rule_id="builtin-loop-detection",
-        name="循环检测",
-        description="检测重复的决策模式",
-        action=SupervisionAction.WARNING,
-        priority=50,
-        condition=_check_loop_pattern,
-    ))
+    rules.append(
+        SupervisionRule(
+            rule_id="builtin-loop-detection",
+            name="循环检测",
+            description="检测重复的决策模式",
+            action=SupervisionAction.WARNING,
+            priority=50,
+            condition=_check_loop_pattern,
+        )
+    )
 
     # 7. 超长对话历史警告
     def _check_long_history(ctx: dict[str, Any]) -> bool:
         history = ctx.get("conversation_history", [])
         return len(history) > 50
 
-    rules.append(SupervisionRule(
-        rule_id="builtin-long-history",
-        name="超长对话历史",
-        description="对话历史超过50轮时警告",
-        action=SupervisionAction.WARNING,
-        priority=20,
-        condition=_check_long_history,
-    ))
+    rules.append(
+        SupervisionRule(
+            rule_id="builtin-long-history",
+            name="超长对话历史",
+            description="对话历史超过50轮时警告",
+            action=SupervisionAction.WARNING,
+            priority=20,
+            condition=_check_long_history,
+        )
+    )
 
     return rules
 
@@ -516,10 +533,7 @@ class SupervisionModule:
                 self._logger.log_trigger(info)
 
         # 按动作优先级排序
-        results.sort(
-            key=lambda x: SupervisionAction.get_priority(x.action),
-            reverse=True
-        )
+        results.sort(key=lambda x: SupervisionAction.get_priority(x.action), reverse=True)
 
         return results
 

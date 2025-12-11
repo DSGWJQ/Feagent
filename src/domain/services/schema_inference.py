@@ -19,9 +19,7 @@
 from __future__ import annotations
 
 import ast
-import re
 from typing import TYPE_CHECKING, Any
-
 
 if TYPE_CHECKING:
     from src.domain.agents.node_definition import NodeDefinition
@@ -228,7 +226,7 @@ class SchemaInference:
         if isinstance(value, ast.Dict):
             # 字典字面量
             properties = {}
-            for key, val in zip(value.keys, value.values):
+            for key, val in zip(value.keys, value.values, strict=False):
                 if isinstance(key, ast.Constant) and isinstance(key.value, str):
                     properties[key.value] = self._infer_from_ast_value(val)
             return {"type": "object", "properties": properties}
@@ -308,7 +306,7 @@ class SchemaInference:
 
     def validate_workflow_schema_flow(
         self,
-        plan: "WorkflowPlan",
+        plan: WorkflowPlan,
     ) -> list[str]:
         """验证工作流中的 Schema 流
 
@@ -339,15 +337,13 @@ class SchemaInference:
 
             if output_schema and input_schema:
                 if not self.check_compatibility(output_schema, input_schema):
-                    errors.append(
-                        f"Schema 不匹配: {edge.source_node} -> {edge.target_node}"
-                    )
+                    errors.append(f"Schema 不匹配: {edge.source_node} -> {edge.target_node}")
 
         return errors
 
     def infer_node_output_schema(
         self,
-        node: "NodeDefinition",
+        node: NodeDefinition,
     ) -> dict[str, Any] | None:
         """自动推断节点的输出 Schema
 

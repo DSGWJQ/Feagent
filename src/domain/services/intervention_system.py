@@ -37,11 +37,11 @@ class InterventionLevel(str, Enum):
     级别递进：NONE → NOTIFY → WARN → REPLACE → TERMINATE
     """
 
-    NONE = "none"              # 无干预
-    NOTIFY = "notify"          # 通知（仅记录）
-    WARN = "warn"              # 警告（注入警告）
-    REPLACE = "replace"        # 替换（替换节点）
-    TERMINATE = "terminate"    # 终止（强制终止）
+    NONE = "none"  # 无干预
+    NOTIFY = "notify"  # 通知（仅记录）
+    WARN = "warn"  # 警告（注入警告）
+    REPLACE = "replace"  # 替换（替换节点）
+    TERMINATE = "terminate"  # 终止（强制终止）
 
     @staticmethod
     def get_severity(level: "InterventionLevel") -> int:
@@ -360,9 +360,7 @@ class InterventionLogger:
         self._logs.append(log_entry)
 
         logger.info(
-            f"[INTERVENTION] level={level.value} "
-            f"session={session_id} "
-            f"action={action}"
+            f"[INTERVENTION] level={level.value} " f"session={session_id} " f"action={action}"
         )
 
     def get_logs(self) -> list[dict[str, Any]]:
@@ -506,7 +504,8 @@ class WorkflowModifier:
         # 移除相关边
         edges = modified_workflow.get("edges", [])
         modified_edges = [
-            e for e in edges
+            e
+            for e in edges
             if e.get("from") != request.original_node_id and e.get("to") != request.original_node_id
         ]
         modified_workflow["edges"] = modified_edges
@@ -638,8 +637,7 @@ class TaskTerminator:
             reason: 终止原因
         """
         logger.info(
-            f"[TERMINATION] Notifying {agent_type} agent: "
-            f"session={session_id} reason={reason}"
+            f"[TERMINATION] Notifying {agent_type} agent: " f"session={session_id} reason={reason}"
         )
 
     def _create_user_message(self, request: TaskTerminationRequest) -> str:
@@ -744,9 +742,7 @@ class InterventionCoordinator:
         """
         new_level = InterventionLevel.next_level(current_level)
 
-        logger.info(
-            f"[ESCALATION] {current_level.value} -> {new_level.value}: {reason}"
-        )
+        logger.info(f"[ESCALATION] {current_level.value} -> {new_level.value}: {reason}")
 
         return new_level
 

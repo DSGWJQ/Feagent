@@ -14,13 +14,6 @@ TDD 测试用例：
 测试日期：2025-12-08
 """
 
-import asyncio
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Any
-
-import pytest
-
 
 # =============================================================================
 # 测试辅助类
@@ -330,9 +323,7 @@ class TestContextInjectionManager:
 
         # 按注入点获取
         pre_loop = manager.get_pending_injections("session-001", InjectionPoint.PRE_LOOP)
-        pre_thinking = manager.get_pending_injections(
-            "session-001", InjectionPoint.PRE_THINKING
-        )
+        pre_thinking = manager.get_pending_injections("session-001", InjectionPoint.PRE_THINKING)
 
         assert len(pre_loop) == 1
         assert len(pre_thinking) == 1
@@ -501,9 +492,7 @@ class TestContextInjectionManager:
             reason="安全检查",
         )
 
-        pending = manager.get_pending_injections(
-            "session-001", InjectionPoint.PRE_THINKING
-        )
+        pending = manager.get_pending_injections("session-001", InjectionPoint.PRE_THINKING)
         assert len(pending) == 1
         assert pending[0].injection_type == InjectionType.WARNING
 
@@ -524,9 +513,7 @@ class TestContextInjectionManager:
             reason="需要人工审核",
         )
 
-        pending = manager.get_pending_injections(
-            "session-001", InjectionPoint.INTERVENTION
-        )
+        pending = manager.get_pending_injections("session-001", InjectionPoint.INTERVENTION)
         assert len(pending) == 1
         assert pending[0].injection_type == InjectionType.INTERVENTION
         assert pending[0].priority == 100  # 干预优先级最高
@@ -921,7 +908,6 @@ class TestEndToEndInjectionInfluence:
     def test_intervention_has_highest_priority(self):
         """测试干预注入具有最高优先级"""
         from src.domain.services.context_injection import (
-            ContextInjection,
             ContextInjectionManager,
             InjectionPoint,
             InjectionType,

@@ -36,11 +36,11 @@ class InjectionType(str, Enum):
     定义可以注入的信息类型。
     """
 
-    INSTRUCTION = "instruction"    # 指令更新
-    OBSERVATION = "observation"    # 观察信息
-    MEMORY = "memory"              # 长期记忆
-    WARNING = "warning"            # 警告信息
-    SUPPLEMENT = "supplement"      # 补充信息
+    INSTRUCTION = "instruction"  # 指令更新
+    OBSERVATION = "observation"  # 观察信息
+    MEMORY = "memory"  # 长期记忆
+    WARNING = "warning"  # 警告信息
+    SUPPLEMENT = "supplement"  # 补充信息
     INTERVENTION = "intervention"  # 干预指令
 
 
@@ -50,7 +50,7 @@ class InjectionPoint(str, Enum):
     定义在 ReAct 循环中可以注入的位置。
     """
 
-    PRE_LOOP = "pre_loop"          # 循环开始前
+    PRE_LOOP = "pre_loop"  # 循环开始前
     PRE_THINKING = "pre_thinking"  # 思考阶段前
     POST_THINKING = "post_thinking"  # 思考阶段后
     INTERVENTION = "intervention"  # 干预注入点
@@ -137,14 +137,16 @@ class ContextInjectionEvent(Event):
     当注入被添加时发布。
     """
 
-    injection: ContextInjection = field(default_factory=lambda: ContextInjection(
-        session_id="",
-        injection_type=InjectionType.INSTRUCTION,
-        injection_point=InjectionPoint.PRE_LOOP,
-        content="",
-        source="",
-        reason="",
-    ))
+    injection: ContextInjection = field(
+        default_factory=lambda: ContextInjection(
+            session_id="",
+            injection_type=InjectionType.INSTRUCTION,
+            injection_point=InjectionPoint.PRE_LOOP,
+            content="",
+            source="",
+            reason="",
+        )
+    )
 
     @property
     def event_type(self) -> str:

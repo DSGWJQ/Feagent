@@ -14,11 +14,6 @@ TDD 测试用例，覆盖：
 实现日期：2025-12-08
 """
 
-import pytest
-from datetime import datetime
-from unittest.mock import Mock, MagicMock, AsyncMock, patch
-import asyncio
-
 
 # =============================================================================
 # TestInterventionLevel - 干预级别测试
@@ -62,22 +57,30 @@ class TestInterventionLevel:
         """测试：级别严重程度顺序 TERMINATE > REPLACE > WARN > NOTIFY > NONE"""
         from src.domain.services.intervention_system import InterventionLevel
 
-        assert InterventionLevel.get_severity(InterventionLevel.TERMINATE) > \
-               InterventionLevel.get_severity(InterventionLevel.REPLACE)
-        assert InterventionLevel.get_severity(InterventionLevel.REPLACE) > \
-               InterventionLevel.get_severity(InterventionLevel.WARN)
-        assert InterventionLevel.get_severity(InterventionLevel.WARN) > \
-               InterventionLevel.get_severity(InterventionLevel.NOTIFY)
-        assert InterventionLevel.get_severity(InterventionLevel.NOTIFY) > \
-               InterventionLevel.get_severity(InterventionLevel.NONE)
+        assert InterventionLevel.get_severity(
+            InterventionLevel.TERMINATE
+        ) > InterventionLevel.get_severity(InterventionLevel.REPLACE)
+        assert InterventionLevel.get_severity(
+            InterventionLevel.REPLACE
+        ) > InterventionLevel.get_severity(InterventionLevel.WARN)
+        assert InterventionLevel.get_severity(
+            InterventionLevel.WARN
+        ) > InterventionLevel.get_severity(InterventionLevel.NOTIFY)
+        assert InterventionLevel.get_severity(
+            InterventionLevel.NOTIFY
+        ) > InterventionLevel.get_severity(InterventionLevel.NONE)
 
     def test_level_can_escalate(self):
         """测试：级别升级判断"""
         from src.domain.services.intervention_system import InterventionLevel
 
         assert InterventionLevel.can_escalate(InterventionLevel.WARN, InterventionLevel.REPLACE)
-        assert InterventionLevel.can_escalate(InterventionLevel.REPLACE, InterventionLevel.TERMINATE)
-        assert not InterventionLevel.can_escalate(InterventionLevel.TERMINATE, InterventionLevel.WARN)
+        assert InterventionLevel.can_escalate(
+            InterventionLevel.REPLACE, InterventionLevel.TERMINATE
+        )
+        assert not InterventionLevel.can_escalate(
+            InterventionLevel.TERMINATE, InterventionLevel.WARN
+        )
 
 
 # =============================================================================
@@ -227,8 +230,8 @@ class TestWorkflowModifier:
     def test_replace_node_success(self):
         """测试：替换节点成功"""
         from src.domain.services.intervention_system import (
-            WorkflowModifier,
             NodeReplacementRequest,
+            WorkflowModifier,
         )
 
         modifier = WorkflowModifier()
@@ -259,8 +262,8 @@ class TestWorkflowModifier:
     def test_replace_node_not_found(self):
         """测试：替换节点 - 节点不存在"""
         from src.domain.services.intervention_system import (
-            WorkflowModifier,
             NodeReplacementRequest,
+            WorkflowModifier,
         )
 
         modifier = WorkflowModifier()
@@ -287,8 +290,8 @@ class TestWorkflowModifier:
     def test_remove_node_success(self):
         """测试：移除节点成功"""
         from src.domain.services.intervention_system import (
-            WorkflowModifier,
             NodeReplacementRequest,
+            WorkflowModifier,
         )
 
         modifier = WorkflowModifier()
@@ -320,8 +323,8 @@ class TestWorkflowModifier:
     def test_remove_node_updates_edges(self):
         """测试：移除节点 - 同时更新边"""
         from src.domain.services.intervention_system import (
-            WorkflowModifier,
             NodeReplacementRequest,
+            WorkflowModifier,
         )
 
         modifier = WorkflowModifier()
@@ -409,8 +412,8 @@ class TestTaskTerminator:
     def test_terminate_task(self):
         """测试：终止任务"""
         from src.domain.services.intervention_system import (
-            TaskTerminator,
             TaskTerminationRequest,
+            TaskTerminator,
         )
 
         terminator = TaskTerminator()
@@ -429,8 +432,8 @@ class TestTaskTerminator:
     def test_terminate_notifies_conversation_agent(self):
         """测试：终止通知 ConversationAgent"""
         from src.domain.services.intervention_system import (
-            TaskTerminator,
             TaskTerminationRequest,
+            TaskTerminator,
         )
 
         terminator = TaskTerminator()
@@ -449,8 +452,8 @@ class TestTaskTerminator:
     def test_terminate_notifies_workflow_agent(self):
         """测试：终止通知 WorkflowAgent"""
         from src.domain.services.intervention_system import (
-            TaskTerminator,
             TaskTerminationRequest,
+            TaskTerminator,
         )
 
         terminator = TaskTerminator()
@@ -469,8 +472,8 @@ class TestTaskTerminator:
     def test_terminate_notifies_user(self):
         """测试：终止通知用户"""
         from src.domain.services.intervention_system import (
-            TaskTerminator,
             TaskTerminationRequest,
+            TaskTerminator,
         )
 
         terminator = TaskTerminator()
@@ -490,8 +493,8 @@ class TestTaskTerminator:
     def test_terminate_creates_error_event(self):
         """测试：终止创建错误事件"""
         from src.domain.services.intervention_system import (
-            TaskTerminator,
             TaskTerminationRequest,
+            TaskTerminator,
         )
 
         terminator = TaskTerminator()
@@ -785,10 +788,9 @@ class TestIntegrationAnomalyReplaceAndContinue:
         """测试：检测异常后替换节点，工作流继续执行"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
-        from src.domain.services.intervention_system import InterventionLevel
 
         coordinator = CoordinatorAgent()
 
@@ -803,13 +805,15 @@ class TestIntegrationAnomalyReplaceAndContinue:
         }
 
         # 2. 添加检测规则
-        coordinator.supervision_module.add_rule(SupervisionRule(
-            rule_id="detect-broken-url",
-            name="检测损坏 URL",
-            description="检测不可用的 HTTP 节点",
-            action=SupervisionAction.REPLACE,
-            condition=lambda ctx: "broken.com" in ctx.get("node_config", {}).get("url", ""),
-        ))
+        coordinator.supervision_module.add_rule(
+            SupervisionRule(
+                rule_id="detect-broken-url",
+                name="检测损坏 URL",
+                description="检测不可用的 HTTP 节点",
+                action=SupervisionAction.REPLACE,
+                condition=lambda ctx: "broken.com" in ctx.get("node_config", {}).get("url", ""),
+            )
+        )
 
         # 3. 模拟检测异常
         context = {
@@ -889,21 +893,22 @@ class TestIntegrationExtremeAnomalyTerminate:
         """测试：极端异常触发终止，用户收到错误消息"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
         from src.domain.services.supervision_module import (
-            SupervisionRule,
             SupervisionAction,
+            SupervisionRule,
         )
-        from src.domain.services.intervention_system import InterventionLevel
 
         coordinator = CoordinatorAgent()
 
         # 1. 添加极端异常检测规则
-        coordinator.supervision_module.add_rule(SupervisionRule(
-            rule_id="detect-extreme-error",
-            name="极端异常检测",
-            description="检测无法恢复的错误",
-            action=SupervisionAction.TERMINATE,
-            condition=lambda ctx: ctx.get("error_type") == "unrecoverable",
-        ))
+        coordinator.supervision_module.add_rule(
+            SupervisionRule(
+                rule_id="detect-extreme-error",
+                name="极端异常检测",
+                description="检测无法恢复的错误",
+                action=SupervisionAction.TERMINATE,
+                condition=lambda ctx: ctx.get("error_type") == "unrecoverable",
+            )
+        )
 
         # 2. 模拟极端异常
         context = {
@@ -917,8 +922,7 @@ class TestIntegrationExtremeAnomalyTerminate:
         # 3. 验证检测到 TERMINATE 级别
         assert len(supervision_results) >= 1
         terminate_result = next(
-            (r for r in supervision_results if r.action == SupervisionAction.TERMINATE),
-            None
+            (r for r in supervision_results if r.action == SupervisionAction.TERMINATE), None
         )
         assert terminate_result is not None
 
@@ -935,7 +939,9 @@ class TestIntegrationExtremeAnomalyTerminate:
         # 6. 验证用户收到错误
         assert termination_result.user_notified is True
         assert termination_result.user_message is not None
-        assert "E999" in termination_result.user_message or "错误" in termination_result.user_message
+        assert (
+            "E999" in termination_result.user_message or "错误" in termination_result.user_message
+        )
 
     def test_terminate_notifies_all_agents(self):
         """测试：终止时通知所有相关 Agent"""

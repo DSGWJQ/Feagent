@@ -10,11 +10,7 @@ TDD: Red → Green → Refactor
 创建日期：2025-12-08
 """
 
-from datetime import datetime
-from unittest.mock import MagicMock, patch
-
-import pytest
-
+from unittest.mock import MagicMock
 
 # =============================================================================
 # Test: SaveRequestResult 数据结构
@@ -433,8 +429,9 @@ class TestViolationKnowledgeWriter:
 
         # 检查调用参数
         call_args = mock_knowledge_manager.create.call_args
-        assert "violation" in call_args.kwargs.get("category", "").lower() or \
-               "violation" in str(call_args)
+        assert "violation" in call_args.kwargs.get("category", "").lower() or "violation" in str(
+            call_args
+        )
 
     def test_batch_write_violations(self):
         """测试：批量写入违规记录"""
@@ -570,12 +567,12 @@ class TestConversationAgentIntegration:
 
     def test_conversation_agent_receives_result(self):
         """测试：ConversationAgent 接收保存结果"""
+        from src.domain.services.event_bus import EventBus
         from src.domain.services.save_request_receipt import (
             SaveRequestResult,
             SaveRequestResultEvent,
             SaveResultStatus,
         )
-        from src.domain.services.event_bus import EventBus
 
         event_bus = EventBus()
         received_events = []
@@ -598,6 +595,7 @@ class TestConversationAgentIntegration:
         )
 
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(event_bus.publish(event))
 
         assert len(received_events) == 1

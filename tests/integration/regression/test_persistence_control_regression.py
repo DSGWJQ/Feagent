@@ -14,14 +14,11 @@
 创建日期：2025-12-08
 """
 
-import tempfile
 import os
-from datetime import datetime
-from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock
 
 import pytest
-
 
 # =============================================================================
 # Fixtures
@@ -49,6 +46,7 @@ def temp_dir():
 def mock_event_bus():
     """创建模拟事件总线"""
     from src.domain.services.event_bus import EventBus
+
     return EventBus()
 
 
@@ -181,8 +179,8 @@ class TestAuditRejectionRegression:
 
     def test_dangerous_path_rejection(self, coordinator):
         """回归测试：危险路径被拒绝"""
-        from src.domain.services.save_request_channel import SaveRequest
         from src.domain.services.save_request_audit import AuditStatus
+        from src.domain.services.save_request_channel import SaveRequest
 
         # 配置审核器（包含危险路径黑名单）
         coordinator.configure_save_auditor(
@@ -204,8 +202,8 @@ class TestAuditRejectionRegression:
 
     def test_content_size_rejection(self, coordinator):
         """回归测试：内容过大被拒绝"""
-        from src.domain.services.save_request_channel import SaveRequest
         from src.domain.services.save_request_audit import AuditStatus
+        from src.domain.services.save_request_channel import SaveRequest
 
         # 配置小的内容大小限制
         coordinator.configure_save_auditor(max_content_size=100)
@@ -224,8 +222,8 @@ class TestAuditRejectionRegression:
 
     def test_sensitive_content_detection(self, coordinator):
         """回归测试：敏感内容被检测"""
-        from src.domain.services.save_request_channel import SaveRequest
         from src.domain.services.save_request_audit import AuditStatus
+        from src.domain.services.save_request_channel import SaveRequest
 
         coordinator.configure_save_auditor(enable_sensitive_check=True)
 
@@ -239,7 +237,11 @@ class TestAuditRejectionRegression:
         result = coordinator._save_auditor.audit(request)
 
         # 敏感内容可能触发拒绝或待审核
-        assert result.status in (AuditStatus.REJECTED, AuditStatus.PENDING_REVIEW, AuditStatus.APPROVED)
+        assert result.status in (
+            AuditStatus.REJECTED,
+            AuditStatus.PENDING_REVIEW,
+            AuditStatus.APPROVED,
+        )
 
     def test_audit_logs_recorded(self, coordinator):
         """回归测试：审核日志正确记录"""
@@ -416,10 +418,7 @@ class TestNodeReplacementRegression:
         assert result.modified_workflow is not None
 
         # 验证新节点
-        new_node = next(
-            (n for n in result.modified_workflow["nodes"] if n["id"] == "node-1"),
-            None
-        )
+        new_node = next((n for n in result.modified_workflow["nodes"] if n["id"] == "node-1"), None)
         assert new_node is not None
         assert new_node["config"]["url"] == "http://new.com"
 
@@ -567,8 +566,7 @@ class TestTaskTerminationRegression:
         # 检查干预日志
         logs = coordinator.get_intervention_logs()
         assert any(
-            log.get("type") == "task_termination" or "terminate" in str(log).lower()
-            for log in logs
+            log.get("type") == "task_termination" or "terminate" in str(log).lower() for log in logs
         )
 
     def test_termination_with_escalation(self, coordinator):
@@ -763,8 +761,8 @@ class TestFailureScenarioRegression:
 
     def test_audit_rule_disabled(self, coordinator):
         """回归测试：禁用审核规则"""
-        from src.domain.services.save_request_channel import SaveRequest
         from src.domain.services.save_request_audit import AuditStatus
+        from src.domain.services.save_request_channel import SaveRequest
 
         # 配置最小化审核（禁用敏感检查和频率限制）
         coordinator.configure_save_auditor(
@@ -798,8 +796,9 @@ class TestPerformanceRegression:
 
     def test_queue_performance(self, coordinator):
         """回归测试：队列操作性能"""
-        from src.domain.services.save_request_channel import SaveRequest
         import time
+
+        from src.domain.services.save_request_channel import SaveRequest
 
         # 入队 100 个请求
         start = time.time()
@@ -824,8 +823,9 @@ class TestPerformanceRegression:
 
     def test_audit_performance(self, coordinator):
         """回归测试：审核性能"""
-        from src.domain.services.save_request_channel import SaveRequest
         import time
+
+        from src.domain.services.save_request_channel import SaveRequest
 
         coordinator.configure_save_auditor()
 
