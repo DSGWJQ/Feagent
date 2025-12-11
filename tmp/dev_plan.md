@@ -2680,22 +2680,23 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
    - 监督日志查询
    - Codex 初评 5/10 → 修复后 9/10
 
-3. ✅ **SupervisionCoordinator 子模块拆分** (Phase 34.14) - **最新完成**
+3. ✅ **SupervisionCoordinator 子模块拆分** (Phase 34.14)
    - supervision_modules.py (854行) → supervision/ 包 (7个文件)
    - 向后兼容 shim (66行)
    - 测试: 53 passed
    - Codex 审查: 9/10
 
-4. 🎯 **InterventionCoordinator** (中等复杂度) - **下一个目标**
-   - WorkflowModifier
-   - TaskTerminator
-   - 干预日志记录
+4. ✅ **InterventionCoordinator 包拆分** (Phase 34.15) - **最新完成**
+   - intervention_system.py (770行) → intervention/ 包 (7个文件)
+   - 向后兼容 shim (87行)
+   - 测试: 55/55 passed
+   - Codex 审查: 8/10 (发现原有设计问题)
 
 ---
 
 ## 已完成模块总结（Phase 2 累计）
 
-**已完成模块** (15 个):
+**已完成模块** (16 个):
 1. ✅ PromptVersionFacade (Phase 34.1)
 2. ✅ ExperimentOrchestrator (Phase 34.2)
 3. ✅ SubAgentOrchestrator (Phase 34.3)
@@ -2710,7 +2711,8 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 12. ✅ CoordinatorBootstrap (Phase 34.12)
 13. ✅ ContextInjectionManager (Phase 34.12)
 14. ✅ SupervisionFacade (Phase 34.13)
-15. ✅ SupervisionCoordinator 包拆分 (Phase 34.14) ← **最新完成**
+15. ✅ SupervisionCoordinator 包拆分 (Phase 34.14)
+16. ✅ InterventionCoordinator 包拆分 (Phase 34.15) ← **最新完成**
 
 **CoordinatorAgent 代码行数变化**:
 
@@ -2731,8 +2733,11 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 | ContextInjectionManager | ~17 | 4002 |
 | SupervisionFacade | +11 | 4013 |
 | SupervisionCoordinator 包拆分 | ~0 | 4013 |
+| InterventionCoordinator 包拆分 | ~0 | 4013 |
 | **总计** | **~1504** | **4013 (27.2% ↓)** |
 
-**说明**: Phase 34.14 是对 supervision_modules.py (854行) 的模块化重构，不直接影响 CoordinatorAgent 行数。
+**说明**:
+- Phase 34.14 是对 supervision_modules.py (854行) 的模块化重构，不直接影响 CoordinatorAgent 行数。
+- Phase 34.15 是对 intervention_system.py (770行) 的模块化重构，不直接影响 CoordinatorAgent 行数。
 
 **最终行数**: 5517 → 4013 lines (-1504 lines, 27.2%)
