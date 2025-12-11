@@ -487,6 +487,100 @@ def load_prompt_template(self, ...):
 
 ---
 
+## Phase 34: SaveRequestOrchestrator 提取计划
+
+### Codex 分析结果
+
+**代码定位**：
+
+| 方法/变量 | 行号 | 行数 | 职责 |
+|----------|------|------|------|
+| `_save_request_queue` | 429 | 1 | 请求队列（PriorityQueue） |
+| `_save_request_handler_enabled` | 434 | 1 | 处理器启用标记 |
+| `_is_listening_save_requests` | 435 | 1 | 事件监听标记 |
+| `_save_auditor` | 436 | 1 | 审核器实例 |
+| `_save_executor` | 437 | 1 | 执行器实例 |
+| `_save_audit_logger` | 438 | 1 | 审计日志记录器 |
+| `enable_save_request_handler()` | 640-657 | 18 | 启用请求处理器 |
+| `disable_save_request_handler()` | 658-671 | 14 | 禁用请求处理器 |
+| `_handle_save_request()` | 673-684 | 12 | 处理请求事件 |
+| `has_pending_save_requests()` | 686-694 | 9 | 检查待处理请求 |
+| `get_pending_save_request_count()` | 696-704 | 9 | 获取待处理数量 |
+| `get_save_request_queue()` | 706-714 | 9 | 获取队列 |
+| `get_save_request_status()` | 716-729 | 14 | 获取请求状态 |
+| `get_save_requests_by_session()` | 731-742 | 12 | 按会话查询 |
+| `dequeue_save_request()` | 744-752 | 9 | 出队请求 |
+| `configure_save_auditor()` | 756-787 | 32 | 配置审核器 |
+| `process_next_save_request()` | 789-815 | 27 | 处理下一个请求 |
+| `get_save_audit_logs()` | 817-825 | 9 | 获取审计日志 |
+| `get_save_audit_logs_by_session()` | 827-838 | 12 | 按会话获取日志 |
+| `send_save_result_receipt()` | 1252-1297 | 46 | 发送结果回执 |
+| `process_save_request_with_receipt()` | 1299-1318 | 20 | 处理请求含回执 |
+| `get_save_receipt_context()` | 1320-1333 | 14 | 获取回执上下文 |
+| `get_save_receipt_chain_log()` | 1335-1346 | 12 | 获取回执链路日志 |
+| `get_save_receipt_logs()` | 1348-1352 | 5 | 获取回执日志 |
+| `get_session_save_statistics()` | 1354-1365 | 12 | 获取会话统计 |
+| **总计** | | **310** | |
+
+**依赖关系**：
+- EventBus（订阅/取消订阅）
+- SaveRequestEvent, SaveRequestCompletedEvent
+- SaveRequestAuditor, SaveExecutor, AuditLogger (来自 save_request_audit.py)
+- SaveResultReceiptSystem (来自 save_request_receipt.py)
+- KnowledgeManager, UnifiedLogCollector
+
+**拆分风险**：**低**
+- 边界清晰，职责单一
+- 不与其他模块共享状态
+- 事件懒加载，无循环依赖
+- 已有完整测试覆盖
+
+**现有测试**：
+- 无独立测试（将创建 TDD 测试）
+
+### 提取方案
+
+**新文件**: `src/domain/services/save_request_orchestrator.py`
+
+**新类**: `SaveRequestOrchestrator`
+
+**迁移内容**:
+- 18个方法（13个public + 1个event handler + 4个receipt相关）
+- 6个状态变量
+- 完整的队列管理、审核、执行、回执逻辑
+
+**向后兼容**:
+- CoordinatorAgent 保留所有18个方法作为代理
+- 方法签名完全一致
+- 返回结构完全一致
+- 暴露内部组件属性（_save_request_queue, _save_auditor, _save_executor, _save_audit_logger）
+
+### 进度跟踪
+
+| 阶段 | 状态 | 备注 |
+|------|------|------|
+| Codex 分析 | ✅ Done | 310行，低风险 |
+| 创建 TDD 测试 | ✅ Done | 34 个测试 |
+| 实现 Orchestrator | ✅ Done | 597 行，96% 覆盖率 |
+| Codex Review | ✅ Done | 4.5/10 初评，修复后通过 |
+| 修复 5 个关键问题 | ✅ Done | 全部修复并验证 |
+| 集成到 Coordinator | ✅ Done | 18 方法委托 + 属性暴露 |
+| 二次验证 | ✅ Done | 34/34 测试通过，pyright 通过 |
+
+### 修复项
+
+1. **类型注解错误** - `async_handle_save_request` 参数类型从 Event 改为 Any
+2. **异步方法包装** - 3个async方法用 asyncio.run() 包装保持同步接口
+3. **向后兼容性** - 暴露内部组件属性，保留所有公开方法
+4. **Bug 修复** - `execute_intervention` 中移除不存在的 `_create_injection` 调用
+
+### Commits
+
+9. `19fdb5b` - refactor: Extract SaveRequestOrchestrator from CoordinatorAgent
+10. `6347500` - feat: integrate SaveRequestOrchestrator into CoordinatorAgent
+
+---
+
 ## 已完成模块总结
 
 1. ✅ PromptVersionFacade (提示词版本管理)
@@ -494,6 +588,7 @@ def load_prompt_template(self, ...):
 3. ✅ SubAgentOrchestrator (子Agent管理)
 4. ✅ SafetyGuard (安全校验服务)
 5. ✅ ContainerExecutionMonitor (容器执行监控)
+6. ✅ SaveRequestOrchestrator (保存请求编排)
 
 ### CoordinatorAgent 代码行数变化
 
@@ -504,7 +599,8 @@ def load_prompt_template(self, ...):
 | SubAgentOrchestrator | ~200 | ~45 (代理) | ~155 |
 | SafetyGuard | ~270 | ~120 (代理) | ~150 |
 | ContainerExecutionMonitor | ~158 | ~68 (代理 + 属性) | ~90 |
-| **总计** | ~900 | ~225 | ~675 |
+| SaveRequestOrchestrator | ~310 | ~152 (代理) | ~158 |
+| **总计** | ~1368 | ~445 | ~923 |
 
 ### 待集成模块
 
@@ -512,3 +608,5 @@ def load_prompt_template(self, ...):
 2. ✅ ExperimentOrchestrator (已完成)
 3. ✅ SubAgentOrchestrator (已完成)
 4. ✅ SafetyGuard (已完成)
+5. ✅ ContainerExecutionMonitor (已完成)
+6. ✅ SaveRequestOrchestrator (已完成)
