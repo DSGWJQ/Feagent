@@ -19,8 +19,10 @@ from dataclasses import dataclass
 from enum import Enum
 
 
-class InterventionLevel(Enum):
-    """干预级别
+class SeverityLevel(Enum):
+    """严重程度级别
+
+    Phase 35.0 修复：重命名 InterventionLevel → SeverityLevel 避免与执行层枚举冲突
 
     从低到高排序：
     - NONE: 无需干预
@@ -59,13 +61,13 @@ class Intervention:
     """干预结果
 
     属性：
-    - level: 干预级别
+    - level: 严重程度级别
     - action: 干预动作
     - reason: 干预理由
     - suggestion: 修正建议（可选）
     """
 
-    level: InterventionLevel
+    level: SeverityLevel
     action: InterventionAction
     reason: str
     suggestion: str | None = None
@@ -221,12 +223,12 @@ class InterventionStrategy:
         # 根据严重程度决定干预
         if severity < self.pass_threshold:
             return Intervention(
-                level=InterventionLevel.NONE, action=InterventionAction.PASS, reason="一切正常"
+                level=SeverityLevel.NONE, action=InterventionAction.PASS, reason="一切正常"
             )
 
         elif severity < self.warn_threshold:
             return Intervention(
-                level=InterventionLevel.LOW,
+                level=SeverityLevel.LOW,
                 action=InterventionAction.WARN,
                 reason=self._build_reason(rule_violations, alignment_score, resource_usage_ratio),
                 suggestion=suggestion,
@@ -234,7 +236,7 @@ class InterventionStrategy:
 
         elif severity < self.suggest_threshold:
             return Intervention(
-                level=InterventionLevel.MEDIUM,
+                level=SeverityLevel.MEDIUM,
                 action=InterventionAction.SUGGEST,
                 reason=self._build_reason(rule_violations, alignment_score, resource_usage_ratio),
                 suggestion=suggestion or "建议修正决策",
@@ -242,7 +244,7 @@ class InterventionStrategy:
 
         elif severity < self.reject_threshold:
             return Intervention(
-                level=InterventionLevel.HIGH,
+                level=SeverityLevel.HIGH,
                 action=InterventionAction.REJECT,
                 reason=self._build_reason(rule_violations, alignment_score, resource_usage_ratio),
                 suggestion=suggestion,
@@ -250,7 +252,7 @@ class InterventionStrategy:
 
         else:
             return Intervention(
-                level=InterventionLevel.CRITICAL,
+                level=SeverityLevel.CRITICAL,
                 action=InterventionAction.TERMINATE,
                 reason=self._build_reason(rule_violations, alignment_score, resource_usage_ratio),
                 suggestion=None,
@@ -285,7 +287,7 @@ class InterventionStrategy:
 
 # 导出
 __all__ = [
-    "InterventionLevel",
+    "SeverityLevel",  # Phase 35.0: 重命名 InterventionLevel → SeverityLevel
     "InterventionAction",
     "Intervention",
     "SeverityCalculator",

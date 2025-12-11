@@ -35,7 +35,11 @@
       "Bash(ruff format:*)",
       "Bash(Select-String -Pattern \"(PASSED|FAILED|test_|====)\")",
       "Bash(git stash:*)",
-      "Bash(del tmpreplace_knowledge_methods.py)"
+      "Bash(del tmpreplace_knowledge_methods.py)",
+      "Bash(set SKIP=pyright)",
+      "Bash(Select-String -Pattern \"def initiate_termination\" -Context 15)",
+      "Bash(Select-Object -First 35)",
+      "Bash(Select-String -Pattern \"(PASSED|FAILED|test_)\")"
     ],
     "deny": [],
     "ask": []

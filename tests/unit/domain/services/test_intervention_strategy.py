@@ -24,21 +24,21 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 
-class TestInterventionLevel:
-    """测试干预级别"""
+class TestSeverityLevel:
+    """测试严重程度级别（Phase 35.0: 重命名 SeverityLevel → SeverityLevel）"""
 
-    def test_intervention_level_ordering(self):
-        """测试：干预级别排序
+    def test_severity_level_ordering(self):
+        """测试：严重程度级别排序
 
         验收标准：
         - NONE < LOW < MEDIUM < HIGH < CRITICAL
         """
-        from src.domain.services.intervention_strategy import InterventionLevel
+        from src.domain.services.intervention_strategy import SeverityLevel
 
-        assert InterventionLevel.NONE.value < InterventionLevel.LOW.value
-        assert InterventionLevel.LOW.value < InterventionLevel.MEDIUM.value
-        assert InterventionLevel.MEDIUM.value < InterventionLevel.HIGH.value
-        assert InterventionLevel.HIGH.value < InterventionLevel.CRITICAL.value
+        assert SeverityLevel.NONE.value < SeverityLevel.LOW.value
+        assert SeverityLevel.LOW.value < SeverityLevel.MEDIUM.value
+        assert SeverityLevel.MEDIUM.value < SeverityLevel.HIGH.value
+        assert SeverityLevel.HIGH.value < SeverityLevel.CRITICAL.value
 
 
 class TestInterventionAction:
@@ -170,8 +170,8 @@ class TestInterventionStrategy:
         """
         from src.domain.services.intervention_strategy import (
             InterventionAction,
-            InterventionLevel,
             InterventionStrategy,
+            SeverityLevel,
         )
 
         strategy = InterventionStrategy()
@@ -180,7 +180,7 @@ class TestInterventionStrategy:
             rule_violations=[], alignment_score=0.9, resource_usage_ratio=0.2
         )
 
-        assert intervention.level == InterventionLevel.NONE
+        assert intervention.level == SeverityLevel.NONE
         assert intervention.action == InterventionAction.PASS
 
     def test_decide_warn_for_minor_issues(self):
@@ -192,8 +192,8 @@ class TestInterventionStrategy:
         """
         from src.domain.services.intervention_strategy import (
             InterventionAction,
-            InterventionLevel,
             InterventionStrategy,
+            SeverityLevel,
         )
 
         strategy = InterventionStrategy()
@@ -204,7 +204,7 @@ class TestInterventionStrategy:
             resource_usage_ratio=0.4,  # 正常范围
         )
 
-        assert intervention.level == InterventionLevel.LOW
+        assert intervention.level == SeverityLevel.LOW
         assert intervention.action == InterventionAction.WARN
 
     def test_decide_suggest_for_moderate_issues(self):
@@ -217,8 +217,8 @@ class TestInterventionStrategy:
         """
         from src.domain.services.intervention_strategy import (
             InterventionAction,
-            InterventionLevel,
             InterventionStrategy,
+            SeverityLevel,
         )
 
         strategy = InterventionStrategy()
@@ -230,7 +230,7 @@ class TestInterventionStrategy:
             suggestion="建议补充配置",
         )
 
-        assert intervention.level == InterventionLevel.MEDIUM
+        assert intervention.level == SeverityLevel.MEDIUM
         assert intervention.action == InterventionAction.SUGGEST
         assert intervention.suggestion is not None
 
@@ -243,8 +243,8 @@ class TestInterventionStrategy:
         """
         from src.domain.services.intervention_strategy import (
             InterventionAction,
-            InterventionLevel,
             InterventionStrategy,
+            SeverityLevel,
         )
 
         strategy = InterventionStrategy()
@@ -255,7 +255,7 @@ class TestInterventionStrategy:
             resource_usage_ratio=0.7,
         )
 
-        assert intervention.level == InterventionLevel.HIGH
+        assert intervention.level == SeverityLevel.HIGH
         assert intervention.action == InterventionAction.REJECT
 
     def test_decide_terminate_for_critical_issues(self):
@@ -267,8 +267,8 @@ class TestInterventionStrategy:
         """
         from src.domain.services.intervention_strategy import (
             InterventionAction,
-            InterventionLevel,
             InterventionStrategy,
+            SeverityLevel,
         )
 
         strategy = InterventionStrategy()
@@ -279,7 +279,7 @@ class TestInterventionStrategy:
             resource_usage_ratio=0.95,
         )
 
-        assert intervention.level == InterventionLevel.CRITICAL
+        assert intervention.level == SeverityLevel.CRITICAL
         assert intervention.action == InterventionAction.TERMINATE
 
 
@@ -291,17 +291,17 @@ class TestIntervention:
         from src.domain.services.intervention_strategy import (
             Intervention,
             InterventionAction,
-            InterventionLevel,
+            SeverityLevel,
         )
 
         intervention = Intervention(
-            level=InterventionLevel.MEDIUM,
+            level=SeverityLevel.MEDIUM,
             action=InterventionAction.SUGGEST,
             reason="检测到轻微偏离",
             suggestion="建议调整方向",
         )
 
-        assert intervention.level == InterventionLevel.MEDIUM
+        assert intervention.level == SeverityLevel.MEDIUM
         assert intervention.action == InterventionAction.SUGGEST
         assert intervention.reason == "检测到轻微偏离"
         assert intervention.suggestion == "建议调整方向"
@@ -330,8 +330,8 @@ class TestInterventionStrategyWithCoordinator:
         """
         from src.domain.services.intervention_strategy import (
             InterventionAction,
-            InterventionLevel,
             InterventionStrategy,
+            SeverityLevel,
         )
         from src.domain.services.validators import (
             DecisionValidator,
@@ -378,7 +378,7 @@ class TestInterventionStrategyWithCoordinator:
 
         # Assert
         assert intervention.action != InterventionAction.PASS
-        assert intervention.level.value >= InterventionLevel.LOW.value
+        assert intervention.level.value >= SeverityLevel.LOW.value
 
 
 class TestRealWorldScenario:
@@ -398,8 +398,8 @@ class TestRealWorldScenario:
         - 干预级别随问题严重程度升级
         """
         from src.domain.services.intervention_strategy import (
-            InterventionLevel,
             InterventionStrategy,
+            SeverityLevel,
         )
 
         strategy = InterventionStrategy()
@@ -441,4 +441,4 @@ class TestRealWorldScenario:
             assert levels[i] >= levels[i - 1], f"Level should not decrease: {levels}"
 
         # 最严重的应该是CRITICAL
-        assert intervention_4.level == InterventionLevel.CRITICAL
+        assert intervention_4.level == SeverityLevel.CRITICAL
