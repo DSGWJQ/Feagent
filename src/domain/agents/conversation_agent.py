@@ -588,6 +588,31 @@ class ConversationAgent:
             return
         self._create_tracked_task(self.event_bus.publish(event))
 
+    def _transition_locked(self, new_state: ConversationAgentState) -> ConversationAgentState:
+        """状态转换（锁内版本，不发布事件，P0-2 Optimization）
+
+        此方法必须在 _state_lock 内调用，用于消除原子性空窗。
+        调用者负责在释放锁后发布 StateChangedEvent。
+
+        参数：
+            new_state: 目标状态
+
+        返回：
+            旧状态（用于事件发布）
+
+        异常：
+            DomainError: 无效的状态转换
+        """
+        from src.domain.exceptions import DomainError
+
+        valid_transitions = VALID_STATE_TRANSITIONS.get(self._state, [])
+        if new_state not in valid_transitions:
+            raise DomainError(f"Invalid state transition: {self._state.value} -> {new_state.value}")
+
+        old_state = self._state
+        self._state = new_state
+        return old_state
+
     # =========================================================================
     # Phase 34: 保存请求通道方法
     # =========================================================================
@@ -793,11 +818,11 @@ class ConversationAgent:
         task_id: str,
         context: dict[str, Any],
     ) -> None:
-        """等待子Agent执行（异步版本，P0-2 Fix）
+        """等待子Agent执行（异步版本，P0-2 Optimization）
 
-        保证：
-        1. 状态修改受_state_lock保护
-        2. 状态转换使用关键事件路径
+        原子性保证（消除空窗）：
+        1. 在单个_state_lock内完成：pending设置 + 状态转换
+        2. 释放锁后再发布StateChangedEvent
 
         参数：
             subagent_id: 子Agent ID
@@ -808,14 +833,24 @@ class ConversationAgent:
             self.pending_subagent_id = subagent_id
             self.pending_task_id = task_id
             self.suspended_context = copy.deepcopy(context)
-        await self.transition_to_async(ConversationAgentState.WAITING_FOR_SUBAGENT)
+            # 使用_transition_locked在锁内完成状态转换
+            old_state = self._transition_locked(ConversationAgentState.WAITING_FOR_SUBAGENT)
+
+        # 释放锁后发布关键事件
+        event = StateChangedEvent(
+            from_state=old_state.value,
+            to_state=ConversationAgentState.WAITING_FOR_SUBAGENT.value,
+            session_id=self.session_context.session_id,
+            source="conversation_agent",
+        )
+        await self._publish_critical_event(event)
 
     async def resume_from_subagent_async(self, result: dict[str, Any]) -> dict[str, Any]:
-        """从子Agent等待中恢复（异步版本，P0-2 Fix）
+        """从子Agent等待中恢复（异步版本，P0-2 Optimization）
 
-        保证：
-        1. 状态修改受_state_lock保护
-        2. 状态转换使用关键事件路径
+        原子性保证（消除空窗）：
+        1. 在单个_state_lock内完成：恢复上下文 + 清理pending + 状态转换
+        2. 释放锁后再发布StateChangedEvent
 
         参数：
             result: 子Agent执行结果
@@ -831,7 +866,18 @@ class ConversationAgent:
             self.pending_task_id = None
             self.suspended_context = None
 
-        await self.transition_to_async(ConversationAgentState.PROCESSING)
+            # 使用_transition_locked在锁内完成状态转换
+            old_state = self._transition_locked(ConversationAgentState.PROCESSING)
+
+        # 释放锁后发布关键事件
+        event = StateChangedEvent(
+            from_state=old_state.value,
+            to_state=ConversationAgentState.PROCESSING.value,
+            session_id=self.session_context.session_id,
+            source="conversation_agent",
+        )
+        await self._publish_critical_event(event)
+
         return context
 
     def is_waiting_for_subagent(self) -> bool:
@@ -1006,42 +1052,51 @@ class ConversationAgent:
 
     async def _handle_subagent_completed_wrapper(self, event: Any) -> None:
         """SubAgentCompletedEvent 处理器包装器"""
-        self.handle_subagent_completed(event)
+        await self.handle_subagent_completed(event)
 
-    def handle_subagent_completed(self, event: Any) -> None:
-        """处理子Agent完成事件
+    async def handle_subagent_completed(self, event: Any) -> None:
+        """处理子Agent完成事件（P0-2 Critical Fix）
 
-        恢复执行状态，存储结果到历史。
+        锁保护：
+        1. 读取 pending_subagent_id/_state 受 _state_lock 保护
+        2. 写入 last_subagent_result/subagent_result_history 受 _state_lock 保护
+        3. 使用 resume_from_subagent_async 保证状态转换原子性
 
         参数：
             event: SubAgentCompletedEvent 事件
         """
-        # 检查是否是我们等待的子Agent
-        if self.pending_subagent_id and event.subagent_id != self.pending_subagent_id:
-            # 不是等待的子Agent，忽略
-            return
+        async with self._state_lock:
+            # 检查是否是我们等待的子Agent（锁内读取）
+            if self.pending_subagent_id and event.subagent_id != self.pending_subagent_id:
+                # 不是等待的子Agent，忽略
+                return
 
-        # 存储结果
-        result_record = {
-            "subagent_id": event.subagent_id,
-            "subagent_type": event.subagent_type,
-            "success": event.success,
-            "data": event.result.get("data") if event.result else None,
-            "error": event.error,
-            "execution_time": event.execution_time,
-        }
+            # 检查状态（锁内读取）
+            if self._state != ConversationAgentState.WAITING_FOR_SUBAGENT:
+                # 不在等待状态，忽略
+                return
 
-        self.last_subagent_result = {
-            "success": event.success,
-            "data": event.result.get("data") if event.result else None,
-            "error": event.error,
-        }
+            # 存储结果（锁内写入）
+            result_record = {
+                "subagent_id": event.subagent_id,
+                "subagent_type": event.subagent_type,
+                "success": event.success,
+                "data": event.result.get("data") if event.result else None,
+                "error": event.error,
+                "execution_time": event.execution_time,
+            }
 
-        self.subagent_result_history.append(result_record)
+            self.last_subagent_result = {
+                "success": event.success,
+                "data": event.result.get("data") if event.result else None,
+                "error": event.error,
+            }
 
-        # 恢复执行状态
-        if self._state == ConversationAgentState.WAITING_FOR_SUBAGENT:
-            self.resume_from_subagent(event.result)
+            self.subagent_result_history.append(result_record)
+
+        # 释放 _state_lock 后再恢复（避免嵌套锁）
+        # resume_from_subagent_async 内部会重新获取锁
+        await self.resume_from_subagent_async(event.result)
 
     def execute_step(self, user_input: str) -> ReActStep:
         """执行单个ReAct步骤
