@@ -262,19 +262,63 @@
           - CoordinatorAgentConfig Coverage: 64% → 71% (+7%)
           - 评分提升：7/10 → 估计 9/10（修复所有 Critical Issues）
 
+     3) ✅ **步骤3: 引入RuleEngineFacade**（已完成 - 2025-12-13）
+        - **设计**（Codex协作）：
+          - 使用Proxy代理模式保持向后兼容
+          - 6个方法标记DEPRECATED并代理到Facade
+          - 使用deprecation warnings通知用户迁移
+          - 迁移时间表：废弃2025-12-13，移除2026-06-01
+        - **实施完成**：
+          - ✅ 添加 `_rule_engine_facade` 类型提示
+          - ✅ 从wiring提取facade实例并添加存在性验证
+          - ✅ 实现 `_deprecated()` 装饰器（带stacklevel=2）
+          - ✅ 6个方法代理实现：
+            - `add_rule()` → `_rule_engine_facade.add_decision_rule()`
+            - `remove_rule()` → `_rule_engine_facade.remove_decision_rule()`
+            - `validate_decision()` → `_rule_engine_facade.validate_decision()`
+            - `get_statistics()` → `_rule_engine_facade.get_decision_statistics()`
+            - `is_rejection_rate_high()` → `_rule_engine_facade.is_rejection_rate_high()`
+            - `rules` property → `_rule_engine_facade.list_decision_rules()`
+          - ✅ 创建 `test_coordinator_agent_config_compat.py`（9个集成测试）
+          - ✅ 创建 289行迁移指南（RULE_ENGINE_MIGRATION_GUIDE.md）
+          - ✅ 验证通过：22/22 tests passed
+        - **Critical修复（Codex审查）**：
+          - ✅ Critical-1: Facade存在性验证（RuntimeError with clear message）
+          - ✅ Critical-2: Priority排序回归测试（test_priority_ordering_regression）
+          - ✅ High-3: 类型提示（_rule_engine_facade: RuleEngineFacade）
+          - ✅ High-4: Rules property deprecation（添加warning）
+        - **Priority Bug修复**：
+          - ✅ 修复RuleEngineFacade的priority排序bug（移除reverse=True）
+          - ✅ 现在规则按升序执行（priority 1 > 5 > 10）
+          - ✅ 添加回归测试防止重新引入
+        - **文档产出**：
+          - ✅ RULE_ENGINE_MIGRATION_GUIDE.md（289行）：
+            - 迁移时间表、6步迁移流程、API对比表
+            - Priority排序修复说明、10个FAQ
+            - Codex审查意见总结
+          - ✅ CLAUDE.md文档索引更新
+        - **最终验证**：
+          - ✅ Pyright: 0 errors
+          - ✅ Ruff: All checks passed
+          - ✅ 22/22 tests passed (9 new + 13 existing)
+          - ✅ 无破坏性变更
+        - **代码质量提升**：
+          - Codex评分：GOOD → EXCELLENT
+          - 技术债务：Medium → Low
+          - 新增9个集成测试 + 1个回归测试
+        - **迁移影响范围**：
+          - 62个文件使用deprecated方法（已记录在迁移指南）
+          - 可选P1任务：批量迁移测试代码到新API
+
    - **❌ 待完成步骤：**
-     3) ❌ 步骤3: 引入RuleEngineFacade（最小关键路径）
      4) ❌ 步骤4: 逐块迁移规则能力到Facade
      5) ❌ 步骤5: 测试归位与去重
 
    - **下一步行动：**
      1. ✅ 步骤1已完成（含Critical修复+边界修复）
      2. ✅ 步骤2已完成（含Codex评审+Critical Fixes修复）
-     3. 🔄 开始步骤3：引入RuleEngineFacade
-        - 与Codex协作设计步骤3方案
-        - 设计Facade在Agent中的初始化与使用方式
-        - 确定最小关键路径（优先迁移高频调用的规则方法）
-        - 编写Facade集成测试
+     3. ✅ 步骤3已完成（含Codex审查+4个Critical/High修复+Priority bug修复）
+     4. ⏸️ 步骤4-5暂缓（Codex建议：转向P1-4 ConversationAgent更高ROI）
 
 2. CoordinatorAgent：显式依赖注入/减少懒加载隐藏依赖 - 预计6小时
    - 问题描述：大量 `_get_xxx()` 懒加载引入隐式依赖和首调用延迟，调试困难。
@@ -339,44 +383,59 @@
 
 ## 修复顺序建议（基于当前进度更新）
 
-**当前状态（2025-12-12）：**
+**当前状态（2025-12-13）：**
 - ✅ P0全部完成
-- 🔄 P1-1（CoordinatorAgent）70%完成
-- 🔄 P1-4（ConversationAgent）30%完成
+- ✅ P1-1（CoordinatorAgent）步骤1-3完成，90%完成（步骤4-5暂缓）
+- 🔄 P1-4（ConversationAgent）30%完成（辅助模块已提取，待主体拆分）
 
-**建议执行顺序：**
+**建议执行顺序（基于Codex 2025-12-13分析更新）：**
 
-1. **优先完成 P1-1（CoordinatorAgent 收尾）** - 剩余5小时
-   - 创建 RuleEngineFacade（2h）
-   - 创建 CoordinatorAgentConfig（2h）
-   - 单测迁移验证（1h）
+1. **✅ P1-1（CoordinatorAgent）步骤1-3已完成** - 已完成
+   - ✅ 步骤1: Config兼容入口（含4个Critical修复）
+   - ✅ 步骤2: Bootstrap支持新Config（含3个Critical修复）
+   - ✅ 步骤3: RuleEngineFacade引入（含4个Critical/High修复）
+   - ⏸️ 步骤4-5暂缓（等待P1-4/P1-3完成后评估必要性）
 
-2. **并行推进：**
-   - **线A**：完成 P1-4（ConversationAgent 主体拆分）- 剩余10小时
-   - **线B**：P1-3（服务冗余合并）- 12小时
-   - **线C**：P1-2（显式依赖注入）- 6小时（依赖 P1-1 完成）
+2. **🎯 优先推荐：P1-4（ConversationAgent 主体拆分）** - 剩余10小时 ⭐ **CODEX推荐**
+   - **推荐理由**（Codex分析）：
+     - 最高投资回报率（ROI）：2297行单文件急需拆分
+     - 已有30%进度（辅助模块已提取），可快速进入核心拆分
+     - P1-1经验直接复用（拆分+Config+Bootstrap模式）
+     - 解除WorkflowAgent重构前置依赖
+   - **实施计划**：
+     - 创建 `src/domain/agents/conversation_agent/` 子包
+     - 拆分为 core.py (500行) / workflow.py (400行) / state.py (300行) / recovery.py (300行) / control_flow.py (200行)
+     - 创建 `ConversationAgentConfig` dataclass（参考CoordinatorAgentConfig）
+     - 主文件改为薄门面（re-export保持向后兼容）
+     - 编写Config单元测试 + 拆分集成测试
 
-3. **收尾阶段：**
+3. **并行推进：**
+   - **线A**：P1-3（服务冗余合并）- 12小时
+   - **线B**：P1-2（显式依赖注入）- 6小时（依赖 P1-1 完成）
+
+4. **收尾阶段：**
    - P1-5（WorkflowAgent 去重复）- 8小时
    - P1-6（类型安全提升）- 10小时（依赖 P1-1/4 完成）
 
-## 预计总工作量（更新）
+## 预计总工作量（2025-12-13更新）
 
 - **P0: 已完成** ✅
-- **P1 已完成工作：** ~23.5小时（CoordinatorAgent 13.5h + ConversationAgent 辅助模块 4h + 其他提取 6h）
-- **P1 剩余工作：** ~48.5小时
-  - P1-1 收尾：1.5h（步骤2-5）
+- **P1 已完成工作：** ~27小时
+  - CoordinatorAgent步骤1-3：17小时
+  - ConversationAgent 辅助模块：4小时
+  - 其他提取：6小时
+- **P1 剩余工作：** ~45小时
+  - P1-1 步骤4-5（暂缓）：1.5h
   - P1-2：6h
   - P1-3：12h
-  - P1-4 主体：10h
+  - P1-4 主体：10h ⭐ **下一阶段优先**
   - P1-5：8h
   - P1-6：10h
-  - 其他：1h
 
 **预计完成时间：** 2.5-3个工作日（3条并行线）
 
 ---
 
-**生成时间**: 2025-12-12
-**基于**: tmp_final_review_report.md
+**生成时间**: 2025-12-13
+**基于**: Codex项目分析 + P1-1 Step 3完成报告
 **协作**: Claude + Codex
