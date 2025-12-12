@@ -43,6 +43,9 @@ from src.domain.agents.workflow_state_monitor import WorkflowStateMonitor
 from src.domain.services.context import ContextResponse, ContextService
 from src.domain.services.event_bus import Event, EventBus
 
+# P1-1 Step 3: Import RuleEngineFacade for type hints
+from src.domain.services.rule_engine_facade import RuleEngineFacade
+
 # Phase 35.3: MessageLogListener, MessageLogAccessor moved to message_log_listener
 from src.domain.services.message_log_listener import MessageLogAccessor, MessageLogListener
 
@@ -192,6 +195,9 @@ class CoordinatorAgent:
         agent.add_rule(Rule(id="rule_1", name="安全规则", condition=...))
         event_bus.add_middleware(agent.as_middleware())
     """
+
+    # P1-1 Step 3: Type hints for facade integration
+    _rule_engine_facade: RuleEngineFacade
 
     # ===================== Phase 34.9: ContextGateway ====================
     class _ContextGateway:
@@ -534,7 +540,12 @@ class CoordinatorAgent:
         if "circuit_breaker" in wiring.orchestrators:
             self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
 
-        # P1-1 Step 3: Extract RuleEngineFacade for gradual migration
+        # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
+        if "rule_engine_facade" not in wiring.orchestrators:
+            raise RuntimeError(
+                "RuleEngineFacade not configured in wiring. "
+                "Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators."
+            )
         self._rule_engine_facade = wiring.orchestrators["rule_engine_facade"]
 
         # 9. 重建内部状态容器（共享bootstrap容器以保持状态一致）
@@ -1875,7 +1886,15 @@ class CoordinatorAgent:
 
     @property
     def rules(self) -> list[Rule]:
-        """获取所有规则（按优先级排序）"""
+        """获取所有规则 (DEPRECATED - use _rule_engine_facade.list_decision_rules)
+
+        注意: 此property已废弃，建议直接使用 _rule_engine_facade.list_decision_rules()
+        """
+        warnings.warn(
+            "rules property is deprecated. Use _rule_engine_facade.list_decision_rules() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self._rule_engine_facade.list_decision_rules()
 
     @_deprecated("add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.")

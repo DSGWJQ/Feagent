@@ -828,3 +828,64 @@ class TestCoordinatorAgentRuleEngineFacadeIntegration:
         # Assert
         mock_facade.list_decision_rules.assert_called_once()
         assert rules == mock_rules
+
+    def test_priority_ordering_regression(self):
+        """测试: Priority排序回归测试(1 > 5 > 10)
+
+        回归测试 for Critical Fix: RuleEngineFacade priority bug
+        - Issue: Facade sorted in descending order (reverse=True)
+        - Fixed: Removed reverse=True from rule_engine_facade.py lines 185 & 257
+        - Expected: Lower priority number executes first (1 > 5 > 10)
+        - Commit: 8c4fef9 (original fix)
+
+        验收标准：
+        - 规则按优先级数字升序执行
+        - priority=1 的规则最先执行
+        - priority=10 的规则最后执行
+        """
+        from src.domain.agents.coordinator_agent import CoordinatorAgent, Rule
+
+        agent = CoordinatorAgent()
+        execution_order = []
+
+        # 添加规则(故意乱序添加以测试排序)
+        with pytest.warns(DeprecationWarning):
+            agent.add_rule(
+                Rule(
+                    id="low",
+                    name="Low Priority (10)",
+                    condition=lambda d: (execution_order.append(10), True)[1],
+                    priority=10,
+                )
+            )
+            agent.add_rule(
+                Rule(
+                    id="high",
+                    name="High Priority (1)",
+                    condition=lambda d: (execution_order.append(1), True)[1],
+                    priority=1,
+                )
+            )
+            agent.add_rule(
+                Rule(
+                    id="mid",
+                    name="Mid Priority (5)",
+                    condition=lambda d: (execution_order.append(5), True)[1],
+                    priority=5,
+                )
+            )
+
+        # Act - 执行决策验证，触发规则执行
+        with pytest.warns(DeprecationWarning):
+            result = agent.validate_decision({"type": "test"})
+
+        # Assert - 验证执行顺序: 1, 5, 10 (ascending order)
+        assert execution_order == [1, 5, 10], (
+            f"Rules should execute in ascending priority order (1 > 5 > 10), "
+            f"but got: {execution_order}"
+        )
+
+        # 确保验证通过(所有规则condition返回True)
+        assert result.is_valid is True
+        assert result.errors == []
+

@@ -334,6 +334,7 @@ CORS_ORIGINS=["http://localhost:5173"]
 |------|------|------|
 | 架构审计 | `docs/architecture/current_agents.md` | 三Agent系统最新架构审计 |
 | 多Agent协作指南 | `docs/architecture/multi_agent_collaboration_guide.md` | 三Agent架构详解 |
+| **RuleEngine迁移指南** | `docs/architecture/RULE_ENGINE_MIGRATION_GUIDE.md` | RuleEngineFacade迁移步骤与时间表 |
 | 运维手册 | `docs/operations/operations_guide.md` | 部署与运维 |
 | 动态节点Runbook | `docs/operations/dynamic_node_runbook.md` | 节点监控与故障排查 |
 | 开发规范 | `docs/开发规范/` | 架构规范、TDD流程 |
