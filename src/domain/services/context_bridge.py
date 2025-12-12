@@ -360,7 +360,7 @@ class ContextSummarizer:
             response = await self.llm.generate(prompt)
             return json.loads(response)
         except json.JSONDecodeError as e:
-            raise SummarizationError(f"LLM返回的JSON格式无效: {e}")
+            raise SummarizationError(f"LLM返回的JSON格式无效: {e}") from e
 
 
 class ContextBridge:

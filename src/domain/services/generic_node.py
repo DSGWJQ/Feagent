@@ -519,7 +519,7 @@ class GenericNodeExecutor:
                 inputs[field] = value
 
         # 从前序节点输出中获取
-        for prev_id, output in node_outputs.items():
+        for _, output in node_outputs.items():
             inputs.update(output)
 
         return inputs

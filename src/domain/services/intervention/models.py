@@ -20,7 +20,6 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
-
 # =============================================================================
 # 枚举定义
 # =============================================================================
@@ -40,7 +39,7 @@ class InterventionLevel(str, Enum):
     TERMINATE = "terminate"  # 终止（强制终止）
 
     @staticmethod
-    def get_severity(level: "InterventionLevel") -> int:
+    def get_severity(level: InterventionLevel) -> int:
         """获取级别严重程度
 
         参数：
@@ -59,7 +58,7 @@ class InterventionLevel(str, Enum):
         return severities.get(level, 0)
 
     @staticmethod
-    def can_escalate(current: "InterventionLevel", target: "InterventionLevel") -> bool:
+    def can_escalate(current: InterventionLevel, target: InterventionLevel) -> bool:
         """判断是否可以升级到目标级别
 
         参数：
@@ -72,7 +71,7 @@ class InterventionLevel(str, Enum):
         return InterventionLevel.get_severity(target) > InterventionLevel.get_severity(current)
 
     @staticmethod
-    def next_level(current: "InterventionLevel") -> "InterventionLevel":
+    def next_level(current: InterventionLevel) -> InterventionLevel:
         """获取下一个级别
 
         参数：

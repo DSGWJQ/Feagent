@@ -22,7 +22,7 @@ class TestNaturalLanguageToConditionWorkflow:
         from src.domain.agents.conversation_agent import ConversationAgent
         from src.domain.agents.node_definition import NodeDefinition, NodeType
         from src.domain.agents.workflow_agent import WorkflowAgent
-        from src.domain.agents.workflow_plan import EdgeDefinition, WorkflowPlan
+        from src.domain.agents.workflow_plan import WorkflowPlan
         from src.domain.services.context_manager import (
             GlobalContext,
             SessionContext,
@@ -357,7 +357,6 @@ class TestFeedbackDrivenAdjustment:
 
         # 验证第一次执行成功
         assert result_1["status"] == "completed"
-        original_execution_count = len(execution_log_1)
 
         # 5. 模拟反馈：用户发现 0.7 阈值太低，需要提高到 0.8
         agent.update_edge_condition(

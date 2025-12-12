@@ -11,7 +11,6 @@ import pytest
 from src.domain.agents.node_definition import NodeDefinition, NodeType
 from src.domain.agents.workflow_agent import WorkflowAgent
 from src.domain.agents.workflow_plan import EdgeDefinition, WorkflowPlan
-from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
 from src.domain.services.event_bus import EventBus
 
 
@@ -174,7 +173,9 @@ class TestUpdateLoopConfig:
         assert loop_node.config["loop_type"] == "map"
         assert loop_node.config["transform_expression"] == "dataset['value'] * 2"
 
-    def test_update_loop_config_modifies_collection_field(self, workflow_agent, sample_workflow_with_loop):
+    def test_update_loop_config_modifies_collection_field(
+        self, workflow_agent, sample_workflow_with_loop
+    ):
         """测试 update_loop_config 修改集合字段"""
         workflow_agent._current_plan = sample_workflow_with_loop
 
@@ -191,7 +192,9 @@ class TestUpdateLoopConfig:
         assert loop_node.config["collection_field"] == "new_datasets"
         assert loop_node.config["loop_type"] == "for_each"  # 其他字段保持不变
 
-    def test_update_loop_config_modifies_filter_condition(self, workflow_agent, sample_workflow_with_loop):
+    def test_update_loop_config_modifies_filter_condition(
+        self, workflow_agent, sample_workflow_with_loop
+    ):
         """测试 update_loop_config 修改过滤条件"""
         workflow_agent._current_plan = sample_workflow_with_loop
 

@@ -378,7 +378,7 @@ class DecisionValidator:
         # 1. 检查资源限制
         if not self.resource_monitor.is_within_limits():
             resource_violations = self.resource_monitor.get_violations()
-            for resource, msg in resource_violations.items():
+            for _, msg in resource_violations.items():
                 violations.append(f"[Resource] {msg}")
 
         # 2. 检查目标对齐

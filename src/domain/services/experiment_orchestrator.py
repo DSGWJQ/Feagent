@@ -14,13 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from src.domain.services.ab_testing_system import (
-        CoordinatorExperimentAdapter,
-        ExperimentManager,
-        GradualRolloutController,
-        MetricsCollector,
-        MetricsThresholdChecker,
-    )
+    pass
 
 
 class ExperimentOrchestrator:

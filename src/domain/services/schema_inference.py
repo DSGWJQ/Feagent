@@ -87,7 +87,7 @@ class SchemaInference:
         item_schemas = [self.infer_from_data(item) for item in data]
 
         # 检查是否所有元素类型相同
-        types = set(s.get("type") for s in item_schemas)
+        types = {s.get("type") for s in item_schemas}
 
         if len(types) == 1:
             # 所有元素类型相同

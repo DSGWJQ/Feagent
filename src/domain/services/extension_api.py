@@ -271,7 +271,7 @@ class NodeDefinition:
     category: str = "custom"
     input_schema: dict[str, Any] = field(default_factory=dict)
     output_schema: dict[str, Any] = field(default_factory=dict)
-    executor_class: type[NodeExecutor] | None = None
+    executor_class: "type[NodeExecutor] | None" = None
     icon: str = ""
     color: str = ""
 
@@ -366,7 +366,7 @@ class CustomNodeRegistry:
 
     def list_categories(self) -> list[str]:
         """列出所有分类"""
-        return list(set(node.category for node in self._nodes.values()))
+        return list({node.category for node in self._nodes.values()})
 
 
 # ============ 钩子处理器 ============

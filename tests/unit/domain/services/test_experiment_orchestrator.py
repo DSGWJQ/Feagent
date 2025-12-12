@@ -5,10 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestExperimentOrchestratorInit:
@@ -96,7 +93,7 @@ class TestExperimentCreation:
 
         orchestrator = ExperimentOrchestrator(experiment_manager=mock_manager)
 
-        result = orchestrator.create_experiment(
+        orchestrator.create_experiment(
             experiment_id="exp-002",
             name="Traffic Test",
             module_name="test_module",
@@ -492,9 +489,7 @@ class TestMetricsThreshold:
         thresholds = {"success_rate": 0.95, "avg_duration": 5000}
 
         # Mock the MetricsThresholdChecker at the import location
-        with patch(
-            "src.domain.services.ab_testing_system.MetricsThresholdChecker"
-        ) as MockChecker:
+        with patch("src.domain.services.ab_testing_system.MetricsThresholdChecker") as MockChecker:
             mock_checker_instance = MagicMock()
             mock_result = MagicMock()
             mock_result.passed = True

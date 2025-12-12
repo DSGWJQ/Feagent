@@ -15,7 +15,6 @@ from typing import Any
 
 from src.domain.services.event_bus import Event
 
-
 # ==================== 事件定义 ====================
 
 

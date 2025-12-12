@@ -367,18 +367,21 @@ class ConfigurableRuleEngine:
 
         if path.suffix.lower() in (".yaml", ".yml"):
             try:
-                import yaml
+                import yaml  # type: ignore[import-untyped]
 
                 config = yaml.safe_load(content)
-            except ImportError:
-                raise ImportError("PyYAML is required for YAML configuration files")
-            except yaml.YAMLError as e:
-                raise ValueError(f"Invalid YAML format: {e}")
+            except ImportError as e:
+                raise ImportError("PyYAML is required for YAML configuration files") from e
+            except Exception as e:
+                raise ValueError(f"Invalid YAML format: {e}") from e
         else:
             try:
                 config = json.loads(content)
             except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON format: {e}")
+                raise ValueError(f"Invalid JSON format: {e}") from e
+
+        if not isinstance(config, dict):
+            raise ValueError("Configuration must be a dictionary")
 
         return cls(config)
 

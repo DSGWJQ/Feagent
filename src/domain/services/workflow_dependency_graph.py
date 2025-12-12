@@ -230,7 +230,7 @@ class TopologicalExecutor:
             ValueError: 如果存在循环依赖
         """
         # 构建入度表和邻接表
-        in_degree: dict[str, int] = {node: 0 for node in nodes}
+        in_degree: dict[str, int] = dict.fromkeys(nodes, 0)
         adjacency: dict[str, list[str]] = {node: [] for node in nodes}
 
         for source, target in edges:
@@ -312,9 +312,15 @@ class WorkflowDependencyExecutor:
         with open(yaml_file, encoding="utf-8") as f:
             workflow_def = yaml.safe_load(f)
 
+        if not isinstance(workflow_def, dict):
+            return WorkflowExecutionResult(
+                success=False,
+                error="Invalid workflow definition format",
+            )
+
         # 获取子节点
         nested = workflow_def.get("nested", {})
-        children = nested.get("children", [])
+        children = nested.get("children", []) if isinstance(nested, dict) else []
 
         if not children:
             return WorkflowExecutionResult(
@@ -415,8 +421,14 @@ class WorkflowDependencyExecutor:
                 }
 
                 # 根据错误策略决定是否继续
-                error_strategy = workflow_def.get("error_strategy", {})
-                on_failure = error_strategy.get("on_failure", "abort")
+                error_strategy = (
+                    workflow_def.get("error_strategy", {}) if isinstance(workflow_def, dict) else {}
+                )
+                on_failure = (
+                    error_strategy.get("on_failure", "abort")
+                    if isinstance(error_strategy, dict)
+                    else "abort"
+                )
                 if on_failure == "abort":
                     return WorkflowExecutionResult(
                         success=False,

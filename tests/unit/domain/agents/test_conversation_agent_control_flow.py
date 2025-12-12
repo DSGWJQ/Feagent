@@ -7,20 +7,18 @@ Priority 3: ConversationAgent 控制流规划
 - create_workflow_plan() 集成 - 注入控制流节点
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from src.domain.agents.control_flow_ir import (
     ControlFlowIR,
-    ControlFlowTask,
     DecisionBranch,
     DecisionPoint,
     LoopSpec,
 )
 from src.domain.agents.conversation_agent import ConversationAgent
-from src.domain.agents.node_definition import NodeDefinition, NodeType
-from src.domain.agents.workflow_plan import EdgeDefinition
+from src.domain.agents.node_definition import NodeType
 from src.domain.services.context_manager import GlobalContext, SessionContext
 from src.domain.services.event_bus import EventBus
 
@@ -42,9 +40,7 @@ class TestExtractControlFlow:
         event_bus = EventBus()
 
         # 创建 agent
-        agent = ConversationAgent(
-            session_context=session_ctx, llm=mock_llm, event_bus=event_bus
-        )
+        agent = ConversationAgent(session_context=session_ctx, llm=mock_llm, event_bus=event_bus)
         return agent
 
     def test_extract_control_flow_identifies_simple_condition(self, agent):
@@ -121,9 +117,7 @@ class TestBuildControlNodes:
         event_bus = EventBus()
 
         # 创建 agent
-        agent = ConversationAgent(
-            session_context=session_ctx, llm=mock_llm, event_bus=event_bus
-        )
+        agent = ConversationAgent(session_context=session_ctx, llm=mock_llm, event_bus=event_bus)
         return agent
 
     def test_build_control_nodes_generates_condition_node(self, agent):
@@ -245,9 +239,7 @@ class TestControlFlowIR:
         ir = ControlFlowIR()
         assert ir.is_empty() is True
 
-        ir.decisions.append(
-            DecisionPoint(id="d1", description="test", expression="x > 0")
-        )
+        ir.decisions.append(DecisionPoint(id="d1", description="test", expression="x > 0"))
         assert ir.is_empty() is False
 
     def test_control_flow_ir_from_dict(self):

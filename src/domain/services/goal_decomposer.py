@@ -142,7 +142,7 @@ class GoalDecomposer:
             response = await self.llm.generate(prompt)
             sub_goals_data = json.loads(response)
         except json.JSONDecodeError as e:
-            raise DecompositionError(f"LLM返回的JSON格式无效: {e}")
+            raise DecompositionError(f"LLM返回的JSON格式无效: {e}") from e
 
         sub_goals_list = sub_goals_data.get("sub_goals", [])
 

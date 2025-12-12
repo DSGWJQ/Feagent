@@ -83,7 +83,7 @@ def safe_eval(expression: str, variables: dict[str, Any]) -> Any:
         return eval(expression, safe_globals, safe_locals)
     except Exception as e:
         logger.error(f"表达式执行失败: {expression}, 错误: {e}")
-        raise ValueError(f"表达式执行失败: {e}")
+        raise ValueError(f"表达式执行失败: {e}") from e
 
 
 class ConditionExecutor:
@@ -447,8 +447,9 @@ class ParallelExecutor:
         for item in completed:
             if isinstance(item, Exception):
                 continue
-            key, result = item
-            results[key] = result
+            if isinstance(item, tuple):
+                key, result = item
+                results[key] = result
 
         return results
 
