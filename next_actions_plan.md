@@ -127,15 +127,24 @@
 
 ## P1问题清单（本周完成）
 
-1. CoordinatorAgent Phase-1拆分（先抽两大职责） - 预计16小时
-   - 问题描述：`coordinator_agent.py` 5687行巨型类、162方法、15+职责，改动耦合度极高。
-   - 修复方案：
-     1) 先确定稳定边界：提取 `ContextManager`（上下文/压缩/快照相关）与 `RuleEngineFacade`（规则加载/验证/拒绝率/熔断）。
-     2) 在原类中用组合替代部分内联方法，逐步搬迁代码。
-     3) 引入 `CoordinatorAgentConfig` dataclass 收敛构造参数，缩短 `__init__`。
-     4) 迁移对应单测到新组件，保持现有对外API不变。
-   - 前置依赖：P0-1/2/3（确保对话侧稳定，便于定位回归）。
-   - 收益：降低单点复杂度，后续拆分可线性推进；减少"改一处崩全局"的风险。
+1. **🔄 CoordinatorAgent Phase-1拆分（进行中 - 70%完成）** - 预计剩余5小时
+   - **✅ 已完成（2025-12-12 Codex检查）：**
+     - ✅ 行数优化：4207行 → 2639行（减少37%）
+     - ✅ 已提取9个组件：
+       - ContextService、ContextInjectionManager、ReflectionContextManager
+       - ExperimentOrchestrator、WorkflowFailureOrchestrator
+       - ExecutionSummaryManager、KnowledgeRetrievalOrchestrator
+       - SupervisionFacade、WorkflowStateMonitor
+
+   - **❌ 待完成：**
+     1) ❌ 提取 `RuleEngineFacade`（包装 configurable_rule_engine.py）
+     2) ❌ 引入 `CoordinatorAgentConfig` dataclass 收敛构造参数
+     3) ⏳ 迁移对应单测到新组件
+
+   - **下一步行动：**
+     1. 创建 `src/domain/services/rule_engine_facade.py`
+     2. 创建 `src/domain/agents/coordinator_agent_config.py`
+     3. 重构 `__init__` 使用 Config 对象
 
 2. CoordinatorAgent：显式依赖注入/减少懒加载隐藏依赖 - 预计6小时
    - 问题描述：大量 `_get_xxx()` 懒加载引入隐式依赖和首调用延迟，调试困难。
@@ -156,15 +165,29 @@
    - 前置依赖：无，可与P1-1并行。
    - 收益：模块数下降、逻辑单源化、减少维护与认知负担。
 
-4. ConversationAgent Phase-1拆分为5文件 + Config收敛 - 预计14小时
-   - 问题描述：2455行单文件、同步/异步混杂、构造参数14个，维护/测试成本高。
-   - 修复方案：
-     1) 按报告建议拆出 core/workflow/state/recovery/control_flow 五文件。
-     2) 引入 `ConversationAgentConfig`，用默认值+可选覆盖替代长参数列表。
-     3) 保留外部导入路径不变（`conversation_agent.py` 作为薄门面转发）。
-     4) 分区迁移测试，确保关键行为无回归。
-   - 前置依赖：P0-1/2/3。
-   - 收益：降低单文件复杂度、明确职责边界，后续优化（类型/性能）更可控。
+4. **🔄 ConversationAgent Phase-1拆分（准备阶段 - 30%完成）** - 预计剩余10小时
+   - **✅ 已完成（2025-12-12 Codex检查）：**
+     - ✅ 已提取5个辅助模块（准备阶段）：
+       - `conversation_engine.py`（650行）
+       - `error_handling.py`（712行）
+       - `control_flow_ir.py`（188行）
+       - `workflow_state_monitor.py`（318行）
+       - `conversation_agent_enhanced.py`（284行）
+
+   - **⚠️ 问题：**
+     - 主文件未变薄：1768行 → **2297行**（增加30%）
+     - 说明：辅助模块已提取，但主体逻辑未拆分
+
+   - **❌ 待完成：**
+     1) ❌ 按目标结构拆分为 core/workflow/state/recovery/control_flow 五文件
+     2) ❌ 引入 `ConversationAgentConfig` dataclass
+     3) ❌ 保留外部导入路径不变（conversation_agent.py 作为门面）
+
+   - **下一步行动：**
+     1. 创建 `src/domain/agents/conversation_agent/` 子包
+     2. 拆分为 core.py/workflow.py/state.py/recovery.py/control_flow.py
+     3. 创建 `conversation_agent_config.py`
+     4. 重构主文件为薄门面（re-export）
 
 5. WorkflowAgent：去重复执行入口 + 明确容器回退策略 - 预计8小时
    - 问题描述：多个 execute_* 入口疑似重复，默认容器执行器回退逻辑可能吞错。
@@ -184,18 +207,42 @@
    - 前置依赖：P1-1/4（拆分后更容易替换）。
    - 收益：静态检查能力恢复，降低重构引入bug概率。
 
-## 修复顺序建议
+## 修复顺序建议（基于当前进度更新）
 
-1. 首先修复：P0-1/2/3（ConversationAgent 三类运行时/类型关键bug），并同时定位P0-4 Ruff错误。
-2. 然后并行修复：
-   - 线A：P1-1 + P1-2（CoordinatorAgent Phase-1拆分与依赖显式化）
-   - 线B：P1-3（服务冗余第一阶段合并）
-   - 线C：P1-4（ConversationAgent 拆分）
-3. 最后修复：P1-5（WorkflowAgent去重复）与 P1-6（类型安全提升）作为收尾增量。
+**当前状态（2025-12-12）：**
+- ✅ P0全部完成
+- 🔄 P1-1（CoordinatorAgent）70%完成
+- 🔄 P1-4（ConversationAgent）30%完成
 
-## 预计总工作量
-- P0: 7.5小时
-- P1: 66小时（建议3条并行线分摊到Claude+Codex+开发者，1周可完成Phase-1范围）
+**建议执行顺序：**
+
+1. **优先完成 P1-1（CoordinatorAgent 收尾）** - 剩余5小时
+   - 创建 RuleEngineFacade（2h）
+   - 创建 CoordinatorAgentConfig（2h）
+   - 单测迁移验证（1h）
+
+2. **并行推进：**
+   - **线A**：完成 P1-4（ConversationAgent 主体拆分）- 剩余10小时
+   - **线B**：P1-3（服务冗余合并）- 12小时
+   - **线C**：P1-2（显式依赖注入）- 6小时（依赖 P1-1 完成）
+
+3. **收尾阶段：**
+   - P1-5（WorkflowAgent 去重复）- 8小时
+   - P1-6（类型安全提升）- 10小时（依赖 P1-1/4 完成）
+
+## 预计总工作量（更新）
+
+- **P0: 已完成** ✅
+- **P1 已完成工作：** ~21小时（CoordinatorAgent 11h + ConversationAgent 辅助模块 4h + 其他提取 6h）
+- **P1 剩余工作：** ~51小时
+  - P1-1 收尾：5h
+  - P1-2：6h
+  - P1-3：12h
+  - P1-4 主体：10h
+  - P1-5：8h
+  - P1-6：10h
+
+**预计完成时间：** 3-4个工作日（3条并行线）
 
 ---
 
