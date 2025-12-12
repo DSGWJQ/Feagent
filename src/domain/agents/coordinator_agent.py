@@ -353,6 +353,7 @@ class CoordinatorAgent:
         self.rejection_rate_threshold = rejection_rate_threshold
 
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
+        self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
         self._rules: list[Rule] = wiring.base_state["_rules"]
         self._statistics = wiring.base_state["_statistics"]
 
@@ -1848,17 +1849,23 @@ class CoordinatorAgent:
         """启动工作流状态监控
 
         Phase 35.5: 委托给 WorkflowStateMonitor
+        Phase 35.5.1: 写回 base_state 以支持状态恢复
         """
         self._workflow_state_monitor.start_monitoring()
         self._is_monitoring = True
+        # Phase 35.5.1: 写回 base_state 确保进程重建后可恢复
+        self._base_state["_is_monitoring"] = True
 
     def stop_monitoring(self) -> None:
         """停止工作流状态监控
 
         Phase 35.5: 委托给 WorkflowStateMonitor
+        Phase 35.5.1: 写回 base_state 以支持状态恢复
         """
         self._workflow_state_monitor.stop_monitoring()
         self._is_monitoring = False
+        # Phase 35.5.1: 写回 base_state 确保进程重建后可恢复
+        self._base_state["_is_monitoring"] = False
 
     # Phase 35.5: 以下方法已移至 WorkflowStateMonitor，此处删除：
     # - _handle_workflow_started

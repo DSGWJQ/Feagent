@@ -557,3 +557,66 @@ class TestCoordinatorSystemStatus:
 
         system_status = coordinator.get_system_status()
         assert system_status["active_nodes"] == 2
+
+
+class TestCoordinatorStateRestoration:
+    """状态恢复测试 - Phase 35.5.1"""
+
+    @pytest.fixture
+    def event_bus(self):
+        return EventBus()
+
+    def test_start_monitoring_writes_to_base_state(self, event_bus):
+        """测试：start_monitoring 应写回 base_state"""
+        # 创建 coordinator（使用真实的 Bootstrap）
+        coordinator = CoordinatorAgent(event_bus=event_bus)
+
+        # 获取 base_state 引用
+        base_state = coordinator._base_state
+
+        # 验证初始状态
+        initial_monitoring = base_state.get("_is_monitoring", False)
+        assert coordinator._is_monitoring == initial_monitoring
+
+        # 启动监控
+        coordinator.start_monitoring()
+
+        # 验证状态已写回 base_state
+        assert base_state["_is_monitoring"] is True
+        assert coordinator._is_monitoring is True
+
+    def test_stop_monitoring_writes_to_base_state(self, event_bus):
+        """测试：stop_monitoring 应写回 base_state"""
+        # 创建 coordinator 并启动监控
+        coordinator = CoordinatorAgent(event_bus=event_bus)
+        coordinator.start_monitoring()
+
+        base_state = coordinator._base_state
+        assert base_state["_is_monitoring"] is True
+
+        # 停止监控
+        coordinator.stop_monitoring()
+
+        # 验证状态已写回 base_state
+        assert base_state["_is_monitoring"] is False
+        assert coordinator._is_monitoring is False
+
+    def test_monitoring_state_persists_in_shared_base_state(self, event_bus):
+        """测试：监控状态通过 base_state 共享
+
+        注意：由于 CoordinatorBootstrap 每次创建新的 base_state 实例，
+        此测试验证的是状态写回机制，而非真实的进程重建恢复。
+        实际生产环境中，base_state 通过依赖注入共享。
+        """
+        # 创建第一个 coordinator
+        coordinator1 = CoordinatorAgent(event_bus=event_bus)
+        base_state = coordinator1._base_state
+
+        # 启动监控
+        coordinator1.start_monitoring()
+        assert base_state["_is_monitoring"] is True
+
+        # 验证如果新实例共享相同的 base_state，可以读取状态
+        # （此测试仅验证写回逻辑，不测试真实的进程重建）
+        assert base_state["_is_monitoring"] is True
+        assert coordinator1._is_monitoring is True

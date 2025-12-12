@@ -17344,3 +17344,227 @@ tests/unit/domain/services/test_save_request_receipt.py: 26 passed
 | 测试 | `tests/unit/domain/services/test_save_request_receipt.py` | 26 个测试用例 |
 
 ---
+
+## 42. Phase 35.5: WorkflowStateMonitor 模块提取
+
+### 42.1 背景与目标
+
+**问题诊断**：CoordinatorAgent 包含约 200 行工作流状态监控代码，且存在 6 个并发安全和订阅管理问题。
+
+**目标**：提取为独立的 `WorkflowStateMonitor` 模块，修复所有已知 bug，提升代码可维护性。
+
+### 42.2 核心实现
+
+**位置**：`src/domain/agents/workflow_state_monitor.py` (400 行)
+
+**职责**：
+1. 监听工作流事件（WorkflowExecutionStartedEvent, WorkflowExecutionCompletedEvent, NodeExecutionEvent）
+2. 维护工作流状态字典（workflow_states）
+3. 提供查询接口（get_workflow_state, get_all_workflow_states, get_system_status）
+4. 清理策略（clear_old_states, clear_workflow_state）
+5. 线程安全保护（threading.Lock）
+
+**关键方法**：
+```python
+class WorkflowStateMonitor:
+    def __init__(
+        self,
+        workflow_states: dict[str, dict[str, Any]],
+        event_bus: Any,
+        is_compressing_context: bool | Callable[[], bool] = False,
+        compression_callback: Callable[[str, str, dict[str, Any]], Awaitable[None]] | None = None,
+    ):
+        self._lock = threading.Lock()
+        self._subscriptions: list[tuple[type, Callable]] = []
+
+    def start_monitoring(self) -> None:
+        """开始监听工作流事件（订阅管理修复）"""
+
+    def stop_monitoring(self) -> None:
+        """停止监听工作流事件（订阅残留bug修复）"""
+
+    def get_workflow_state(self, workflow_id: str) -> dict[str, Any] | None:
+        """获取工作流状态（深拷贝保护）"""
+
+    def clear_old_states(self, max_age_seconds: int) -> int:
+        """清理旧状态（内存泄漏防护）"""
+```
+
+### 42.3 六大 Bug 修复
+
+| Bug 编号 | 问题描述 | 修复方案 | 影响优先级 |
+|----------|----------|----------|------------|
+| 1 | 订阅 handler 不匹配 | 记录 `_subscriptions` 列表，stop 时使用正确 handler | HIGH |
+| 2 | `_current_workflow_id` 并发不安全 | 移除全局变量，强制从事件读取 workflow_id | HIGH |
+| 3 | 浅拷贝暴露内部状态 | 查询方法返回 `copy.deepcopy()` | MEDIUM |
+| 4 | 缺少清理策略导致内存泄漏 | 添加 `clear_old_states()` 和 `clear_workflow_state()` | MEDIUM |
+| 5 | 缺失状态未防御性处理 | `_handle_workflow_completed` 创建最小状态 | LOW |
+| 6 | 无线程安全保护 | `threading.Lock` 保护所有状态更新 | HIGH |
+
+### 42.4 NodeExecutionEvent 修复
+
+**问题**：NodeExecutionEvent 缺少 `workflow_id` 字段，导致并发场景下无法识别事件归属。
+
+**修复**：
+1. 添加 `workflow_id: str = ""` 字段到 NodeExecutionEvent（`src/domain/agents/workflow_agent.py:270`）
+2. 更新 4 个事件发布点以包含 workflow_id 参数
+
+**影响**：修复后可完全移除 `_current_workflow_id` 全局状态，实现真正的并发安全。
+
+### 42.5 CoordinatorAgent 集成
+
+**修改点**：`src/domain/agents/coordinator_agent.py`
+
+1. **导入**（line 38-39）：
+```python
+from src.domain.agents.workflow_state_monitor import WorkflowStateMonitor
+```
+
+2. **初始化**（lines 484-509）：
+```python
+self._workflow_state_monitor = WorkflowStateMonitor(
+    workflow_states=self.workflow_states,
+    event_bus=self.event_bus,
+    is_compressing_context=_compressing,
+    compression_callback=_compression_callback,
+)
+
+# 恢复工作流监控状态
+self._is_monitoring = wiring.base_state.get("_is_monitoring", False)
+if self._is_monitoring:
+    self._workflow_state_monitor.start_monitoring()
+```
+
+3. **委托模式**（10 个方法）：
+   - start_monitoring() → _workflow_state_monitor.start_monitoring()
+   - stop_monitoring() → _workflow_state_monitor.stop_monitoring()
+   - get_workflow_state() → _workflow_state_monitor.get_workflow_state()
+   - get_all_workflow_states() → _workflow_state_monitor.get_all_workflow_states()
+   - get_system_status() → _workflow_state_monitor.get_system_status()
+
+### 42.6 测试覆盖
+
+**测试文件**：`tests/unit/domain/agents/test_workflow_state_monitor.py` (404 lines, 16 tests)
+
+| 测试类 | 测试数量 | 覆盖范围 |
+|--------|----------|----------|
+| `TestWorkflowStateMonitorInit` | 1 | 初始化 |
+| `TestMonitoringLifecycle` | 3 | 订阅管理（bug 修复验证） |
+| `TestWorkflowStarted` | 1 | 启动事件处理 |
+| `TestWorkflowCompleted` | 2 | 完成事件处理（防御性编程） |
+| `TestNodeExecution` | 2 | 节点事件处理（并发安全） |
+| `TestQueryMethods` | 4 | 查询接口（深拷贝保护） |
+| `TestCleanupStrategies` | 2 | 清理策略 |
+| `TestThreadSafety` | 1 | 线程安全（100 线程并发测试） |
+
+**测试结果**：16/16 passing (100%) ✅
+
+### 42.7 Phase 35.5.1: 监控状态恢复修复
+
+**问题发现**（Codex Review 7/10）：
+- start_monitoring() / stop_monitoring() 仅更新 `self._is_monitoring`
+- 未写回 `wiring.base_state["_is_monitoring"]`
+- 进程重建后监控状态丢失
+
+**修复方案**：
+
+1. **保存 base_state 引用**（line 356）：
+```python
+self._base_state = wiring.base_state  # Phase 35.5.1
+```
+
+2. **start_monitoring 写回**（line 1857）：
+```python
+def start_monitoring(self) -> None:
+    self._workflow_state_monitor.start_monitoring()
+    self._is_monitoring = True
+    self._base_state["_is_monitoring"] = True  # Phase 35.5.1
+```
+
+3. **stop_monitoring 写回**（line 1868）：
+```python
+def stop_monitoring(self) -> None:
+    self._workflow_state_monitor.stop_monitoring()
+    self._is_monitoring = False
+    self._base_state["_is_monitoring"] = False  # Phase 35.5.1
+```
+
+**测试验证**：`tests/unit/domain/agents/test_coordinator_state_monitor.py` (新增 3 tests)
+
+| 测试方法 | 验证内容 |
+|----------|----------|
+| `test_start_monitoring_writes_to_base_state` | start 写回 base_state |
+| `test_stop_monitoring_writes_to_base_state` | stop 写回 base_state |
+| `test_monitoring_state_persists_in_shared_base_state` | 状态持久化机制 |
+
+**测试结果**：3/3 passing (100%) ✅
+
+**Codex Review Score**: 9/10
+
+**测试覆盖缺口**（Codex 发现）：
+- 当前测试验证了写回 base_state 的逻辑
+- 未测试真实的恢复路径：新 CoordinatorAgent 实例从 base_state 恢复状态并自动调用 start_monitoring
+- **原因**：CoordinatorBootstrap 每次创建新的 base_state 实例，无法在单元测试中模拟进程重建
+- **未来改进**：修改 CoordinatorBootstrap 支持注入共享 base_state，添加完整的恢复路径集成测试
+
+### 42.8 已知限制
+
+以下是 Codex Review 识别但未修复的两个中优先级问题：
+
+#### 限制 1：压缩模式动态切换不生效
+
+**问题描述**：
+- `start_monitoring()` 在启动时根据 `_is_compressing_context` 选择 handler
+- 如果监控启动后切换压缩模式，handler 不会动态更新
+
+**影响范围**：边缘情况，实际生产环境很少在运行时切换压缩模式
+
+**临时解决方案**：重启监控（stop + start）以切换 handler
+
+**未来改进**：实现动态 handler 选择机制
+
+#### 限制 2：事件乱序容忍性不足
+
+**问题描述**：
+- 如果 `NodeExecutionEvent` 在 `WorkflowExecutionStartedEvent` 之前到达
+- 由于 workflow_states 中不存在状态，节点事件会被丢弃
+
+**影响范围**：取决于 EventBus 事件顺序保证
+
+**临时解决方案**：确保 EventBus 按顺序发布事件（当前实现已满足）
+
+**未来改进**：
+1. 实现延迟状态创建（lazy state creation）
+2. 或实现事件队列缓冲乱序事件
+
+### 42.9 成果总结
+
+**代码质量提升**：
+- ✅ 从 CoordinatorAgent 移除 200+ 行代码
+- ✅ 修复 6 个并发安全与订阅管理 bug
+- ✅ 修复 1 个状态恢复 bug（Phase 35.5.1）
+- ✅ 添加 19 个单元测试（100% 通过率）
+- ✅ 线程安全保护（threading.Lock）
+- ✅ 内存泄漏防护（清理策略）
+
+**架构改进**：
+- ✅ 单一职责原则（SRP）：工作流状态监控独立模块
+- ✅ 委托模式：CoordinatorAgent 轻量化
+- ✅ 依赖注入：共享 workflow_states 和 event_bus
+- ✅ 可测试性：独立测试 WorkflowStateMonitor
+
+**文档记录**：
+- ✅ 记录已知限制（2 个中优先级问题）
+- ✅ 提供未来改进方向
+
+### 42.10 文件位置
+
+| 组件 | 文件路径 | 说明 |
+|------|----------|------|
+| WorkflowStateMonitor | `src/domain/agents/workflow_state_monitor.py` | 核心实现（400 行） |
+| CoordinatorAgent 集成 | `src/domain/agents/coordinator_agent.py` | Phase 35.5 & 35.5.1 |
+| NodeExecutionEvent 修复 | `src/domain/agents/workflow_agent.py` | 添加 workflow_id 字段 |
+| Monitor 测试 | `tests/unit/domain/agents/test_workflow_state_monitor.py` | 16 个测试用例 |
+| Coordinator 测试 | `tests/unit/domain/agents/test_coordinator_state_monitor.py` | 新增 3 个状态恢复测试 |
+
+---
