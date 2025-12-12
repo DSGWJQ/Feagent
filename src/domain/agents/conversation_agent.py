@@ -1415,9 +1415,9 @@ class ConversationAgent:
             except (TypeError, AttributeError):
                 pass  # LLM 不支持这些方法时跳过
 
-            # Step 1: 更新 SessionContext 的 token 使用情况
+            # Step 1: 更新 SessionContext 的 token 使用情况（P0-2 Phase 2: 使用staged机制）
             if prompt_tokens > 0 or completion_tokens > 0:
-                self.session_context.update_token_usage(
+                self._stage_token_usage(
                     prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
                 )
 
@@ -1436,6 +1436,9 @@ class ConversationAgent:
                 result.final_response = action.get("response", "任务完成")
                 result.execution_time = time.time() - start_time
 
+                # P0-2 Phase 2: Flush staged state before return
+                await self._flush_staged_state()
+
                 # Phase 2: 发送最终响应到 emitter 并完成
                 if self.emitter:
                     await self.emitter.emit_final_response(result.final_response)
@@ -1451,9 +1454,10 @@ class ConversationAgent:
                     arguments=action.get("arguments", {}),
                 )
 
-            # 记录决策并发布事件
+            # 记录决策并发布事件（P0-2 Phase 2: 使用async staged版本）
             if action_type in ["create_node", "execute_workflow", "request_clarification"]:
-                self._record_decision(action)
+                await self._record_decision_async(action)
+                await self._flush_staged_state()  # 立即flush以确保决策被记录
                 if self.event_bus:
                     await self.publish_decision(action)
 
@@ -1462,6 +1466,9 @@ class ConversationAgent:
             if not should_continue:
                 result.completed = True
                 result.final_response = action.get("response", "任务完成")
+
+                # P0-2 Phase 2: Flush staged state before return
+                await self._flush_staged_state()
 
                 # Phase 2: 发送最终响应到 emitter 并完成
                 if self.emitter:
@@ -1475,6 +1482,9 @@ class ConversationAgent:
         result.limit_type = "max_iterations"
         result.alert_message = f"已达到最大迭代次数限制 ({self.max_iterations} 次)，循环已终止"
         result.execution_time = time.time() - start_time
+
+        # P0-2 Phase 2: Flush staged state before return
+        await self._flush_staged_state()
 
         # Phase 2: 完成 emitter
         if self.emitter:
@@ -1667,6 +1677,36 @@ class ConversationAgent:
         )
 
         self.session_context.add_decision(
+            {
+                "id": decision.id,
+                "type": decision.type.value,
+                "payload": decision.payload,
+                "timestamp": decision.timestamp.isoformat(),
+            }
+        )
+
+        return decision
+
+    async def _record_decision_async(self, action: dict[str, Any]) -> Decision:
+        """记录决策到历史（异步staged版本，P0-2 Phase 2）
+
+        使用staged机制暂存决策记录，批量提交以减少锁获取次数。
+
+        参数：
+            action: 行动字典
+
+        返回：
+            决策对象
+        """
+        decision = Decision(
+            type=DecisionType(action.get("action_type", "continue"))
+            if action.get("action_type") in [dt.value for dt in DecisionType]
+            else DecisionType.CONTINUE,
+            payload=action,
+        )
+
+        # Phase 2: 使用staged机制暂存决策记录
+        self._stage_decision_record(
             {
                 "id": decision.id,
                 "type": decision.type.value,
