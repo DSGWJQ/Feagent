@@ -215,6 +215,48 @@ class TestSessionContext:
         assert len(session_ctx.decision_history) == 2
         assert session_ctx.decision_history[0]["type"] == "create_node"
 
+    def test_session_context_with_resource_constraints(self):
+        """测试：会话上下文支持资源约束
+
+        业务场景：
+        - ConversationAgent需要在决策时考虑资源约束
+        - 资源约束包括：时间限制、并发限制等
+        - 约束信息存储在SessionContext中
+
+        为什么需要这个测试？
+        1. 确保SessionContext有resource_constraints字段
+        2. 支持运行时设置和读取资源约束
+        3. 修复Pyright类型检查错误(conversation_agent.py:1283, 1307)
+
+        验收标准：
+        - SessionContext可以设置resource_constraints
+        - 默认值为None（无特殊约束）
+        - 可以读取约束信息
+        """
+        # Arrange
+        from src.domain.services.context_manager import GlobalContext, SessionContext
+
+        global_ctx = GlobalContext(user_id="user_123")
+
+        # Act & Assert - 测试默认为None
+        session_ctx = SessionContext(session_id="test", global_context=global_ctx)
+        assert session_ctx.resource_constraints is None
+
+        # Act & Assert - 测试设置约束
+        constraints = {"time_limit": 300, "max_parallel": 3}
+        session_ctx2 = SessionContext(
+            session_id="test2", global_context=global_ctx, resource_constraints=constraints
+        )
+        assert session_ctx2.resource_constraints == constraints
+        assert session_ctx2.resource_constraints["time_limit"] == 300
+        assert session_ctx2.resource_constraints["max_parallel"] == 3
+
+        # Act & Assert - 测试运行时设置
+        session_ctx3 = SessionContext(session_id="test3", global_context=global_ctx)
+        assert session_ctx3.resource_constraints is None
+        session_ctx3.resource_constraints = {"time_limit": 600}
+        assert session_ctx3.resource_constraints["time_limit"] == 600
+
 
 class TestWorkflowContext:
     """测试工作流上下文
@@ -692,7 +734,6 @@ class TestRealWorldScenario:
         # 2. 对话Agent设置目标
         main_goal = Goal(id="goal_main", description="分析销售数据并生成报告")
         sub_goal_1 = Goal(id="goal_sub_1", description="获取数据", parent_id="goal_main")
-        sub_goal_2 = Goal(id="goal_sub_2", description="分析数据", parent_id="goal_main")
 
         session_ctx.push_goal(main_goal)
         session_ctx.push_goal(sub_goal_1)
