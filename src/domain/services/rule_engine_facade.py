@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -87,6 +88,11 @@ class RuleEngineFacade:
 
     统一的规则引擎入口，整合决策规则、安全校验、审计等功能。
 
+    线程安全：
+    - 使用 threading.RLock() 保护可变状态（_rules, _statistics）
+    - 所有公共方法都是线程安全的
+    - 支持并发调用 validate_decision()
+
     使用示例：
         facade = RuleEngineFacade(
             safety_guard=safety_guard,
@@ -133,6 +139,9 @@ class RuleEngineFacade:
         # 决策统计
         self._statistics = DecisionStats()
 
+        # 线程安全锁（保护 _rules 和 _statistics）
+        self._lock = threading.RLock()
+
         logger.info(
             "RuleEngineFacade initialized with rejection_rate_threshold=%.2f",
             rejection_rate_threshold,
@@ -147,17 +156,25 @@ class RuleEngineFacade:
 
         返回：
             决策规则列表（按优先级排序）
+
+        注意：
+            线程安全 - 使用锁保护
         """
-        return sorted(self._rules, key=lambda r: r.priority, reverse=True)
+        with self._lock:
+            return sorted(self._rules, key=lambda r: r.priority, reverse=True)
 
     def add_decision_rule(self, rule: DecisionRule) -> None:
         """添加决策规则
 
         参数：
             rule: 决策规则
+
+        注意：
+            线程安全 - 使用锁保护
         """
-        self._rules.append(rule)
-        logger.debug(f"Added decision rule: {rule.id} (priority={rule.priority})")
+        with self._lock:
+            self._rules.append(rule)
+            logger.debug(f"Added decision rule: {rule.id} (priority={rule.priority})")
 
     def remove_decision_rule(self, rule_id: str) -> bool:
         """移除决策规则
@@ -167,17 +184,21 @@ class RuleEngineFacade:
 
         返回：
             是否成功移除
+
+        注意：
+            线程安全 - 使用锁保护
         """
-        original_count = len(self._rules)
-        self._rules = [r for r in self._rules if r.id != rule_id]
-        removed = len(self._rules) < original_count
+        with self._lock:
+            original_count = len(self._rules)
+            self._rules = [r for r in self._rules if r.id != rule_id]
+            removed = len(self._rules) < original_count
 
-        if removed:
-            logger.debug(f"Removed decision rule: {rule_id}")
-        else:
-            logger.warning(f"Decision rule not found: {rule_id}")
+            if removed:
+                logger.debug(f"Removed decision rule: {rule_id}")
+            else:
+                logger.warning(f"Decision rule not found: {rule_id}")
 
-        return removed
+            return removed
 
     def validate_decision(
         self, decision: dict[str, Any], *, session_id: str | None = None
@@ -186,45 +207,81 @@ class RuleEngineFacade:
 
         按优先级遍历规则，累积错误和修正建议。
 
+        异常处理策略（fail-closed）：
+        - 规则执行异常视为验证失败
+        - 异常信息记录到 errors 和日志
+        - 统计保持一致性
+
         参数：
             decision: 决策字典
             session_id: 会话ID（可选，用于日志）
 
         返回：
             ValidationResult 验证结果
+
+        注意：
+            线程安全 - 使用锁保护
         """
-        # 更新统计
-        self._statistics.total += 1
+        with self._lock:
+            # 更新统计
+            self._statistics.total += 1
 
-        errors = []
-        corrections = []
+            errors = []
+            corrections = []
 
-        # 按优先级遍历规则
-        for rule in self.list_decision_rules():
-            # 检查规则条件是否通过
-            if rule.condition(decision):
-                continue
+            # 获取规则列表的副本（在锁内）
+            rules = sorted(self._rules, key=lambda r: r.priority, reverse=True)
 
-            # 验证失败
-            error_msg = rule.error_message
-            if callable(error_msg):
-                error_msg = error_msg(decision)
+        # 在锁外执行规则（避免持锁时间过长）
+        for rule in rules:
+            try:
+                # 检查规则条件是否通过
+                condition_result = rule.condition(decision)
+                if condition_result:
+                    continue
 
-            errors.append(error_msg)
+                # 验证失败 - 获取错误消息
+                error_msg = rule.error_message
+                if callable(error_msg):
+                    try:
+                        error_msg = error_msg(decision)
+                    except Exception as e:
+                        error_msg = f"规则 {rule.id} 错误消息生成失败: {e}"
+                        logger.error(
+                            f"Error generating error message for rule {rule.id}: {e}", exc_info=True
+                        )
 
-            # 收集修正建议
-            if rule.correction:
-                correction = rule.correction(decision)
-                if correction and correction not in corrections:
-                    corrections.append(correction)
+                errors.append(error_msg)
 
-        # 判断结果
+                # 收集修正建议
+                if rule.correction:
+                    try:
+                        correction = rule.correction(decision)
+                        if correction and correction not in corrections:
+                            corrections.append(correction)
+                    except Exception as e:
+                        logger.error(
+                            f"Error generating correction for rule {rule.id}: {e}", exc_info=True
+                        )
+                        # 修正建议失败不影响验证结果，仅记录日志
+
+            except Exception as e:
+                # 规则执行异常 - fail-closed 策略（视为验证失败）
+                error_msg = f"规则 {rule.id} 执行异常: {e}"
+                errors.append(error_msg)
+                logger.error(
+                    f"Rule {rule.id} execution failed for session {session_id}: {e}",
+                    exc_info=True,
+                    extra={"rule_id": rule.id, "session_id": session_id, "decision": decision},
+                )
+
+        # 更新统计（重新获取锁）
         is_valid = len(errors) == 0
-
-        if is_valid:
-            self._statistics.passed += 1
-        else:
-            self._statistics.rejected += 1
+        with self._lock:
+            if is_valid:
+                self._statistics.passed += 1
+            else:
+                self._statistics.rejected += 1
 
         # 记录日志
         if self._log_collector and not is_valid:
@@ -257,16 +314,24 @@ class RuleEngineFacade:
 
         返回：
             统计字典
+
+        注意：
+            线程安全 - 使用锁保护
         """
-        return self._statistics.to_dict()
+        with self._lock:
+            return self._statistics.to_dict()
 
     def is_rejection_rate_high(self) -> bool:
         """判断拒绝率是否过高
 
         返回：
             是否超过阈值
+
+        注意：
+            线程安全 - 使用锁保护
         """
-        return self._statistics.rejection_rate > self._rejection_rate_threshold
+        with self._lock:
+            return self._statistics.rejection_rate > self._rejection_rate_threshold
 
     # =========================================================================
     # 规则构建辅助
