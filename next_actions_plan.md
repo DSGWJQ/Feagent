@@ -9,7 +9,7 @@
    - 测试覆盖：新增4个类型可用性测试 + Ruff F821检查通过。
    - 收益：恢复静态类型安全，避免运行期注解解析异常。
 
-2. **✅ ConversationAgent：异步Race Condition + 无锁并发访问** - 已完成（Commit: 6efea4b + 1345f6a）
+2. **✅ ConversationAgent：异步Race Condition + 无锁并发访问** - 已完成（Commit: 6efea4b + 1345f6a + 8bd4a3d + 4de4721）
 
    **Phase 1 (6efea4b): 核心基础设施**
    - ✅ 新增双锁策略：`_state_lock` + `_critical_event_lock`
@@ -23,11 +23,31 @@
    - ✅ 更新 `wait_for_subagent_async` / `resume_from_subagent_async` 使用锁内原子转换
    - Codex评审：安全性已明显缓解，关键事件顺序问题已消除
 
-   **Phase 2 待完成：**
-   - ⏳ 添加 `pending_feedbacks` 访问的锁保护
-   - ⏳ 添加 `session_context.update_token_usage()` 的锁保护
-   - ⏳ 添加 `session_context.add_decision()` 的锁保护
-   - ⏳ 高频路径性能优化（批量提交token更新）
+   **Phase 2 Part 1 (8bd4a3d): Staged Batching + pending_feedbacks**
+   - ✅ 添加 staged 变量（_staged_prompt_tokens, _staged_completion_tokens, _staged_decision_records）
+   - ✅ 添加 stage/flush 辅助方法（_stage_token_usage, _stage_decision_record, _flush_staged_state）
+   - ✅ 添加 pending_feedbacks 异步锁保护方法（get/clear/generate_error_recovery_decision）
+   - ✅ 更新事件处理器使用锁保护（_handle_adjustment_event, _handle_failure_handled_event）
+   - Codex评审：基本正确，发现4个需注意点
+
+   **Phase 2 Part 2 (4de4721): run_async staged迁移 + 决策记录staged化**
+   - ✅ 迁移 run_async 的 update_token_usage 到 staged 机制
+   - ✅ 在所有return前添加 flush（3个分支：respond/should_continue/max_iter）
+   - ✅ 新增 _record_decision_async() 使用staged机制
+   - ✅ 迁移 run_async 中的决策记录到async+staged版本
+   - 测试覆盖：P0回归测试 14/14 通过
+
+   **Phase 2 总结：**
+   - ✅ Staged batching 机制完整实现（减少锁获取次数）
+   - ✅ pending_feedbacks 全量锁保护（读/写/清空/事件处理）
+   - ✅ run_async 高频路径优化（token/decision批量提交）
+   - ✅ 所有关键return前flush保护（避免数据丢失）
+
+   **已知限制（Optional P1 任务）：**
+   - ⏳ pending_feedbacks 仍有同步访问点（get_context_for_reasoning等）
+   - ⏳ 缺少异常时的try/finally flush保护
+   - ⏳ 同一agent并发run时staged全局共享问题
+   - ⏳ 需推动调用方使用async版本以保证读写一致
 
 3. **✅ ConversationAgent：浅拷贝导致上下文污染（2处dict.copy）** - 已完成（Commit: P0-3）
    - 修复内容：两处改为 `copy.deepcopy(context)`，新增挂起/恢复路径单测。
