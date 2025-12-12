@@ -68,6 +68,7 @@ def _get_decision_type_map() -> dict[str, "DecisionType"]:
         }
     return _DECISION_TYPE_MAP
 
+
 if TYPE_CHECKING:
     from src.domain.agents.control_flow_ir import ControlFlowIR
     from src.domain.agents.error_handling import (
@@ -529,6 +530,10 @@ class ConversationAgent:
         # P0 Fix: Task tracking to prevent race conditions
         self._pending_tasks: set[asyncio.Task[Any]] = set()
 
+        # P0-2 Fix: Locks for shared state protection and critical event ordering
+        self._state_lock = asyncio.Lock()
+        self._critical_event_lock = asyncio.Lock()
+
         # P1 Fix: 决策元数据自管（避免污染 session_context）
         self._decision_metadata: list[dict[str, Any]] = []
 
@@ -547,6 +552,41 @@ class ConversationAgent:
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)
         return task
+
+    async def _publish_critical_event(self, event: Event) -> None:
+        """发布关键事件（P0-2 Fix）
+
+        关键事件需要保证：
+        1. 按顺序发布（使用_critical_event_lock）
+        2. 必须等待发布完成（await）
+        3. 不与_state_lock嵌套以避免死锁
+
+        适用场景：StateChangedEvent、SpawnSubAgentEvent等需要严格顺序的事件
+
+        参数：
+            event: 事件对象
+        """
+        if not self.event_bus:
+            return
+        async with self._critical_event_lock:
+            await self.event_bus.publish(event)
+
+    def _publish_notification_event(self, event: Event) -> None:
+        """发布通知事件（P0-2 Fix）
+
+        通知事件特点：
+        1. 后台异步发布
+        2. 被追踪以防止丢失
+        3. 不阻塞主流程
+
+        适用场景：SaveRequest、进度通知等非关键事件
+
+        参数：
+            event: 事件对象
+        """
+        if not self.event_bus:
+            return
+        self._create_tracked_task(self.event_bus.publish(event))
 
     # =========================================================================
     # Phase 34: 保存请求通道方法
@@ -634,7 +674,10 @@ class ConversationAgent:
         return self._state
 
     def transition_to(self, new_state: ConversationAgentState) -> None:
-        """状态转换
+        """状态转换（同步版本）
+
+        注意：同步版本无法await事件发布，仅适用于非关键路径。
+        在异步上下文中请使用transition_to_async以保证关键事件顺序。
 
         参数：
             new_state: 目标状态
@@ -651,19 +694,49 @@ class ConversationAgent:
         old_state = self._state
         self._state = new_state
 
-        # 发布状态变化事件（异步任务，不阻塞同步方法）
-        # P0 Fix: Track task to prevent garbage collection before completion
-        if self.event_bus:
-            self._create_tracked_task(
-                self.event_bus.publish(
-                    StateChangedEvent(
-                        from_state=old_state.value,
-                        to_state=new_state.value,
-                        session_id=self.session_context.session_id,
-                        source="conversation_agent",
-                    )
+        # P0-2 Fix: 使用通知事件后台追踪发布（避免阻塞同步调用）
+        event = StateChangedEvent(
+            from_state=old_state.value,
+            to_state=new_state.value,
+            session_id=self.session_context.session_id,
+            source="conversation_agent",
+        )
+        self._publish_notification_event(event)
+
+    async def transition_to_async(self, new_state: ConversationAgentState) -> None:
+        """状态转换（异步版本，P0-2 Fix）
+
+        保证：
+        1. _state修改受_state_lock保护
+        2. StateChangedEvent按顺序await发布
+
+        参数：
+            new_state: 目标状态
+
+        异常：
+            DomainError: 无效的状态转换
+        """
+        async with self._state_lock:
+            from src.domain.exceptions import DomainError
+
+            valid_transitions = VALID_STATE_TRANSITIONS.get(self._state, [])
+            if new_state not in valid_transitions:
+                raise DomainError(
+                    f"Invalid state transition: {self._state.value} -> {new_state.value}"
                 )
+
+            old_state = self._state
+            self._state = new_state
+
+            event = StateChangedEvent(
+                from_state=old_state.value,
+                to_state=new_state.value,
+                session_id=self.session_context.session_id,
+                source="conversation_agent",
             )
+
+        # 释放_state_lock后再发布事件，避免与订阅者产生死锁
+        await self._publish_critical_event(event)
 
     def wait_for_subagent(
         self,
@@ -712,6 +785,53 @@ class ConversationAgent:
         # 转换回处理状态
         self.transition_to(ConversationAgentState.PROCESSING)
 
+        return context
+
+    async def wait_for_subagent_async(
+        self,
+        subagent_id: str,
+        task_id: str,
+        context: dict[str, Any],
+    ) -> None:
+        """等待子Agent执行（异步版本，P0-2 Fix）
+
+        保证：
+        1. 状态修改受_state_lock保护
+        2. 状态转换使用关键事件路径
+
+        参数：
+            subagent_id: 子Agent ID
+            task_id: 任务ID
+            context: 当前执行上下文（用于恢复）
+        """
+        async with self._state_lock:
+            self.pending_subagent_id = subagent_id
+            self.pending_task_id = task_id
+            self.suspended_context = copy.deepcopy(context)
+        await self.transition_to_async(ConversationAgentState.WAITING_FOR_SUBAGENT)
+
+    async def resume_from_subagent_async(self, result: dict[str, Any]) -> dict[str, Any]:
+        """从子Agent等待中恢复（异步版本，P0-2 Fix）
+
+        保证：
+        1. 状态修改受_state_lock保护
+        2. 状态转换使用关键事件路径
+
+        参数：
+            result: 子Agent执行结果
+
+        返回：
+            恢复的上下文（包含子Agent结果）
+        """
+        async with self._state_lock:
+            context = copy.deepcopy(self.suspended_context) if self.suspended_context else {}
+            context["subagent_result"] = result
+
+            self.pending_subagent_id = None
+            self.pending_task_id = None
+            self.suspended_context = None
+
+        await self.transition_to_async(ConversationAgentState.PROCESSING)
         return context
 
     def is_waiting_for_subagent(self) -> bool:
@@ -765,9 +885,10 @@ class ConversationAgent:
         wait_for_result: bool = True,
         context_snapshot: dict[str, Any] | None = None,
     ) -> str:
-        """请求生成子Agent
+        """请求生成子Agent（同步版本）
 
-        发布 SpawnSubAgentEvent 事件，并根据 wait_for_result 决定是否等待结果。
+        注意：同步版本无法await事件发布，仅适用于非关键路径。
+        在异步上下文中请使用request_subagent_spawn_async以保证关键事件顺序。
 
         参数：
             subagent_type: 子Agent类型
@@ -784,25 +905,69 @@ class ConversationAgent:
         subagent_id = f"subagent_{uuid4().hex[:12]}"
         task_id = f"task_{uuid4().hex[:8]}"
 
-        # 发布事件（异步任务，不阻塞同步方法）
-        # P0 Fix: Track task to prevent garbage collection before completion
-        if self.event_bus:
-            self._create_tracked_task(
-                self.event_bus.publish(
-                    SpawnSubAgentEvent(
-                        subagent_type=subagent_type,
-                        task_payload=task_payload,
-                        priority=priority,
-                        session_id=self.session_context.session_id,
-                        context_snapshot=context_snapshot or {},
-                        source="conversation_agent",
-                    )
-                )
+        # P0-2 Fix: 使用通知事件后台追踪发布
+        self._publish_notification_event(
+            SpawnSubAgentEvent(
+                subagent_type=subagent_type,
+                task_payload=task_payload,
+                priority=priority,
+                session_id=self.session_context.session_id,
+                context_snapshot=context_snapshot or {},
+                source="conversation_agent",
             )
+        )
 
         # 如果需要等待结果，进入等待状态
         if wait_for_result:
             self.wait_for_subagent(
+                subagent_id=subagent_id,
+                task_id=task_id,
+                context=context_snapshot or {},
+            )
+
+        return subagent_id
+
+    async def request_subagent_spawn_async(
+        self,
+        subagent_type: str,
+        task_payload: dict[str, Any],
+        priority: int = 0,
+        wait_for_result: bool = True,
+        context_snapshot: dict[str, Any] | None = None,
+    ) -> str:
+        """请求生成子Agent（异步版本，P0-2 Fix）
+
+        关键保证：
+        1. SpawnSubAgentEvent被await发布（协调者必须看到）
+        2. 如果wait_for_result，状态转换发生在事件发布之后
+
+        参数：
+            subagent_type: 子Agent类型
+            task_payload: 任务负载
+            priority: 优先级（默认0）
+            wait_for_result: 是否等待结果（默认True）
+            context_snapshot: 上下文快照（可选）
+
+        返回：
+            生成的子Agent ID
+        """
+        from uuid import uuid4
+
+        subagent_id = f"subagent_{uuid4().hex[:12]}"
+        task_id = f"task_{uuid4().hex[:8]}"
+
+        event = SpawnSubAgentEvent(
+            subagent_type=subagent_type,
+            task_payload=task_payload,
+            priority=priority,
+            session_id=self.session_context.session_id,
+            context_snapshot=context_snapshot or {},
+            source="conversation_agent",
+        )
+        await self._publish_critical_event(event)
+
+        if wait_for_result:
+            await self.wait_for_subagent_async(
                 subagent_id=subagent_id,
                 task_id=task_id,
                 context=context_snapshot or {},
