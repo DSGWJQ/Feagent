@@ -3137,3 +3137,208 @@ pytest tests/ -v
 - `tests/unit/domain/services/test_intervention_strategy.py`: 更新所有 InterventionLevel 引用
 
 ---
+
+## Phase 35.1: ContextService/ContextBuilder 提取
+
+**完成时间**: 2025-12-12
+**Commit**: b28c9af
+**目标**: 从 CoordinatorAgent 提取上下文查询与工具/知识筛选逻辑
+
+### 实现内容
+
+**1. 创建 context 模块** (`src/domain/services/context/`)
+- `models.py`: ContextResponse 数据类 (48 lines)
+- `service.py`: ContextService 核心逻辑 (312 lines)
+- `__init__.py`: 模块导出
+
+**2. CoordinatorAgent 集成** (委托模式)
+- 导入 ContextResponse/ContextService 从 context 模块
+- 删除原 ContextResponse 数据类定义（避免重复）
+- 构造函数初始化 ContextService
+- `tool_repository` setter 同步更新 ContextService
+- `get_context`/`get_context_async` 委托给 ContextService
+- `get_available_tools`/`find_tools_by_query` 委托给 ContextService
+- 删除 4 个辅助方法：
+  - `_get_relevant_rules`
+  - `_get_relevant_knowledge_async`
+  - `_get_relevant_tools`
+  - `_generate_context_summary`
+
+### TDD 测试覆盖
+
+**新增测试**: 8/8 tests passing (100%)
+- 无检索器返回规则和工具
+- 异步知识检索
+- 工作流状态拷贝处理
+- 用户输入截断
+- 关键词工具匹配
+- 失败返回空列表
+- 获取可用工具
+- 按查询查找工具
+
+**回归测试**: 21/21 tests passing (100%)
+
+### Codex 审查: 7/10
+
+**优点**:
+- 干净的提取与委托模式
+- 向后兼容性完整
+- 测试覆盖充分
+
+**改进建议**（非阻塞，可后续 Phase 改进）:
+1. 知识检索器结果处理（可能返回 None）
+2. `find_tools_by_query` 缺少关键词回退
+3. 异常处理过于宽泛，缺少日志
+4. 规则提供者安全性
+5. 工作流上下文拷贝不一致
+
+### 代码减少
+
+- **CoordinatorAgent**: 4013 → 3798 lines (**-215 lines, 5.4% ↓**)
+- **新增模块**: context/ (+663 lines 净增)
+
+### 修改文件
+
+- `src/domain/agents/coordinator_agent.py`: 集成委托
+- `src/domain/services/context/__init__.py`: 新建
+- `src/domain/services/context/models.py`: 新建
+- `src/domain/services/context/service.py`: 新建
+- `tests/unit/domain/services/context/test_context_service.py`: 新建 (8 tests)
+- `tests/unit/domain/agents/test_coordinator_context_service.py`: 更新导入
+
+---
+
+## Phase 35.2: Payload/DAG 规则构建器提取
+
+**完成时间**: 2025-12-12
+**Commits**: e57f571, 0e1d3eb
+**目标**: 从 CoordinatorAgent 提取 Payload/DAG 验证规则构建逻辑
+
+### 实现内容
+
+**1. SafetyGuard 包重构** (`src/domain/services/safety_guard/`)
+- 从单文件 `safety_guard.py` 转换为包结构
+- `core.py`: SafetyGuard 核心（原 safety_guard.py）
+- `rules.py`: Rule 数据类（从 CoordinatorAgent 迁移，13 lines）
+- `payload_rule_builder.py`: PayloadRuleBuilder (92 lines)
+- `dag_rule_builder.py`: DagRuleBuilder + CycleDetector (65 lines)
+- `__init__.py`: 模块导出
+
+**2. PayloadRuleBuilder 方法** (4 个规则构建器)
+- `build_required_fields_rule`: 必填字段验证（含空列表/字典检测）
+- `build_type_validation_rule`: 字段类型验证（支持嵌套字段与联合类型）
+- `build_range_validation_rule`: 数值范围验证
+- `build_enum_validation_rule`: 枚举值验证
+
+**3. DagRuleBuilder 方法**
+- `build_dag_validation_rule`: DAG 结构验证
+  - 节点 ID 唯一性
+  - 边引用的节点存在性
+  - 循环依赖检测（Kahn 算法）
+
+**4. CycleDetector**
+- `detect_cycle_kahn`: 使用 Kahn 算法拓扑排序检测循环
+
+**5. CoordinatorAgent 集成** (委托模式)
+- 导入 Rule/PayloadRuleBuilder/DagRuleBuilder/CycleDetector
+- 删除原 Rule 数据类定义（lines 64-85）
+- 初始化 `_payload_rule_builder` 和 `_dag_rule_builder` (lines 450-452)
+- 委托 5 个方法到构建器：
+  - `add_payload_validation_rule` → PayloadRuleBuilder
+  - `add_payload_type_validation_rule` → PayloadRuleBuilder
+  - `add_payload_range_validation_rule` → PayloadRuleBuilder
+  - `add_payload_enum_validation_rule` → PayloadRuleBuilder
+  - `add_dag_validation_rule` → DagRuleBuilder
+- 删除 `_detect_cycle_kahn` 辅助方法
+
+### TDD 测试覆盖
+
+**新增测试**: 30/30 tests passing (100%)
+- `test_payload_rule_builder.py`: 18 tests
+  - 必填字段验证（含空列表/字典）
+  - 类型验证（含嵌套字段与联合类型）
+  - 范围验证（min-only/max-only）
+  - 枚举值验证
+- `test_dag_rule_builder.py`: 12 tests
+  - DAG 结构验证
+  - Kahn 循环检测
+  - 自循环、断开组件、部分循环
+
+**回归测试**: 78/78 tests passing (100%)
+- CoordinatorAgent payload/dag/rule 相关测试
+
+### Codex 审查: 6/10 → 修复后 9/10
+
+**初次审查问题**（3 critical issues）:
+1. **isinstance() TypeError**: 使用 `list | dict` / `int | float` 语法
+   - `isinstance()` 不支持 UnionType，必须使用 tuple 语法
+   - 修复: `(list, dict)` / `(int, float)`
+   - 添加 `# noqa: UP038` 禁用错误的 ruff 规则
+
+2. **性能 O(n²)**: `queue.pop(0)` 和 `node_ids.count(nid)`
+   - `list.pop(0)` 是 O(n) 操作，累积为 O(n²)
+   - 修复: 使用 `collections.deque` 和 `deque.popleft()` (O(1))
+   - `node_ids.count()` 嵌套循环为 O(n²)
+   - 修复: 使用 `Counter` 一次遍历完成计数 (O(n))
+
+3. **CycleDetector 误报**: 返回所有未访问节点（含断开组件），非仅循环节点
+   - 评价: 不影响正确性，但降低调试清晰度
+   - 状态: 未修复（优先级低）
+
+**修复后测试**: 108/108 tests passing (100%)
+
+### 代码减少
+
+- **CoordinatorAgent**: 3798 → 3555 lines (**-243 lines, 6.4% ↓**)
+- **累计减少**: 4013 → 3555 lines (**-458 lines, 11.4% ↓**)
+- **新增模块**: safety_guard/ (包重构，净增约 50 lines)
+
+### 修改文件
+
+**Phase 35.2 原始提交** (e57f571):
+- `src/domain/services/safety_guard/__init__.py`: 新建
+- `src/domain/services/safety_guard/core.py`: 重命名
+- `src/domain/services/safety_guard/rules.py`: 新建
+- `src/domain/services/safety_guard/payload_rule_builder.py`: 新建
+- `src/domain/services/safety_guard/dag_rule_builder.py`: 新建
+- `src/domain/agents/coordinator_agent.py`: 集成委托
+- `tests/unit/domain/services/safety_guard/test_payload_rule_builder.py`: 新建 (18 tests)
+- `tests/unit/domain/services/safety_guard/test_dag_rule_builder.py`: 新建 (12 tests)
+
+**Codex 审查修复** (0e1d3eb):
+- `src/domain/services/safety_guard/payload_rule_builder.py`: isinstance 修复 + noqa
+- `src/domain/services/safety_guard/dag_rule_builder.py`: deque + Counter 性能优化
+
+---
+
+## Phase 35 进度总结
+
+### 已完成阶段
+
+| Phase | 任务 | 减少行数 | 测试 | Codex 评分 | Commit |
+|-------|------|---------|------|-----------|--------|
+| 35.0 | 干预链修复 | - | 10/10 ✅ | 7/10 | 4ab6311, 25ffc8a |
+| 35.0.1 | Codex 优化 | - | 9/9 ✅ | 9/10 | 884cdd4, d512077, 2a40fc1 |
+| **35.1** | **ContextService** | **-215 lines** | **29/29 ✅** | **7/10** | **b28c9af** |
+| **35.2** | **Payload/DAG Builders** | **-243 lines** | **108/108 ✅** | **9/10** | **e57f571, 0e1d3eb** |
+
+### 待完成阶段
+
+| Phase | 任务 | 预计减少 | 优先级 | 状态 |
+|-------|------|---------|-------|------|
+| 35.3 | MessageLogListener | ~80 lines | P3 | ⏳ Pending |
+| 35.4 | ReflectionContextManager | ~150 lines | P4 | ⏳ Pending |
+| 35.5 | WorkflowStateMonitor | ~200 lines | P5 | ⏳ Pending |
+| 35.6 | CodeRepairFacade | ~50 lines | P6 | ⏳ Pending |
+
+### CoordinatorAgent 收敛进度
+
+- **Phase 35.0 前**: 4013 lines
+- **Phase 35.1 后**: 3798 lines (-215, 5.4% ↓)
+- **Phase 35.2 后**: 3555 lines (-243, 6.4% ↓)
+- **累计减少**: -458 lines (11.4% ↓)
+- **目标**: 3103 lines (剩余 -452 lines)
+
+**进度**: 458 / 910 完成 (50.3%)
+
+---
