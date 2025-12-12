@@ -288,7 +288,8 @@ class TestContextResponseStructure:
 
     def test_context_response_has_required_fields(self):
         """测试：ContextResponse 具有必需字段"""
-        from src.domain.agents.coordinator_agent import ContextResponse
+        # Phase 35.1: ContextResponse moved to context module
+        from src.domain.services.context import ContextResponse
 
         response = ContextResponse(
             rules=[{"id": "rule_1", "name": "测试规则"}],
@@ -304,7 +305,8 @@ class TestContextResponseStructure:
 
     def test_context_response_has_optional_workflow_context(self):
         """测试：ContextResponse 可选包含工作流上下文"""
-        from src.domain.agents.coordinator_agent import ContextResponse
+        # Phase 35.1: ContextResponse moved to context module
+        from src.domain.services.context import ContextResponse
 
         response = ContextResponse(
             rules=[],
@@ -319,7 +321,8 @@ class TestContextResponseStructure:
 
     def test_context_response_to_dict(self):
         """测试：ContextResponse 可以转换为字典"""
-        from src.domain.agents.coordinator_agent import ContextResponse
+        # Phase 35.1: ContextResponse moved to context module
+        from src.domain.services.context import ContextResponse
 
         response = ContextResponse(
             rules=[{"id": "rule_1"}],
@@ -397,7 +400,8 @@ class TestConversationAgentIntegration:
 
     def test_conversation_agent_can_get_context(self, mock_coordinator):
         """测试：ConversationAgent 可以获取上下文"""
-        from src.domain.agents.coordinator_agent import ContextResponse
+        # Phase 35.1: ContextResponse moved to context module
+        from src.domain.services.context import ContextResponse
 
         # 模拟 ConversationAgent 调用
         user_input = "帮我发送一个HTTP请求"

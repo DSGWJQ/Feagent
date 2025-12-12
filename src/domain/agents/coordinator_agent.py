@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+# Phase 35.1: ContextResponse moved to context module
+from src.domain.services.context import ContextResponse, ContextService
 from src.domain.services.event_bus import Event, EventBus
 from src.domain.services.safety_guard import ValidationResult
 from src.domain.services.workflow_failure_orchestrator import (
@@ -82,42 +84,8 @@ class Rule:
     correction: Callable[[dict[str, Any]], dict[str, Any]] | None = None
 
 
-@dataclass
-class ContextResponse:
-    """上下文响应结构（Phase 1）
-
-    协调者返回给对话Agent的上下文信息，包含：
-    - rules: 相关规则列表
-    - knowledge: 相关知识库条目
-    - tools: 可用工具列表
-    - summary: 上下文摘要文本
-    - workflow_context: 可选的工作流上下文
-
-    属性：
-        rules: 规则字典列表，每个包含 id, name, description
-        knowledge: 知识条目列表，每个包含 source_id, title, content_preview
-        tools: 工具字典列表，每个包含 id, name, description
-        summary: 人类可读的上下文摘要
-        workflow_context: 当前工作流的状态上下文（可选）
-    """
-
-    rules: list[dict[str, Any]] = field(default_factory=list)
-    knowledge: list[dict[str, Any]] = field(default_factory=list)
-    tools: list[dict[str, Any]] = field(default_factory=list)
-    summary: str = ""
-    workflow_context: dict[str, Any] | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """转换为字典"""
-        result = {
-            "rules": self.rules,
-            "knowledge": self.knowledge,
-            "tools": self.tools,
-            "summary": self.summary,
-        }
-        if self.workflow_context is not None:
-            result["workflow_context"] = self.workflow_context
-        return result
+# Phase 35.1: ContextResponse moved to src.domain.services.context.models
+# (removed from here to avoid duplication)
 
 
 @dataclass
@@ -483,6 +451,14 @@ class CoordinatorAgent:
         # 14. 保留原始配置引用（向后兼容）
         self.failure_strategy_config = failure_strategy_config or self._failure_orchestrator.config
         self.knowledge_retriever = knowledge_retriever
+
+        # Phase 35.1: 初始化 ContextService
+        self.context_service = ContextService(
+            rule_provider=lambda: self._rules,
+            tool_repository=self._tool_repository if hasattr(self, "_tool_repository") else None,
+            knowledge_retriever=self.knowledge_retriever,
+            workflow_context_provider=self.workflow_states,
+        )
 
     # =========================================================================
     # P1-6 Fix: 有界列表辅助方法（防止内存泄漏）
@@ -1275,8 +1251,14 @@ class CoordinatorAgent:
 
     @tool_repository.setter
     def tool_repository(self, repo: Any) -> None:
-        """设置工具仓库"""
+        """设置工具仓库
+
+        Phase 35.1: 同步更新 ContextService 的 tool_repository
+        """
         self._tool_repository = repo
+        # 同步更新 ContextService
+        if hasattr(self, "context_service"):
+            self.context_service._tool_repository = repo
 
     # ==================== GAP-004: 代码自动修复 ====================
 
@@ -1377,6 +1359,8 @@ class CoordinatorAgent:
     ) -> ContextResponse:
         """获取上下文信息（同步版本）
 
+        Phase 35.1: 委托给 ContextService
+
         根据用户输入，查询规则库、知识库、工具库，返回相关上下文。
 
         参数：
@@ -1386,32 +1370,7 @@ class CoordinatorAgent:
         返回：
             ContextResponse 包含规则、知识、工具和摘要
         """
-        # 1. 获取规则
-        rules_data = self._get_relevant_rules(user_input)
-
-        # 2. 获取工具（同步，不查询知识库）
-        tools_data = self._get_relevant_tools(user_input)
-
-        # 3. 获取工作流上下文（如果有）
-        workflow_context = None
-        if workflow_id and workflow_id in self.workflow_states:
-            workflow_context = self.workflow_states[workflow_id].copy()
-
-        # 4. 生成摘要
-        summary = self._generate_context_summary(
-            rules_count=len(rules_data),
-            tools_count=len(tools_data),
-            knowledge_count=0,
-            user_input=user_input,
-        )
-
-        return ContextResponse(
-            rules=rules_data,
-            knowledge=[],  # 同步版本不查询知识库
-            tools=tools_data,
-            summary=summary,
-            workflow_context=workflow_context,
-        )
+        return self.context_service.get_context(user_input=user_input, workflow_id=workflow_id)
 
     async def get_context_async(
         self,
@@ -1419,6 +1378,8 @@ class CoordinatorAgent:
         workflow_id: str | None = None,
     ) -> ContextResponse:
         """获取上下文信息（异步版本）
+
+        Phase 35.1: 委托给 ContextService
 
         根据用户输入，异步查询规则库、知识库、工具库，返回相关上下文。
 
@@ -1429,187 +1390,27 @@ class CoordinatorAgent:
         返回：
             ContextResponse 包含规则、知识、工具和摘要
         """
-        # 1. 获取规则
-        rules_data = self._get_relevant_rules(user_input)
-
-        # 2. 获取知识（异步）
-        knowledge_data = await self._get_relevant_knowledge_async(user_input, workflow_id)
-
-        # 3. 获取工具
-        tools_data = self._get_relevant_tools(user_input)
-
-        # 4. 获取工作流上下文（如果有）
-        workflow_context = None
-        if workflow_id and workflow_id in self.workflow_states:
-            workflow_context = self.workflow_states[workflow_id].copy()
-
-        # 5. 生成摘要
-        summary = self._generate_context_summary(
-            rules_count=len(rules_data),
-            tools_count=len(tools_data),
-            knowledge_count=len(knowledge_data),
-            user_input=user_input,
+        return await self.context_service.get_context_async(
+            user_input=user_input, workflow_id=workflow_id
         )
 
-        return ContextResponse(
-            rules=rules_data,
-            knowledge=knowledge_data,
-            tools=tools_data,
-            summary=summary,
-            workflow_context=workflow_context,
-        )
-
-    def _get_relevant_rules(self, user_input: str) -> list[dict[str, Any]]:
-        """获取相关规则
-
-        返回所有规则（规则通常是通用的验证规则）
-
-        参数：
-            user_input: 用户输入
-
-        返回：
-            规则字典列表
-        """
-        return [
-            {
-                "id": rule.id,
-                "name": rule.name,
-                "description": rule.description,
-                "priority": rule.priority,
-            }
-            for rule in self._rules
-        ]
-
-    async def _get_relevant_knowledge_async(
-        self,
-        user_input: str,
-        workflow_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """异步获取相关知识
-
-        参数：
-            user_input: 用户输入
-            workflow_id: 工作流ID
-
-        返回：
-            知识条目列表
-        """
-        if not self.knowledge_retriever:
-            return []
-
-        try:
-            results = await self.knowledge_retriever.retrieve_by_query(
-                query=user_input,
-                workflow_id=workflow_id,
-                top_k=5,
-            )
-            return results
-        except Exception:
-            return []
-
-    def _get_relevant_tools(self, user_input: str) -> list[dict[str, Any]]:
-        """获取相关工具
-
-        根据用户输入的关键词匹配工具
-
-        参数：
-            user_input: 用户输入
-
-        返回：
-            工具字典列表
-        """
-        if not self._tool_repository:
-            return []
-
-        try:
-            # 获取所有已发布的工具
-            all_tools = self._tool_repository.find_published()
-
-            # 简单的关键词匹配
-            input_lower = user_input.lower()
-            keywords = input_lower.split()
-
-            matched_tools = []
-            for tool in all_tools:
-                # 检查工具名称、描述或标签是否匹配关键词
-                tool_text = (
-                    getattr(tool, "name", "").lower()
-                    + " "
-                    + getattr(tool, "description", "").lower()
-                    + " "
-                    + " ".join(getattr(tool, "tags", []))
-                ).lower()
-
-                if any(kw in tool_text for kw in keywords) or not user_input:
-                    matched_tools.append(
-                        {
-                            "id": getattr(tool, "id", ""),
-                            "name": getattr(tool, "name", ""),
-                            "description": getattr(tool, "description", ""),
-                            "category": getattr(tool, "category", ""),
-                        }
-                    )
-
-            return matched_tools
-        except Exception:
-            return []
-
-    def _generate_context_summary(
-        self,
-        rules_count: int,
-        tools_count: int,
-        knowledge_count: int,
-        user_input: str,
-    ) -> str:
-        """生成上下文摘要
-
-        参数：
-            rules_count: 规则数量
-            tools_count: 工具数量
-            knowledge_count: 知识条目数量
-            user_input: 用户输入
-
-        返回：
-            摘要文本
-        """
-        parts = []
-
-        if user_input:
-            parts.append(f"用户输入: {user_input[:50]}{'...' if len(user_input) > 50 else ''}")
-
-        parts.append(f"可用规则: {rules_count}")
-        parts.append(f"相关工具: {tools_count}")
-
-        if knowledge_count > 0:
-            parts.append(f"知识条目: {knowledge_count}")
-
-        return " | ".join(parts)
+    # Phase 35.1: 以下辅助方法已移至 ContextService
+    # (_get_relevant_rules, _get_relevant_knowledge_async, _get_relevant_tools, _generate_context_summary)
 
     def get_available_tools(self) -> list[dict[str, Any]]:
         """获取所有可用工具
 
+        Phase 35.1: 委托给 ContextService
+
         返回：
             工具字典列表
         """
-        if not self._tool_repository:
-            return []
-
-        try:
-            all_tools = self._tool_repository.find_all()
-            return [
-                {
-                    "id": getattr(tool, "id", ""),
-                    "name": getattr(tool, "name", ""),
-                    "description": getattr(tool, "description", ""),
-                    "category": getattr(tool, "category", ""),
-                }
-                for tool in all_tools
-            ]
-        except Exception:
-            return []
+        return self.context_service.get_available_tools()
 
     def find_tools_by_query(self, query: str) -> list[dict[str, Any]]:
         """按查询找到相关工具
+
+        Phase 35.1: 委托给 ContextService
 
         参数：
             query: 查询字符串（可以是关键词或标签）
@@ -1617,24 +1418,7 @@ class CoordinatorAgent:
         返回：
             匹配的工具列表
         """
-        if not self._tool_repository:
-            return []
-
-        try:
-            # 尝试按标签查找
-            if hasattr(self._tool_repository, "find_by_tags"):
-                tools = self._tool_repository.find_by_tags([query])
-                return [
-                    {
-                        "id": getattr(tool, "id", ""),
-                        "name": getattr(tool, "name", ""),
-                        "description": getattr(tool, "description", ""),
-                    }
-                    for tool in tools
-                ]
-            return []
-        except Exception:
-            return []
+        return self.context_service.find_tools_by_query(query=query)
 
     @property
     def rules(self) -> list[Rule]:
