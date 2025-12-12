@@ -647,3 +647,184 @@ class TestCoordinatorAgentRealWorldScenario:
         assert stats["total"] == 2
         assert stats["passed"] == 1
         assert stats["rejected"] == 1
+
+
+class TestCoordinatorAgentRuleEngineFacadeIntegration:
+    """测试协调者Agent与RuleEngineFacade的集成
+
+    业务背景：
+    - CoordinatorAgent应当使用RuleEngineFacade进行规则管理
+    - 旧的规则方法应当标记为deprecated并代理到facade
+    - 保持向后兼容性，确保现有代码不受影响
+    """
+
+    def test_rule_engine_facade_extracted_from_wiring(self):
+        """测试：RuleEngineFacade从wiring中提取
+
+        业务场景：
+        - CoordinatorAgent初始化时
+        - 应从wiring.orchestrators中提取rule_engine_facade
+
+        验收标准：
+        - _rule_engine_facade属性存在
+        - 类型为RuleEngineFacade
+        """
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+
+        agent = CoordinatorAgent()
+
+        # Assert
+        assert hasattr(agent, "_rule_engine_facade")
+        assert agent._rule_engine_facade is not None
+
+    def test_deprecated_add_rule_emits_warning(self):
+        """测试：add_rule()方法发出deprecation警告
+
+        业务场景：
+        - 调用旧的add_rule()方法
+        - 应当发出DeprecationWarning
+
+        验收标准：
+        - 警告被触发
+        - 警告消息包含"deprecated"
+        """
+        from src.domain.agents.coordinator_agent import CoordinatorAgent, Rule
+
+        agent = CoordinatorAgent()
+        rule = Rule(
+            id="test_rule",
+            name="测试规则",
+            condition=lambda d: True,
+            priority=1,
+        )
+
+        # Act & Assert
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            agent.add_rule(rule)
+
+    def test_deprecated_remove_rule_emits_warning(self):
+        """测试：remove_rule()方法发出deprecation警告"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent, Rule
+
+        agent = CoordinatorAgent()
+        rule = Rule(id="test_rule", name="测试", condition=lambda d: True, priority=1)
+        agent.add_rule(rule)
+
+        # Act & Assert
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            agent.remove_rule("test_rule")
+
+    def test_deprecated_validate_decision_emits_warning(self):
+        """测试：validate_decision()方法发出deprecation警告"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+
+        agent = CoordinatorAgent()
+        decision = {"decision_type": "test"}
+
+        # Act & Assert
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            agent.validate_decision(decision)
+
+    def test_deprecated_get_statistics_emits_warning(self):
+        """测试：get_statistics()方法发出deprecation警告"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+
+        agent = CoordinatorAgent()
+
+        # Act & Assert
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            agent.get_statistics()
+
+    def test_deprecated_is_rejection_rate_high_emits_warning(self):
+        """测试：is_rejection_rate_high()方法发出deprecation警告"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+
+        agent = CoordinatorAgent()
+
+        # Act & Assert
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            agent.is_rejection_rate_high()
+
+    def test_deprecated_methods_proxy_to_facade(self):
+        """测试：deprecated方法正确代理到facade
+
+        业务场景：
+        - 调用deprecated方法
+        - 应当正确调用facade的对应方法
+
+        验收标准：
+        - add_rule调用facade.add_decision_rule
+        - remove_rule调用facade.remove_decision_rule
+        - validate_decision调用facade.validate_decision
+        - get_statistics调用facade.get_decision_statistics
+        - is_rejection_rate_high调用facade.is_rejection_rate_high
+        """
+        from unittest.mock import Mock
+
+        from src.domain.agents.coordinator_agent import CoordinatorAgent, Rule
+
+        agent = CoordinatorAgent()
+
+        # Mock the facade
+        mock_facade = Mock()
+        agent._rule_engine_facade = mock_facade
+
+        # Test add_rule proxies to add_decision_rule
+        rule = Rule(id="test", name="test", condition=lambda d: True, priority=1)
+        with pytest.warns(DeprecationWarning):
+            agent.add_rule(rule)
+        mock_facade.add_decision_rule.assert_called_once_with(rule)
+
+        # Test remove_rule proxies to remove_decision_rule
+        mock_facade.reset_mock()
+        with pytest.warns(DeprecationWarning):
+            agent.remove_rule("test")
+        mock_facade.remove_decision_rule.assert_called_once_with("test")
+
+        # Test validate_decision proxies to facade.validate_decision
+        mock_facade.reset_mock()
+        decision = {"decision_type": "test", "session_id": "session_123"}
+        with pytest.warns(DeprecationWarning):
+            agent.validate_decision(decision)
+        mock_facade.validate_decision.assert_called_once()
+
+        # Test get_statistics proxies to get_decision_statistics
+        mock_facade.reset_mock()
+        with pytest.warns(DeprecationWarning):
+            agent.get_statistics()
+        mock_facade.get_decision_statistics.assert_called_once()
+
+        # Test is_rejection_rate_high proxies to facade
+        mock_facade.reset_mock()
+        with pytest.warns(DeprecationWarning):
+            agent.is_rejection_rate_high()
+        mock_facade.is_rejection_rate_high.assert_called_once()
+
+    def test_rules_property_uses_facade(self):
+        """测试：rules属性使用facade
+
+        业务场景：
+        - 访问agent.rules属性
+        - 应当调用facade.list_decision_rules()
+
+        验收标准：
+        - rules属性返回facade的规则列表
+        """
+        from unittest.mock import Mock
+
+        from src.domain.agents.coordinator_agent import CoordinatorAgent, Rule
+
+        agent = CoordinatorAgent()
+
+        # Mock the facade
+        mock_facade = Mock()
+        mock_rules = [Rule(id="r1", name="Rule 1", condition=lambda d: True, priority=1)]
+        mock_facade.list_decision_rules.return_value = mock_rules
+        agent._rule_engine_facade = mock_facade
+
+        # Act
+        rules = agent.rules
+
+        # Assert
+        mock_facade.list_decision_rules.assert_called_once()
+        assert rules == mock_rules

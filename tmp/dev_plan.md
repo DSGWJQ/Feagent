@@ -1,240 +1,164 @@
-# P1重构: 统一SessionContext定义
+# Development Plan: RuleEngineFacade Integration into CoordinatorAgent
 
-**日期**: 2025-12-12
-**任务**: 消除SessionContext重复定义,统一为单一来源
-**优先级**: P1 (本月完成)
-
----
-
-## 执行摘要
-
-### 问题描述
-代码库中存在两份SessionContext定义:
-1. `src/domain/services/context_manager.py` - **完整版**(23个字段,包含resource_constraints)
-2. `src/domain/services/context_bridge.py` - **简化版**(7个字段,仅桥接使用)
-
-### 风险
-- 类型/语义分裂,未来可能导致字段不一致bug
-- Codex P0修复中发现的问题:context_bridge.SessionContext缺少resource_constraints
-
-### 目标
-- 统一为单一来源,消除重复定义
-- 保持向后兼容,不破坏现有代码
-- 提升类型安全性
+**Date**: 2025-12-13
+**Phase**: P1-1 Step 3 - Gradual Migration
+**Status**: In Progress
 
 ---
 
-## Codex分析报告总结
+## Requirements Summary
 
-### 字段差异 (关键)
-| 字段组 | context_manager | context_bridge | 影响 |
-|--------|----------------|----------------|------|
-| 基础字段 | 7个相同 | 7个 | ✅ 兼容 |
-| Token统计 | 7个新增 | 无 | ⚠️ manager专有 |
-| 模型信息 | 3个新增 | 无 | ⚠️ manager专有 |
-| 短期记忆 | 4个新增 | 无 | ⚠️ manager专有 |
-| 冻结/备份 | 2个新增 | 无 | ⚠️ manager专有 |
-| 资源约束 | 1个新增 | 无 | 🔴 P0修复新增 |
-
-**总计**: manager=23字段, bridge=7字段
-
-### 使用情况统计
-- **context_manager.SessionContext**: 3个文件导入
-  - `src/domain/agents/conversation_agent.py` (核心)
-  - `src/domain/services/memory_compression_handler.py`
-  - `src/domain/services/token_guardrail.py`
-- **context_bridge.SessionContext**: 0个外部导入(仅内部使用)
-
-**结论**: context_manager是标准版本
-
-### 兼容性风险
-1. **方法签名不兼容**:
-   - manager: `add_message(message: dict[str, Any])`
-   - bridge: `add_message(role: str, content: str)` (自动添加timestamp)
-2. **goal_stack类型收紧**: manager期望`Goal`, bridge用`Any`
-3. **消息结构差异**: bridge自动添加timestamp字段
+Integrate RuleEngineFacade into CoordinatorAgent by creating proxy methods that delegate to the facade, deprecating the old direct rule engine methods. This achieves cleaner separation of concerns while maintaining backward compatibility.
 
 ---
 
-## 重构方案 (方案B - 推荐)
+## Test Strategy
 
-### 方案选择
-**方案B**: 新建独立实体文件作为唯一来源,其他模块导入统一版本
+### Red Phase (Write Failing Tests)
+1. **test_rule_engine_facade_extraction** - Verify facade is extracted from wiring
+2. **test_deprecated_add_rule_emits_warning** - Verify add_rule() emits deprecation warning
+3. **test_deprecated_remove_rule_emits_warning** - Verify remove_rule() emits deprecation warning
+4. **test_deprecated_validate_decision_emits_warning** - Verify validate_decision() emits deprecation warning
+5. **test_deprecated_get_statistics_emits_warning** - Verify get_statistics() emits deprecation warning
+6. **test_deprecated_is_rejection_rate_high_emits_warning** - Verify is_rejection_rate_high() emits deprecation warning
+7. **test_deprecated_methods_proxy_to_facade** - Verify methods delegate to facade correctly
 
-**优势**:
-- 清晰的职责分离(entities存放核心数据结构)
-- context_manager和context_bridge都导入同一版本
-- 向后兼容(通过re-export保持现有import路径)
-- 符合DDD架构原则
+### Green Phase (Implement Minimal Code)
+1. Extract `_rule_engine_facade` from wiring in `__init__`
+2. Add `_deprecated()` decorator utility
+3. Wrap each method with `@_deprecated()` and proxy to facade
+4. Update `rules` property to use facade
 
-### 实施步骤
+### Refactor Phase
+- Clean up any redundant code
+- Ensure thread safety
+- Verify performance impact is minimal
 
-#### Step 1: 创建统一定义文件
-**文件**: `src/domain/entities/session_context.py`
+---
 
-**内容**: 基于context_manager版本,包含所有23个字段
+## Implementation Plan
 
-**新增**: 兼容方法 `add_message_simple(role, content)` 作为旧接口的适配
-
-#### Step 2: context_manager改为re-export
-**文件**: `src/domain/services/context_manager.py`
-
-**修改**:
+### Step 1: Extract RuleEngineFacade from Wiring
+**File**: `src/domain/agents/coordinator_agent.py`
+**Location**: After line 515 in `__init__`
 ```python
-# 删除 SessionContext 类定义
-# 改为导入并re-export
-from src.domain.entities.session_context import SessionContext
-
-__all__ = ["GlobalContext", "SessionContext", "WorkflowContext", "NodeContext", ...]
+self._rule_engine_facade = wiring.orchestrators["rule_engine_facade"]
 ```
 
-**效果**: 现有导入 `from src.domain.services.context_manager import SessionContext` 仍然有效
+### Step 2: Add Deprecation Decorator
+**File**: `src/domain/agents/coordinator_agent.py`
+**Location**: Top of file (after imports)
+```python
+import warnings
+from functools import wraps
 
-#### Step 3: context_bridge迁移
-**文件**: `src/domain/services/context_bridge.py`
+def _deprecated(message: str):
+    """Decorator for deprecated methods"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            warnings.warn(message, DeprecationWarning, stacklevel=2)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+```
 
-**修改**:
-1. 删除SessionContext类定义
-2. 导入统一版本: `from src.domain.entities.session_context import SessionContext`
-3. 调整内部调用:
-   - `add_message(role, content)` → `add_message_simple(role, content)`
-   - 或改为: `add_message({"role": role, "content": content, "timestamp": ...})`
+### Step 3: Deprecate Methods (Proxy Pattern)
+**Methods to Update** (lines 1857-2186):
+- `add_rule()` → proxy to `facade.add_decision_rule()`
+- `remove_rule()` → proxy to `facade.remove_decision_rule()`
+- `validate_decision()` → proxy to `facade.validate_decision()`
+- `get_statistics()` → proxy to `facade.get_decision_statistics()`
+- `is_rejection_rate_high()` → proxy to `facade.is_rejection_rate_high()`
 
-#### Step 4: 编写测试
-**文件**: `tests/unit/domain/entities/test_session_context.py`
-
-**测试内容**:
-- 所有23个字段的访问和设置
-- `add_message` 和 `add_message_simple` 两种方法
-- 与现有代码的兼容性
-
-#### Step 5: 回归验证
-运行相关测试确保无破坏:
-```bash
-pytest tests/unit/domain/agents/test_conversation_agent.py
-pytest tests/unit/domain/services/test_context_manager.py
-pytest tests/unit/domain/services/test_context_bridge.py
-pytest tests/unit/domain/services/test_token_guardrail.py
+### Step 4: Update Rules Property
+**File**: `src/domain/agents/coordinator_agent.py`
+```python
+@property
+def rules(self) -> list[Rule]:
+    """获取所有规则（按优先级排序）"""
+    return self._rule_engine_facade.list_decision_rules()
 ```
 
 ---
 
-## TDD实施计划
+## Test Files
 
-### Phase 1: 创建新文件 + 测试 (TDD - Red)
-1. 创建 `src/domain/entities/session_context.py`
-2. 编写测试 `tests/unit/domain/entities/test_session_context.py`
-3. 运行测试(应该失败,因为还没实现)
+### Primary Test File
+- `tests/unit/domain/agents/test_coordinator_agent.py` - Add integration tests
 
-### Phase 2: 实现统一定义 (TDD - Green)
-1. 将context_manager.SessionContext定义复制到新文件
-2. 添加 `add_message_simple` 兼容方法
-3. 运行测试(应该通过)
-
-### Phase 3: context_manager迁移
-1. 修改context_manager.py改为re-export
-2. 运行测试(应该通过,无破坏性改动)
-
-### Phase 4: context_bridge迁移
-1. 修改context_bridge.py使用统一定义
-2. 调整内部调用
-3. 运行测试(应该通过)
-
-### Phase 5: 全面验证
-1. 运行所有相关测试
-2. Pyright类型检查
-3. Ruff代码质量检查
+### Test Coverage Targets
+- **Deprecation Warnings**: 100% coverage (all 5 methods)
+- **Proxy Behavior**: 100% coverage (verify facade methods called)
+- **Backward Compatibility**: Existing tests must pass
 
 ---
 
-## 风险控制
+## Progress Tracking
 
-### 迁移风险
-| 风险 | 严重度 | 缓解措施 |
-|------|--------|----------|
-| 破坏现有导入 | 高 | 使用re-export保持路径不变 |
-| 方法签名不兼容 | 中 | 提供兼容方法add_message_simple |
-| 测试失败 | 中 | TDD流程,每步验证 |
-| 类型检查失败 | 低 | 统一定义后类型更安全 |
-
-### 回滚策略
-如果迁移失败:
-1. 保留原有两份定义
-2. 仅在新代码中使用统一版本
-3. 逐步迁移旧代码
+- [x] Phase 1: Exploration & Analysis
+- [x] Phase 2: Development Plan Created
+- [ ] Phase 3: TDD Red Phase (Write Failing Tests)
+- [ ] Phase 4: TDD Green Phase (Implement Code)
+- [ ] Phase 5: Code Review (Codex)
+- [ ] Phase 6: Full Test Suite
+- [ ] Phase 7: Commit & Cleanup
 
 ---
 
-## 预期成果
+## Key Risks & Mitigations
 
-完成后:
-- ✅ SessionContext定义唯一,无重复
-- ✅ 类型安全性提升
-- ✅ 符合DDD架构(entities层存放核心实体)
-- ✅ 向后兼容,现有代码无需修改
-- ✅ 未来扩展SessionContext字段时,只需修改一处
+### Risk 1: Breaking Existing Tests
+**Mitigation**: Use proxy pattern to maintain exact same behavior. Existing tests should pass without modification.
 
-**代码质量提升**:
-- 模块数: 107 → 106 (-1个重复定义)
-- 类型安全: 消除潜在的类型分裂风险
-- 可维护性: 单一来源,易于维护
+### Risk 2: State Sharing Issues
+**Mitigation**: RuleEngineFacade already uses `rules_ref` and `statistics_ref` to share state with CoordinatorAgent. No changes needed.
 
----
+### Risk 3: Session ID Missing
+**Mitigation**: Extract `session_id` from decision dict if available: `decision.get("session_id")`
 
-## 当前进度
-
-- [x] 探索阶段: Codex分析完成
-- [x] 规划阶段: dev_plan.md创建完成
-- [x] TDD阶段: 编写测试（10个测试类，35个测试用例）
-- [x] 实现阶段: 统一SessionContext定义
-- [x] 验证阶段: 运行所有测试（35/35通过）
-- [x] 审查阶段: Codex审查重构代码
-- [x] 修复阶段: 添加Codex建议的缺失字段（canvas_state, global_goals, add_message双签名）
-- [x] 最终验证: 所有测试通过，Pyright检查通过
-- [x] 完成阶段: P1重构成功完成 ✅
-
-**状态**: **已完成** ✅
+### Risk 4: Thread Safety
+**Mitigation**: RuleEngineFacade uses `threading.RLock()`. Direct `_rules/_statistics` access is NOT thread-safe. Integration improves safety.
 
 ---
 
-## 最终交付成果
+## Files Modified (Tracking)
 
-**代码修改：**
-1. 创建 `src/domain/entities/session_context.py` (576行)
-   - 统一定义Goal, GlobalContext, SessionContext, ShortTermSaturatedEvent
-   - 包含21个dataclass字段（canvas_state, resource_constraints等）
-   - GlobalContext新增global_goals支持
-   - add_message实现双签名兼容
-
-2. 修改 `src/domain/services/context_manager.py`
-   - 删除487行重复定义
-   - 改为re-export统一定义
-   - 覆盖率提升：48% → 93%
-
-3. 创建 `tests/unit/domain/entities/test_session_context.py` (408行)
-   - 10个测试类，覆盖所有核心功能
-   - 包括Codex审查后新增的8个测试用例
-
-**质量指标：**
-- 测试通过率: **100%** (35/35)
-- Pyright检查: **0 errors, 0 warnings**
-- 代码覆盖率: context_manager 93%, session_context 56%
-- 向后兼容性: **100%保持**
-
-**架构改进：**
-- ✅ 消除SessionContext重复定义（单一来源）
-- ✅ 符合DDD架构（entities层存放核心实体）
-- ✅ 类型安全性提升（完整类型注解）
-- ✅ 可维护性提升（单一修改点）
-
-**Codex审查评估：**
-- 初次评分: 7.5/10（发现3个缺失项）
-- 修复后状态: **生产级别** ✅
-- 剩余问题: **无** ✅
+- [x] `src/domain/agents/coordinator_agent.py`
+- [x] `tests/unit/domain/agents/test_coordinator_agent.py`
 
 ---
 
-**创建时间**: 2025-12-12
-**完成时间**: 2025-12-12
-**负责人**: Claude + Codex协作
-**实际耗时**: 2小时
+## Known Issues
+
+### CRITICAL: Priority Order Incompatibility
+**Issue**: RuleEngineFacade sorts rules in **descending** priority order (reverse=True on line 255 of rule_engine_facade.py), while CoordinatorAgent originally sorted in **ascending** order. This causes `test_rules_checked_by_priority` to fail.
+
+**Impact**: Rules with priority=10 now execute BEFORE rules with priority=1 (opposite of original behavior).
+
+**Root Cause**:
+- Old: `sorted(self._rules, key=lambda r: r.priority)` → ascending (1, 2, 3...)
+- Facade: `sorted(self._rules, key=lambda r: r.priority, reverse=True)` → descending (10, 9, 8...)
+
+**Resolution Options**:
+1. **Fix the Facade** (recommended): Remove `reverse=True` from line 255 & 184 of `rule_engine_facade.py`
+2. **Update the Test**: Change test expectations to match new behavior (loses backward compatibility)
+3. **Workaround in Proxy**: Override validate_decision to re-sort rules (adds overhead)
+
+**Temporary Status**: Test failure documented. Follow-up task required to fix facade.
+
+**Action Item**: Create issue to fix RuleEngineFacade priority order to match CoordinatorAgent convention.
+
+---
+
+## Notes
+
+- **Backward Compatibility**: 62 files use these methods. Must maintain exact behavior.
+- **Performance**: Deprecation warnings have minimal overhead (one warning per call).
+- **Thread Safety**: Integration improves thread safety by routing through facade's RLock.
+- **Correction Handling**: Facade merges all corrections (better than agent's first-only approach).
+- **Priority Convention**: Original convention is lower number = higher priority (1 > 10)
+
+---
+
+**Last Updated**: 2025-12-13

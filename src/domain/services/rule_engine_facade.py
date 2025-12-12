@@ -111,6 +111,8 @@ class RuleEngineFacade:
         circuit_breaker: CircuitBreaker | None = None,
         alert_rule_manager: DynamicAlertRuleManager | None = None,
         rejection_rate_threshold: float = 0.5,
+        rules_ref: list[DecisionRule] | None = None,
+        statistics_ref: dict[str, int] | None = None,
         log_collector: Any | None = None,
     ) -> None:
         """初始化
@@ -123,7 +125,14 @@ class RuleEngineFacade:
             circuit_breaker: 熔断器（可选）
             alert_rule_manager: 告警规则管理器（可选）
             rejection_rate_threshold: 拒绝率阈值（默认0.5）
+            rules_ref: 规则列表引用（可选，用于共享状态）
+            statistics_ref: 统计字典引用（可选，用于共享状态）
             log_collector: 日志收集器（可选）
+
+        注意（P1-1 Step 3）：
+            - rules_ref/statistics_ref 用于与 CoordinatorAgent 渐进集成
+            - 提供时，Facade 将操作共享容器而非创建新实例
+            - 确保状态一致性，避免重复装配
         """
         self._safety_guard = safety_guard
         self._payload_rule_builder = payload_rule_builder
@@ -134,17 +143,28 @@ class RuleEngineFacade:
         self._rejection_rate_threshold = rejection_rate_threshold
         self._log_collector = log_collector
 
-        # 决策规则存储
-        self._rules: list[DecisionRule] = []
-        # 决策统计
-        self._statistics = DecisionStats()
+        # 共享状态容器（P1-1 Step 3：用于与 CoordinatorAgent 渐进集成）
+        self._rules: list[DecisionRule] = rules_ref if rules_ref is not None else []
+        self._statistics_ref = statistics_ref
+
+        # 决策统计（如果提供了 statistics_ref，从中初始化）
+        if statistics_ref is not None:
+            total = statistics_ref.get("total", 0)
+            passed = statistics_ref.get("passed", 0)
+            rejected = statistics_ref.get("rejected", 0)
+            self._statistics = DecisionStats(total=total, passed=passed, rejected=rejected)
+        else:
+            self._statistics = DecisionStats()
 
         # 线程安全锁（保护 _rules 和 _statistics）
         self._lock = threading.RLock()
 
         logger.info(
-            "RuleEngineFacade initialized with rejection_rate_threshold=%.2f",
+            "RuleEngineFacade initialized with rejection_rate_threshold=%.2f, "
+            "rules_ref=%s, statistics_ref=%s",
             rejection_rate_threshold,
+            "provided" if rules_ref is not None else "new",
+            "provided" if statistics_ref is not None else "new",
         )
 
     # =========================================================================
@@ -155,13 +175,14 @@ class RuleEngineFacade:
         """列出所有决策规则
 
         返回：
-            决策规则列表（按优先级排序）
+            决策规则列表（按优先级排序，低数字=高优先级）
 
         注意：
             线程安全 - 使用锁保护
+            优先级约定：数字越小优先级越高 (1 > 2 > 3...)
         """
         with self._lock:
-            return sorted(self._rules, key=lambda r: r.priority, reverse=True)
+            return sorted(self._rules, key=lambda r: r.priority)
 
     def add_decision_rule(self, rule: DecisionRule) -> None:
         """添加决策规则
@@ -187,18 +208,18 @@ class RuleEngineFacade:
 
         注意：
             线程安全 - 使用锁保护
+            P1-1 Step 3 Critical Fix #1: 原地删除，保持 rules_ref 引用不变
         """
         with self._lock:
-            original_count = len(self._rules)
-            self._rules = [r for r in self._rules if r.id != rule_id]
-            removed = len(self._rules) < original_count
+            # 原地删除，避免重新绑定破坏共享引用
+            for i, rule in enumerate(self._rules):
+                if rule.id == rule_id:
+                    self._rules.pop(i)
+                    logger.debug(f"Removed decision rule: {rule_id}")
+                    return True
 
-            if removed:
-                logger.debug(f"Removed decision rule: {rule_id}")
-            else:
-                logger.warning(f"Decision rule not found: {rule_id}")
-
-            return removed
+            logger.warning(f"Decision rule not found: {rule_id}")
+            return False
 
     def validate_decision(
         self, decision: dict[str, Any], *, session_id: str | None = None
@@ -223,14 +244,17 @@ class RuleEngineFacade:
             线程安全 - 使用锁保护
         """
         with self._lock:
-            # 更新统计
+            # 更新统计（P1-1 Step 3：同步更新 statistics_ref）
             self._statistics.total += 1
+            if self._statistics_ref is not None:
+                self._statistics_ref["total"] = self._statistics_ref.get("total", 0) + 1
 
             errors = []
             corrections = []
 
             # 获取规则列表的副本（在锁内）
-            rules = sorted(self._rules, key=lambda r: r.priority, reverse=True)
+            # 优先级约定：数字越小优先级越高 (1 > 2 > 3...)
+            rules = sorted(self._rules, key=lambda r: r.priority)
 
         # 在锁外执行规则（避免持锁时间过长）
         for rule in rules:
@@ -275,31 +299,51 @@ class RuleEngineFacade:
                     extra={"rule_id": rule.id, "session_id": session_id, "decision": decision},
                 )
 
-        # 更新统计（重新获取锁）
+        # 更新统计（重新获取锁，P1-1 Step 3：同步更新 statistics_ref）
         is_valid = len(errors) == 0
         with self._lock:
             if is_valid:
                 self._statistics.passed += 1
+                if self._statistics_ref is not None:
+                    self._statistics_ref["passed"] = self._statistics_ref.get("passed", 0) + 1
             else:
                 self._statistics.rejected += 1
+                if self._statistics_ref is not None:
+                    self._statistics_ref["rejected"] = self._statistics_ref.get("rejected", 0) + 1
 
         # 记录日志（异常不影响验证结果 - fail-closed 完整性保护）
+        # P1-1 Step 3 Critical Fix #3: 日志收集器接口兼容（能力探测）
         if self._log_collector and not is_valid:
+            log_data = {
+                "type": "decision_validation",
+                "session_id": session_id,
+                "decision": decision,
+                "errors": errors,
+                "corrections": corrections,
+            }
             try:
-                self._log_collector.record(
-                    {
-                        "type": "decision_validation",
-                        "session_id": session_id,
-                        "decision": decision,
-                        "errors": errors,
-                        "corrections": corrections,
-                    }
-                )
+                # 优先使用 record() 方法（如果存在）
+                if hasattr(self._log_collector, "record") and callable(self._log_collector.record):
+                    self._log_collector.record(log_data)
+                # Fallback: 使用 warning() 方法（UnifiedLogCollector 支持）
+                elif hasattr(self._log_collector, "warning") and callable(
+                    self._log_collector.warning
+                ):
+                    self._log_collector.warning(
+                        f"Decision validation failed: session={session_id}, "
+                        f"errors={len(errors)}, decision_type={decision.get('type', 'unknown')}"
+                    )
+                # Fallback: 使用 log() 方法
+                elif hasattr(self._log_collector, "log") and callable(self._log_collector.log):
+                    self._log_collector.log(
+                        "warning",
+                        f"Decision validation failed: session={session_id}, errors={len(errors)}",
+                    )
             except Exception as e:
                 # 日志收集失败不应影响验证结果
-                logger.error(
+                logger.debug(
                     f"Log collector failed for session {session_id}: {e}",
-                    exc_info=True,
+                    exc_info=False,  # 降级为 debug，避免噪声
                 )
 
         # 合并所有修正建议为单个字典（如果有）
@@ -324,9 +368,24 @@ class RuleEngineFacade:
 
         注意：
             线程安全 - 使用锁保护
+            P1-1 Step 3: 优先从 statistics_ref 读取（如果提供）
         """
         with self._lock:
-            return self._statistics.to_dict()
+            if self._statistics_ref is not None:
+                # 从共享容器读取
+                total = self._statistics_ref.get("total", 0)
+                passed = self._statistics_ref.get("passed", 0)
+                rejected = self._statistics_ref.get("rejected", 0)
+                rejection_rate = rejected / total if total else 0.0
+                return {
+                    "total": total,
+                    "passed": passed,
+                    "rejected": rejected,
+                    "rejection_rate": rejection_rate,
+                }
+            else:
+                # 从内部 DecisionStats 读取
+                return self._statistics.to_dict()
 
     def is_rejection_rate_high(self) -> bool:
         """判断拒绝率是否过高
@@ -336,9 +395,10 @@ class RuleEngineFacade:
 
         注意：
             线程安全 - 使用锁保护
+            P1-1 Step 3: 使用 get_decision_statistics() 确保一致性
         """
-        with self._lock:
-            return self._statistics.rejection_rate > self._rejection_rate_threshold
+        stats = self.get_decision_statistics()
+        return stats["rejection_rate"] > self._rejection_rate_threshold
 
     # =========================================================================
     # 规则构建辅助
@@ -626,12 +686,15 @@ class RuleEngineFacade:
 
         返回：
             触发的告警列表
+
+        注意：
+            P1-1 Step 3 Critical Fix #2: 使用 get_decision_statistics() 确保读取 statistics_ref
         """
         if not self._alert_rule_manager:
             return []
 
-        # 合并决策统计与额外指标
-        metrics = self._statistics.to_dict()
+        # 合并决策统计与额外指标（Critical Fix #2：统一走 get_decision_statistics）
+        metrics = self.get_decision_statistics()
         if extra_metrics:
             metrics.update(extra_metrics)
 

@@ -127,7 +127,7 @@
 
 ## P1问题清单（本周完成）
 
-1. **🔄 CoordinatorAgent Phase-1拆分（进行中 - 90%完成）** - 预计剩余2小时
+1. **🔄 CoordinatorAgent Phase-1拆分（步骤1/5完成 - 100%）** - 进入步骤2
    - **✅ 已完成（2025-12-12）：**
      - ✅ 行数优化：4207行 → 2639行（减少37%）
      - ✅ 已提取9个组件：
@@ -158,24 +158,123 @@
        - **分5步实施**：兼容入口 → Bootstrap支持 → Facade引入 → 能力迁移 → 测试归位
        - **风险缓解**：行为漂移保护、配置冲突检测、循环依赖避免
 
-   - **❌ 待完成（分5步）：**
-     1) 🔄 步骤1: Agent增加config兼容入口（进行中）
-        - **设计完成**（Codex协作）：
-          - 参数位置：最后增加 `config: CoordinatorAgentConfig | None = None`
-          - 冲突检测：使用 `inspect.signature` 识别显式传入参数，抛出 ValueError
-          - 优先级：config优先，允许无冲突混用，严禁隐式覆盖
-          - 参数转换：`_legacy_args_to_agent_config()` 私有方法
-          - 兼容性测试：7个场景（旧用法/新用法/混用/冲突/默认值/复杂字段）
-          - Bootstrap交互：Agent层转换，步骤1不动Bootstrap
-        - **待实施**：修改 CoordinatorAgent.__init__ + 增加兼容性测试
-     2) ❌ 步骤2: Bootstrap支持新Config
+   - **✅ 已完成步骤：**
+     1) ✅ **步骤1: Agent增加config兼容入口**（已完成 - 2025-12-12）
+        - **设计**（Codex协作）：
+          - 参数位置：keyword-only `config: CoordinatorAgentConfig | None = None`
+          - 冲突检测：使用 `_LEGACY_UNSET` sentinel区分"未传参"与"传None"
+          - 优先级：config优先，允许无冲突混用，冲突时抛出 ValueError
+          - 参数转换：`_legacy_args_to_agent_config()` 方法（234行）
+          - 兼容性测试：8个场景全覆盖
+          - Bootstrap交互：Agent层转换，步骤1保持Bootstrap不变
+        - **实施完成**：
+          - ✅ 添加 `_LEGACY_UNSET: Final[object]` sentinel
+          - ✅ 修改 `__init__` 签名（8个旧参数使用sentinel + config参数）
+          - ✅ 实现 `_legacy_args_to_agent_config()` 三场景处理
+          - ✅ 实现冲突检测逻辑（清晰错误消息）
+          - ✅ 参数提取逻辑（config → Bootstrap旧参数）
+          - ✅ 创建 `test_coordinator_agent_config_compat.py`（485行，8测试）
+          - ✅ 验证通过：Pyright 0 errors + Ruff pass + 8/8 tests + 166+ regression tests
+        - **Critical修复（Codex审查）**：
+          - ✅ Critical-1: failure_strategy_config Schema映射错误
+            - 问题：compat层用新schema，Bootstrap期望旧schema，用户值被忽略
+            - 修复：实现双向映射方法（`_failure_config_to_bootstrap_dict`、`_failure_dict_to_failure_config_and_bootstrap_dict`）
+            - 结果：正确处理两套schema，Bootstrap收到正确参数
+          - ✅ Critical-2: 冲突检测逻辑不完整
+            - 问题：只检查config.failure非默认，忽略enable_auto_recovery字段
+            - 修复：改用完整对象比较（`converted_failure != failure`）
+            - 结果：全字段冲突检测，无遗漏
+          - ✅ Critical-3: 优先级实现与文档不一致
+            - 问题：文档说"config优先"，实现是"legacy覆盖config"
+            - 修复：移除所有replace()调用，实现config永远赢语义
+            - 结果：行为与文档对齐
+          - ✅ Critical-4: 默认值逻辑不可靠
+            - 问题：用默认值比较推断"是否显式设置"，无法区分"设为默认"与"未设置"
+            - 修复：移除默认值推断，仅用sentinel检测
+            - 结果：检测逻辑可靠无歧义
+        - **边界修复（Codex审查）**：
+          - ✅ 统一冲突检测语义：所有字段改为"两边都非None时才比较"
+            - circuit_breaker_config、context_bridge、context_compressor、snapshot_manager、knowledge_retriever
+          - ✅ 实现Mixed模式补齐逻辑：
+            - config永远赢（权威来源）
+            - legacy仅补齐config中为None的字段
+            - legacy显式None/{}视为未设置
+            - 冲突规则：两边都有效设置且不同 → 冲突
+            - 补齐规则：config为None且legacy非None → 用legacy填充
+          - ✅ 添加补齐实现（使用replace()填充merged_*变量）
+        - **最终验证**：
+          - ✅ Pyright: 0 errors
+          - ✅ Ruff: All checks passed
+          - ✅ 8/8 compatibility tests passed
+          - ✅ 166+ regression tests passed
+          - ✅ 无破坏性变更
+
+     2) ✅ **步骤2: Bootstrap支持新Config**（已完成 - 2025-12-12）
+        - **设计**（Codex协作）：
+          - 修改目标：让 Bootstrap 直接接受 `CoordinatorAgentConfig`，消除 Agent 中的转换层
+          - 实现策略：
+            - `_normalize_config()` 方法：统一三种配置类型（CoordinatorAgentConfig、CoordinatorConfig、dict）
+            - `_map_agent_config_to_coordinator_config()` 方法：将分组配置映射到扁平配置
+            - `_map_failure_config_to_dict()` 方法：转换 Failure schema（max_retry_attempts → max_retries）
+          - 向后兼容：保持对旧 CoordinatorConfig 和 dict 的完全兼容
+        - **实施完成**：
+          - ✅ Bootstrap 添加 3 个新方法（配置归一化与映射）
+          - ✅ Agent 简化 ~40 行代码（删除转换层）
+          - ✅ 创建 9 个新测试用例（兼容性验证）
+          - ✅ 修复 4 个旧测试（适配新分组配置结构）
+          - ✅ 验证通过：29/29 tests passed (21 Bootstrap + 8 Agent)
+        - **Codex评审发现问题（7/10评分）**：
+          - 🔴 Critical-1: Duck typing 风险（hasattr误判MagicMock）
+          - 🔴 Critical-2: 默认值检测不健壮（硬编码数值）
+          - 🔴 Critical-3: 未调用 validate()（跳过配置约束）
+          - 🔴 Critical-4: Failure schema包含未消费字段（假配置问题）
+          - 💡 Suggestion: 提取配置适配层、使用默认实例对比、明确命名
+          - ⚠️ Risk: 类型误判（高）、默认值漂移（中-高）、配置语义不一致（中）
+          - 🧪 Test Gap: 类型误判测试、knowledge边界测试、映射结果断言、字段变更回归
+        - **Critical Fixes 修复**（立即修复 - 2025-12-12）：
+          - ✅ Critical Fix #1: Duck typing → isinstance()
+            - 问题：`hasattr(config, "rules")` 会误判 `MagicMock` 等动态对象
+            - 修复：使用 `isinstance(config, CoordinatorAgentConfig)` 显式检查
+            - 新增 `_validate_agent_config()` 方法支持配置校验
+            - 改进错误消息：提供期望类型列表
+            - 测试：`test_magicmock_not_misdetected_as_agent_config`
+          - ✅ Critical Fix #2 & #4: 默认值检测 + 未消费字段
+            - 问题：硬编码 `== 3 / 1.0` 判断默认值，遗漏 `failure_notification_enabled` 等字段
+            - 问题：`enable_auto_recovery` 映射到 Bootstrap 但未被 `WorkflowFailureOrchestrator` 消费
+            - 修复：使用 `DEFAULT_FAILURE_STRATEGY_CONFIG` 对比而非硬编码
+            - 修复：只映射实际消费的字段（`default_strategy`, `max_retries`, `retry_delay`）
+            - 移除未消费字段避免"假配置"问题
+            - 测试：`test_failure_mapping_does_not_include_unconsumed_fields`
+          - ✅ Critical Fix #3: Validate() 宽松模式支持
+            - 问题：Bootstrap 不调用 `validate()`，跳过必选依赖检查（event_bus）
+            - 修复：`CoordinatorAgentConfig.validate()` 增加 `strict: bool = True` 参数
+            - Bootstrap 根据 `event_bus` 存在与否调用 strict/relaxed validation
+            - 测试/装配场景可使用 `event_bus=None`（宽松模式）
+            - 测试：`test_agent_config_validate_relaxed_allows_event_bus_none`
+        - **最终验证**：
+          - ✅ Pyright: 0 errors
+          - ✅ Ruff: All checks passed
+          - ✅ 32/32 tests passed (24 Bootstrap + 8 Agent)
+          - ✅ 新增 3 个 Critical Fix 测试
+          - ✅ 无破坏性变更
+        - **代码质量提升**：
+          - Bootstrap Coverage: 32% → 84% (+52%)
+          - CoordinatorAgentConfig Coverage: 64% → 71% (+7%)
+          - 评分提升：7/10 → 估计 9/10（修复所有 Critical Issues）
+
+   - **❌ 待完成步骤：**
      3) ❌ 步骤3: 引入RuleEngineFacade（最小关键路径）
      4) ❌ 步骤4: 逐块迁移规则能力到Facade
      5) ❌ 步骤5: 测试归位与去重
 
    - **下一步行动：**
-     1. 实施步骤1：Agent增加config兼容入口
-     2. 编写兼容性单测
+     1. ✅ 步骤1已完成（含Critical修复+边界修复）
+     2. ✅ 步骤2已完成（含Codex评审+Critical Fixes修复）
+     3. 🔄 开始步骤3：引入RuleEngineFacade
+        - 与Codex协作设计步骤3方案
+        - 设计Facade在Agent中的初始化与使用方式
+        - 确定最小关键路径（优先迁移高频调用的规则方法）
+        - 编写Facade集成测试
 
 2. CoordinatorAgent：显式依赖注入/减少懒加载隐藏依赖 - 预计6小时
    - 问题描述：大量 `_get_xxx()` 懒加载引入隐式依赖和首调用延迟，调试困难。
@@ -264,16 +363,17 @@
 ## 预计总工作量（更新）
 
 - **P0: 已完成** ✅
-- **P1 已完成工作：** ~21小时（CoordinatorAgent 11h + ConversationAgent 辅助模块 4h + 其他提取 6h）
-- **P1 剩余工作：** ~51小时
-  - P1-1 收尾：5h
+- **P1 已完成工作：** ~23.5小时（CoordinatorAgent 13.5h + ConversationAgent 辅助模块 4h + 其他提取 6h）
+- **P1 剩余工作：** ~48.5小时
+  - P1-1 收尾：1.5h（步骤2-5）
   - P1-2：6h
   - P1-3：12h
   - P1-4 主体：10h
   - P1-5：8h
   - P1-6：10h
+  - 其他：1h
 
-**预计完成时间：** 3-4个工作日（3条并行线）
+**预计完成时间：** 2.5-3个工作日（3条并行线）
 
 ---
 

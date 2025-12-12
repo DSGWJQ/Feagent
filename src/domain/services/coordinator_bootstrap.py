@@ -32,6 +32,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -69,6 +70,8 @@ DEFAULT_FAILURE_STRATEGY_CONFIG = {
     "retry_delay": 1.0,
 }
 """默认失败处理策略配置"""
+
+logger = logging.getLogger(__name__)
 
 
 # =====================================================================
@@ -209,6 +212,11 @@ class CoordinatorConfig:
         context_compressor: 上下文压缩器（可选）
         snapshot_manager: 快照管理器（可选）
         knowledge_retriever: 知识检索器（可选）
+        rule_engine_facade: 规则引擎 Facade 实例（可选注入，P1-1 Step 3）
+        alert_rule_manager_enabled: 是否启用告警规则管理器（P1-1 Step 3）
+
+    注意：
+        P1-1 Step 3 Critical Fix #4: 新增字段放末尾，保持位置参数向后兼容
     """
 
     event_bus: Any | None = None
@@ -219,6 +227,9 @@ class CoordinatorConfig:
     context_compressor: Any | None = None
     snapshot_manager: Any | None = None
     knowledge_retriever: Any | None = None
+    # P1-1 Step 3 新增字段（放末尾保持兼容）
+    rule_engine_facade: Any | None = None
+    alert_rule_manager_enabled: bool = True
 
 
 @dataclass
@@ -271,15 +282,198 @@ class CoordinatorBootstrap:
         wiring = bootstrap.assemble()
     """
 
-    def __init__(self, config: CoordinatorConfig | dict[str, Any]) -> None:
-        """初始化 Bootstrap
+    def __init__(self, config: CoordinatorConfig | dict[str, Any] | Any) -> None:
+        """初始化 Bootstrap（P1-1 步骤2：支持新Config）
 
         参数：
-            config: Coordinator 配置（CoordinatorConfig 实例或字典）
+            config: Coordinator 配置，支持三种类型：
+                - CoordinatorAgentConfig（新）
+                - CoordinatorConfig（旧）
+                - dict[str, Any]（旧）
         """
-        self.config = (
-            config if isinstance(config, CoordinatorConfig) else CoordinatorConfig(**config)
+        self.config = self._normalize_config(config)
+
+    def _validate_agent_config(self, agent_config: Any) -> None:
+        """对 CoordinatorAgentConfig 执行校验（P1-1 Step 2 Critical Fix #3）
+
+        参数：
+            agent_config: CoordinatorAgentConfig 实例
+
+        异常：
+            ValueError: 配置验证失败
+        """
+        if not hasattr(agent_config, "validate"):
+            return
+
+        # 根据 event_bus 是否存在决定严格程度
+        strict = getattr(agent_config, "event_bus", None) is not None
+        try:
+            agent_config.validate(strict=strict)
+        except TypeError:
+            # 兼容旧版 validate() 无 strict 参数的情况
+            agent_config.validate()
+        except ValueError as exc:
+            raise ValueError(
+                "Invalid CoordinatorAgentConfig passed to CoordinatorBootstrap. "
+                "Fix the config or pass a legacy CoordinatorConfig/dict instead."
+            ) from exc
+
+    def _normalize_config(self, config: Any) -> CoordinatorConfig:
+        """归一化配置为 CoordinatorConfig
+
+        支持三种输入类型：
+        1. CoordinatorAgentConfig（新）→ 映射到旧 CoordinatorConfig
+        2. CoordinatorConfig（旧）→ 直接使用
+        3. dict（旧）→ 构造 CoordinatorConfig
+
+        参数：
+            config: 输入配置
+
+        返回：
+            归一化的 CoordinatorConfig
+
+        注意：
+            - P1-1 Step 2 Critical Fix #1: 使用 isinstance() 显式检查类型，避免 duck typing 误判
+            - P1-1 Step 2 Critical Fix #3: 调用 validate() 进行配置校验（支持宽松模式）
+            - failure schema 转换为 Bootstrap 期望的旧 dict schema
+        """
+        # Case 1: CoordinatorAgentConfig（新）- 使用显式类型检查避免 duck typing 误判
+        # P1-1 Step 2 Critical Fix #1: 使用 isinstance() 替代 hasattr()
+        try:
+            from src.domain.agents.coordinator_agent_config import CoordinatorAgentConfig
+        except Exception:
+            CoordinatorAgentConfig = None  # type: ignore[assignment]
+
+        if CoordinatorAgentConfig is not None and isinstance(config, CoordinatorAgentConfig):
+            # P1-1 Step 2 Critical Fix #3: 调用 validate() 进行配置校验
+            self._validate_agent_config(config)
+            return self._map_agent_config_to_coordinator_config(config)
+
+        # Case 2: CoordinatorConfig（旧）
+        if isinstance(config, CoordinatorConfig):
+            return config
+
+        # Case 3: dict（旧）
+        if isinstance(config, dict):
+            return CoordinatorConfig(**config)
+
+        # P1-1 Step 2 Critical Fix #1: 提供更清晰的错误消息
+        raise TypeError(
+            "Unsupported config type for CoordinatorBootstrap. "
+            f"Got: {type(config)!r}. "
+            "Expected one of: CoordinatorAgentConfig, CoordinatorConfig, dict[str, Any]."
         )
+
+    def _map_agent_config_to_coordinator_config(self, agent_config: Any) -> CoordinatorConfig:
+        """将 CoordinatorAgentConfig 映射到 CoordinatorConfig
+
+        映射规则：
+        - rules → rejection_rate_threshold, circuit_breaker_config, rule_engine_facade
+        - context → context_bridge, context_compressor, snapshot_manager
+        - failure → failure_strategy_config (转换为旧 schema)
+        - knowledge → knowledge_retriever
+        - runtime → 暂不映射（保留未来扩展）
+
+        参数：
+            agent_config: CoordinatorAgentConfig 实例
+
+        返回：
+            映射后的 CoordinatorConfig
+
+        异常：
+            ValueError: 冲突检测失败（P1-1 Step 3：rule_engine_facade 与构建参数冲突）
+        """
+        # 提取 rules 组（P1-1 Step 3）
+        rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
+        circuit_breaker_config = agent_config.rules.circuit_breaker_config
+        rule_engine_facade = agent_config.rules.rule_engine_facade
+        alert_rule_manager_enabled = agent_config.rules.alert_rule_manager_enabled
+
+        # P1-1 Step 3: 冲突检测 - 注入 facade 时禁止再提供构建参数
+        if rule_engine_facade is not None:
+            # 导入默认配置用于对比（P1-1 Critical Fix: 导入失败直接抛出，避免静默失效）
+            from src.domain.agents.coordinator_agent_config import RuleEngineConfig
+
+            defaults = RuleEngineConfig()
+            # 检查是否有非默认的构建参数
+            if rejection_rate_threshold != defaults.rejection_rate_threshold:
+                raise ValueError(
+                    f"rule_engine_facade conflicts with rejection_rate_threshold: "
+                    f"cannot inject facade and provide custom rejection_rate_threshold={rejection_rate_threshold}. "
+                    f"Use facade with default threshold or provide threshold without facade."
+                )
+            if circuit_breaker_config is not None:
+                raise ValueError(
+                    "rule_engine_facade conflicts with circuit_breaker_config: "
+                    "cannot inject facade and provide custom circuit_breaker_config. "
+                    "Configure CircuitBreaker in the facade or provide circuit_breaker_config without facade."
+                )
+
+        # 提取 context 组
+        context_bridge = agent_config.context.context_bridge
+        context_compressor = agent_config.context.context_compressor
+        snapshot_manager = agent_config.context.snapshot_manager
+
+        # 提取 knowledge 组
+        # 注意：knowledge_retrieval_orchestrator 实际语义是 retriever
+        knowledge_retriever = agent_config.knowledge.knowledge_retrieval_orchestrator
+
+        # 如果 enable_knowledge_retrieval=False，强制 knowledge_retriever=None
+        if not agent_config.knowledge.enable_knowledge_retrieval:
+            knowledge_retriever = None
+
+        # 提取 failure 组并转换为旧 schema
+        failure_strategy_config = self._map_failure_config_to_dict(agent_config.failure)
+
+        # 提取 event_bus（顶层字段）
+        event_bus = agent_config.event_bus
+
+        return CoordinatorConfig(
+            event_bus=event_bus,
+            rejection_rate_threshold=rejection_rate_threshold,
+            circuit_breaker_config=circuit_breaker_config,
+            rule_engine_facade=rule_engine_facade,
+            alert_rule_manager_enabled=alert_rule_manager_enabled,
+            context_bridge=context_bridge,
+            failure_strategy_config=failure_strategy_config,
+            context_compressor=context_compressor,
+            snapshot_manager=snapshot_manager,
+            knowledge_retriever=knowledge_retriever,
+        )
+
+    def _map_failure_config_to_dict(self, failure: Any) -> dict[str, Any] | None:
+        """将 FailureHandlingConfig 转换为 WorkflowFailureOrchestrator 期望的 dict schema
+
+        WorkflowFailureOrchestrator 实际消费的 schema：
+        - default_strategy: FailureHandlingStrategy 枚举
+        - max_retries: int
+        - retry_delay: float
+
+        参数：
+            failure: FailureHandlingConfig 实例
+
+        返回：
+            旧 schema 的 dict，如果使用默认值则返回 None
+
+        注意：
+            P1-1 Step 2 Critical Fix #2 & #4:
+            - 使用 DEFAULT_FAILURE_STRATEGY_CONFIG 对比而非硬编码数值
+            - 只映射 orchestrator 实际消费的字段，避免"假配置"问题
+            - FailureHandlingConfig 中的 enable_auto_recovery / failure_notification_enabled
+              目前不被 WorkflowFailureOrchestrator 消费，因此不包含在映射中
+        """
+        # P1-1 Step 2 Critical Fix #4: 只映射实际被消费的字段
+        bootstrap_dict = {
+            "default_strategy": FailureHandlingStrategy.RETRY,
+            "max_retries": failure.max_retry_attempts,
+            "retry_delay": failure.retry_delay_seconds,
+        }
+
+        # P1-1 Step 2 Critical Fix #2: 使用默认配置对比，避免硬编码漂移
+        if bootstrap_dict == DEFAULT_FAILURE_STRATEGY_CONFIG:
+            return None
+
+        return bootstrap_dict
 
     def assemble(self) -> CoordinatorWiring:
         """装配所有依赖
@@ -313,6 +507,9 @@ class CoordinatorBootstrap:
         # 阶段 8: 守护层
         guardian_layer = self.build_guardians(infra, agent_layer)
 
+        # 阶段 9: RuleEngineFacade（P1-1 Step 3）
+        rule_engine_layer = self.build_rule_engine_facade(base, infra, agent_layer, guardian_layer)
+
         # 汇总别名
         aliases = self._collect_aliases(
             base, infra, failure_layer, knowledge_layer, agent_layer, prompt_layer, save_layer
@@ -327,6 +524,7 @@ class CoordinatorBootstrap:
             prompt_layer,
             save_layer,
             guardian_layer,
+            rule_engine_layer,
         )
 
         return CoordinatorWiring(
@@ -545,15 +743,16 @@ class CoordinatorBootstrap:
         # 2. SupervisionCoordinator
         supervision_coordinator = SupervisionCoordinator()
 
-        # 3. DynamicAlertRuleManager（可选，如果模块存在）
+        # 3. DynamicAlertRuleManager（可选，如果模块存在且配置启用，P1-1 Step 3）
         alert_rule_manager = None
-        try:
-            from src.domain.services.dynamic_alert_rule_manager import DynamicAlertRuleManager
+        if getattr(self.config, "alert_rule_manager_enabled", True):
+            try:
+                from src.domain.services.dynamic_alert_rule_manager import DynamicAlertRuleManager
 
-            alert_rule_manager = DynamicAlertRuleManager()
-        except (ImportError, AttributeError):
-            # 模块不存在或未实现，跳过
-            pass
+                alert_rule_manager = DynamicAlertRuleManager()
+            except (ImportError, AttributeError):
+                # 模块不存在或未实现，跳过
+                pass
 
         return {
             "subagent_orchestrator": subagent_orchestrator,
@@ -734,6 +933,58 @@ class CoordinatorBootstrap:
             "safety_guard": safety_guard,
         }
 
+    def build_rule_engine_facade(
+        self,
+        base: dict[str, Any],
+        infra: dict[str, Any],
+        agent_layer: dict[str, Any],
+        guardian_layer: dict[str, Any],
+    ) -> dict[str, Any]:
+        """构建 RuleEngineFacade（P1-1 Step 3）
+
+        创建规则引擎 Facade，整合决策规则、安全校验、审计等功能。
+
+        策略：
+        - 如果 config.rule_engine_facade 已注入，直接使用
+        - 否则，自动构建 Facade 实例并共享 base 状态容器
+
+        参数：
+            base: 基础状态字典（需要 _rules, _statistics）
+            infra: 基础设施组件字典（需要 circuit_breaker, log_collector）
+            agent_layer: Agent 协调层组件字典（需要 alert_rule_manager）
+            guardian_layer: 守护层组件字典（需要 safety_guard）
+
+        返回：
+            规则引擎层组件字典
+        """
+        # 优先使用注入的 facade
+        if self.config.rule_engine_facade is not None:
+            logger.info("Using injected RuleEngineFacade")
+            return {"rule_engine_facade": self.config.rule_engine_facade}
+
+        # 自动构建 Facade
+        from src.domain.services.rule_engine_facade import RuleEngineFacade
+
+        facade = RuleEngineFacade(
+            safety_guard=guardian_layer["safety_guard"],
+            circuit_breaker=infra.get("circuit_breaker"),
+            alert_rule_manager=agent_layer.get("alert_rule_manager"),
+            rejection_rate_threshold=self.config.rejection_rate_threshold,
+            log_collector=infra.get("log_collector"),
+            rules_ref=base["_rules"],
+            statistics_ref=base["_statistics"],
+        )
+
+        logger.info(
+            "Built RuleEngineFacade with rejection_rate_threshold=%.2f, "
+            "circuit_breaker=%s, alert_rule_manager=%s",
+            self.config.rejection_rate_threshold,
+            "configured" if infra.get("circuit_breaker") else "none",
+            "configured" if agent_layer.get("alert_rule_manager") else "none",
+        )
+
+        return {"rule_engine_facade": facade}
+
     # =====================================================================
     # 汇总辅助方法
     # =====================================================================
@@ -803,6 +1054,7 @@ class CoordinatorBootstrap:
         prompt: dict[str, Any],
         save: dict[str, Any],
         guardian: dict[str, Any],
+        rule_engine: dict[str, Any],
     ) -> dict[str, Any]:
         """汇总所有编排器
 
@@ -816,6 +1068,7 @@ class CoordinatorBootstrap:
             prompt: 提示词与实验层组件字典
             save: 保存请求流程组件字典
             guardian: 守护层组件字典
+            rule_engine: 规则引擎层组件字典（P1-1 Step 3）
 
         返回：
             编排器字典 {name: orchestrator_instance}
@@ -850,6 +1103,8 @@ class CoordinatorBootstrap:
             "workflow_modifier": guardian["workflow_modifier"],
             "task_terminator": guardian["task_terminator"],
             "safety_guard": guardian["safety_guard"],
+            # 规则引擎层（P1-1 Step 3）
+            "rule_engine_facade": rule_engine["rule_engine_facade"],
         }
 
         # 添加可选组件

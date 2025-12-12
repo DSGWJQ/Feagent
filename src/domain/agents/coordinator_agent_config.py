@@ -229,7 +229,7 @@ class CoordinatorAgentConfig:
     knowledge: KnowledgeConfig = field(default_factory=KnowledgeConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
 
-    def validate(self) -> None:
+    def validate(self, *, strict: bool = True) -> None:
         """验证配置完整性
 
         检查：
@@ -237,12 +237,22 @@ class CoordinatorAgentConfig:
         2. 配置组内部一致性
         3. 配置组间依赖关系
 
+        参数：
+            strict: 是否严格校验（默认 True）
+                - True: event_bus=None 会抛出 ValueError
+                - False: event_bus=None 只记录 warning（用于测试/装配场景）
+
         异常：
-            ValueError: 配置验证失败
+            ValueError: 配置验证失败（仅在 strict=True 时）
+
+        说明：
+            P1-1 Step 2 Critical Fix #3: 增加 strict 参数支持宽松校验
         """
         # 必选依赖检查
         if self.event_bus is None:
-            raise ValueError("event_bus is required")
+            if strict:
+                raise ValueError("event_bus is required")
+            logger.warning("CoordinatorAgentConfig.validate(strict=False): event_bus is None")
 
         # 配置组内部验证（__post_init__ 已执行）
         # 这里检查跨组依赖关系

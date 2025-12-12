@@ -8,7 +8,13 @@
 - 可选依赖健壮性 (2 tests)
 - Flag/Placeholder 行为 (2 tests)
 
-总计: 12 tests
+P1-1 Step 2 测试套件（新Config系统兼容性）：
+- CoordinatorAgentConfig 基础接受 (2 tests)
+- Config 映射验证 (5 tests)
+- 知识检索开关控制 (1 test)
+- 向后兼容性保持 (1 test)
+
+总计: 21 tests (12 原有 + 9 新增)
 """
 
 from unittest.mock import MagicMock
@@ -350,3 +356,355 @@ def test_placeholders_remain_none(minimal_config):
     # 验证 placeholder 为 None
     assert wiring.aliases.get("_tool_repository") is None
     assert wiring.aliases.get("_code_repair_service") is None
+
+
+# =====================================================================
+# P1-1 Step 2: CoordinatorAgentConfig 兼容性测试
+# =====================================================================
+
+
+# =====================================================================
+# Test: CoordinatorAgentConfig 基础接受 (2 tests)
+# =====================================================================
+
+
+def test_bootstrap_accepts_coordinator_agent_config_minimal(mock_event_bus):
+    """测试 Bootstrap 接受最小 CoordinatorAgentConfig"""
+    from src.domain.agents.coordinator_agent_config import CoordinatorAgentConfig
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    # 创建最小 CoordinatorAgentConfig
+    agent_config = CoordinatorAgentConfig(event_bus=mock_event_bus)
+
+    # Bootstrap 应该能接受新Config
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+
+    # 验证核心组件存在
+    assert wiring.log_collector is not None
+    assert wiring.orchestrators is not None
+    assert wiring.aliases is not None
+
+    # 验证 SaveRequestOrchestrator 已创建（需要 event_bus）
+    assert "save_request_orchestrator" in wiring.orchestrators
+    assert wiring.orchestrators["save_request_orchestrator"] is not None
+
+
+def test_bootstrap_accepts_coordinator_agent_config_full(mock_event_bus):
+    """测试 Bootstrap 接受完整 CoordinatorAgentConfig"""
+    from src.domain.agents.coordinator_agent_config import (
+        ContextConfig,
+        CoordinatorAgentConfig,
+        FailureHandlingConfig,
+        KnowledgeConfig,
+        RuleEngineConfig,
+    )
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    # 创建完整 CoordinatorAgentConfig
+    agent_config = CoordinatorAgentConfig(
+        event_bus=mock_event_bus,
+        rules=RuleEngineConfig(
+            rejection_rate_threshold=0.3,
+            circuit_breaker_config={"failure_threshold": 5, "timeout": 60},
+        ),
+        context=ContextConfig(
+            context_bridge=MagicMock(),
+            context_compressor=MagicMock(),
+            snapshot_manager=MagicMock(),
+            max_context_length=8000,
+        ),
+        failure=FailureHandlingConfig(
+            max_retry_attempts=5,
+            retry_delay_seconds=2.0,
+            enable_auto_recovery=True,
+        ),
+        knowledge=KnowledgeConfig(
+            knowledge_retrieval_orchestrator=MagicMock(),
+            enable_knowledge_retrieval=True,
+        ),
+    )
+
+    # Bootstrap 应该能接受新Config
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+
+    # 验证核心组件存在
+    assert wiring.log_collector is not None
+    assert wiring.orchestrators is not None
+    assert wiring.aliases is not None
+
+
+# =====================================================================
+# Test: Config 映射验证 (5 tests)
+# =====================================================================
+
+
+def test_rules_group_mapping(mock_event_bus):
+    """测试 rules 组映射到 rejection_rate_threshold 和 circuit_breaker_config"""
+    from src.domain.agents.coordinator_agent_config import CoordinatorAgentConfig, RuleEngineConfig
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    agent_config = CoordinatorAgentConfig(
+        event_bus=mock_event_bus,
+        rules=RuleEngineConfig(
+            rejection_rate_threshold=0.3,
+            circuit_breaker_config={"failure_threshold": 5, "timeout": 60},
+        ),
+    )
+
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+
+    # 验证 rejection_rate_threshold 正确传递
+    # (通过检查 wiring 中使用该配置的组件)
+    failure_orch = wiring.orchestrators.get("failure_orchestrator")
+    assert failure_orch is not None
+
+    # 验证 circuit_breaker 已创建
+    assert wiring.aliases.get("circuit_breaker") is not None
+
+
+def test_context_group_mapping(mock_event_bus):
+    """测试 context 组映射到 context_bridge, context_compressor, snapshot_manager"""
+    from src.domain.agents.coordinator_agent_config import ContextConfig, CoordinatorAgentConfig
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    mock_context_bridge = MagicMock()
+    mock_context_compressor = MagicMock()
+    mock_snapshot_manager = MagicMock()
+
+    agent_config = CoordinatorAgentConfig(
+        event_bus=mock_event_bus,
+        context=ContextConfig(
+            context_bridge=mock_context_bridge,
+            context_compressor=mock_context_compressor,
+            snapshot_manager=mock_snapshot_manager,
+        ),
+    )
+
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+
+    # 验证 context 组件正确传递到 aliases
+    assert wiring.aliases.get("context_compressor") is mock_context_compressor
+    assert wiring.aliases.get("snapshot_manager") is mock_snapshot_manager
+
+
+def test_failure_group_mapping_to_dict_schema(mock_event_bus):
+    """测试 failure 组转换为旧 dict schema"""
+    from src.domain.agents.coordinator_agent_config import (
+        CoordinatorAgentConfig,
+        FailureHandlingConfig,
+    )
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    agent_config = CoordinatorAgentConfig(
+        event_bus=mock_event_bus,
+        failure=FailureHandlingConfig(
+            max_retry_attempts=5,
+            retry_delay_seconds=2.0,
+            enable_auto_recovery=True,
+        ),
+    )
+
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+
+    # 验证 failure_orchestrator 使用正确的配置
+    failure_orch = wiring.orchestrators.get("failure_orchestrator")
+    assert failure_orch is not None
+    assert hasattr(failure_orch, "config")
+    # 验证旧 schema: max_retries (不是 max_retry_attempts)
+    assert failure_orch.config["max_retries"] == 5
+    # 验证旧 schema: retry_delay (不是 retry_delay_seconds)
+    assert failure_orch.config["retry_delay"] == 2.0
+
+
+def test_failure_group_default_values_map_to_none(mock_event_bus):
+    """测试 failure 组默认值映射为 None（让 Bootstrap 使用默认配置）"""
+    from src.domain.agents.coordinator_agent_config import (
+        CoordinatorAgentConfig,
+        FailureHandlingConfig,
+    )
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    # 使用默认值（max_retry_attempts=3, retry_delay_seconds=1.0, enable_auto_recovery=True）
+    agent_config = CoordinatorAgentConfig(
+        event_bus=mock_event_bus,
+        failure=FailureHandlingConfig(),  # 全部默认值
+    )
+
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+
+    # 验证 failure_orchestrator 使用 Bootstrap 默认配置
+    failure_orch = wiring.orchestrators.get("failure_orchestrator")
+    assert failure_orch is not None
+    assert hasattr(failure_orch, "config")
+    # Bootstrap 默认: max_retries=3, retry_delay=1.0
+    assert failure_orch.config["max_retries"] == 3
+    assert failure_orch.config["retry_delay"] == 1.0
+
+
+def test_knowledge_group_mapping(mock_event_bus):
+    """测试 knowledge 组映射到 knowledge_retriever"""
+    from src.domain.agents.coordinator_agent_config import (
+        CoordinatorAgentConfig,
+        KnowledgeConfig,
+    )
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    mock_knowledge_retriever = MagicMock()
+
+    agent_config = CoordinatorAgentConfig(
+        event_bus=mock_event_bus,
+        knowledge=KnowledgeConfig(
+            knowledge_retrieval_orchestrator=mock_knowledge_retriever,
+            enable_knowledge_retrieval=True,
+        ),
+    )
+
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+
+    # 验证 knowledge_retrieval_orchestrator 正确传递
+    knowledge_orch = wiring.orchestrators.get("knowledge_retrieval_orchestrator")
+    assert knowledge_orch is not None
+    assert knowledge_orch.knowledge_retriever is mock_knowledge_retriever
+
+
+# =====================================================================
+# Test: 知识检索开关控制 (1 test)
+# =====================================================================
+
+
+def test_enable_knowledge_retrieval_false_forces_none(mock_event_bus):
+    """测试 enable_knowledge_retrieval=False 强制 knowledge_retriever=None"""
+    from src.domain.agents.coordinator_agent_config import (
+        CoordinatorAgentConfig,
+        KnowledgeConfig,
+    )
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    mock_knowledge_retriever = MagicMock()
+
+    agent_config = CoordinatorAgentConfig(
+        event_bus=mock_event_bus,
+        knowledge=KnowledgeConfig(
+            knowledge_retrieval_orchestrator=mock_knowledge_retriever,
+            enable_knowledge_retrieval=False,  # 关键：禁用知识检索
+        ),
+    )
+
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+
+    # 验证即使提供了 knowledge_retrieval_orchestrator，也被强制为 None
+    knowledge_orch = wiring.orchestrators.get("knowledge_retrieval_orchestrator")
+    assert knowledge_orch is not None
+    assert knowledge_orch.knowledge_retriever is None
+
+
+# =====================================================================
+# Test: 向后兼容性保持 (1 test)
+# =====================================================================
+
+
+def test_backward_compatibility_all_old_configs_still_work(mock_event_bus):
+    """测试向后兼容：旧 CoordinatorConfig 和 dict 仍然工作"""
+    from src.domain.services.coordinator_bootstrap import (
+        CoordinatorBootstrap,
+        CoordinatorConfig,
+    )
+
+    # 1. 测试旧 CoordinatorConfig
+    old_config_obj = CoordinatorConfig(
+        event_bus=mock_event_bus,
+        rejection_rate_threshold=0.5,
+        circuit_breaker_config=None,
+        context_bridge=None,
+        failure_strategy_config=None,
+        context_compressor=None,
+        snapshot_manager=None,
+        knowledge_retriever=None,
+    )
+    bootstrap1 = CoordinatorBootstrap(config=old_config_obj)
+    wiring1 = bootstrap1.assemble()
+    assert wiring1.log_collector is not None
+
+    # 2. 测试旧 dict
+    old_config_dict = {
+        "event_bus": mock_event_bus,
+        "rejection_rate_threshold": 0.5,
+        "circuit_breaker_config": None,
+        "context_bridge": None,
+        "failure_strategy_config": None,
+        "context_compressor": None,
+        "snapshot_manager": None,
+        "knowledge_retriever": None,
+    }
+    bootstrap2 = CoordinatorBootstrap(config=old_config_dict)
+    wiring2 = bootstrap2.assemble()
+    assert wiring2.log_collector is not None
+
+
+# =====================================================================
+# P1-1 Step 2 Critical Fixes 测试（Codex 建议补充）
+# =====================================================================
+
+
+def test_magicmock_not_misdetected_as_agent_config():
+    """P1-1 Critical Fix #1: 避免 duck typing 误判 - MagicMock 不应被当作 CoordinatorAgentConfig"""
+    from unittest.mock import MagicMock
+
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    fake = MagicMock()
+    fake.rules = MagicMock()
+    fake.context = MagicMock()
+    fake.failure = MagicMock()
+    fake.knowledge = MagicMock()
+
+    with pytest.raises(TypeError, match="Unsupported config type"):
+        CoordinatorBootstrap(config=fake)
+
+
+def test_agent_config_validate_relaxed_allows_event_bus_none():
+    """P1-1 Critical Fix #3: Bootstrap 调用 validate，但对 event_bus=None 采用宽松模式"""
+    from src.domain.agents.coordinator_agent_config import CoordinatorAgentConfig
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    agent_config = CoordinatorAgentConfig(event_bus=None)
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+
+    # 应该能正常装配
+    assert wiring.log_collector is not None
+    # SaveRequestOrchestrator 不应创建（需要 event_bus）
+    assert wiring.orchestrators.get("save_request_orchestrator") is None
+
+
+def test_failure_mapping_does_not_include_unconsumed_fields(mock_event_bus):
+    """P1-1 Critical Fix #2 & #4: failure 映射应只包含 orchestrator 消费字段，避免假生效配置"""
+    from src.domain.agents.coordinator_agent_config import (
+        CoordinatorAgentConfig,
+        FailureHandlingConfig,
+    )
+    from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+
+    agent_config = CoordinatorAgentConfig(
+        event_bus=mock_event_bus,
+        failure=FailureHandlingConfig(max_retry_attempts=5, retry_delay_seconds=2.0),
+    )
+    bootstrap = CoordinatorBootstrap(config=agent_config)
+    wiring = bootstrap.assemble()
+    failure_orch = wiring.orchestrators["failure_orchestrator"]
+
+    # 验证只包含实际消费的字段
+    assert "max_retries" in failure_orch.config
+    assert "retry_delay" in failure_orch.config
+    assert "default_strategy" in failure_orch.config
+
+    # P1-1 Critical Fix #4: enable_auto_recovery 不应包含（未被消费）
+    assert "enable_auto_recovery" not in failure_orch.config

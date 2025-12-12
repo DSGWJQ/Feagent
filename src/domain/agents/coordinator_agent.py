@@ -20,9 +20,21 @@
 """
 
 import logging
+import warnings
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass, field, replace
+from functools import wraps
+from typing import Any, Final
+
+# P1-1 Phase: Import new configuration system
+from src.domain.agents.coordinator_agent_config import (
+    ContextConfig,
+    CoordinatorAgentConfig,
+    FailureHandlingConfig,
+    KnowledgeConfig,
+    RuleEngineConfig,
+    RuntimeConfig,
+)
 
 # Phase 35.5: WorkflowStateMonitor moved to workflow_state_monitor
 from src.domain.agents.workflow_state_monitor import WorkflowStateMonitor
@@ -54,6 +66,24 @@ from src.domain.services.workflow_failure_orchestrator import (
 
 logger = logging.getLogger(__name__)
 
+
+# =========================================================================
+# Deprecation Utility
+# =========================================================================
+def _deprecated(message: str):
+    """Decorator for deprecated methods"""
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            warnings.warn(message, DeprecationWarning, stacklevel=2)
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 # =========================================================================
 # P1 Fix: 配置常量（避免魔法数字）
 # =========================================================================
@@ -74,6 +104,10 @@ MAX_CONTAINER_LOGS_SIZE = 500
 
 MAX_SUBAGENT_RESULTS_SIZE = 100
 """子Agent结果历史最大条目数"""
+
+# P1-1 Phase: Sentinel for legacy parameter detection
+_LEGACY_UNSET: Final[object] = object()
+"""Sentinel value to distinguish 'not passed' from 'passed None'"""
 
 
 # Phase 35.2: Rule moved to src.domain.services.safety_guard.rules
@@ -304,20 +338,115 @@ class CoordinatorAgent:
 
     # =====================================================================
 
+    # ==================== P1-1 Critical Fix: failure_strategy_config 双向映射 ====================
+
+    @staticmethod
+    def _failure_defaults() -> FailureHandlingConfig:
+        """返回默认的 FailureHandlingConfig"""
+        return FailureHandlingConfig(
+            max_retry_attempts=DEFAULT_MAX_RETRIES,
+            retry_delay_seconds=DEFAULT_RETRY_DELAY,
+            enable_auto_recovery=True,
+        )
+
+    @staticmethod
+    def _failure_config_to_bootstrap_dict(
+        failure: FailureHandlingConfig,
+        *,
+        default_strategy: Any = None,
+    ) -> dict[str, Any]:
+        """将 FailureHandlingConfig 转换为 Bootstrap schema
+
+        Bootstrap 期望的 schema:
+        - default_strategy: FailureHandlingStrategy 枚举
+        - max_retries: int
+        - retry_delay: float
+        - enable_auto_recovery: bool
+        """
+        if default_strategy is None:
+            # 延迟导入避免循环依赖
+            from src.domain.services.workflow_failure_orchestrator import (
+                FailureHandlingStrategy,
+            )
+
+            default_strategy = FailureHandlingStrategy.RETRY
+
+        return {
+            "default_strategy": default_strategy,
+            "max_retries": failure.max_retry_attempts,
+            "retry_delay": failure.retry_delay_seconds,
+            "enable_auto_recovery": failure.enable_auto_recovery,
+        }
+
+    @classmethod
+    def _failure_dict_to_failure_config_and_bootstrap_dict(
+        cls,
+        raw: dict[str, Any],
+    ) -> tuple[FailureHandlingConfig, dict[str, Any]]:
+        """将 dict 转换为 FailureHandlingConfig 和 Bootstrap dict
+
+        支持两套 schema:
+        1. 新（P1-1 compat）: max_retry_attempts, retry_delay_seconds, enable_auto_recovery
+        2. 旧（Bootstrap/Orchestrator）: default_strategy, max_retries, retry_delay, enable_auto_recovery
+
+        参数:
+            raw: 原始 dict（可能是新或旧 schema）
+
+        返回:
+            (FailureHandlingConfig, Bootstrap dict) 元组
+        """
+        # 延迟导入避免循环依赖
+        from src.domain.services.workflow_failure_orchestrator import FailureHandlingStrategy
+
+        # 检测 schema 类型并提取值
+        if "max_retry_attempts" in raw or "retry_delay_seconds" in raw:
+            # 新 schema
+            max_retry_attempts = raw.get("max_retry_attempts", DEFAULT_MAX_RETRIES)
+            retry_delay_seconds = raw.get("retry_delay_seconds", DEFAULT_RETRY_DELAY)
+            enable_auto_recovery = raw.get("enable_auto_recovery", True)
+            default_strategy = raw.get("default_strategy", FailureHandlingStrategy.RETRY)
+        else:
+            # 旧 schema（向后兼容）
+            max_retry_attempts = raw.get("max_retries", DEFAULT_MAX_RETRIES)
+            retry_delay_seconds = raw.get("retry_delay", DEFAULT_RETRY_DELAY)
+            enable_auto_recovery = raw.get("enable_auto_recovery", True)
+            default_strategy = raw.get("default_strategy", FailureHandlingStrategy.RETRY)
+
+        # 构建 FailureHandlingConfig
+        failure = FailureHandlingConfig(
+            max_retry_attempts=max_retry_attempts,
+            retry_delay_seconds=retry_delay_seconds,
+            enable_auto_recovery=enable_auto_recovery,
+        )
+
+        # 构建 Bootstrap dict（统一为旧 schema）
+        bootstrap_dict = {
+            "default_strategy": default_strategy,
+            "max_retries": max_retry_attempts,
+            "retry_delay": retry_delay_seconds,
+            "enable_auto_recovery": enable_auto_recovery,
+        }
+
+        return failure, bootstrap_dict
+
+    # =====================================================================
+
     def __init__(
         self,
-        event_bus: EventBus | None = None,
-        rejection_rate_threshold: float = DEFAULT_REJECTION_RATE_THRESHOLD,
-        circuit_breaker_config: Any | None = None,
-        context_bridge: Any | None = None,
-        failure_strategy_config: dict[str, Any] | None = None,
-        context_compressor: Any | None = None,
-        snapshot_manager: Any | None = None,
-        knowledge_retriever: Any | None = None,
+        event_bus: EventBus | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        rejection_rate_threshold: float = _LEGACY_UNSET,  # type: ignore[assignment]
+        circuit_breaker_config: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_bridge: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        failure_strategy_config: dict[str, Any] | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_compressor: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        snapshot_manager: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        knowledge_retriever: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        *,
+        config: CoordinatorAgentConfig | None = None,
     ):
-        """初始化协调者Agent（Phase 34.11: 使用 CoordinatorBootstrap）
+        """初始化协调者Agent（P1-1: 支持新配置系统）
 
-        参数：
+        参数（旧方式 - 保持向后兼容）：
             event_bus: 事件总线（用于发布验证/拒绝事件）
             rejection_rate_threshold: 拒绝率告警阈值
             circuit_breaker_config: 熔断器配置（阶段5新增）
@@ -326,14 +455,18 @@ class CoordinatorAgent:
             context_compressor: 上下文压缩器（阶段2新增）
             snapshot_manager: 快照管理器（阶段2新增）
             knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
-        """
-        from src.domain.services.coordinator_bootstrap import (
-            CoordinatorBootstrap,
-            CoordinatorConfig,
-        )
 
-        # 1. 创建配置对象
-        config = CoordinatorConfig(
+        参数（新方式 - P1-1）：
+            config: CoordinatorAgentConfig 配置对象
+
+        注意：
+            - 旧参数和 config 参数可以共存，但不能冲突
+            - config 优先级高于旧参数
+            - 如果同时传入冲突的值，将抛出 ValueError
+        """
+        # P1-1: Convert legacy args to new config
+        agent_config = self._legacy_args_to_agent_config(
+            config=config,
             event_bus=event_bus,
             rejection_rate_threshold=rejection_rate_threshold,
             circuit_breaker_config=circuit_breaker_config,
@@ -343,14 +476,16 @@ class CoordinatorAgent:
             snapshot_manager=snapshot_manager,
             knowledge_retriever=knowledge_retriever,
         )
+        from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
 
-        # 2. 执行依赖装配
-        bootstrap = CoordinatorBootstrap(config=config)
+        # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
+        # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
+        bootstrap = CoordinatorBootstrap(config=agent_config)
         wiring = bootstrap.assemble()
 
-        # 3. 解包装配结果：配置属性
-        self.event_bus = event_bus
-        self.rejection_rate_threshold = rejection_rate_threshold
+        # 3. 解包装配结果：配置属性（从 agent_config 读取）
+        self.event_bus = agent_config.event_bus
+        self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
 
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
         self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
@@ -399,6 +534,9 @@ class CoordinatorAgent:
         if "circuit_breaker" in wiring.orchestrators:
             self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
 
+        # P1-1 Step 3: Extract RuleEngineFacade for gradual migration
+        self._rule_engine_facade = wiring.orchestrators["rule_engine_facade"]
+
         # 9. 重建内部状态容器（共享bootstrap容器以保持状态一致）
         self._node_failure_strategies: dict[str, FailureHandlingStrategy] = wiring.base_state[
             "_node_failure_strategies"
@@ -428,8 +566,8 @@ class CoordinatorAgent:
         self._intervention_logger = wiring.orchestrators["intervention_logger"]
 
         # 14. 保留原始配置引用（向后兼容）
-        self.failure_strategy_config = failure_strategy_config or self._failure_orchestrator.config
-        self.knowledge_retriever = knowledge_retriever
+        self.failure_strategy_config = self._failure_orchestrator.config
+        self.knowledge_retriever = agent_config.knowledge.knowledge_retrieval_orchestrator
 
         # Phase 35.1: 初始化 ContextService
         self.context_service = ContextService(
@@ -508,6 +646,288 @@ class CoordinatorAgent:
         self._is_monitoring = wiring.base_state.get("_is_monitoring", False)
         if self._is_monitoring:
             self._workflow_state_monitor.start_monitoring()
+
+    # =========================================================================
+    # P1-1: Legacy Parameter Conversion
+    # =========================================================================
+
+    def _legacy_args_to_agent_config(
+        self,
+        *,
+        config: CoordinatorAgentConfig | None,
+        event_bus: EventBus | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        rejection_rate_threshold: float = _LEGACY_UNSET,  # type: ignore[assignment]
+        circuit_breaker_config: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_bridge: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        failure_strategy_config: dict[str, Any] | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_compressor: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        snapshot_manager: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        knowledge_retriever: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+    ) -> CoordinatorAgentConfig:
+        """将旧参数转换为新的 CoordinatorAgentConfig
+
+        处理三种场景：
+        1. 纯旧参数：构建新配置
+        2. 纯新配置：直接返回
+        3. 混合使用：合并配置（检测冲突）
+
+        参数：
+            config: 新配置对象（可选）
+            其他: 旧参数（可选）
+
+        返回：
+            CoordinatorAgentConfig: 统一的配置对象
+
+        异常：
+            ValueError: 当旧参数与 config 冲突时
+        """
+
+        # Helper: 检测参数是否显式传入
+        def is_set(value: Any) -> bool:
+            return value is not _LEGACY_UNSET
+
+        # Helper: 生成清晰的冲突错误消息
+        def conflict_error(
+            legacy_name: str, config_path: str, legacy_value: Any, config_value: Any
+        ) -> ValueError:
+            return ValueError(
+                f"CoordinatorAgent got conflicting configuration: "
+                f"'{legacy_name}' (={legacy_value!r}) conflicts with "
+                f"'{config_path}' (={config_value!r}). "
+                f"Please use only one configuration method."
+            )
+
+        # Scenario 1: 纯旧参数（没有传 config）
+        if config is None:
+            # 构建默认配置
+            rules = RuleEngineConfig(
+                rejection_rate_threshold=(
+                    rejection_rate_threshold
+                    if is_set(rejection_rate_threshold)
+                    else DEFAULT_REJECTION_RATE_THRESHOLD
+                ),
+                circuit_breaker_config=(
+                    circuit_breaker_config if is_set(circuit_breaker_config) else None
+                ),
+            )
+
+            context = ContextConfig(
+                context_bridge=context_bridge if is_set(context_bridge) else None,
+                context_compressor=context_compressor if is_set(context_compressor) else None,
+                snapshot_manager=snapshot_manager if is_set(snapshot_manager) else None,
+            )
+
+            # 转换 failure_strategy_config 为 FailureHandlingConfig（使用双向映射）
+            failure: FailureHandlingConfig | None = None
+            if is_set(failure_strategy_config) and failure_strategy_config:
+                failure, _ = self._failure_dict_to_failure_config_and_bootstrap_dict(
+                    failure_strategy_config  # type: ignore[arg-type]
+                )
+
+            knowledge = KnowledgeConfig(
+                knowledge_retrieval_orchestrator=(
+                    knowledge_retriever if is_set(knowledge_retriever) else None
+                ),
+            )
+
+            return CoordinatorAgentConfig(
+                event_bus=event_bus if is_set(event_bus) else None,
+                rules=rules,
+                context=context,
+                failure=failure or FailureHandlingConfig(),
+                knowledge=knowledge,
+                runtime=RuntimeConfig(),
+            )
+
+        # Scenario 2: 纯新配置（没有传旧参数）
+        has_legacy = any(
+            [
+                is_set(event_bus),
+                is_set(rejection_rate_threshold),
+                is_set(circuit_breaker_config),
+                is_set(context_bridge),
+                is_set(failure_strategy_config),
+                is_set(context_compressor),
+                is_set(snapshot_manager),
+                is_set(knowledge_retriever),
+            ]
+        )
+        if not has_legacy:
+            return config
+
+        # Scenario 3: 混合使用 - 需要检测冲突并补齐
+        # 语义规范（Mixed 模式 - 边界修复）：
+        # - config 永远赢（权威来源）
+        # - legacy 仅可补齐 config 中为 None 的字段
+        # - legacy 显式 None / {} 视为未设置（忽略）
+        # - 冲突规则：两边都"有效设置"（非 None / 非空）且不同 => 冲突
+        # - 补齐规则：config 为 None 且 legacy 为非 None => 用 legacy 填充
+
+        # event_bus 检查（统一语义：两边都非 None 时才比较）
+        if (
+            is_set(event_bus)
+            and event_bus is not None
+            and config.event_bus is not None
+            and event_bus != config.event_bus
+        ):
+            raise conflict_error("event_bus", "config.event_bus", event_bus, config.event_bus)
+
+        # rules 组检查
+        rules = config.rules
+        if is_set(rejection_rate_threshold):
+            # 统一语义：两边都非 None 时才比较
+            if (
+                rejection_rate_threshold is not None
+                and rejection_rate_threshold != rules.rejection_rate_threshold
+            ):
+                raise conflict_error(
+                    "rejection_rate_threshold",
+                    "config.rules.rejection_rate_threshold",
+                    rejection_rate_threshold,
+                    rules.rejection_rate_threshold,
+                )
+            # 一致则无需覆盖（config 优先）
+
+        if is_set(circuit_breaker_config):
+            # 统一语义：两边都非 None 时才比较
+            if (
+                circuit_breaker_config is not None
+                and config.rules.circuit_breaker_config is not None
+                and circuit_breaker_config != config.rules.circuit_breaker_config
+            ):
+                raise conflict_error(
+                    "circuit_breaker_config",
+                    "config.rules.circuit_breaker_config",
+                    circuit_breaker_config,
+                    config.rules.circuit_breaker_config,
+                )
+
+        # context 组检查（统一语义：两边都非 None 时才比较）
+        context = config.context
+        if is_set(context_bridge):
+            if (
+                context_bridge is not None
+                and context.context_bridge is not None
+                and context_bridge != context.context_bridge
+            ):
+                raise conflict_error(
+                    "context_bridge",
+                    "config.context.context_bridge",
+                    context_bridge,
+                    context.context_bridge,
+                )
+
+        if is_set(context_compressor):
+            if (
+                context_compressor is not None
+                and context.context_compressor is not None
+                and context_compressor != context.context_compressor
+            ):
+                raise conflict_error(
+                    "context_compressor",
+                    "config.context.context_compressor",
+                    context_compressor,
+                    context.context_compressor,
+                )
+
+        if is_set(snapshot_manager):
+            if (
+                snapshot_manager is not None
+                and context.snapshot_manager is not None
+                and snapshot_manager != context.snapshot_manager
+            ):
+                raise conflict_error(
+                    "snapshot_manager",
+                    "config.context.snapshot_manager",
+                    snapshot_manager,
+                    context.snapshot_manager,
+                )
+
+        # failure_strategy_config 检查（Critical Fix-2: 使用双向映射，逐字段比较）
+        failure = config.failure
+        if is_set(failure_strategy_config) and failure_strategy_config:
+            # 转换 legacy dict 为 FailureHandlingConfig
+            converted_failure, _ = self._failure_dict_to_failure_config_and_bootstrap_dict(
+                failure_strategy_config  # type: ignore[arg-type]
+            )
+            # 逐字段比较（完全相等则不冲突）
+            if converted_failure != failure:
+                raise conflict_error(
+                    "failure_strategy_config",
+                    "config.failure",
+                    failure_strategy_config,
+                    failure,
+                )
+            # 一致则无需覆盖（config 优先）
+
+        # knowledge 组检查（统一语义：两边都非 None 时才比较）
+        knowledge = config.knowledge
+        if is_set(knowledge_retriever):
+            if (
+                knowledge_retriever is not None
+                and knowledge.knowledge_retrieval_orchestrator is not None
+                and knowledge_retriever != knowledge.knowledge_retrieval_orchestrator
+            ):
+                raise conflict_error(
+                    "knowledge_retriever",
+                    "config.knowledge.knowledge_retrieval_orchestrator",
+                    knowledge_retriever,
+                    knowledge.knowledge_retrieval_orchestrator,
+                )
+
+        # --------------------
+        # Mixed 模式补齐：仅填充 config 中为 None 的依赖字段
+        # --------------------
+        merged_event_bus = config.event_bus
+        if is_set(event_bus) and event_bus is not None and merged_event_bus is None:
+            merged_event_bus = event_bus
+
+        merged_rules = rules
+        if (
+            is_set(circuit_breaker_config)
+            and circuit_breaker_config is not None
+            and merged_rules.circuit_breaker_config is None
+        ):
+            merged_rules = replace(merged_rules, circuit_breaker_config=circuit_breaker_config)
+
+        merged_context = context
+        if (
+            is_set(context_bridge)
+            and context_bridge is not None
+            and merged_context.context_bridge is None
+        ):
+            merged_context = replace(merged_context, context_bridge=context_bridge)
+        if (
+            is_set(context_compressor)
+            and context_compressor is not None
+            and merged_context.context_compressor is None
+        ):
+            merged_context = replace(merged_context, context_compressor=context_compressor)
+        if (
+            is_set(snapshot_manager)
+            and snapshot_manager is not None
+            and merged_context.snapshot_manager is None
+        ):
+            merged_context = replace(merged_context, snapshot_manager=snapshot_manager)
+
+        merged_knowledge = knowledge
+        if (
+            is_set(knowledge_retriever)
+            and knowledge_retriever is not None
+            and merged_knowledge.knowledge_retrieval_orchestrator is None
+        ):
+            merged_knowledge = replace(
+                merged_knowledge, knowledge_retrieval_orchestrator=knowledge_retriever
+            )
+
+        # 返回补齐后的 config（config 优先，legacy 仅补齐 None 字段）
+        return replace(
+            config,
+            event_bus=merged_event_bus,
+            rules=merged_rules,
+            context=merged_context,
+            knowledge=merged_knowledge,
+        )
 
     # =========================================================================
     # P1-6 Fix: 有界列表辅助方法（防止内存泄漏）
@@ -1456,18 +1876,22 @@ class CoordinatorAgent:
     @property
     def rules(self) -> list[Rule]:
         """获取所有规则（按优先级排序）"""
-        return sorted(self._rules, key=lambda r: r.priority)
+        return self._rule_engine_facade.list_decision_rules()
 
+    @_deprecated("add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.")
     def add_rule(self, rule: Rule) -> None:
-        """添加规则
+        """添加规则 (DEPRECATED - use _rule_engine_facade.add_decision_rule)
 
         参数：
             rule: 要添加的规则
         """
-        self._rules.append(rule)
+        self._rule_engine_facade.add_decision_rule(rule)
 
+    @_deprecated(
+        "remove_rule() is deprecated. Use _rule_engine_facade.remove_decision_rule() instead."
+    )
     def remove_rule(self, rule_id: str) -> bool:
-        """移除规则
+        """移除规则 (DEPRECATED - use _rule_engine_facade.remove_decision_rule)
 
         参数：
             rule_id: 规则ID
@@ -1475,14 +1899,13 @@ class CoordinatorAgent:
         返回：
             是否成功移除
         """
-        for i, rule in enumerate(self._rules):
-            if rule.id == rule_id:
-                self._rules.pop(i)
-                return True
-        return False
+        return self._rule_engine_facade.remove_decision_rule(rule_id)
 
+    @_deprecated(
+        "validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead."
+    )
     def validate_decision(self, decision: dict[str, Any]) -> ValidationResult:
-        """验证决策
+        """验证决策 (DEPRECATED - use _rule_engine_facade.validate_decision)
 
         按优先级顺序检查所有规则。
 
@@ -1492,57 +1915,8 @@ class CoordinatorAgent:
         返回：
             验证结果
         """
-        self._statistics["total"] += 1
-
-        errors = []
-        correction = None
-
-        # 按优先级排序的规则
-        sorted_rules = self.rules
-
-        for rule in sorted_rules:
-            try:
-                if not rule.condition(decision):
-                    # 处理可调用的 error_message (Phase 8.4)
-                    if callable(rule.error_message):
-                        error_msg = rule.error_message(decision)
-                    else:
-                        error_msg = rule.error_message
-
-                    # 如果错误消息包含分号分隔的多个错误，拆分为独立错误 (Phase 8.4)
-                    if ";" in error_msg:
-                        error_items = [e.strip() for e in error_msg.split(";") if e.strip()]
-                        errors.extend(error_items)
-                    else:
-                        errors.append(error_msg)
-
-                    # 如果有修正函数，尝试修正
-                    if rule.correction and correction is None:
-                        correction = rule.correction(decision)
-
-            except Exception as e:
-                errors.append(f"规则 {rule.name} 执行异常: {str(e)}")
-
-        is_valid = len(errors) == 0
-
-        if is_valid:
-            self._statistics["passed"] += 1
-            # 记录验证通过日志
-            self.log_collector.info(
-                "CoordinatorAgent",
-                "决策验证通过",
-                {"action_type": decision.get("action_type", "unknown")},
-            )
-        else:
-            self._statistics["rejected"] += 1
-            # 记录验证失败日志
-            self.log_collector.warning(
-                "CoordinatorAgent",
-                f"决策验证失败: {len(errors)} 个错误",
-                {"action_type": decision.get("action_type", "unknown"), "errors": errors},
-            )
-
-        return ValidationResult(is_valid=is_valid, errors=errors, correction=correction)
+        session_id = decision.get("session_id")
+        return self._rule_engine_facade.validate_decision(decision, session_id=session_id)
 
     # ==================== 提示词版本管理接口（代理到 PromptVersionFacade）====================
 
@@ -1764,30 +2138,27 @@ class CoordinatorAgent:
 
     # ==================== 统计和监控 ====================
 
+    @_deprecated(
+        "get_statistics() is deprecated. Use _rule_engine_facade.get_decision_statistics() instead."
+    )
     def get_statistics(self) -> dict[str, Any]:
-        """获取决策统计
+        """获取决策统计 (DEPRECATED - use _rule_engine_facade.get_decision_statistics)
 
         返回：
             统计字典
         """
-        total = self._statistics["total"]
-        rejected = self._statistics["rejected"]
+        return self._rule_engine_facade.get_decision_statistics()
 
-        return {
-            "total": total,
-            "passed": self._statistics["passed"],
-            "rejected": rejected,
-            "rejection_rate": rejected / total if total > 0 else 0.0,
-        }
-
+    @_deprecated(
+        "is_rejection_rate_high() is deprecated. Use _rule_engine_facade.is_rejection_rate_high() instead."
+    )
     def is_rejection_rate_high(self) -> bool:
-        """检查拒绝率是否过高
+        """检查拒绝率是否过高 (DEPRECATED - use _rule_engine_facade.is_rejection_rate_high)
 
         返回：
             是否超过阈值
         """
-        stats = self.get_statistics()
-        return stats["rejection_rate"] > self.rejection_rate_threshold
+        return self._rule_engine_facade.is_rejection_rate_high()
 
     def as_middleware(self) -> Callable:
         """返回EventBus中间件函数
