@@ -22,8 +22,10 @@
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
+
+# Phase 35.5: WorkflowStateMonitor moved to workflow_state_monitor
+from src.domain.agents.workflow_state_monitor import WorkflowStateMonitor
 
 # Phase 35.1: ContextResponse moved to context module
 from src.domain.services.context import ContextResponse, ContextService
@@ -357,7 +359,8 @@ class CoordinatorAgent:
         # 5. 解包装配结果：工作流状态（共享bootstrap容器）
         self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
         self._is_monitoring = wiring.base_state["_is_monitoring"]
-        self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
+        # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
+        # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
 
         # 6. 解包装配结果：共享组件（log_collector）
         self.log_collector = wiring.log_collector
@@ -477,6 +480,33 @@ class CoordinatorAgent:
             self._reflection_context_manager.start_reflection_listening(
                 enable_compression=self._is_compressing_context
             )
+
+        # Phase 35.5: 初始化 WorkflowStateMonitor
+        def _compressing() -> bool:
+            """懒加载方式检查是否启用压缩"""
+            return self._is_compressing_context
+
+        async def _compression_callback(
+            workflow_id: str, source_type: str, raw_data: dict[str, Any]
+        ) -> None:
+            """压缩回调（集成到 ReflectionContextManager）"""
+            self._reflection_context_manager._compress_and_save_context(
+                workflow_id=workflow_id,
+                source_type=source_type,
+                raw_data=raw_data,
+            )
+
+        self._workflow_state_monitor = WorkflowStateMonitor(
+            workflow_states=self.workflow_states,
+            event_bus=self.event_bus,
+            is_compressing_context=_compressing,
+            compression_callback=_compression_callback,
+        )
+
+        # Phase 35.5: 恢复工作流监控状态
+        self._is_monitoring = wiring.base_state.get("_is_monitoring", False)
+        if self._is_monitoring:
+            self._workflow_state_monitor.start_monitoring()
 
     # =========================================================================
     # P1-6 Fix: 有界列表辅助方法（防止内存泄漏）
@@ -1817,145 +1847,28 @@ class CoordinatorAgent:
     def start_monitoring(self) -> None:
         """启动工作流状态监控
 
-        订阅工作流相关事件，维护状态快照。
-        如果启用了上下文压缩，会同时压缩事件数据。
+        Phase 35.5: 委托给 WorkflowStateMonitor
         """
-        if self._is_monitoring:
-            return
-
-        if not self.event_bus:
-            raise ValueError("EventBus is required for monitoring")
-
-        # 延迟导入避免循环依赖
-        from src.domain.agents.workflow_agent import (
-            NodeExecutionEvent,
-            WorkflowExecutionCompletedEvent,
-            WorkflowExecutionStartedEvent,
-        )
-
-        # 根据是否启用压缩选择处理器
-        if self._is_compressing_context:
-            workflow_started_handler = self._handle_workflow_started_with_compression
-            node_execution_handler = self._handle_node_execution_with_compression
-        else:
-            workflow_started_handler = self._handle_workflow_started
-            node_execution_handler = self._handle_node_execution
-
-        # 订阅工作流事件
-        self.event_bus.subscribe(WorkflowExecutionStartedEvent, workflow_started_handler)
-        self.event_bus.subscribe(WorkflowExecutionCompletedEvent, self._handle_workflow_completed)
-        self.event_bus.subscribe(NodeExecutionEvent, node_execution_handler)
-
+        self._workflow_state_monitor.start_monitoring()
         self._is_monitoring = True
 
     def stop_monitoring(self) -> None:
         """停止工作流状态监控
 
-        取消所有事件订阅。
+        Phase 35.5: 委托给 WorkflowStateMonitor
         """
-        if not self._is_monitoring:
-            return
-
-        if not self.event_bus:
-            return
-
-        from src.domain.agents.workflow_agent import (
-            NodeExecutionEvent,
-            WorkflowExecutionCompletedEvent,
-            WorkflowExecutionStartedEvent,
-        )
-
-        self.event_bus.unsubscribe(WorkflowExecutionStartedEvent, self._handle_workflow_started)
-        self.event_bus.unsubscribe(WorkflowExecutionCompletedEvent, self._handle_workflow_completed)
-        self.event_bus.unsubscribe(NodeExecutionEvent, self._handle_node_execution)
-
+        self._workflow_state_monitor.stop_monitoring()
         self._is_monitoring = False
 
-    async def _handle_workflow_started(self, event: Any) -> None:
-        """处理工作流开始事件"""
-        workflow_id = event.workflow_id
-
-        self.workflow_states[workflow_id] = {
-            "workflow_id": workflow_id,
-            "status": "running",
-            "node_count": event.node_count,
-            "started_at": datetime.now(),
-            "completed_at": None,
-            "result": None,
-            # 节点跟踪
-            "executed_nodes": [],
-            "running_nodes": [],
-            "failed_nodes": [],
-            "node_inputs": {},
-            "node_outputs": {},
-            "node_errors": {},
-        }
-
-        # 记录当前工作流ID（用于关联节点事件）
-        self._current_workflow_id = workflow_id
-
-    async def _handle_workflow_completed(self, event: Any) -> None:
-        """处理工作流完成事件"""
-        workflow_id = event.workflow_id
-
-        if workflow_id in self.workflow_states:
-            self.workflow_states[workflow_id]["status"] = event.status
-            self.workflow_states[workflow_id]["completed_at"] = datetime.now()
-            self.workflow_states[workflow_id]["result"] = event.result
-
-        # 如果启用了压缩，更新上下文
-        if self._is_compressing_context:
-            self._compress_and_save_context(
-                workflow_id=workflow_id,
-                source_type="execution",
-                raw_data={
-                    "workflow_status": event.status,
-                    "result": event.result,
-                },
-            )
-
-    async def _handle_node_execution(self, event: Any) -> None:
-        """处理节点执行事件"""
-        node_id = event.node_id
-        status = event.status
-
-        # 确定工作流ID（从事件或当前追踪的工作流）
-        workflow_id = getattr(event, "workflow_id", None) or self._current_workflow_id
-
-        if not workflow_id or workflow_id not in self.workflow_states:
-            return
-
-        state = self.workflow_states[workflow_id]
-
-        # 记录输入（如果事件包含）
-        if hasattr(event, "inputs") and event.inputs:
-            state["node_inputs"][node_id] = event.inputs
-
-        if status == "running":
-            # 节点开始运行
-            if node_id not in state["running_nodes"]:
-                state["running_nodes"].append(node_id)
-
-        elif status == "completed":
-            # 节点完成
-            if node_id in state["running_nodes"]:
-                state["running_nodes"].remove(node_id)
-            if node_id not in state["executed_nodes"]:
-                state["executed_nodes"].append(node_id)
-            if event.result:
-                state["node_outputs"][node_id] = event.result
-
-        elif status == "failed":
-            # 节点失败
-            if node_id in state["running_nodes"]:
-                state["running_nodes"].remove(node_id)
-            if node_id not in state["failed_nodes"]:
-                state["failed_nodes"].append(node_id)
-            if event.error:
-                state["node_errors"][node_id] = event.error
+    # Phase 35.5: 以下方法已移至 WorkflowStateMonitor，此处删除：
+    # - _handle_workflow_started
+    # - _handle_workflow_completed
+    # - _handle_node_execution
 
     def get_workflow_state(self, workflow_id: str) -> dict[str, Any] | None:
         """获取工作流状态快照
+
+        Phase 35.5: 委托给 WorkflowStateMonitor
 
         参数：
             workflow_id: 工作流ID
@@ -1963,41 +1876,30 @@ class CoordinatorAgent:
         返回：
             状态快照字典，如果不存在返回None
         """
-        state = self.workflow_states.get(workflow_id)
-        if state:
-            return state.copy()
-        return None
+        return self._workflow_state_monitor.get_workflow_state(workflow_id)
 
     def get_all_workflow_states(self) -> dict[str, dict[str, Any]]:
         """获取所有工作流状态
 
+        Phase 35.5: 委托给 WorkflowStateMonitor
+
         返回：
             工作流ID到状态的映射
         """
-        return {wf_id: state.copy() for wf_id, state in self.workflow_states.items()}
+        return self._workflow_state_monitor.get_all_workflow_states()
 
     def get_system_status(self) -> dict[str, Any]:
         """获取系统状态摘要
 
+        Phase 35.5: 委托给 WorkflowStateMonitor + 添加决策统计
+
         返回：
             系统状态摘要
         """
-        total = len(self.workflow_states)
-        running = sum(1 for s in self.workflow_states.values() if s["status"] == "running")
-        completed = sum(1 for s in self.workflow_states.values() if s["status"] == "completed")
-        failed = sum(1 for s in self.workflow_states.values() if s["status"] == "failed")
-
-        # 计算活跃节点数
-        active_nodes = sum(len(s["running_nodes"]) for s in self.workflow_states.values())
-
-        return {
-            "total_workflows": total,
-            "running_workflows": running,
-            "completed_workflows": completed,
-            "failed_workflows": failed,
-            "active_nodes": active_nodes,
-            "decision_statistics": self.get_statistics(),
-        }
+        status = self._workflow_state_monitor.get_system_status()
+        # 添加决策统计（CoordinatorAgent 特有功能）
+        status["decision_statistics"] = self.get_statistics()
+        return status
 
     # ==================== 阶段5：熔断器与上下文桥接 ====================
 
@@ -2311,65 +2213,9 @@ class CoordinatorAgent:
         """
         return self._reflection_context_manager.get_context_summary_text(workflow_id)
 
-    async def _handle_workflow_started_with_compression(self, event: Any) -> None:
-        """处理工作流开始事件（带压缩）"""
-        await self._handle_workflow_started(event)
-
-        # 压缩初始上下文
-        if self._is_compressing_context:
-            workflow_id = event.workflow_id
-            self._compress_and_save_context(
-                workflow_id=workflow_id,
-                source_type="execution",
-                raw_data={
-                    "workflow_status": "running",
-                    "node_count": event.node_count,
-                },
-            )
-
-    async def _handle_node_execution_with_compression(self, event: Any) -> None:
-        """处理节点执行事件（带压缩）"""
-        await self._handle_node_execution(event)
-
-        # 压缩节点执行结果
-        if self._is_compressing_context:
-            workflow_id = getattr(event, "workflow_id", None) or self._current_workflow_id
-            if workflow_id:
-                raw_data = {
-                    "executed_nodes": [
-                        {
-                            "node_id": event.node_id,
-                            "status": event.status,
-                            "output": getattr(event, "result", None),
-                            "error": getattr(event, "error", None),
-                        }
-                    ],
-                    "workflow_status": "running",
-                }
-
-                # 如果有工作流状态，补充进度信息
-                if workflow_id in self.workflow_states:
-                    state = self.workflow_states[workflow_id]
-                    executed = len(state.get("executed_nodes", []))
-                    total = state.get("node_count", 0)
-                    if total > 0:
-                        raw_data["progress"] = executed / total
-
-                    # 如果有错误，添加到错误列表
-                    if event.status == "failed" and getattr(event, "error", None):
-                        raw_data["errors"] = [
-                            {
-                                "node_id": event.node_id,
-                                "error": event.error,
-                                "retryable": True,
-                            }
-                        ]
-
-                self._compress_and_save_context(
-                    workflow_id=workflow_id,
-                    source_type="execution",
-                    raw_data=raw_data,
-                )
+    # Phase 35.5: 以下压缩处理器已移至 WorkflowStateMonitor，此处删除：
+    # - _handle_workflow_started_with_compression
+    # - _handle_node_execution_with_compression
 
     async def _handle_reflection_event_with_compression(self, event: Any) -> None:
         """处理反思事件（带压缩）

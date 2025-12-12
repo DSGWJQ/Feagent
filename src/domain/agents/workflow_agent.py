@@ -262,8 +262,12 @@ class WorkflowReflectionCompletedEvent(Event):
 
 @dataclass
 class NodeExecutionEvent(Event):
-    """节点执行事件"""
+    """节点执行事件
 
+    Phase 35.5 修复：添加 workflow_id 字段以支持并发安全的状态监控。
+    """
+
+    workflow_id: str = ""  # Phase 35.5: 添加 workflow_id 以支持并发监控
     node_id: str = ""
     node_type: str = ""
     status: str = ""  # running, completed, failed
@@ -489,6 +493,11 @@ class WorkflowAgent:
                 await self.event_bus.publish(
                     NodeExecutionEvent(
                         source="workflow_agent",
+                        workflow_id=(
+                            self.workflow_context.workflow_id
+                            if self.workflow_context
+                            else "unknown"
+                        ),
                         node_id=node.id,
                         node_type=node.type.value,
                         status="failed",
@@ -921,6 +930,9 @@ class WorkflowAgent:
             await self.event_bus.publish(
                 NodeExecutionEvent(
                     source="workflow_agent",
+                    workflow_id=(
+                        self.workflow_context.workflow_id if self.workflow_context else "unknown"
+                    ),
                     node_id=node_id,
                     node_type=node.type.value,
                     status="running",
@@ -948,6 +960,9 @@ class WorkflowAgent:
             await self.event_bus.publish(
                 NodeExecutionEvent(
                     source="workflow_agent",
+                    workflow_id=(
+                        self.workflow_context.workflow_id if self.workflow_context else "unknown"
+                    ),
                     node_id=node_id,
                     node_type=node.type.value,
                     status="completed",
@@ -3049,6 +3064,11 @@ class WorkflowAgent:
                 await self.event_bus.publish(
                     NodeExecutionEvent(
                         source="workflow_agent",
+                        workflow_id=(
+                            self.workflow_context.workflow_id
+                            if self.workflow_context
+                            else "unknown"
+                        ),
                         node_id=nid,
                         node_type=current_node.type.value,
                         status="completed" if result.get("success", True) else "failed",

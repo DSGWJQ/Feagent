@@ -40,7 +40,8 @@
       "Bash(Select-String -Pattern \"def initiate_termination\" -Context 15)",
       "Bash(Select-Object -First 35)",
       "Bash(Select-String -Pattern \"(PASSED|FAILED|test_)\")",
-      "Bash(move \"D:\\My_Project\\agent_data\\src\\domain\\services\\safety_guard.py\" \"D:\\My_Project\\agent_data\\src\\domain\\services\\safety_guard\\core.py\")"
+      "Bash(move \"D:\\My_Project\\agent_data\\src\\domain\\services\\safety_guard.py\" \"D:\\My_Project\\agent_data\\src\\domain\\services\\safety_guard\\core.py\")",
+      "Bash(Select-String \"35.1\")"
     ],
     "deny": [],
     "ask": []
