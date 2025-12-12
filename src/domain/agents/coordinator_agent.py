@@ -29,6 +29,9 @@ from typing import Any
 from src.domain.services.context import ContextResponse, ContextService
 from src.domain.services.event_bus import Event, EventBus
 
+# Phase 35.3: MessageLogListener, MessageLogAccessor moved to message_log_listener
+from src.domain.services.message_log_listener import MessageLogAccessor, MessageLogListener
+
 # Phase 35.2: Rule, PayloadRuleBuilder, DagRuleBuilder moved to SafetyGuard package
 from src.domain.services.safety_guard import (
     DagRuleBuilder,
@@ -270,27 +273,7 @@ class CoordinatorAgent:
 
     # ===================== Phase 34.10: Log Integration Accessors ====================
 
-    class _MessageLogAccessor:
-        """Message Log Accessor for UnifiedLogIntegration
-
-        提供对 message_log 的只读访问接口。
-        """
-
-        def __init__(self, messages_ref: list[dict[str, Any]]):
-            """初始化访问器
-
-            参数：
-                messages_ref: message_log 引用（append-only list）
-            """
-            self._messages = messages_ref
-
-        def get_messages(self) -> list[dict[str, Any]]:
-            """获取消息日志列表
-
-            返回：
-                消息日志列表（只读访问）
-            """
-            return self._messages
+    # Phase 35.3: _MessageLogAccessor moved to src.domain.services.message_log_listener
 
     class _ContainerLogAccessor:
         """Container Log Accessor for UnifiedLogIntegration
@@ -422,7 +405,8 @@ class CoordinatorAgent:
         self._knowledge_cache: dict[str, Any] = wiring.base_state["_knowledge_cache"]
 
         # 10. 重建 accessor 和 gateway（依赖共享状态容器）
-        self._message_log_accessor = self._MessageLogAccessor(self.message_log)
+        # Phase 35.3: Use MessageLogAccessor from message_log_listener module
+        self._message_log_accessor = MessageLogAccessor(self.message_log)
         self._container_log_accessor = self._ContainerLogAccessor(self._container_monitor)
         self._context_gateway = self._ContextGateway(self._compressed_contexts)
 
@@ -452,26 +436,26 @@ class CoordinatorAgent:
         self._payload_rule_builder = PayloadRuleBuilder()
         self._dag_rule_builder = DagRuleBuilder()
 
+        # Phase 35.3: 初始化 MessageLogListener
+        self._message_log_listener = MessageLogListener(
+            event_bus=self.event_bus,
+            message_log=self.message_log,
+            max_size=MAX_MESSAGE_LOG_SIZE,
+        )
+
+        # Phase 35.3: 恢复监听状态（如果之前在监听）
+        # 从 base_state 读取 _is_listening_simple_messages 标志，
+        # 如果为 True，则自动启动监听以恢复订阅状态
+        self._is_listening_simple_messages = wiring.base_state.get(
+            "_is_listening_simple_messages", False
+        )
+        if self._is_listening_simple_messages:
+            self._message_log_listener.start()
+
     # =========================================================================
     # P1-6 Fix: 有界列表辅助方法（防止内存泄漏）
     # =========================================================================
-
-    def _add_to_bounded_list(
-        self,
-        target_list: list[Any],
-        item: Any,
-        max_size: int,
-    ) -> None:
-        """添加项目到有界列表，超出限制时移除最旧的项
-
-        参数：
-            target_list: 目标列表
-            item: 要添加的项目
-            max_size: 最大大小限制
-        """
-        target_list.append(item)
-        while len(target_list) > max_size:
-            target_list.pop(0)  # 移除最旧的
+    # Phase 35.3: _add_to_bounded_list moved to MessageLogListener
 
     # ==================== Phase 5 (七种节点类型): 安全规则配置与验证（委托给 SafetyGuard）====================
 
@@ -2146,72 +2130,40 @@ class CoordinatorAgent:
     def start_simple_message_listening(self) -> None:
         """开始监听简单消息事件
 
-        订阅 SimpleMessageEvent，将消息记录到 message_log。
+        Phase 35.3: 委托给 MessageLogListener
         """
-        if self._is_listening_simple_messages:
-            return
-
-        if not self.event_bus:
-            raise ValueError("EventBus is required for simple message listening")
-
-        from src.domain.agents.conversation_agent import SimpleMessageEvent
-
-        self.event_bus.subscribe(SimpleMessageEvent, self._handle_simple_message_event)
-        self._is_listening_simple_messages = True
+        self._message_log_listener.start()
+        self._is_listening_simple_messages = self._message_log_listener.is_listening
 
     def stop_simple_message_listening(self) -> None:
-        """停止监听简单消息事件"""
-        if not self._is_listening_simple_messages:
-            return
+        """停止监听简单消息事件
 
-        if not self.event_bus:
-            return
-
-        from src.domain.agents.conversation_agent import SimpleMessageEvent
-
-        self.event_bus.unsubscribe(SimpleMessageEvent, self._handle_simple_message_event)
-        self._is_listening_simple_messages = False
+        Phase 35.3: 委托给 MessageLogListener
+        """
+        self._message_log_listener.stop()
+        self._is_listening_simple_messages = self._message_log_listener.is_listening
 
     async def _handle_simple_message_event(self, event: Any) -> None:
         """处理简单消息事件
 
-        将消息记录到 message_log（带大小限制防止内存泄漏）。
+        Phase 35.3: 委托给 MessageLogListener（内部方法，保持向后兼容）
 
         参数：
             event: SimpleMessageEvent 实例
         """
-        # P1-6 Fix: 使用有界列表防止内存泄漏
-        self._add_to_bounded_list(
-            self.message_log,
-            {
-                "user_input": event.user_input,
-                "response": event.response,
-                "intent": event.intent,
-                "confidence": event.confidence,
-                "session_id": event.session_id,
-                "timestamp": event.timestamp,
-            },
-            MAX_MESSAGE_LOG_SIZE,
-        )
+        await self._message_log_listener._handle_simple_message_event(event)
 
     def get_message_statistics(self) -> dict[str, Any]:
         """获取消息统计
+
+        Phase 35.3: 委托给 MessageLogListener
 
         返回：
             包含消息统计的字典：
             - total_messages: 总消息数
             - by_intent: 按意图分类的消息数
         """
-        by_intent: dict[str, int] = {}
-
-        for msg in self.message_log:
-            intent = msg.get("intent", "unknown")
-            by_intent[intent] = by_intent.get(intent, 0) + 1
-
-        return {
-            "total_messages": len(self.message_log),
-            "by_intent": by_intent,
-        }
+        return self._message_log_listener.get_statistics()
 
     # === Phase 16: 反思上下文监听 ===
 

@@ -3311,6 +3311,53 @@ pytest tests/ -v
 
 ---
 
+## Phase 35.3: MessageLogListener 提取（P3 - 简单消息监听）
+
+> 完成时间: 2025-12-12
+> 目标: 从 CoordinatorAgent 提取消息日志监听与统计功能
+> 策略: TDD驱动 + Codex协作 + 延迟初始化修复
+
+### 任务清单
+
+**TDD Red Phase - 测试先行** ✅
+- [x] 创建 `tests/unit/domain/services/test_message_log_listener.py` (15 tests)
+- [x] 15 个测试用例覆盖：初始化、启动/停止、事件处理、统计、Accessor、集成
+
+**TDD Green Phase - 实现功能** ✅
+- [x] 创建 `src/domain/services/message_log_listener.py` (172 lines)
+  - `MessageLogAccessor`: 只读访问接口
+  - `MessageLogListener`: 核心监听器（6 个方法）
+
+**集成与委托** ✅
+- [x] 在 `coordinator_agent.py` 中集成（委托模式）
+- [x] 恢复监听状态（从 base_state 读取 `_is_listening_simple_messages`）
+- [x] 委托 4 个方法：保持公共 API 不变
+
+**Codex 审查与修复** ✅
+- [x] Codex 初审：7/10 分（识别 2 个问题）
+- [x] 修复 1: 延迟初始化（允许 event_bus=None，start() 时验证）
+- [x] 修复 2: 状态恢复（读取 base_state，自动启动监听）
+- [x] 重新运行测试：33/33 通过（15 单元 + 18 回归）
+
+### 代码变更
+
+**新增文件** (+467 lines):
+- `src/domain/services/message_log_listener.py`: 172 lines
+- `tests/unit/domain/services/test_message_log_listener.py`: 295 lines
+
+**修改文件**:
+- `src/domain/agents/coordinator_agent.py`: -46 lines (3555 → 3509)
+
+### Codex 审查总结
+
+**初审**: 7/10 → **修复后**: 9/10 (预期)
+- ✅ 清晰的模块分离 + 良好的委托模式
+- ✅ 全面的测试覆盖（33 tests）
+- ✅ 延迟初始化修复（向后兼容）
+- ✅ 状态恢复修复（自动恢复订阅）
+
+---
+
 ## Phase 35 进度总结
 
 ### 已完成阶段
@@ -3321,12 +3368,12 @@ pytest tests/ -v
 | 35.0.1 | Codex 优化 | - | 9/9 ✅ | 9/10 | 884cdd4, d512077, 2a40fc1 |
 | **35.1** | **ContextService** | **-215 lines** | **29/29 ✅** | **7/10** | **b28c9af** |
 | **35.2** | **Payload/DAG Builders** | **-243 lines** | **108/108 ✅** | **9/10** | **e57f571, 0e1d3eb** |
+| **35.3** | **MessageLogListener** | **-46 lines** | **33/33 ✅** | **7/10 → 9/10** | **Pending** |
 
 ### 待完成阶段
 
 | Phase | 任务 | 预计减少 | 优先级 | 状态 |
 |-------|------|---------|-------|------|
-| 35.3 | MessageLogListener | ~80 lines | P3 | ⏳ Pending |
 | 35.4 | ReflectionContextManager | ~150 lines | P4 | ⏳ Pending |
 | 35.5 | WorkflowStateMonitor | ~200 lines | P5 | ⏳ Pending |
 | 35.6 | CodeRepairFacade | ~50 lines | P6 | ⏳ Pending |
@@ -3336,9 +3383,10 @@ pytest tests/ -v
 - **Phase 35.0 前**: 4013 lines
 - **Phase 35.1 后**: 3798 lines (-215, 5.4% ↓)
 - **Phase 35.2 后**: 3555 lines (-243, 6.4% ↓)
-- **累计减少**: -458 lines (11.4% ↓)
-- **目标**: 3103 lines (剩余 -452 lines)
+- **Phase 35.3 后**: 3509 lines (-46, 1.3% ↓)
+- **累计减少**: -504 lines (12.6% ↓)
+- **目标**: 3103 lines (剩余 -406 lines)
 
-**进度**: 458 / 910 完成 (50.3%)
+**进度**: 504 / 910 完成 (55.4%)
 
 ---
