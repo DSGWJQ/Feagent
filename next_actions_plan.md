@@ -127,24 +127,34 @@
 
 ## P1问题清单（本周完成）
 
-1. **🔄 CoordinatorAgent Phase-1拆分（进行中 - 70%完成）** - 预计剩余5小时
-   - **✅ 已完成（2025-12-12 Codex检查）：**
+1. **🔄 CoordinatorAgent Phase-1拆分（进行中 - 85%完成）** - 预计剩余3小时
+   - **✅ 已完成（2025-12-12）：**
      - ✅ 行数优化：4207行 → 2639行（减少37%）
      - ✅ 已提取9个组件：
        - ContextService、ContextInjectionManager、ReflectionContextManager
        - ExperimentOrchestrator、WorkflowFailureOrchestrator
        - ExecutionSummaryManager、KnowledgeRetrievalOrchestrator
        - SupervisionFacade、WorkflowStateMonitor
+     - ✅ 创建 `RuleEngineFacade`（462行）- 5大类30+方法：
+       - 决策规则管理（6方法）
+       - 规则构建辅助（5方法）
+       - SafetyGuard代理（5方法）
+       - SaveRequest审计（3方法）
+       - 横切关注点（4方法）
+     - ✅ 创建 `CoordinatorAgentConfig`（381行）- 5配置组+Builder：
+       - RuleEngineConfig、ContextConfig、FailureHandlingConfig
+       - KnowledgeConfig、RuntimeConfig
+       - 支持验证、部分覆盖、流式构建
 
    - **❌ 待完成：**
-     1) ❌ 提取 `RuleEngineFacade`（包装 configurable_rule_engine.py）
-     2) ❌ 引入 `CoordinatorAgentConfig` dataclass 收敛构造参数
-     3) ⏳ 迁移对应单测到新组件
+     1) ❌ 编写 RuleEngineFacade + CoordinatorAgentConfig 单元测试
+     2) ❌ 重构 CoordinatorAgent `__init__` 使用 Config 对象
+     3) ❌ 迁移对应单测到新组件
 
    - **下一步行动：**
-     1. 创建 `src/domain/services/rule_engine_facade.py`
-     2. 创建 `src/domain/agents/coordinator_agent_config.py`
-     3. 重构 `__init__` 使用 Config 对象
+     1. 编写 `tests/unit/domain/services/test_rule_engine_facade.py`
+     2. 编写 `tests/unit/domain/agents/test_coordinator_agent_config.py`
+     3. 重构 `coordinator_agent.py` 使用新组件
 
 2. CoordinatorAgent：显式依赖注入/减少懒加载隐藏依赖 - 预计6小时
    - 问题描述：大量 `_get_xxx()` 懒加载引入隐式依赖和首调用延迟，调试困难。
