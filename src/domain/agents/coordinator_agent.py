@@ -28,7 +28,14 @@ from typing import Any
 # Phase 35.1: ContextResponse moved to context module
 from src.domain.services.context import ContextResponse, ContextService
 from src.domain.services.event_bus import Event, EventBus
-from src.domain.services.safety_guard import ValidationResult
+
+# Phase 35.2: Rule, PayloadRuleBuilder, DagRuleBuilder moved to SafetyGuard package
+from src.domain.services.safety_guard import (
+    DagRuleBuilder,
+    PayloadRuleBuilder,
+    Rule,
+    ValidationResult,
+)
 from src.domain.services.workflow_failure_orchestrator import (
     FailureHandlingResult,
     FailureHandlingStrategy,
@@ -61,27 +68,8 @@ MAX_SUBAGENT_RESULTS_SIZE = 100
 """子Agent结果历史最大条目数"""
 
 
-@dataclass
-class Rule:
-    """验证规则
-
-    属性：
-    - id: 规则唯一标识
-    - name: 规则名称
-    - description: 规则描述
-    - condition: 条件函数，接收决策返回bool
-    - priority: 优先级（数字越小优先级越高）
-    - error_message: 验证失败时的错误信息
-    - correction: 可选的修正函数
-    """
-
-    id: str
-    name: str
-    description: str = ""
-    condition: Callable[[dict[str, Any]], bool] = field(default=lambda d: True)
-    priority: int = 10
-    error_message: str | Callable[[dict[str, Any]], str] = "验证失败"
-    correction: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+# Phase 35.2: Rule moved to src.domain.services.safety_guard.rules
+# (removed from here to avoid duplication)
 
 
 # Phase 35.1: ContextResponse moved to src.domain.services.context.models
@@ -459,6 +447,10 @@ class CoordinatorAgent:
             knowledge_retriever=self.knowledge_retriever,
             workflow_context_provider=self.workflow_states,
         )
+
+        # Phase 35.2: 初始化规则构建器
+        self._payload_rule_builder = PayloadRuleBuilder()
+        self._dag_rule_builder = DagRuleBuilder()
 
     # =========================================================================
     # P1-6 Fix: 有界列表辅助方法（防止内存泄漏）
@@ -1641,44 +1633,16 @@ class CoordinatorAgent:
     ) -> None:
         """添加 payload 必填字段验证规则
 
+        Phase 35.2: 委托给 PayloadRuleBuilder
+
         参数：
             decision_type: 决策类型
             required_fields: 必填字段列表
         """
-
-        def condition(decision: dict[str, Any]) -> bool:
-            # 只验证匹配的决策类型
-            if decision.get("action_type") != decision_type:
-                return True
-
-            # 检查所有必填字段
-            missing_fields = []
-            for field_name in required_fields:
-                if field_name not in decision or decision[field_name] is None:
-                    missing_fields.append(field_name)
-                # 检查空列表/空字典（Phase 8.4 增强）
-                elif isinstance(decision[field_name], list | dict) and not decision[field_name]:
-                    missing_fields.append(field_name)
-
-            # 如果有缺失字段，记录到决策中以便错误消息使用
-            if missing_fields:
-                decision["_missing_fields"] = missing_fields
-                return False
-
-            return True
-
-        rule = Rule(
-            id=f"payload_required_{decision_type}",
-            name=f"Payload 必填字段验证 ({decision_type})",
-            condition=condition,
-            priority=1,
-            error_message=lambda d: "; ".join(
-                [f"缺少必填字段: {field}" for field in d.get("_missing_fields", [])]
-            )
-            if len(d.get("_missing_fields", [])) > 1
-            else f"缺少必填字段: {', '.join(d.get('_missing_fields', []))}",
+        rule = self._payload_rule_builder.build_required_fields_rule(
+            decision_type=decision_type,
+            required_fields=required_fields,
         )
-
         self.add_rule(rule)
 
     def add_payload_type_validation_rule(
@@ -1689,66 +1653,18 @@ class CoordinatorAgent:
     ) -> None:
         """添加 payload 字段类型验证规则
 
+        Phase 35.2: 委托给 PayloadRuleBuilder
+
         参数：
             decision_type: 决策类型
             field_types: 字段类型映射 {字段名: 类型}
             nested_field_types: 嵌套字段类型映射 {字段路径: 类型}，如 {"config.timeout": int}
         """
-
-        def condition(decision: dict[str, Any]) -> bool:
-            if decision.get("action_type") != decision_type:
-                return True
-
-            type_errors = []
-
-            # 检查顶层字段类型
-            for field_name, expected_type in field_types.items():
-                if field_name in decision:
-                    value = decision[field_name]
-                    if not isinstance(value, expected_type):
-                        type_name = (
-                            expected_type.__name__
-                            if isinstance(expected_type, type)
-                            else " or ".join(t.__name__ for t in expected_type)
-                        )
-                        type_errors.append(
-                            f"字段 {field_name} 类型错误，期望 {type_name}，实际 {type(value).__name__}"
-                        )
-
-            # 检查嵌套字段类型
-            if nested_field_types:
-                for field_path, expected_type in nested_field_types.items():
-                    parts = field_path.split(".")
-                    current = decision
-                    try:
-                        for part in parts:
-                            current = current[part]
-
-                        if not isinstance(current, expected_type):
-                            type_name = (
-                                expected_type.__name__
-                                if isinstance(expected_type, type)
-                                else " or ".join(t.__name__ for t in expected_type)
-                            )
-                            type_errors.append(f"字段 {field_path} 类型错误，期望 {type_name}")
-                    except (KeyError, TypeError):
-                        # 字段不存在，跳过（由必填字段验证处理）
-                        pass
-
-            if type_errors:
-                decision["_type_errors"] = type_errors
-                return False
-
-            return True
-
-        rule = Rule(
-            id=f"payload_type_{decision_type}",
-            name=f"Payload 字段类型验证 ({decision_type})",
-            condition=condition,
-            priority=2,
-            error_message=lambda d: "; ".join(d.get("_type_errors", [])),
+        rule = self._payload_rule_builder.build_type_validation_rule(
+            decision_type=decision_type,
+            field_types=field_types,
+            nested_field_types=nested_field_types,
         )
-
         self.add_rule(rule)
 
     def add_payload_range_validation_rule(
@@ -1758,55 +1674,16 @@ class CoordinatorAgent:
     ) -> None:
         """添加 payload 字段值范围验证规则
 
+        Phase 35.2: 委托给 PayloadRuleBuilder
+
         参数：
             decision_type: 决策类型
             field_ranges: 字段范围映射 {字段路径: {"min": 最小值, "max": 最大值}}
         """
-
-        def condition(decision: dict[str, Any]) -> bool:
-            if decision.get("action_type") != decision_type:
-                return True
-
-            range_errors = []
-
-            for field_path, range_spec in field_ranges.items():
-                parts = field_path.split(".")
-                current = decision
-                try:
-                    for part in parts:
-                        current = current[part]
-
-                    # 检查范围（仅对数值类型进行比较）
-                    if not isinstance(current, int | float):
-                        continue
-
-                    min_val = range_spec.get("min")
-                    max_val = range_spec.get("max")
-
-                    if min_val is not None and current < min_val:
-                        range_errors.append(f"字段 {field_path} 值 {current} 小于最小值 {min_val}")
-
-                    if max_val is not None and current > max_val:
-                        range_errors.append(f"字段 {field_path} 值 {current} 大于最大值 {max_val}")
-
-                except (KeyError, TypeError):
-                    # 字段不存在或类型错误，跳过
-                    pass
-
-            if range_errors:
-                decision["_range_errors"] = range_errors
-                return False
-
-            return True
-
-        rule = Rule(
-            id=f"payload_range_{decision_type}",
-            name=f"Payload 字段范围验证 ({decision_type})",
-            condition=condition,
-            priority=3,
-            error_message=lambda d: "; ".join(d.get("_range_errors", [])),
+        rule = self._payload_rule_builder.build_range_validation_rule(
+            decision_type=decision_type,
+            field_ranges=field_ranges,
         )
-
         self.add_rule(rule)
 
     def add_payload_enum_validation_rule(
@@ -1816,151 +1693,33 @@ class CoordinatorAgent:
     ) -> None:
         """添加 payload 字段枚举值验证规则
 
+        Phase 35.2: 委托给 PayloadRuleBuilder
+
         参数：
             decision_type: 决策类型
             field_enums: 字段枚举映射 {字段名: 允许的值列表}
         """
-
-        def condition(decision: dict[str, Any]) -> bool:
-            if decision.get("action_type") != decision_type:
-                return True
-
-            enum_errors = []
-
-            for field_name, allowed_values in field_enums.items():
-                if field_name in decision:
-                    value = decision[field_name]
-                    if value not in allowed_values:
-                        enum_errors.append(
-                            f"字段 {field_name} 值 {value} 不在允许的列表中: {', '.join(allowed_values)}"
-                        )
-
-            if enum_errors:
-                decision["_enum_errors"] = enum_errors
-                return False
-
-            return True
-
-        rule = Rule(
-            id=f"payload_enum_{decision_type}",
-            name=f"Payload 枚举值验证 ({decision_type})",
-            condition=condition,
-            priority=4,
-            error_message=lambda d: "; ".join(d.get("_enum_errors", [])),
+        rule = self._payload_rule_builder.build_enum_validation_rule(
+            decision_type=decision_type,
+            field_enums=field_enums,
         )
-
         self.add_rule(rule)
 
     def add_dag_validation_rule(self) -> None:
         """添加 DAG（有向无环图）验证规则
+
+        Phase 35.2: 委托给 DagRuleBuilder
 
         验证工作流的节点和边结构：
         - 节点 ID 唯一性
         - 边引用的节点存在性
         - 无循环依赖
         """
-
-        def condition(decision: dict[str, Any]) -> bool:
-            # 只验证工作流规划决策
-            if decision.get("action_type") != "create_workflow_plan":
-                return True
-
-            nodes = decision.get("nodes", [])
-            edges = decision.get("edges", [])
-
-            dag_errors = []
-
-            # 1. 检查节点 ID 唯一性
-            node_ids = [node.get("node_id") for node in nodes if "node_id" in node]
-            if len(node_ids) != len(set(node_ids)):
-                duplicates = [nid for nid in node_ids if node_ids.count(nid) > 1]
-                dag_errors.append(f"节点 ID 重复: {', '.join(set(duplicates))}")
-
-            node_id_set = set(node_ids)
-
-            # 2. 检查边引用的节点存在性
-            for edge in edges:
-                source = edge.get("source")
-                target = edge.get("target")
-
-                if source and source not in node_id_set:
-                    dag_errors.append(f"边的源节点 {source} 不存在")
-
-                if target and target not in node_id_set:
-                    dag_errors.append(f"边的目标节点 {target} 不存在")
-
-            # 3. 检测循环依赖（使用 Kahn's 算法拓扑排序）
-            # 即使有节点引用错误，也进行循环检测以报告所有问题
-            if nodes and edges:
-                has_cycle, unvisited = self._detect_cycle_kahn(nodes, edges)
-                if has_cycle:
-                    dag_errors.append(f"工作流存在循环依赖，涉及节点: {', '.join(unvisited)}")
-
-            if dag_errors:
-                decision["_dag_errors"] = dag_errors
-                return False
-
-            return True
-
-        rule = Rule(
-            id="dag_validation",
-            name="DAG 结构验证",
-            condition=condition,
-            priority=5,
-            error_message=lambda d: "; ".join(d.get("_dag_errors", [])),
-        )
-
+        rule = self._dag_rule_builder.build_dag_validation_rule()
         self.add_rule(rule)
 
-    def _detect_cycle_kahn(self, nodes: list[dict], edges: list[dict]) -> tuple[bool, list[str]]:
-        """使用 Kahn's 算法检测循环依赖
-
-        参数：
-            nodes: 节点列表
-            edges: 边列表
-
-        返回：
-            (是否有循环, 涉及循环的节点列表)
-        """
-        # 构建邻接表和入度表
-        graph: dict[str, list[str]] = {}
-        in_degree: dict[str, int] = {}
-
-        for node in nodes:
-            node_id = node.get("node_id")
-            if node_id:
-                graph[node_id] = []
-                in_degree[node_id] = 0
-
-        for edge in edges:
-            source = edge.get("source")
-            target = edge.get("target")
-            if source and target and source in graph and target in graph:
-                graph[source].append(target)
-                in_degree[target] += 1
-
-        # Kahn's 算法
-        queue = [node_id for node_id, degree in in_degree.items() if degree == 0]
-        visited = []
-
-        while queue:
-            node_id = queue.pop(0)
-            visited.append(node_id)
-
-            for neighbor in graph[node_id]:
-                in_degree[neighbor] -= 1
-                if in_degree[neighbor] == 0:
-                    queue.append(neighbor)
-
-        # 检查是否所有节点都被访问
-        has_cycle = len(visited) != len(nodes)
-        if has_cycle:
-            unvisited = [
-                node.get("node_id", "") for node in nodes if node.get("node_id") not in visited
-            ]
-            return True, unvisited
-
-        return False, []
+    # Phase 35.2: _detect_cycle_kahn moved to src.domain.services.safety_guard.dag_rule_builder.CycleDetector
+    # (removed from here to avoid duplication)
 
     # ==================== 统计和监控 ====================
 
