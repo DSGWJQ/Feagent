@@ -534,6 +534,11 @@ class ConversationAgent:
         self._state_lock = asyncio.Lock()
         self._critical_event_lock = asyncio.Lock()
 
+        # P0-2 Phase 2: Staged shared-state updates for batching (performance optimization)
+        self._staged_prompt_tokens: int = 0
+        self._staged_completion_tokens: int = 0
+        self._staged_decision_records: list[dict[str, Any]] = []
+
         # P1 Fix: 决策元数据自管（避免污染 session_context）
         self._decision_metadata: list[dict[str, Any]] = []
 
@@ -612,6 +617,72 @@ class ConversationAgent:
         old_state = self._state
         self._state = new_state
         return old_state
+
+    # =========================================================================
+    # P0-2 Phase 2: Staged State Updates (Batching Mechanism)
+    # =========================================================================
+
+    def _stage_token_usage(self, prompt_tokens: int, completion_tokens: int) -> None:
+        """暂存token使用增量（P0-2 Phase 2）
+
+        用于批量提交，减少锁获取次数，提升高频路径性能。
+
+        参数：
+            prompt_tokens: 提示token增量
+            completion_tokens: 完成token增量
+        """
+        self._staged_prompt_tokens += int(prompt_tokens)
+        self._staged_completion_tokens += int(completion_tokens)
+
+    def _stage_decision_record(self, record: dict[str, Any]) -> None:
+        """暂存决策记录（P0-2 Phase 2）
+
+        用于批量提交，减少锁获取次数。
+
+        参数：
+            record: 决策记录字典
+        """
+        self._staged_decision_records.append(record)
+
+    async def _flush_staged_state(self) -> None:
+        """刷新暂存的状态更新（P0-2 Phase 2）
+
+        在_state_lock保护下批量提交token使用和决策记录。
+
+        性能优化：
+        - 每轮迭代只获取一次锁
+        - 锁内只做纯内存更新（无await）
+        - 减少锁竞争和上下文切换开销
+
+        调用时机：
+        - 每轮迭代末尾
+        - 所有早退分支（respond/should_continue==False/limit）前
+
+        注意：锁内不允许await（除了获取锁本身）
+        """
+        # 快速路径：无暂存数据时直接返回
+        if (
+            self._staged_prompt_tokens == 0
+            and self._staged_completion_tokens == 0
+            and not self._staged_decision_records
+        ):
+            return
+
+        async with self._state_lock:
+            # 批量提交token使用
+            if self._staged_prompt_tokens > 0 or self._staged_completion_tokens > 0:
+                self.session_context.update_token_usage(
+                    prompt_tokens=self._staged_prompt_tokens,
+                    completion_tokens=self._staged_completion_tokens,
+                )
+                self._staged_prompt_tokens = 0
+                self._staged_completion_tokens = 0
+
+            # 批量提交决策记录
+            if self._staged_decision_records:
+                for record in self._staged_decision_records:
+                    self.session_context.add_decision(record)
+                self._staged_decision_records.clear()
 
     # =========================================================================
     # Phase 34: 保存请求通道方法
@@ -1976,32 +2047,34 @@ class ConversationAgent:
         self._is_listening_feedbacks = False
 
     async def _handle_adjustment_event(self, event: Any) -> None:
-        """处理工作流调整请求事件"""
-        self.pending_feedbacks.append(
-            {
-                "type": "workflow_adjustment",
-                "workflow_id": event.workflow_id,
-                "failed_node_id": event.failed_node_id,
-                "failure_reason": event.failure_reason,
-                "suggested_action": event.suggested_action,
-                "execution_context": event.execution_context,
-                "timestamp": event.timestamp,
-            }
-        )
+        """处理工作流调整请求事件（P0-2 Phase 2: 锁保护版本）"""
+        async with self._state_lock:
+            self.pending_feedbacks.append(
+                {
+                    "type": "workflow_adjustment",
+                    "workflow_id": event.workflow_id,
+                    "failed_node_id": event.failed_node_id,
+                    "failure_reason": event.failure_reason,
+                    "suggested_action": event.suggested_action,
+                    "execution_context": event.execution_context,
+                    "timestamp": event.timestamp,
+                }
+            )
 
     async def _handle_failure_handled_event(self, event: Any) -> None:
-        """处理节点失败处理完成事件"""
-        self.pending_feedbacks.append(
-            {
-                "type": "node_failure_handled",
-                "workflow_id": event.workflow_id,
-                "node_id": event.node_id,
-                "strategy": event.strategy,
-                "success": event.success,
-                "retry_count": event.retry_count,
-                "timestamp": event.timestamp,
-            }
-        )
+        """处理节点失败处理完成事件（P0-2 Phase 2: 锁保护版本）"""
+        async with self._state_lock:
+            self.pending_feedbacks.append(
+                {
+                    "type": "node_failure_handled",
+                    "workflow_id": event.workflow_id,
+                    "node_id": event.node_id,
+                    "strategy": event.strategy,
+                    "success": event.success,
+                    "retry_count": event.retry_count,
+                    "timestamp": event.timestamp,
+                }
+            )
 
     def get_pending_feedbacks(self) -> list[dict[str, Any]]:
         """获取待处理的反馈列表
@@ -2015,21 +2088,46 @@ class ConversationAgent:
         """清空待处理的反馈"""
         self.pending_feedbacks.clear()
 
+    async def get_pending_feedbacks_async(self) -> list[dict[str, Any]]:
+        """获取待处理的反馈列表（异步锁保护版本，P0-2 Phase 2）
+
+        在_state_lock保护下返回快照，避免并发修改。
+
+        返回：
+            反馈列表的副本
+        """
+        async with self._state_lock:
+            return self.pending_feedbacks.copy()
+
+    async def clear_feedbacks_async(self) -> None:
+        """清空待处理的反馈（异步锁保护版本，P0-2 Phase 2）
+
+        在_state_lock保护下清空，避免并发冲突。
+        """
+        async with self._state_lock:
+            self.pending_feedbacks.clear()
+
     async def generate_error_recovery_decision(self) -> Decision | None:
-        """生成错误恢复决策
+        """生成错误恢复决策（P0-2 Phase 2: 锁保护版本）
 
         根据 pending_feedbacks 中的反馈信息生成恢复决策。
+
+        锁保护：
+        - 在_state_lock下读取pending_feedbacks快照
+        - 使用staged机制记录决策（批量提交）
 
         返回：
             错误恢复决策，如果没有待处理的反馈返回 None
         """
-        if not self.pending_feedbacks:
+        # 在锁内读取pending_feedbacks快照
+        async with self._state_lock:
+            feedbacks_snapshot = self.pending_feedbacks.copy()
+
+        if not feedbacks_snapshot:
             return None
 
         # 获取最新的调整请求
-        adjustment_feedbacks = [
-            f for f in self.pending_feedbacks if f["type"] == "workflow_adjustment"
-        ]
+        adjustment_feedbacks = [f for f in feedbacks_snapshot if f["type"] == "workflow_adjustment"]
 
         if not adjustment_feedbacks:
             return None
@@ -2057,8 +2155,8 @@ class ConversationAgent:
             },
         )
 
-        # 记录决策
-        self.session_context.add_decision(
+        # Phase 2: 使用staged机制记录决策（批量提交）
+        self._stage_decision_record(
             {
                 "id": decision.id,
                 "type": decision.type.value,
@@ -2066,6 +2164,7 @@ class ConversationAgent:
                 "timestamp": decision.timestamp.isoformat(),
             }
         )
+        await self._flush_staged_state()
 
         return decision
 
