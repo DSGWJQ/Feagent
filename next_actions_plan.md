@@ -159,7 +159,15 @@
        - **风险缓解**：行为漂移保护、配置冲突检测、循环依赖避免
 
    - **❌ 待完成（分5步）：**
-     1) ❌ 步骤1: Agent增加config兼容入口（不破坏旧API）
+     1) 🔄 步骤1: Agent增加config兼容入口（进行中）
+        - **设计完成**（Codex协作）：
+          - 参数位置：最后增加 `config: CoordinatorAgentConfig | None = None`
+          - 冲突检测：使用 `inspect.signature` 识别显式传入参数，抛出 ValueError
+          - 优先级：config优先，允许无冲突混用，严禁隐式覆盖
+          - 参数转换：`_legacy_args_to_agent_config()` 私有方法
+          - 兼容性测试：7个场景（旧用法/新用法/混用/冲突/默认值/复杂字段）
+          - Bootstrap交互：Agent层转换，步骤1不动Bootstrap
+        - **待实施**：修改 CoordinatorAgent.__init__ + 增加兼容性测试
      2) ❌ 步骤2: Bootstrap支持新Config
      3) ❌ 步骤3: 引入RuleEngineFacade（最小关键路径）
      4) ❌ 步骤4: 逐块迁移规则能力到Facade
