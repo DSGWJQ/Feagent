@@ -32,6 +32,9 @@ from src.domain.services.event_bus import Event, EventBus
 # Phase 35.3: MessageLogListener, MessageLogAccessor moved to message_log_listener
 from src.domain.services.message_log_listener import MessageLogAccessor, MessageLogListener
 
+# Phase 35.4: ReflectionContextManager moved to reflection_context_manager
+from src.domain.services.reflection_context_manager import ReflectionContextManager
+
 # Phase 35.2: Rule, PayloadRuleBuilder, DagRuleBuilder moved to SafetyGuard package
 from src.domain.services.safety_guard import (
     DagRuleBuilder,
@@ -451,6 +454,29 @@ class CoordinatorAgent:
         )
         if self._is_listening_simple_messages:
             self._message_log_listener.start()
+
+        # Phase 35.4: 初始化 ReflectionContextManager
+        self._reflection_context_manager = ReflectionContextManager(
+            event_bus=self.event_bus,
+            reflection_contexts=self.reflection_contexts,
+            compressed_contexts=self._compressed_contexts,
+            compressor=getattr(self, "context_compressor", None),
+            snapshot_manager=getattr(self, "snapshot_manager", None),
+        )
+
+        # Phase 35.4: 恢复反思监听和压缩状态
+        self._is_listening_reflections = wiring.base_state.get("_is_listening_reflections", False)
+        self._is_compressing_context = wiring.base_state.get("_is_compressing_context", False)
+
+        # 先恢复压缩状态（如果之前开启过）
+        if self._is_compressing_context:
+            self._reflection_context_manager.start_context_compression()
+
+        # 再恢复反思监听（会根据压缩状态选择处理器）
+        if self._is_listening_reflections:
+            self._reflection_context_manager.start_reflection_listening(
+                enable_compression=self._is_compressing_context
+            )
 
     # =========================================================================
     # P1-6 Fix: 有界列表辅助方法（防止内存泄漏）
@@ -2165,42 +2191,27 @@ class CoordinatorAgent:
         """
         return self._message_log_listener.get_statistics()
 
-    # === Phase 16: 反思上下文监听 ===
+    # === Phase 16: 反思上下文监听 (Phase 35.4: 委托到 ReflectionContextManager) ===
 
     def start_reflection_listening(self) -> None:
         """开始监听反思事件
 
         订阅 WorkflowReflectionCompletedEvent，记录反思结果到上下文。
         如果启用了上下文压缩，会同时压缩反思数据。
+
+        Phase 35.4: 委托到 ReflectionContextManager
         """
-        if self._is_listening_reflections:
-            return
-
-        if not self.event_bus:
-            raise ValueError("EventBus is required for reflection listening")
-
-        from src.domain.agents.workflow_agent import WorkflowReflectionCompletedEvent
-
-        # 根据是否启用压缩选择处理器
-        if self._is_compressing_context:
-            handler = self._handle_reflection_event_with_compression
-        else:
-            handler = self._handle_reflection_event
-
-        self.event_bus.subscribe(WorkflowReflectionCompletedEvent, handler)
+        self._reflection_context_manager.start_reflection_listening(
+            enable_compression=self._is_compressing_context
+        )
         self._is_listening_reflections = True
 
     def stop_reflection_listening(self) -> None:
-        """停止监听反思事件"""
-        if not self._is_listening_reflections:
-            return
+        """停止监听反思事件
 
-        if not self.event_bus:
-            return
-
-        from src.domain.agents.workflow_agent import WorkflowReflectionCompletedEvent
-
-        self.event_bus.unsubscribe(WorkflowReflectionCompletedEvent, self._handle_reflection_event)
+        Phase 35.4: 委托到 ReflectionContextManager
+        """
+        self._reflection_context_manager.stop_reflection_listening()
         self._is_listening_reflections = False
 
     async def _handle_reflection_event(self, event: Any) -> None:
@@ -2210,35 +2221,10 @@ class CoordinatorAgent:
 
         参数：
             event: WorkflowReflectionCompletedEvent 实例
+
+        Phase 35.4: 委托到 ReflectionContextManager
         """
-        workflow_id = event.workflow_id
-
-        # 创建反思记录
-        reflection_record = {
-            "assessment": event.assessment,
-            "should_retry": event.should_retry,
-            "confidence": event.confidence,
-            "timestamp": event.timestamp,
-        }
-
-        if workflow_id not in self.reflection_contexts:
-            # 首次反思，创建上下文
-            self.reflection_contexts[workflow_id] = {
-                "workflow_id": workflow_id,
-                "assessment": event.assessment,
-                "should_retry": event.should_retry,
-                "confidence": event.confidence,
-                "timestamp": event.timestamp,
-                "history": [reflection_record],
-            }
-        else:
-            # 追加历史记录
-            context = self.reflection_contexts[workflow_id]
-            context["assessment"] = event.assessment
-            context["should_retry"] = event.should_retry
-            context["confidence"] = event.confidence
-            context["timestamp"] = event.timestamp
-            context["history"].append(reflection_record)
+        await self._reflection_context_manager._handle_reflection_event(event)
 
     def get_reflection_summary(self, workflow_id: str) -> dict[str, Any] | None:
         """获取工作流的反思摘要
@@ -2248,45 +2234,30 @@ class CoordinatorAgent:
 
         返回：
             反思摘要字典，如果不存在返回None
+
+        Phase 35.4: 委托到 ReflectionContextManager
         """
-        context = self.reflection_contexts.get(workflow_id)
-        if not context:
-            return None
+        return self._reflection_context_manager.get_reflection_summary(workflow_id)
 
-        return {
-            "workflow_id": workflow_id,
-            "assessment": context.get("assessment", ""),
-            "should_retry": context.get("should_retry", False),
-            "confidence": context.get("confidence", 0.0),
-            "total_reflections": len(context.get("history", [])),
-            "last_updated": context.get("timestamp"),
-        }
-
-    # === 阶段2: 上下文压缩 ===
+    # === 阶段2: 上下文压缩 (Phase 35.4: 委托到 ReflectionContextManager) ===
 
     def start_context_compression(self) -> None:
         """开始上下文压缩
 
         启用后，Coordinator 会在收到反思事件或节点执行事件时
         自动调用压缩器更新上下文快照。
+
+        Phase 35.4: 委托到 ReflectionContextManager
         """
-        if self._is_compressing_context:
-            return
-
-        if not self.context_compressor:
-            from src.domain.services.context_compressor import ContextCompressor
-
-            self.context_compressor = ContextCompressor()
-
-        if not self.snapshot_manager:
-            from src.domain.services.context_compressor import ContextSnapshotManager
-
-            self.snapshot_manager = ContextSnapshotManager()
-
+        self._reflection_context_manager.start_context_compression()
         self._is_compressing_context = True
 
     def stop_context_compression(self) -> None:
-        """停止上下文压缩"""
+        """停止上下文压缩
+
+        Phase 35.4: 委托到 ReflectionContextManager
+        """
+        self._reflection_context_manager.stop_context_compression()
         self._is_compressing_context = False
 
     def _compress_and_save_context(
@@ -2301,36 +2272,14 @@ class CoordinatorAgent:
             workflow_id: 工作流ID
             source_type: 来源类型 (execution/reflection/conversation)
             raw_data: 原始数据
+
+        Phase 35.4: 委托到 ReflectionContextManager
         """
-        if not self._is_compressing_context:
-            return
-
-        if not self.context_compressor or not self.snapshot_manager:
-            return
-
-        from src.domain.services.context_compressor import CompressionInput
-
-        input_data = CompressionInput(
-            source_type=source_type,
+        self._reflection_context_manager._compress_and_save_context(
             workflow_id=workflow_id,
+            source_type=source_type,
             raw_data=raw_data,
         )
-
-        # 获取现有上下文
-        existing = self._compressed_contexts.get(workflow_id)
-
-        if existing:
-            # 增量更新
-            new_context = self.context_compressor.merge(existing, input_data)
-        else:
-            # 全新压缩
-            new_context = self.context_compressor.compress(input_data)
-
-        # 更新缓存
-        self._compressed_contexts[workflow_id] = new_context
-
-        # 保存快照
-        self.snapshot_manager.save_snapshot(new_context)
 
     def get_compressed_context(self, workflow_id: str) -> Any:
         """获取压缩后的上下文
@@ -2342,16 +2291,10 @@ class CoordinatorAgent:
 
         返回：
             CompressedContext 实例，如果不存在返回None
+
+        Phase 35.4: 委托到 ReflectionContextManager
         """
-        # 优先从缓存获取
-        if workflow_id in self._compressed_contexts:
-            return self._compressed_contexts[workflow_id]
-
-        # 从快照管理器获取
-        if self.snapshot_manager:
-            return self.snapshot_manager.get_latest_snapshot(workflow_id)
-
-        return None
+        return self._reflection_context_manager.get_compressed_context(workflow_id)
 
     def get_context_summary_text(self, workflow_id: str) -> str | None:
         """获取上下文的摘要文本
@@ -2363,11 +2306,10 @@ class CoordinatorAgent:
 
         返回：
             摘要文本，如果不存在返回None
+
+        Phase 35.4: 委托到 ReflectionContextManager
         """
-        context = self.get_compressed_context(workflow_id)
-        if context and hasattr(context, "to_summary_text"):
-            return context.to_summary_text()
-        return None
+        return self._reflection_context_manager.get_context_summary_text(workflow_id)
 
     async def _handle_workflow_started_with_compression(self, event: Any) -> None:
         """处理工作流开始事件（带压缩）"""
@@ -2430,22 +2372,11 @@ class CoordinatorAgent:
                 )
 
     async def _handle_reflection_event_with_compression(self, event: Any) -> None:
-        """处理反思事件（带压缩）"""
-        await self._handle_reflection_event(event)
+        """处理反思事件（带压缩）
 
-        # 压缩反思结果
-        if self._is_compressing_context:
-            workflow_id = event.workflow_id
-            self._compress_and_save_context(
-                workflow_id=workflow_id,
-                source_type="reflection",
-                raw_data={
-                    "assessment": event.assessment,
-                    "should_retry": getattr(event, "should_retry", False),
-                    "confidence": event.confidence,
-                    "recommendations": getattr(event, "recommendations", []),
-                },
-            )
+        Phase 35.4: 委托到 ReflectionContextManager
+        """
+        await self._reflection_context_manager._handle_reflection_event_with_compression(event)
 
     # ==================== Phase 3: 子Agent管理（代理到 SubAgentOrchestrator）====================
 
