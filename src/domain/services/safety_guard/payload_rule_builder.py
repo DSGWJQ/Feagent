@@ -58,7 +58,7 @@ class PayloadRuleBuilder:
                 if field_name not in decision or decision[field_name] is None:
                     missing_fields.append(field_name)
                 # 检查空列表/空字典（Phase 8.4 增强）
-                elif isinstance(decision[field_name], list | dict) and not decision[field_name]:
+                elif isinstance(decision[field_name], (list, dict)) and not decision[field_name]:  # noqa: UP038
                     missing_fields.append(field_name)
 
             # 如果有缺失字段，记录到决策中以便错误消息使用
@@ -184,7 +184,7 @@ class PayloadRuleBuilder:
                         current = current[part]
 
                     # 检查范围（仅对数值类型进行比较）
-                    if not isinstance(current, int | float):
+                    if not isinstance(current, (int, float)):  # noqa: UP038
                         continue
 
                     min_val = range_spec.get("min")

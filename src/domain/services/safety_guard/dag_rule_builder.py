@@ -7,6 +7,7 @@ Phase 35.2: 从 CoordinatorAgent 提取 DAG 验证规则构建方法。
 2. CycleDetector: Kahn 算法循环检测器
 """
 
+from collections import Counter, deque
 from typing import Any
 
 from src.domain.services.safety_guard.rules import Rule
@@ -46,12 +47,12 @@ class CycleDetector:
                 graph[source].append(target)
                 in_degree[target] += 1
 
-        # Kahn's 算法
-        queue = [node_id for node_id, degree in in_degree.items() if degree == 0]
+        # Kahn's 算法 (使用 deque 优化性能)
+        queue = deque([node_id for node_id, degree in in_degree.items() if degree == 0])
         visited = []
 
         while queue:
-            node_id = queue.pop(0)
+            node_id = queue.popleft()
             visited.append(node_id)
 
             for neighbor in graph[node_id]:
@@ -106,11 +107,12 @@ class DagRuleBuilder:
 
             dag_errors = []
 
-            # 1. 检查节点 ID 唯一性
+            # 1. 检查节点 ID 唯一性 (使用 Counter 优化性能)
             node_ids = [node.get("node_id") for node in nodes if "node_id" in node]
             if len(node_ids) != len(set(node_ids)):
-                duplicates = [nid for nid in node_ids if node_ids.count(nid) > 1]
-                dag_errors.append(f"节点 ID 重复: {', '.join(set(duplicates))}")
+                node_id_counts = Counter(node_ids)
+                duplicates = [nid for nid, count in node_id_counts.items() if count > 1]
+                dag_errors.append(f"节点 ID 重复: {', '.join(duplicates)}")
 
             node_id_set = set(node_ids)
 
