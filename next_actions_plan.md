@@ -152,14 +152,22 @@
      - ✅ Codex审查 + Critical修复（2个）：
        - Critical-1: log_collector异常破坏fail-closed策略（已修复）
        - Critical-2: 缺少跨场景线程安全测试（已修复）
+     - ✅ Codex重构方案设计（选项C-渐进式）：
+       - **参数映射**：8个旧参数 → 5个配置组
+       - **集成策略**：保留Bootstrap，增加Config兼容入口
+       - **分5步实施**：兼容入口 → Bootstrap支持 → Facade引入 → 能力迁移 → 测试归位
+       - **风险缓解**：行为漂移保护、配置冲突检测、循环依赖避免
 
-   - **❌ 待完成：**
-     1) ❌ 重构 CoordinatorAgent `__init__` 使用 Config 对象
-     2) ❌ 迁移对应单测到新组件
+   - **❌ 待完成（分5步）：**
+     1) ❌ 步骤1: Agent增加config兼容入口（不破坏旧API）
+     2) ❌ 步骤2: Bootstrap支持新Config
+     3) ❌ 步骤3: 引入RuleEngineFacade（最小关键路径）
+     4) ❌ 步骤4: 逐块迁移规则能力到Facade
+     5) ❌ 步骤5: 测试归位与去重
 
    - **下一步行动：**
-     1. 重构 `coordinator_agent.py` 使用新组件
-     2. 迁移相关单测到新组件
+     1. 实施步骤1：Agent增加config兼容入口
+     2. 编写兼容性单测
 
 2. CoordinatorAgent：显式依赖注入/减少懒加载隐藏依赖 - 预计6小时
    - 问题描述：大量 `_get_xxx()` 懒加载引入隐式依赖和首调用延迟，调试困难。
