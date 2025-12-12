@@ -283,17 +283,24 @@ class RuleEngineFacade:
             else:
                 self._statistics.rejected += 1
 
-        # 记录日志
+        # 记录日志（异常不影响验证结果 - fail-closed 完整性保护）
         if self._log_collector and not is_valid:
-            self._log_collector.record(
-                {
-                    "type": "decision_validation",
-                    "session_id": session_id,
-                    "decision": decision,
-                    "errors": errors,
-                    "corrections": corrections,
-                }
-            )
+            try:
+                self._log_collector.record(
+                    {
+                        "type": "decision_validation",
+                        "session_id": session_id,
+                        "decision": decision,
+                        "errors": errors,
+                        "corrections": corrections,
+                    }
+                )
+            except Exception as e:
+                # 日志收集失败不应影响验证结果
+                logger.error(
+                    f"Log collector failed for session {session_id}: {e}",
+                    exc_info=True,
+                )
 
         # 合并所有修正建议为单个字典（如果有）
         merged_correction = None

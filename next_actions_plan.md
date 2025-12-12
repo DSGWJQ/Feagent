@@ -127,7 +127,7 @@
 
 ## P1问题清单（本周完成）
 
-1. **🔄 CoordinatorAgent Phase-1拆分（进行中 - 85%完成）** - 预计剩余3小时
+1. **🔄 CoordinatorAgent Phase-1拆分（进行中 - 90%完成）** - 预计剩余2小时
    - **✅ 已完成（2025-12-12）：**
      - ✅ 行数优化：4207行 → 2639行（减少37%）
      - ✅ 已提取9个组件：
@@ -145,16 +145,21 @@
        - RuleEngineConfig、ContextConfig、FailureHandlingConfig
        - KnowledgeConfig、RuntimeConfig
        - 支持验证、部分覆盖、流式构建
+     - ✅ 编写单元测试（92个测试全部通过）：
+       - `test_rule_engine_facade.py`（45测试）
+       - `test_coordinator_agent_config.py`（47测试）
+       - 覆盖初始化、规则管理、验证、构建器、代理、审计、横切、线程安全
+     - ✅ Codex审查 + Critical修复（2个）：
+       - Critical-1: log_collector异常破坏fail-closed策略（已修复）
+       - Critical-2: 缺少跨场景线程安全测试（已修复）
 
    - **❌ 待完成：**
-     1) ❌ 编写 RuleEngineFacade + CoordinatorAgentConfig 单元测试
-     2) ❌ 重构 CoordinatorAgent `__init__` 使用 Config 对象
-     3) ❌ 迁移对应单测到新组件
+     1) ❌ 重构 CoordinatorAgent `__init__` 使用 Config 对象
+     2) ❌ 迁移对应单测到新组件
 
    - **下一步行动：**
-     1. 编写 `tests/unit/domain/services/test_rule_engine_facade.py`
-     2. 编写 `tests/unit/domain/agents/test_coordinator_agent_config.py`
-     3. 重构 `coordinator_agent.py` 使用新组件
+     1. 重构 `coordinator_agent.py` 使用新组件
+     2. 迁移相关单测到新组件
 
 2. CoordinatorAgent：显式依赖注入/减少懒加载隐藏依赖 - 预计6小时
    - 问题描述：大量 `_get_xxx()` 懒加载引入隐式依赖和首调用延迟，调试困难。
