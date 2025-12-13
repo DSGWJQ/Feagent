@@ -255,9 +255,26 @@ F. **子Agent完成事件监听**
 - [x] 覆盖率: conversation_agent_state.py 81% (比Step 3提升5%)
 - [x] Codex审查通过（初始化完整、方法等价、hook时机正确、集成一致、锁正确、兼容性保持、覆盖率合理）
 
-**步骤5**: 迁移子Agent等待/恢复+监听器
-- [ ] 修改 `conversation_agent_state.py`: 添加wait/resume/listener方法
-- [ ] 修改 `conversation_agent.py`: 移除旧实现
+**步骤5**: 迁移子Agent等待/恢复+监听器 ✅ **已完成**
+- [x] 修改 `conversation_agent_state.py`: 添加import copy + 8个生命周期方法
+- [x] 修改 `conversation_agent.py`: 删除重复方法（~193行）+ 移除未使用的import copy
+- [x] 修复 `test_conversation_agent_refactor_regression.py`: 更新deepcopy检查位置
+- [x] 改进: 所有context快照使用deepcopy（P0 Fix）
+- [x] 改进: async方法实现单锁内原子操作（P0-2 Optimization）
+- [x] 改进: handle_subagent_completed锁内读写分离，锁外调用恢复（避免嵌套锁）
+- [x] 改进: listener start/stop幂等性guards
+- [x] 改进: SubAgentCompletedEvent方法内import避免循环依赖
+- [x] 测试: 30/30 全部通过（回归6 + 单元13 + spawn11）
+- [x] Codex审查通过（10项审查要点全部验证通过）
+- [x] 总代码减少: Phase 2共删除~473行（Step 3-5累计）
+
+**Phase 2完成总结**:
+- ✅ 5/5步骤全部完成
+- ✅ conversation_agent_state.py建立（~564行）
+- ✅ conversation_agent.py精简（减少~473行）
+- ✅ 所有Critical问题修复（Race Condition、浅拷贝Bug）
+- ✅ 30个测试保持100%通过
+- ✅ 向后兼容性完全保持
 
 **关键风险**:
 - 必须re-export保持向后兼容 (大量测试依赖)

@@ -204,33 +204,35 @@ def test_context_snapshot_deepcopy():
     - 修改恢复的上下文会影响挂起的上下文
 
     预期: 使用 copy.deepcopy() 或 _snapshot_context()
+
+    P1-6 Phase 2: deepcopy已迁移到conversation_agent_state.py
     """
-    from src.domain.agents.conversation_agent import ConversationAgent
 
-    # 检查源码是否使用deepcopy
-    source_path = Path(ConversationAgent.__module__.replace(".", "/") + ".py")
-    if not source_path.exists():
-        # 尝试从安装路径查找
-        import src.domain.agents.conversation_agent as ca_module
+    # 检查conversation_agent_state.py（Step 5迁移后deepcopy在此文件）
+    state_module_path = Path("src/domain/agents/conversation_agent_state.py")
+    if not state_module_path.exists():
+        import src.domain.agents.conversation_agent_state as state_module
 
-        source_path = Path(ca_module.__file__)
+        state_module_path = Path(state_module.__file__)
 
-    source_code = source_path.read_text(encoding="utf-8")
+    state_source_code = state_module_path.read_text(encoding="utf-8")
 
-    # 验证使用deepcopy而非浅拷贝
+    # 验证state模块使用deepcopy
     assert (
-        "import copy" in source_code or "from copy import deepcopy" in source_code
-    ), "Missing 'import copy' for deep copying"
+        "import copy" in state_source_code or "from copy import deepcopy" in state_source_code
+    ), "Missing 'import copy' in conversation_agent_state.py"
 
     # 检查是否有 deepcopy 调用
-    assert "deepcopy" in source_code, "No 'deepcopy' usage found - may have shallow copy bug"
+    assert (
+        "deepcopy" in state_source_code
+    ), "No 'deepcopy' usage found in conversation_agent_state.py - may have shallow copy bug"
 
     # 检查是否有_snapshot_context辅助方法
-    has_snapshot_method = "_snapshot_context" in source_code
+    has_snapshot_method = "_snapshot_context" in state_source_code
 
     # 至少要有deepcopy或_snapshot_context之一
     assert (
-        "deepcopy" in source_code or has_snapshot_method
+        "deepcopy" in state_source_code or has_snapshot_method
     ), "No deep copy mechanism found for context snapshots"
 
 
