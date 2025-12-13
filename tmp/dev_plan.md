@@ -243,9 +243,17 @@ F. **子Agent完成事件监听**
 - [x] 覆盖率: conversation_agent_state.py 76%
 - [x] Codex审查通过（方法等价性、继承正确、无循环依赖、锁使用正确、任务追踪完整、向后兼容）
 
-**步骤4**: 迁移状态转换API
-- [ ] 修改 `conversation_agent_state.py`: 添加transition_to等方法
-- [ ] 修改 `conversation_agent.py`: 在__init__调用mixin初始化
+**步骤4**: 迁移状态转换API ✅ **已完成**
+- [x] 修改 `conversation_agent_state.py`: 实现_init_state_mixin集中初始化
+- [x] 修改 `conversation_agent_state.py`: 实现_transition_locked, state property, transition_to, transition_to_async
+- [x] 修改 `conversation_agent.py`: 在__init__调用_init_state_mixin()
+- [x] 修改 `conversation_agent.py`: 删除状态初始化代码块（17行）
+- [x] 修改 `conversation_agent.py`: 删除4个重复方法定义（约95行）
+- [x] 改进: 将get(..., [])改为get(..., ())保持tuple一致性
+- [x] 改进: 在__all__中添加re-export符号（ConversationAgentState等5个）
+- [x] 测试: 30/30 全部通过（回归6 + 单元13 + spawn11）
+- [x] 覆盖率: conversation_agent_state.py 81% (比Step 3提升5%)
+- [x] Codex审查通过（初始化完整、方法等价、hook时机正确、集成一致、锁正确、兼容性保持、覆盖率合理）
 
 **步骤5**: 迁移子Agent等待/恢复+监听器
 - [ ] 修改 `conversation_agent_state.py`: 添加wait/resume/listener方法

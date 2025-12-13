@@ -488,16 +488,8 @@ class ConversationAgent(ConversationAgentStateMixin):
         # Phase 8.4: 流式进度输出器
         self.stream_emitter = stream_emitter
 
-        # Phase 3: 状态机初始化
-        self._state: ConversationAgentState = ConversationAgentState.IDLE
-        self.pending_subagent_id: str | None = None
-        self.pending_task_id: str | None = None
-        self.suspended_context: dict[str, Any] | None = None
-
-        # Phase 3: 子Agent结果存储
-        self.last_subagent_result: dict[str, Any] | None = None
-        self.subagent_result_history: list[dict[str, Any]] = []
-        self._is_listening_subagent_completions = False
+        # P1-6 Phase 2: State mixin initialization
+        self._init_state_mixin()
 
         # Phase 1: 协调者上下文缓存
         self._coordinator_context: Any | None = None
@@ -509,13 +501,6 @@ class ConversationAgent(ConversationAgentStateMixin):
         # Phase 34: 保存请求通道
         self._save_request_channel_enabled = False
 
-        # P0 Fix: Task tracking to prevent race conditions
-        self._pending_tasks: set[asyncio.Task[Any]] = set()
-
-        # P0-2 Fix: Locks for shared state protection and critical event ordering
-        self._state_lock = asyncio.Lock()
-        self._critical_event_lock = asyncio.Lock()
-
         # P0-2 Phase 2: Staged shared-state updates for batching (performance optimization)
         self._staged_prompt_tokens: int = 0
         self._staged_completion_tokens: int = 0
@@ -523,31 +508,6 @@ class ConversationAgent(ConversationAgentStateMixin):
 
         # P1 Fix: 决策元数据自管（避免污染 session_context）
         self._decision_metadata: list[dict[str, Any]] = []
-
-    def _transition_locked(self, new_state: ConversationAgentState) -> ConversationAgentState:
-        """状态转换（锁内版本，不发布事件，P0-2 Optimization）
-
-        此方法必须在 _state_lock 内调用，用于消除原子性空窗。
-        调用者负责在释放锁后发布 StateChangedEvent。
-
-        参数：
-            new_state: 目标状态
-
-        返回：
-            旧状态（用于事件发布）
-
-        异常：
-            DomainError: 无效的状态转换
-        """
-        from src.domain.exceptions import DomainError
-
-        valid_transitions = VALID_STATE_TRANSITIONS.get(self._state, [])
-        if new_state not in valid_transitions:
-            raise DomainError(f"Invalid state transition: {self._state.value} -> {new_state.value}")
-
-        old_state = self._state
-        self._state = new_state
-        return old_state
 
     # =========================================================================
     # P0-2 Phase 2: Staged State Updates (Batching Mechanism)
@@ -694,76 +654,6 @@ class ConversationAgent(ConversationAgentStateMixin):
         self._create_tracked_task(self.event_bus.publish(request))
 
         return request.request_id
-
-    @property
-    def state(self) -> ConversationAgentState:
-        """获取当前状态"""
-        return self._state
-
-    def transition_to(self, new_state: ConversationAgentState) -> None:
-        """状态转换（同步版本）
-
-        注意：同步版本无法await事件发布，仅适用于非关键路径。
-        在异步上下文中请使用transition_to_async以保证关键事件顺序。
-
-        参数：
-            new_state: 目标状态
-
-        异常：
-            DomainError: 无效的状态转换
-        """
-        from src.domain.exceptions import DomainError
-
-        valid_transitions = VALID_STATE_TRANSITIONS.get(self._state, [])
-        if new_state not in valid_transitions:
-            raise DomainError(f"Invalid state transition: {self._state.value} -> {new_state.value}")
-
-        old_state = self._state
-        self._state = new_state
-
-        # P0-2 Fix: 使用通知事件后台追踪发布（避免阻塞同步调用）
-        event = StateChangedEvent(
-            from_state=old_state.value,
-            to_state=new_state.value,
-            session_id=self.session_context.session_id,
-            source="conversation_agent",
-        )
-        self._publish_notification_event(event)
-
-    async def transition_to_async(self, new_state: ConversationAgentState) -> None:
-        """状态转换（异步版本，P0-2 Fix）
-
-        保证：
-        1. _state修改受_state_lock保护
-        2. StateChangedEvent按顺序await发布
-
-        参数：
-            new_state: 目标状态
-
-        异常：
-            DomainError: 无效的状态转换
-        """
-        async with self._state_lock:
-            from src.domain.exceptions import DomainError
-
-            valid_transitions = VALID_STATE_TRANSITIONS.get(self._state, [])
-            if new_state not in valid_transitions:
-                raise DomainError(
-                    f"Invalid state transition: {self._state.value} -> {new_state.value}"
-                )
-
-            old_state = self._state
-            self._state = new_state
-
-            event = StateChangedEvent(
-                from_state=old_state.value,
-                to_state=new_state.value,
-                session_id=self.session_context.session_id,
-                source="conversation_agent",
-            )
-
-        # 释放_state_lock后再发布事件，避免与订阅者产生死锁
-        await self._publish_critical_event(event)
 
     def wait_for_subagent(
         self,
@@ -1142,7 +1032,6 @@ class ConversationAgent(ConversationAgentStateMixin):
         返回：
             ReAct结果
         """
-        import asyncio
 
         # 尝试在现有事件循环中运行，或创建新的
         try:
@@ -1432,7 +1321,6 @@ class ConversationAgent(ConversationAgentStateMixin):
         返回：
             子目标列表
         """
-        import asyncio
 
         # 创建主目标
         main_goal = Goal(id=str(uuid4()), description=goal_description)
@@ -1498,7 +1386,6 @@ class ConversationAgent(ConversationAgentStateMixin):
         异常：
             ValidationError: 如果决策 payload 不符合 schema
         """
-        import asyncio
 
         from pydantic import ValidationError
 
@@ -3111,4 +2998,10 @@ __all__ = [
     "IntentClassificationResult",
     "ConversationAgentLLM",
     "ConversationAgent",
+    # P1-6 Phase 2: re-export state API
+    "ConversationAgentState",
+    "VALID_STATE_TRANSITIONS",
+    "StateChangedEvent",
+    "SpawnSubAgentEvent",
+    "ConversationAgentStateMixin",
 ]

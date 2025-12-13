@@ -171,9 +171,22 @@ class ConversationAgentStateMixin:
     def _init_state_mixin(self) -> None:
         """Initialize state/locks/task tracking fields.
 
-        TODO(Phase-2 Step-2): Implement and call from ConversationAgent.__init__.
+        NOTE:
+        - This hook must be called by the host `ConversationAgent.__init__`.
+        - It intentionally does not import `ConversationAgent` to avoid circular deps.
         """
-        pass
+        self._state = ConversationAgentState.IDLE
+        self._state_lock = asyncio.Lock()
+        self._pending_tasks = set()
+        self._critical_event_lock = asyncio.Lock()
+
+        self.pending_subagent_id = None
+        self.pending_task_id = None
+        self.suspended_context = None
+
+        self.last_subagent_result = None
+        self.subagent_result_history = []
+        self._is_listening_subagent_completions = False
 
     # ---------------------------------------------------------------------
     # Task tracking
@@ -239,33 +252,99 @@ class ConversationAgentStateMixin:
     # ---------------------------------------------------------------------
 
     def _transition_locked(self, new_state: ConversationAgentState) -> ConversationAgentState:
-        """Perform a state transition under `_state_lock` without publishing events.
+        """状态转换（锁内版本，不发布事件，P0-2 Optimization）
 
-        TODO(Phase-2 Step-3): Implement validation using VALID_STATE_TRANSITIONS.
+        此方法必须在 _state_lock 内调用，用于消除原子性空窗。
+        调用者负责在释放锁后发布 StateChangedEvent。
+
+        参数：
+            new_state: 目标状态
+
+        返回：
+            旧状态（用于事件发布）
+
+        异常：
+            DomainError: 无效的状态转换
         """
-        raise NotImplementedError
+        from src.domain.exceptions import DomainError
+
+        valid_transitions = VALID_STATE_TRANSITIONS.get(self._state, ())
+        if new_state not in valid_transitions:
+            raise DomainError(f"Invalid state transition: {self._state.value} -> {new_state.value}")
+
+        old_state = self._state
+        self._state = new_state
+        return old_state
 
     @property
     def state(self) -> ConversationAgentState:
-        """Return current agent state.
-
-        TODO(Phase-2 Step-3): Implement.
-        """
-        raise NotImplementedError
+        """获取当前状态"""
+        return self._state
 
     def transition_to(self, new_state: ConversationAgentState) -> None:
-        """Synchronous state transition (non-critical path).
+        """状态转换（同步版本）
 
-        TODO(Phase-2 Step-3): Implement + publish notification event.
+        注意：同步版本无法await事件发布，仅适用于非关键路径。
+        在异步上下文中请使用transition_to_async以保证关键事件顺序。
+
+        参数：
+            new_state: 目标状态
+
+        异常：
+            DomainError: 无效的状态转换
         """
-        raise NotImplementedError
+        from src.domain.exceptions import DomainError
+
+        valid_transitions = VALID_STATE_TRANSITIONS.get(self._state, ())
+        if new_state not in valid_transitions:
+            raise DomainError(f"Invalid state transition: {self._state.value} -> {new_state.value}")
+
+        old_state = self._state
+        self._state = new_state
+
+        # P0-2 Fix: 使用通知事件后台追踪发布（避免阻塞同步调用）
+        event = StateChangedEvent(
+            from_state=old_state.value,
+            to_state=new_state.value,
+            session_id=self.session_context.session_id,
+            source="conversation_agent",
+        )
+        self._publish_notification_event(event)
 
     async def transition_to_async(self, new_state: ConversationAgentState) -> None:
-        """Asynchronous state transition (critical path).
+        """状态转换（异步版本，P0-2 Fix）
 
-        TODO(Phase-2 Step-3): Implement lock-protected transition + awaited publish.
+        保证：
+        1. _state修改受_state_lock保护
+        2. StateChangedEvent按顺序await发布
+
+        参数：
+            new_state: 目标状态
+
+        异常：
+            DomainError: 无效的状态转换
         """
-        raise NotImplementedError
+        async with self._state_lock:
+            from src.domain.exceptions import DomainError
+
+            valid_transitions = VALID_STATE_TRANSITIONS.get(self._state, ())
+            if new_state not in valid_transitions:
+                raise DomainError(
+                    f"Invalid state transition: {self._state.value} -> {new_state.value}"
+                )
+
+            old_state = self._state
+            self._state = new_state
+
+            event = StateChangedEvent(
+                from_state=old_state.value,
+                to_state=new_state.value,
+                session_id=self.session_context.session_id,
+                source="conversation_agent",
+            )
+
+        # 释放_state_lock后再发布事件，避免与订阅者产生死锁
+        await self._publish_critical_event(event)
 
     # ---------------------------------------------------------------------
     # Sub-agent wait / resume
