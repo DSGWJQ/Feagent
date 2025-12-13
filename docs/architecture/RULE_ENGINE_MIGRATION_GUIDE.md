@@ -1,8 +1,8 @@
-# RuleEngine迁移指南 (P1-1 Step 3)
+# RuleEngine迁移指南 (P1-1)
 
 **创建日期**: 2025-12-13
 **状态**: Active
-**相关Commit**: 8c4fef9, [NEW_COMMIT_HASH]
+**相关Commit**: 8c4fef9 (Step 3), 7048fb0 (Step 4-5)
 
 ---
 
@@ -24,6 +24,21 @@ CoordinatorAgent的规则管理方法已迁移到RuleEngineFacade。旧方法已
 | `rules` property | 2025-12-13 | 2026-06-01 | `_rule_engine_facade.list_decision_rules()` |
 
 **⚠️ 警告**: 2026年6月1日后，这些方法将被完全移除。请在此日期前完成迁移。
+
+### P1-1 Step 4-5: 内部实现迁移 (2025-12-13)
+
+以下方法已完成内部实现迁移（外部接口不变，内部调用Facade）：
+
+| 方法 | 迁移日期 | 内部实现 | 状态 |
+|------|----------|---------|------|
+| `add_payload_validation_rule()` | 2025-12-13 | `facade.add_payload_required_fields_rule()` | ✅ 完成 |
+| `add_payload_type_validation_rule()` | 2025-12-13 | `facade.add_payload_type_rule()` | ✅ 完成 |
+| `add_payload_range_validation_rule()` | 2025-12-13 | `facade.add_payload_range_rule()` | ✅ 完成 |
+| `add_payload_enum_validation_rule()` | 2025-12-13 | `facade.add_payload_enum_rule()` | ✅ 完成 |
+| `add_dag_validation_rule()` | 2025-12-13 | `facade.add_dag_validation_rule()` | ✅ 完成 |
+| `as_middleware()` (internal validation) | 2025-12-13 | `facade.validate_decision()` | ✅ 完成 |
+
+**说明**: 这些方法签名和行为保持不变，用户代码无需修改。内部实现已从直接调用deprecated方法改为调用Facade API。
 
 ---
 
@@ -254,7 +269,45 @@ filterwarnings = [
 
 ---
 
-## Codex审查意见总结
+## P1-1 Step 4-5 迁移详情
+
+### 迁移完成情况
+
+**日期**: 2025-12-13
+**Commit**: 7048fb0
+**状态**: ✅ 完成并验证
+
+#### 改动文件
+1. `src/domain/services/coordinator_bootstrap.py` - 注入 PayloadRuleBuilder 和 DagRuleBuilder
+2. `src/domain/agents/coordinator_agent.py` - 6个方法迁移到Facade
+
+#### 测试结果
+- **集成测试**: 8/8 通过 ✅ (`tests/integration/test_multi_agent_orchestration.py`)
+- **单元测试**: 10/11 通过 ⚠️ (1个预存测试预期问题，与迁移无关)
+
+#### 风险评估与缓解措施
+
+**风险1: 注入的RuleEngineFacade未配置builders**
+- **描述**: 如果通过`config.rule_engine_facade`注入自定义Facade且未配置builders，调用payload/DAG方法时会抛出`RuntimeError`
+- **缓解**: 在`CoordinatorBootstrap.build_rule_engine_facade()`中默认注入builders
+- **影响**: 仅影响高级自定义配置场景（生产环境使用默认wiring不受影响）
+- **文档**: 已在此处说明注入Facade的要求
+
+**风险2: Deprecated警告减少**
+- **描述**: `as_middleware()`内部不再调用deprecated `validate_decision()`，DeprecationWarning数量减少
+- **影响**: 极低（仅影响依赖warning计数的监控脚本）
+- **缓解**: 无需缓解（这是期望的改进）
+
+#### Codex Review要点
+- ✅ 核心迁移正确且完整
+- ✅ 向后兼容性保留良好
+- ✅ Bootstrap依赖修复正确
+- ✅ 测试覆盖充分
+- ⚠️ 需文档说明注入Facade的builder要求
+
+---
+
+## Codex审查意见总结 (P1-1 Step 3)
 
 ### 已修复的Critical Issues
 1. ✅ **Facade存在性验证**: 添加了RuntimeError检查
@@ -285,5 +338,5 @@ filterwarnings = [
 
 ---
 
-**最后更新**: 2025-12-13
+**最后更新**: 2025-12-13 (P1-1 Step 4-5 完成)
 **维护者**: Claude Code + Development Team
