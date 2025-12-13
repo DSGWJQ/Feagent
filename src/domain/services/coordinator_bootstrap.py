@@ -807,7 +807,6 @@ class CoordinatorBootstrap:
         返回：
             保存请求流程组件字典
         """
-        save_request_orchestrator = None
         save_request_queue = None
         save_receipt_system = None
         save_receipt_logger = None
@@ -825,6 +824,13 @@ class CoordinatorBootstrap:
             save_request_queue = save_request_orchestrator._save_request_queue
             save_receipt_system = save_request_orchestrator.save_receipt_system
             save_receipt_logger = save_receipt_system.receipt_logger
+        else:
+            # P1-2: 无EventBus时使用Null Object，消除调用方的18处None检查
+            from src.domain.services.null_save_request_orchestrator import (
+                NullSaveRequestOrchestrator,
+            )
+
+            save_request_orchestrator = NullSaveRequestOrchestrator()
 
         # 更新 base 中的别名（向后兼容）
         base["_save_request_queue"] = save_request_queue

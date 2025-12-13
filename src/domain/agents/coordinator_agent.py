@@ -43,14 +43,14 @@ from src.domain.agents.workflow_state_monitor import WorkflowStateMonitor
 from src.domain.services.context import ContextResponse, ContextService
 from src.domain.services.event_bus import Event, EventBus
 
-# P1-1 Step 3: Import RuleEngineFacade for type hints
-from src.domain.services.rule_engine_facade import RuleEngineFacade
-
 # Phase 35.3: MessageLogListener, MessageLogAccessor moved to message_log_listener
 from src.domain.services.message_log_listener import MessageLogAccessor, MessageLogListener
 
 # Phase 35.4: ReflectionContextManager moved to reflection_context_manager
 from src.domain.services.reflection_context_manager import ReflectionContextManager
+
+# P1-1 Step 3: Import RuleEngineFacade for type hints
+from src.domain.services.rule_engine_facade import RuleEngineFacade
 
 # Phase 35.2: Rule, PayloadRuleBuilder, DagRuleBuilder moved to SafetyGuard package
 from src.domain.services.safety_guard import (
@@ -1073,33 +1073,29 @@ class CoordinatorAgent:
 
         启用后，Coordinator 将订阅 SaveRequest 事件并管理请求队列。
         """
-        if not self._save_request_orchestrator:
-            raise ValueError("SaveRequestOrchestrator not initialized (event_bus required)")
-
         self._save_request_orchestrator.enable_save_request_handler()
 
-        # 同步状态标志
-        self._save_request_handler_enabled = (
-            self._save_request_orchestrator._save_request_handler_enabled
-        )
-        self._is_listening_save_requests = (
-            self._save_request_orchestrator._is_listening_save_requests
-        )
+        # 同步状态标志（仅真实orchestrator有这些属性）
+        if hasattr(self._save_request_orchestrator, "_save_request_handler_enabled"):
+            self._save_request_handler_enabled = (
+                self._save_request_orchestrator._save_request_handler_enabled
+            )
+            self._is_listening_save_requests = (
+                self._save_request_orchestrator._is_listening_save_requests
+            )
 
     def disable_save_request_handler(self) -> None:
         """禁用保存请求处理器（代理到 SaveRequestOrchestrator）"""
-        if not self._save_request_orchestrator:
-            return
-
         self._save_request_orchestrator.disable_save_request_handler()
 
-        # 同步状态标志
-        self._save_request_handler_enabled = (
-            self._save_request_orchestrator._save_request_handler_enabled
-        )
-        self._is_listening_save_requests = (
-            self._save_request_orchestrator._is_listening_save_requests
-        )
+        # 同步状态标志（仅真实orchestrator有这些属性）
+        if hasattr(self._save_request_orchestrator, "_save_request_handler_enabled"):
+            self._save_request_handler_enabled = (
+                self._save_request_orchestrator._save_request_handler_enabled
+            )
+            self._is_listening_save_requests = (
+                self._save_request_orchestrator._is_listening_save_requests
+            )
 
     def _handle_save_request(self, event: Any) -> None:
         """处理 SaveRequest 事件（已由 SaveRequestOrchestrator 接管）
@@ -1120,8 +1116,6 @@ class CoordinatorAgent:
         返回：
             True 如果有待处理请求
         """
-        if not self._save_request_orchestrator:
-            return False
         return self._save_request_orchestrator.has_pending_save_requests()
 
     def get_pending_save_request_count(self) -> int:
@@ -1130,8 +1124,6 @@ class CoordinatorAgent:
         返回：
             待处理请求数量
         """
-        if not self._save_request_orchestrator:
-            return 0
         return self._save_request_orchestrator.get_pending_save_request_count()
 
     def get_save_request_queue(self) -> list[Any]:
@@ -1140,8 +1132,6 @@ class CoordinatorAgent:
         返回：
             排序后的 SaveRequest 列表
         """
-        if not self._save_request_orchestrator:
-            return []
         return self._save_request_orchestrator.get_save_request_queue()
 
     def get_save_request_status(self, request_id: str) -> Any:
@@ -1153,10 +1143,6 @@ class CoordinatorAgent:
         返回：
             SaveRequestStatus 或 None
         """
-        if not self._save_request_orchestrator:
-            from src.domain.services.save_request_channel import SaveRequestStatus
-
-            return SaveRequestStatus.PENDING
         return self._save_request_orchestrator.get_save_request_status(request_id)
 
     def get_save_requests_by_session(self, session_id: str) -> list[Any]:
@@ -1168,8 +1154,6 @@ class CoordinatorAgent:
         返回：
             该会话的 SaveRequest 列表
         """
-        if not self._save_request_orchestrator:
-            return []
         return self._save_request_orchestrator.get_save_requests_by_session(session_id)
 
     def dequeue_save_request(self) -> Any | None:
@@ -1178,8 +1162,6 @@ class CoordinatorAgent:
         返回：
             SaveRequest 或 None
         """
-        if not self._save_request_orchestrator:
-            return None
         return self._save_request_orchestrator.dequeue_save_request()
 
     # ==================== Phase 34.2: 审核与执行 ====================
@@ -1201,9 +1183,6 @@ class CoordinatorAgent:
             enable_rate_limit: 是否启用频率限制
             enable_sensitive_check: 是否启用敏感内容检查
         """
-        if not self._save_request_orchestrator:
-            raise ValueError("SaveRequestOrchestrator not initialized (event_bus required)")
-
         self._save_request_orchestrator.configure_save_auditor(
             path_whitelist=path_whitelist,
             path_blacklist=path_blacklist,
@@ -1212,10 +1191,11 @@ class CoordinatorAgent:
             enable_sensitive_check=enable_sensitive_check,
         )
 
-        # 同步内部组件引用（向后兼容）
-        self._save_auditor = self._save_request_orchestrator._save_auditor
-        self._save_executor = self._save_request_orchestrator._save_executor
-        self._save_audit_logger = self._save_request_orchestrator._save_audit_logger
+        # 同步内部组件引用（仅真实orchestrator有这些属性）
+        if hasattr(self._save_request_orchestrator, "_save_auditor"):
+            self._save_auditor = self._save_request_orchestrator._save_auditor
+            self._save_executor = self._save_request_orchestrator._save_executor
+            self._save_audit_logger = self._save_request_orchestrator._save_audit_logger
 
     def process_next_save_request(self) -> Any | None:
         """处理下一个保存请求（代理到 SaveRequestOrchestrator）
@@ -1230,18 +1210,16 @@ class CoordinatorAgent:
         返回：
             ProcessResult 或 None（队列为空时）
         """
-        if not self._save_request_orchestrator:
-            return None
-
         import asyncio
 
         # 同步包装异步方法
         result = asyncio.run(self._save_request_orchestrator.process_next_save_request())
 
-        # 同步内部组件引用（向后兼容）
-        self._save_auditor = self._save_request_orchestrator._save_auditor
-        self._save_executor = self._save_request_orchestrator._save_executor
-        self._save_audit_logger = self._save_request_orchestrator._save_audit_logger
+        # 同步内部组件引用（仅真实orchestrator有这些属性）
+        if hasattr(self._save_request_orchestrator, "_save_auditor"):
+            self._save_auditor = self._save_request_orchestrator._save_auditor
+            self._save_executor = self._save_request_orchestrator._save_executor
+            self._save_audit_logger = self._save_request_orchestrator._save_audit_logger
 
         return result
 
@@ -1251,8 +1229,6 @@ class CoordinatorAgent:
         返回：
             审计日志列表
         """
-        if not self._save_request_orchestrator:
-            return []
         return self._save_request_orchestrator.get_save_audit_logs()
 
     def get_save_audit_logs_by_session(self, session_id: str) -> list[dict]:
@@ -1264,8 +1240,6 @@ class CoordinatorAgent:
         返回：
             该会话的审计日志列表
         """
-        if not self._save_request_orchestrator:
-            return []
         return self._save_request_orchestrator.get_save_audit_logs_by_session(session_id)
 
     # ==================== Phase 34.3 → 34.12: 上下文注入（委托到 ContextInjectionManager Facade）====================
@@ -1619,9 +1593,6 @@ class CoordinatorAgent:
         返回：
             处理结果字典
         """
-        if not self._save_request_orchestrator:
-            return {"ok": False, "error": "orchestrator_not_initialized"}
-
         import asyncio
 
         # 同步包装异步方法
@@ -1651,9 +1622,6 @@ class CoordinatorAgent:
         返回：
             处理结果或 None（队列为空时）
         """
-        if not self._save_request_orchestrator:
-            return None
-
         import asyncio
 
         # 同步包装异步方法
@@ -1670,8 +1638,6 @@ class CoordinatorAgent:
         返回：
             上下文字典
         """
-        if not self._save_request_orchestrator:
-            return {}
         return self._save_request_orchestrator.get_save_receipt_context(session_id)
 
     def get_save_receipt_chain_log(self, request_id: str) -> dict[str, Any] | None:
@@ -1683,14 +1649,10 @@ class CoordinatorAgent:
         返回：
             链路日志或 None
         """
-        if not self._save_request_orchestrator:
-            return None
         return self._save_request_orchestrator.get_save_receipt_chain_log(request_id)
 
     def get_save_receipt_logs(self) -> list[dict[str, Any]]:
         """获取所有回执日志（代理到 SaveRequestOrchestrator）"""
-        if not self._save_request_orchestrator:
-            return []
         return self._save_request_orchestrator.get_save_receipt_logs()
 
     def get_session_save_statistics(self, session_id: str) -> dict[str, Any]:
@@ -1702,8 +1664,6 @@ class CoordinatorAgent:
         返回：
             统计信息字典
         """
-        if not self._save_request_orchestrator:
-            return {"total_requests": 0, "successful": 0, "failed": 0}
         return self._save_request_orchestrator.get_session_save_statistics(session_id)
 
     # ==================== Phase 1: 上下文服务 ====================
