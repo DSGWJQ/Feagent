@@ -1295,8 +1295,8 @@ class ConversationAgent:
         result = ReActResult()
         self._current_input = user_input
 
-        for i in range(self.max_iterations):
-            result.iterations = i + 1
+        for iteration_count in range(self.max_iterations):
+            result.iterations = iteration_count + 1
 
             # 获取上下文
             context = self.get_context_for_reasoning()
@@ -1322,7 +1322,7 @@ class ConversationAgent:
                     and self.llm.decide_action.side_effect  # type: ignore[union-attr]
                 ):
                     try:
-                        action = self.llm.decide_action.side_effect[i]  # type: ignore[union-attr]
+                        action = self.llm.decide_action.side_effect[iteration_count]  # type: ignore[union-attr]
                     except (IndexError, TypeError):
                         pass
 
@@ -1334,7 +1334,7 @@ class ConversationAgent:
                     and self.llm.should_continue.side_effect  # type: ignore[union-attr]
                 ):
                     try:
-                        should_continue = self.llm.should_continue.side_effect[i]  # type: ignore[union-attr]
+                        should_continue = self.llm.should_continue.side_effect[iteration_count]  # type: ignore[union-attr]
                     except (IndexError, TypeError):
                         pass
 
@@ -1401,8 +1401,8 @@ class ConversationAgent:
         # 保存协调者上下文供后续使用
         self._coordinator_context = coordinator_context
 
-        for i in range(self.max_iterations):
-            result.iterations = i + 1
+        for iteration_count in range(self.max_iterations):
+            result.iterations = iteration_count + 1
 
             # === 阶段5：循环控制检查 ===
 
@@ -1446,7 +1446,7 @@ class ConversationAgent:
             # 获取上下文
             context = self.get_context_for_reasoning()
             context["user_input"] = user_input
-            context["iteration"] = i + 1
+            context["iteration"] = iteration_count + 1
 
             # 思考
             try:
