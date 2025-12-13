@@ -33,7 +33,7 @@ from src.domain.agents.conversation_agent_events import DecisionMadeEvent
 from src.domain.agents.conversation_agent_models import DecisionType
 
 if TYPE_CHECKING:
-    from src.domain.agents.conversation_agent_protocols import EventBusProtocol
+    from src.domain.agents.conversation_agent_protocols import EventBusProtocol, WorkflowHost
     from src.domain.agents.node_definition import NodeDefinition
     from src.domain.agents.workflow_plan import WorkflowPlan
     from src.domain.services.context_manager import SessionContext
@@ -54,11 +54,11 @@ class ConversationAgentWorkflowMixin:
     - get_context_for_reasoning(): Returns dict containing conversation history,
       goals, decision history, etc.
 
-    Type contract: Host must satisfy WorkflowHost protocol (P2 improvement).
+    Type contract: Host must satisfy WorkflowHost protocol (implemented).
     """
 
     # --- Host-provided attributes (runtime expectations) ---
-    # Type hint: WorkflowHost protocol (P2 improvement)
+    # Type: WorkflowHost protocol (see conversation_agent_protocols.py)
     llm: Any
     event_bus: EventBusProtocol | None
     session_context: SessionContext
@@ -88,7 +88,7 @@ class ConversationAgentWorkflowMixin:
     # Phase 8: Workflow Planning Capabilities
     # =========================================================================
 
-    async def create_workflow_plan(self, goal: str) -> WorkflowPlan:
+    async def create_workflow_plan(self: WorkflowHost, goal: str) -> WorkflowPlan:
         """根据目标创建工作流规划（Phase 8 新增）
 
         使用LLM根据用户目标生成完整的工作流计划，包括节点定义和边定义。
@@ -196,7 +196,7 @@ class ConversationAgentWorkflowMixin:
 
         return plan
 
-    async def decompose_to_nodes(self, goal: str) -> list[NodeDefinition]:
+    async def decompose_to_nodes(self: WorkflowHost, goal: str) -> list[NodeDefinition]:
         """将目标分解为节点定义列表（Phase 8 新增）
 
         调用LLM将用户目标分解为一系列可执行的节点定义。
@@ -266,7 +266,7 @@ class ConversationAgentWorkflowMixin:
 
         return nodes
 
-    async def create_workflow_plan_and_publish(self, goal: str) -> WorkflowPlan:
+    async def create_workflow_plan_and_publish(self: WorkflowHost, goal: str) -> WorkflowPlan:
         """创建工作流规划并发布决策事件（Phase 8 新增）
 
         组合create_workflow_plan和事件发布逻辑，便于上层调用。
@@ -311,7 +311,7 @@ class ConversationAgentWorkflowMixin:
         return plan
 
     async def replan_workflow(
-        self,
+        self: WorkflowHost,
         original_goal: str,
         failed_node_id: str,
         failure_reason: str,

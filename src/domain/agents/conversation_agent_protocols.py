@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 if TYPE_CHECKING:
     import asyncio
 
+    from src.domain.agents.workflow_plan import WorkflowPlan
     from src.domain.services.context_manager import SessionContext
 
 
@@ -54,6 +55,7 @@ class WorkflowHost(Protocol):
     - get_context_for_reasoning(): Returns reasoning context dict
     - _stage_decision_record(): Stages decision for batch commit (P0-2 Phase 2)
     - _flush_staged_state(): Flushes staged state updates (P0-2 Phase 2)
+    - create_workflow_plan(): Mixin method for workflow planning (for internal calls)
 
     This protocol ensures compile-time checking that the host class
     provides all required attributes and methods.
@@ -81,6 +83,10 @@ class WorkflowHost(Protocol):
 
     async def _flush_staged_state(self) -> None:
         """Flush staged state updates to session_context (P0-2 Phase 2)."""
+        ...
+
+    async def create_workflow_plan(self, goal: str) -> WorkflowPlan:
+        """Create workflow plan from goal (mixin method, for internal calls)."""
         ...
 
 
