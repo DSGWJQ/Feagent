@@ -38,6 +38,17 @@ from src.domain.agents.conversation_agent_state import (
     SpawnSubAgentEvent,
     StateChangedEvent,
 )
+# P1-6 Phase 3/4: Shared models and events (re-export for backward compatibility)
+from src.domain.agents.conversation_agent_models import Decision, DecisionType
+from src.domain.agents.conversation_agent_events import (
+    DecisionMadeEvent,
+    SimpleMessageEvent,
+    IntentClassificationResult,
+)
+# P1-6 Phase 3/4: Workflow and Recovery mixins
+from src.domain.agents.conversation_agent_workflow import ConversationAgentWorkflowMixin
+from src.domain.agents.conversation_agent_recovery import ConversationAgentRecoveryMixin
+
 from src.domain.services.context_manager import Goal, SessionContext
 from src.domain.services.event_bus import Event, EventBus
 
@@ -122,21 +133,6 @@ class IntentType(str, Enum):
     ERROR_RECOVERY_REQUEST = "error_recovery_request"  # 错误恢复请求
 
 
-class DecisionType(str, Enum):
-    """决策类型"""
-
-    CREATE_NODE = "create_node"  # 创建节点
-    CREATE_WORKFLOW_PLAN = "create_workflow_plan"  # 创建完整工作流规划（Phase 8）
-    EXECUTE_WORKFLOW = "execute_workflow"  # 执行工作流
-    MODIFY_NODE = "modify_node"  # 修改节点定义（Phase 8）
-    REQUEST_CLARIFICATION = "request_clarification"  # 请求澄清
-    RESPOND = "respond"  # 直接回复
-    CONTINUE = "continue"  # 继续推理
-    ERROR_RECOVERY = "error_recovery"  # 错误恢复（Phase 13）
-    REPLAN_WORKFLOW = "replan_workflow"  # 重新规划工作流（Phase 13）
-    SPAWN_SUBAGENT = "spawn_subagent"  # 生成子Agent（Phase 3）
-
-
 @dataclass
 class ReActStep:
     """ReAct循环的单个步骤
@@ -184,78 +180,6 @@ class ReActResult:
     total_cost: float = 0.0
     execution_time: float = 0.0
     alert_message: str | None = None
-
-
-@dataclass
-class Decision:
-    """决策实体
-
-    属性：
-    - id: 决策唯一标识
-    - type: 决策类型
-    - payload: 决策负载（具体内容）
-    - confidence: 置信度
-    - timestamp: 时间戳
-    """
-
-    id: str = field(default_factory=lambda: str(uuid4()))
-    type: DecisionType = DecisionType.CONTINUE
-    payload: dict[str, Any] = field(default_factory=dict)
-    confidence: float = 1.0
-    timestamp: datetime = field(default_factory=datetime.now)
-
-
-@dataclass
-class DecisionMadeEvent(Event):
-    """决策事件
-
-    当对话Agent做出决策时发布此事件。
-    协调者Agent订阅此事件进行验证。
-    """
-
-    decision_type: str = ""
-    decision_id: str = ""
-    payload: dict[str, Any] = field(default_factory=dict)
-    confidence: float = 1.0
-
-
-@dataclass
-class SimpleMessageEvent(Event):
-    """简单消息事件 (Phase 15)
-
-    当对话不需要 ReAct 循环（普通对话、工作流查询）时发布此事件。
-    协调者Agent订阅此事件进行统计记录。
-
-    属性：
-    - user_input: 用户输入
-    - response: 回复内容
-    - intent: 意图类型
-    - confidence: 意图分类置信度
-    - session_id: 会话ID
-    """
-
-    user_input: str = ""
-    response: str = ""
-    intent: str = ""
-    confidence: float = 1.0
-    session_id: str = ""
-
-
-@dataclass
-class IntentClassificationResult:
-    """意图分类结果 (Phase 14)
-
-    属性：
-    - intent: 识别的意图类型
-    - confidence: 置信度 (0-1)
-    - reasoning: 分类理由
-    - extracted_entities: 从输入中提取的实体
-    """
-
-    intent: IntentType
-    confidence: float = 1.0
-    reasoning: str = ""
-    extracted_entities: dict[str, Any] = field(default_factory=dict)
 
 
 class ConversationAgentLLM(Protocol):
@@ -354,7 +278,11 @@ class ConversationAgentLLM(Protocol):
         ...
 
 
-class ConversationAgent(ConversationAgentStateMixin):
+class ConversationAgent(
+    ConversationAgentStateMixin,
+    ConversationAgentWorkflowMixin,
+    ConversationAgentRecoveryMixin,
+):
     """对话Agent
 
     职责：
@@ -470,10 +398,6 @@ class ConversationAgent(ConversationAgentStateMixin):
         self.coordinator = coordinator
         self._current_input: str | None = None
 
-        # Phase 13: 反馈监听
-        self.pending_feedbacks: list[dict[str, Any]] = []
-        self._is_listening_feedbacks = False
-
         # Phase 14: 意图分类配置
         self.enable_intent_classification = enable_intent_classification
         self.intent_confidence_threshold = intent_confidence_threshold
@@ -489,6 +413,9 @@ class ConversationAgent(ConversationAgentStateMixin):
 
         # P1-6 Phase 2: State mixin initialization
         self._init_state_mixin()
+
+        # P1-6 Phase 4: Recovery mixin initialization
+        self._init_recovery_mixin()
 
         # Phase 1: 协调者上下文缓存
         self._coordinator_context: Any | None = None
@@ -1465,411 +1392,6 @@ class ConversationAgent(ConversationAgentStateMixin):
             f"Remaining: {summary['remaining_tokens']} tokens"
         )
 
-    # === Phase 8: 工作流规划能力 ===
-
-    async def create_workflow_plan(self, goal: str) -> WorkflowPlan:
-        """根据目标创建工作流规划（Phase 8 新增）
-
-        参数：
-            goal: 用户目标
-
-        返回：
-            WorkflowPlan 实例
-
-        抛出：
-            ValueError: 如果规划验证失败或存在循环依赖
-        """
-        from src.domain.agents.node_definition import NodeDefinition, NodeType
-        from src.domain.agents.workflow_plan import EdgeDefinition, WorkflowPlan
-
-        # 获取上下文
-        context = self.get_context_for_reasoning()
-        context["goal"] = goal
-
-        # 调用 LLM 规划工作流
-        plan_data = await self.llm.plan_workflow(goal, context)
-
-        # 转换节点（支持父节点）
-        nodes = []
-        for node_data in plan_data.get("nodes", []):
-            node_type_str = node_data.get("type", "generic")
-            try:
-                node_type = NodeType(node_type_str.lower())
-            except ValueError:
-                node_type = NodeType.GENERIC
-
-            node = NodeDefinition(
-                node_type=node_type,
-                name=node_data.get("name", ""),
-                code=node_data.get("code"),
-                prompt=node_data.get("prompt"),
-                url=node_data.get("url"),
-                method=node_data.get("method", "GET"),
-                query=node_data.get("query"),
-                config=node_data.get("config", {}),
-                # Phase 9: 父节点策略支持
-                error_strategy=node_data.get("error_strategy"),
-                resource_limits=node_data.get("resource_limits", {}),
-            )
-
-            # Phase 9: 如果有子节点，添加并传播策略
-            if "children" in node_data and node_data["children"]:
-                for child_data in node_data["children"]:
-                    child_type_str = child_data.get("type", "python")
-                    try:
-                        child_type = NodeType(child_type_str.lower())
-                    except ValueError:
-                        child_type = NodeType.PYTHON
-
-                    child = NodeDefinition(
-                        node_type=child_type,
-                        name=child_data.get("name", ""),
-                        code=child_data.get("code"),
-                        prompt=child_data.get("prompt"),
-                        url=child_data.get("url"),
-                        method=child_data.get("method", "GET"),
-                        query=child_data.get("query"),
-                        config=child_data.get("config", {}),
-                    )
-                    node.add_child(child)
-
-                # 传播策略到子节点
-                if node.error_strategy or node.resource_limits:
-                    node.propagate_strategy_to_children()
-
-            nodes.append(node)
-
-        # 转换边
-        edges = []
-        for edge_data in plan_data.get("edges", []):
-            edge = EdgeDefinition(
-                source_node=edge_data.get("source", edge_data.get("source_node", "")),
-                target_node=edge_data.get("target", edge_data.get("target_node", "")),
-                condition=edge_data.get("condition"),
-            )
-            edges.append(edge)
-
-        # 创建规划
-        plan = WorkflowPlan(
-            name=plan_data.get("name", f"Plan for: {goal[:30]}"),
-            description=plan_data.get("description", ""),
-            goal=goal,
-            nodes=nodes,
-            edges=edges,
-        )
-
-        # 验证规划
-        errors = plan.validate()
-        if errors:
-            raise ValueError(f"工作流规划验证失败: {'; '.join(errors)}")
-
-        # 检测循环依赖
-        if plan.has_circular_dependency():
-            raise ValueError("工作流存在循环依赖 (Circular dependency detected)")
-
-        return plan
-
-    async def decompose_to_nodes(self, goal: str) -> list[NodeDefinition]:
-        """将目标分解为节点定义列表（Phase 8 新增）
-
-        参数：
-            goal: 用户目标
-
-        返回：
-            NodeDefinition 列表
-        """
-        from src.domain.agents.node_definition import NodeDefinition, NodeType
-
-        # 调用 LLM 分解
-        node_dicts = await self.llm.decompose_to_nodes(goal)
-
-        # 转换为 NodeDefinition（支持父节点）
-        nodes = []
-        for node_data in node_dicts:
-            node_type_str = node_data.get("type", "generic")
-            try:
-                node_type = NodeType(node_type_str.lower())
-            except ValueError:
-                node_type = NodeType.GENERIC
-
-            node = NodeDefinition(
-                node_type=node_type,
-                name=node_data.get("name", ""),
-                code=node_data.get("code"),
-                prompt=node_data.get("prompt"),
-                url=node_data.get("url"),
-                query=node_data.get("query"),
-                config=node_data.get("config", {}),
-                # Phase 9: 父节点策略支持
-                error_strategy=node_data.get("error_strategy"),
-                resource_limits=node_data.get("resource_limits", {}),
-            )
-
-            # Phase 9: 如果有子节点，添加并传播策略
-            if "children" in node_data and node_data["children"]:
-                for child_data in node_data["children"]:
-                    child_type_str = child_data.get("type", "python")
-                    try:
-                        child_type = NodeType(child_type_str.lower())
-                    except ValueError:
-                        child_type = NodeType.PYTHON
-
-                    child = NodeDefinition(
-                        node_type=child_type,
-                        name=child_data.get("name", ""),
-                        code=child_data.get("code"),
-                        prompt=child_data.get("prompt"),
-                        url=child_data.get("url"),
-                        query=child_data.get("query"),
-                        config=child_data.get("config", {}),
-                    )
-                    node.add_child(child)
-
-                # 传播策略到子节点
-                if node.error_strategy or node.resource_limits:
-                    node.propagate_strategy_to_children()
-
-            nodes.append(node)
-
-        return nodes
-
-    async def create_workflow_plan_and_publish(self, goal: str) -> WorkflowPlan:
-        """创建工作流规划并发布决策事件（Phase 8 新增）
-
-        参数：
-            goal: 用户目标
-
-        返回：
-            WorkflowPlan 实例
-        """
-        plan = await self.create_workflow_plan(goal)
-
-        # 发布决策事件
-        if self.event_bus:
-            event = DecisionMadeEvent(
-                source="conversation_agent",
-                decision_type=DecisionType.CREATE_WORKFLOW_PLAN.value,
-                decision_id=plan.id,
-                payload=plan.to_dict(),
-                confidence=1.0,
-            )
-            await self.event_bus.publish(event)
-
-        # 记录决策
-        self.session_context.add_decision(
-            {
-                "id": plan.id,
-                "type": DecisionType.CREATE_WORKFLOW_PLAN.value,
-                "payload": {"plan_name": plan.name, "node_count": len(plan.nodes)},
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
-
-        return plan
-
-    # === Phase 13: 反馈监听与错误恢复 ===
-
-    def start_feedback_listening(self) -> None:
-        """开始监听协调者反馈事件
-
-        订阅 WorkflowAdjustmentRequestedEvent 和 NodeFailureHandledEvent，
-        将反馈存储到 pending_feedbacks 供 ReAct 循环使用。
-        """
-        if self._is_listening_feedbacks:
-            return
-
-        if not self.event_bus:
-            raise ValueError("EventBus is required for feedback listening")
-
-        from src.domain.agents.coordinator_agent import (
-            NodeFailureHandledEvent,
-            WorkflowAdjustmentRequestedEvent,
-        )
-
-        self.event_bus.subscribe(WorkflowAdjustmentRequestedEvent, self._handle_adjustment_event)
-        self.event_bus.subscribe(NodeFailureHandledEvent, self._handle_failure_handled_event)
-
-        self._is_listening_feedbacks = True
-
-    def stop_feedback_listening(self) -> None:
-        """停止监听协调者反馈事件"""
-        if not self._is_listening_feedbacks:
-            return
-
-        if not self.event_bus:
-            return
-
-        from src.domain.agents.coordinator_agent import (
-            NodeFailureHandledEvent,
-            WorkflowAdjustmentRequestedEvent,
-        )
-
-        self.event_bus.unsubscribe(WorkflowAdjustmentRequestedEvent, self._handle_adjustment_event)
-        self.event_bus.unsubscribe(NodeFailureHandledEvent, self._handle_failure_handled_event)
-
-        self._is_listening_feedbacks = False
-
-    async def _handle_adjustment_event(self, event: Any) -> None:
-        """处理工作流调整请求事件（P0-2 Phase 2: 锁保护版本）"""
-        async with self._state_lock:
-            self.pending_feedbacks.append(
-                {
-                    "type": "workflow_adjustment",
-                    "workflow_id": event.workflow_id,
-                    "failed_node_id": event.failed_node_id,
-                    "failure_reason": event.failure_reason,
-                    "suggested_action": event.suggested_action,
-                    "execution_context": event.execution_context,
-                    "timestamp": event.timestamp,
-                }
-            )
-
-    async def _handle_failure_handled_event(self, event: Any) -> None:
-        """处理节点失败处理完成事件（P0-2 Phase 2: 锁保护版本）"""
-        async with self._state_lock:
-            self.pending_feedbacks.append(
-                {
-                    "type": "node_failure_handled",
-                    "workflow_id": event.workflow_id,
-                    "node_id": event.node_id,
-                    "strategy": event.strategy,
-                    "success": event.success,
-                    "retry_count": event.retry_count,
-                    "timestamp": event.timestamp,
-                }
-            )
-
-    def get_pending_feedbacks(self) -> list[dict[str, Any]]:
-        """获取待处理的反馈列表
-
-        返回：
-            反馈列表的副本
-        """
-        return self.pending_feedbacks.copy()
-
-    def clear_feedbacks(self) -> None:
-        """清空待处理的反馈"""
-        self.pending_feedbacks.clear()
-
-    async def get_pending_feedbacks_async(self) -> list[dict[str, Any]]:
-        """获取待处理的反馈列表（异步锁保护版本，P0-2 Phase 2）
-
-        在_state_lock保护下返回快照，避免并发修改。
-
-        返回：
-            反馈列表的副本
-        """
-        async with self._state_lock:
-            return self.pending_feedbacks.copy()
-
-    async def clear_feedbacks_async(self) -> None:
-        """清空待处理的反馈（异步锁保护版本，P0-2 Phase 2）
-
-        在_state_lock保护下清空，避免并发冲突。
-        """
-        async with self._state_lock:
-            self.pending_feedbacks.clear()
-
-    async def generate_error_recovery_decision(self) -> Decision | None:
-        """生成错误恢复决策（P0-2 Phase 2: 锁保护版本）
-
-        根据 pending_feedbacks 中的反馈信息生成恢复决策。
-
-        锁保护：
-        - 在_state_lock下读取pending_feedbacks快照
-        - 使用staged机制记录决策（批量提交）
-
-        返回：
-            错误恢复决策，如果没有待处理的反馈返回 None
-        """
-        # 在锁内读取pending_feedbacks快照
-        async with self._state_lock:
-            feedbacks_snapshot = self.pending_feedbacks.copy()
-
-        if not feedbacks_snapshot:
-            return None
-
-        # 获取最新的调整请求
-        adjustment_feedbacks = [f for f in feedbacks_snapshot if f["type"] == "workflow_adjustment"]
-
-        if not adjustment_feedbacks:
-            return None
-
-        feedback = adjustment_feedbacks[0]
-
-        # 构建上下文
-        context = self.get_context_for_reasoning()
-        context["feedback"] = feedback
-
-        # 调用 LLM 生成恢复计划（如果有 plan_error_recovery 方法）
-        recovery_plan = {}
-        if hasattr(self.llm, "plan_error_recovery"):
-            recovery_plan = await self.llm.plan_error_recovery(context)  # type: ignore
-
-        # 创建决策
-        decision = Decision(
-            type=DecisionType.ERROR_RECOVERY,
-            payload={
-                "failed_node_id": feedback["failed_node_id"],
-                "failure_reason": feedback.get("failure_reason", ""),
-                "workflow_id": feedback["workflow_id"],
-                "recovery_plan": recovery_plan,
-                "execution_context": feedback.get("execution_context", {}),
-            },
-        )
-
-        # Phase 2: 使用staged机制记录决策（批量提交）
-        self._stage_decision_record(
-            {
-                "id": decision.id,
-                "type": decision.type.value,
-                "payload": decision.payload,
-                "timestamp": decision.timestamp.isoformat(),
-            }
-        )
-        await self._flush_staged_state()
-
-        return decision
-
-    async def replan_workflow(
-        self,
-        original_goal: str,
-        failed_node_id: str,
-        failure_reason: str,
-        execution_context: dict[str, Any],
-    ) -> dict[str, Any]:
-        """根据失败信息重新规划工作流
-
-        参数：
-            original_goal: 原始目标
-            failed_node_id: 失败的节点ID
-            failure_reason: 失败原因
-            execution_context: 执行上下文（已完成的节点和输出）
-
-        返回：
-            重新规划的工作流
-        """
-        # 构建上下文
-        context = self.get_context_for_reasoning()
-        context["original_goal"] = original_goal
-        context["failed_node_id"] = failed_node_id
-        context["failure_reason"] = failure_reason
-        context["execution_context"] = execution_context
-
-        # 调用 LLM 重新规划
-        if hasattr(self.llm, "replan_workflow"):
-            plan = await self.llm.replan_workflow(
-                goal=original_goal,
-                failed_node_id=failed_node_id,
-                failure_reason=failure_reason,
-                execution_context=execution_context,
-            )
-        else:
-            # 回退到普通的工作流规划
-            plan = await self.llm.plan_workflow(original_goal, context)
-
-        return plan
-
     # === Phase 14: 意图分类与分流处理 ===
 
     async def classify_intent(self, user_input: str) -> IntentClassificationResult:
@@ -2188,119 +1710,6 @@ class ConversationAgent(ConversationAgentStateMixin):
             for event in self.progress_events
             if hasattr(event, "workflow_id") and event.workflow_id == workflow_id
         ]
-
-    # === 第五步: 异常处理与重规划 ===
-
-    def format_error_for_user(
-        self, node_id: str, error: Exception, node_name: str = ""
-    ) -> FormattedError:
-        """将错误格式化为用户友好消息
-
-        参数：
-            node_id: 节点ID
-            error: 异常实例
-            node_name: 节点名称（可选）
-
-        返回：
-            格式化的错误信息，包含消息和用户选项
-        """
-        from src.domain.agents.error_handling import (
-            ExceptionClassifier,
-            FormattedError,
-            UserActionOptionsGenerator,
-            UserFriendlyMessageGenerator,
-        )
-
-        classifier = ExceptionClassifier()
-        message_generator = UserFriendlyMessageGenerator()
-        options_generator = UserActionOptionsGenerator()
-
-        # 分类错误
-        category = classifier.classify(error)
-
-        # 生成用户友好消息
-        details = f"{node_name}: {error}" if node_name else str(error)
-        message = message_generator.generate(category, details)
-
-        # 获取用户操作选项
-        options = options_generator.get_options(category)
-
-        return FormattedError(message=message, options=options, category=category)
-
-    async def handle_user_error_decision(self, decision: UserDecision) -> UserDecisionResult:
-        """处理用户的错误恢复决策
-
-        参数：
-            decision: 用户决策
-
-        返回：
-            决策处理结果
-        """
-        from src.domain.agents.error_handling import UserDecisionResult
-
-        if decision.action == "retry":
-            return UserDecisionResult(
-                action_taken="retry", should_continue=True, node_skipped=False
-            )
-        elif decision.action == "skip":
-            return UserDecisionResult(action_taken="skip", should_continue=True, node_skipped=True)
-        elif decision.action == "abort":
-            return UserDecisionResult(
-                action_taken="abort",
-                should_continue=False,
-                workflow_aborted=True,
-            )
-        elif decision.action == "provide_data":
-            return UserDecisionResult(action_taken="provide_data", should_continue=True)
-        else:
-            return UserDecisionResult(action_taken=decision.action, should_continue=True)
-
-    async def emit_error_event(self, node_id: str, error: Exception, recovery_action: str) -> None:
-        """发布错误事件到事件总线
-
-        参数：
-            node_id: 节点ID
-            error: 异常实例
-            recovery_action: 恢复动作
-        """
-        if not self.event_bus:
-            return
-
-        from src.domain.agents.error_handling import NodeErrorEvent
-
-        event = NodeErrorEvent(
-            node_id=node_id,
-            error_type=type(error).__name__,
-            error_message=str(error),
-            recovery_action=recovery_action,
-        )
-
-        await self.event_bus.publish(event)
-
-    async def emit_recovery_complete_event(
-        self, node_id: str, success: bool, method: str, attempts: int = 1
-    ) -> None:
-        """发布恢复完成事件
-
-        参数：
-            node_id: 节点ID
-            success: 是否成功
-            method: 恢复方法
-            attempts: 尝试次数
-        """
-        if not self.event_bus:
-            return
-
-        from src.domain.agents.error_handling import RecoveryCompleteEvent
-
-        event = RecoveryCompleteEvent(
-            node_id=node_id,
-            success=success,
-            recovery_method=method,
-            attempts=attempts,
-        )
-
-        await self.event_bus.publish(event)
 
     # === Phase 16: 新执行链路 ===
 

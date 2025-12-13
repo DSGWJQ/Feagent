@@ -286,8 +286,105 @@ F. **子Agent完成事件监听**
 - tests/unit/domain/agents/test_spawn_subagent.py
 - tests/integration/test_subagent_e2e.py
 
-### 阶段3-4: 剩余模块拆分与清理
-- [ ] 待规划...
+### 阶段3-4: Workflow与Recovery模块拆分
+
+**实施策略**: 并行实施Phase 3和Phase 4，采用三步走策略：
+1. 抽出共享types和events到新模块（打破循环依赖）
+2. 并行实现两个mixin模块
+3. 集成mixin到ConversationAgent并删除重复代码
+
+#### Phase 3: Workflow模块拆分 ✅ **已完成**
+
+**步骤1**: 抽出共享models到新模块
+- [x] 创建 `conversation_agent_models.py`
+- [x] 迁移 DecisionType enum 和 Decision dataclass
+- [x] conversation_agent.py import并re-export保持兼容
+- [x] 测试: 6/6 回归测试通过
+
+**步骤2a**: 实现ConversationAgentWorkflowMixin
+- [x] 创建 `conversation_agent_workflow.py` (~342行)
+- [x] 迁移4个工作流相关方法：
+  - `create_workflow_plan()`: LLM驱动的工作流规划，支持父子节点和策略传播
+  - `decompose_to_nodes()`: 目标分解为节点列表
+  - `create_workflow_plan_and_publish()`: 规划+事件发布+决策记录
+  - `replan_workflow()`: 失败后重新规划，支持回退到plan_workflow
+- [x] 定义host contract：llm, event_bus, session_context, get_context_for_reasoning()
+- [x] 测试: 6/6 回归测试通过
+
+**步骤3**: 集成WorkflowMixin
+- [x] conversation_agent.py添加ConversationAgentWorkflowMixin继承
+- [x] 删除重复方法定义（~200行）
+- [x] 测试: 6/6 回归测试通过
+
+#### Phase 4: Recovery模块拆分 ✅ **已完成**
+
+**步骤1**: 抽出共享events到新模块
+- [x] 创建 `conversation_agent_events.py`
+- [x] 迁移3个event类：DecisionMadeEvent, SimpleMessageEvent, IntentClassificationResult
+- [x] conversation_agent.py import并re-export保持兼容
+- [x] 测试: 6/6 回归测试通过
+
+**步骤2b**: 实现ConversationAgentRecoveryMixin
+- [x] 创建 `conversation_agent_recovery.py` (~438行)
+- [x] 迁移13个错误恢复相关方法：
+  - `_init_recovery_mixin()`: 初始化hook
+  - `start_feedback_listening()` / `stop_feedback_listening()`: 反馈监听器
+  - `_handle_adjustment_event()` / `_handle_failure_handled_event()`: 事件处理（锁保护）
+  - `get_pending_feedbacks()` / `clear_feedbacks()`: 同步版本
+  - `get_pending_feedbacks_async()` / `clear_feedbacks_async()`: 异步锁保护版本
+  - `generate_error_recovery_decision()`: 生成恢复决策（使用staged机制）
+  - `format_error_for_user()`: 用户友好错误格式化
+  - `handle_user_error_decision()`: 处理用户决策
+  - `emit_error_event()` / `emit_recovery_complete_event()`: 事件发布
+- [x] 定义host contract：llm, event_bus, session_context, _state_lock, get_context_for_reasoning(), _stage_decision_record(), _flush_staged_state()
+- [x] 遵循Phase 2锁规范：使用_state_lock保护pending_feedbacks
+- [x] 测试: 6/6 回归测试通过
+
+**步骤3**: 集成RecoveryMixin
+- [x] conversation_agent.py添加ConversationAgentRecoveryMixin继承
+- [x] 添加_init_recovery_mixin()调用
+- [x] 删除重复方法定义（~400行）
+- [x] 测试: 6/6 回归测试通过
+
+#### Codex审查与P0/P1修复 ✅ **已完成**
+
+**Codex审查结果**: 8/10分，可进入下一步
+- 识别5个改进点：
+  1. Mixin contract使用Any而非Protocol（P2）
+  2. WorkflowMixin decision记录路径不一致（P0）
+  3. RecoveryMixin从coordinator_agent导入事件（P1）
+  4. Feedback队列不清空已消费反馈（P2）
+  5. Type-level循环依赖（P2）
+
+**P0修复**: Workflow decision记录路径一致性
+- [x] 修改 `create_workflow_plan_and_publish()` 使用staged机制
+- [x] 改 `self.session_context.add_decision()` 为 `self._stage_decision_record()`
+- [x] 添加 `await self._flush_staged_state()` 确保立即提交
+- [x] 更新host contract文档添加staged方法依赖
+- [x] 添加stub方法声明：_stage_decision_record(), _flush_staged_state()
+- [x] 测试: 6/6 回归测试通过
+
+**P1修复**: RecoveryMixin事件导入来源
+- [x] 修改 `start_feedback_listening()` import来源
+- [x] 修改 `stop_feedback_listening()` import来源
+- [x] 改从 `coordinator_agent` 导入为从 `workflow_failure_orchestrator` 导入
+- [x] 降低对coordinator_agent的耦合
+- [x] 测试: 6/6 回归测试通过
+
+**Phase 3+4完成总结**:
+- ✅ 4个新文件创建（models, events, workflow, recovery）
+- ✅ conversation_agent.py精简（减少~600行）
+- ✅ 2个P0/P1问题修复（记录路径一致性、事件导入来源）
+- ✅ 6个回归测试保持100%通过
+- ✅ 向后兼容性完全保持
+- ✅ Codex审查通过，8/10分可进入下一步
+
+**关键成果**:
+- 采用Mixin模式成功实现关注点分离
+- 通过shared types/events模块打破循环依赖
+- 遵循Phase 2锁规范，使用staged机制和_state_lock
+- Host contract pattern确保依赖清晰可验证
+- 所有修复经过Codex审查并提供unified diff patch
 
 ---
 
