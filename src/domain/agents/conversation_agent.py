@@ -29,6 +29,15 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Final, Protocol
 from uuid import uuid4
 
+# =========================================================================
+# P1-6 Phase 2: State module imports (re-export for backward compatibility)
+# =========================================================================
+from src.domain.agents.conversation_agent_state import (
+    VALID_STATE_TRANSITIONS,
+    ConversationAgentState,
+    SpawnSubAgentEvent,
+    StateChangedEvent,
+)
 from src.domain.services.context_manager import Goal, SessionContext
 from src.domain.services.event_bus import Event, EventBus
 
@@ -111,51 +120,6 @@ class IntentType(str, Enum):
     WORKFLOW_QUERY = "workflow_query"  # 查询工作流状态
     CLARIFICATION = "clarification"  # 澄清请求
     ERROR_RECOVERY_REQUEST = "error_recovery_request"  # 错误恢复请求
-
-
-class ConversationAgentState(str, Enum):
-    """ConversationAgent 状态枚举 (Phase 3)
-
-    跟踪 Agent 执行状态，特别是子Agent等待场景。
-
-    状态：
-    - IDLE: 空闲，等待用户输入
-    - PROCESSING: 正在处理（ReAct循环中）
-    - WAITING_FOR_SUBAGENT: 等待子Agent结果
-    - COMPLETED: 处理完成
-    - ERROR: 发生错误
-    """
-
-    IDLE = "idle"
-    PROCESSING = "processing"
-    WAITING_FOR_SUBAGENT = "waiting_for_subagent"
-    COMPLETED = "completed"
-    ERROR = "error"
-
-
-# 有效状态转换矩阵
-VALID_STATE_TRANSITIONS: dict[ConversationAgentState, list[ConversationAgentState]] = {
-    ConversationAgentState.IDLE: [
-        ConversationAgentState.PROCESSING,
-        ConversationAgentState.ERROR,
-    ],
-    ConversationAgentState.PROCESSING: [
-        ConversationAgentState.WAITING_FOR_SUBAGENT,
-        ConversationAgentState.COMPLETED,
-        ConversationAgentState.ERROR,
-        ConversationAgentState.IDLE,  # 取消或重置
-    ],
-    ConversationAgentState.WAITING_FOR_SUBAGENT: [
-        ConversationAgentState.PROCESSING,  # 收到子Agent结果后恢复
-        ConversationAgentState.ERROR,
-    ],
-    ConversationAgentState.COMPLETED: [
-        ConversationAgentState.IDLE,  # 重新开始
-    ],
-    ConversationAgentState.ERROR: [
-        ConversationAgentState.IDLE,  # 重置
-    ],
-}
 
 
 class DecisionType(str, Enum):
@@ -276,55 +240,6 @@ class SimpleMessageEvent(Event):
     confidence: float = 1.0
     session_id: str = ""
 
-
-@dataclass
-class StateChangedEvent(Event):
-    """状态变化事件 (Phase 3)
-
-    当 ConversationAgent 状态发生变化时发布此事件。
-    协调者Agent订阅此事件以跟踪Agent状态。
-
-    属性：
-    - from_state: 原状态
-    - to_state: 新状态
-    - session_id: 会话ID
-    """
-
-    from_state: str = ""
-    to_state: str = ""
-    session_id: str = ""
-
-    @property
-    def event_type(self) -> str:
-        """事件类型"""
-        return "conversation_agent_state_changed"
-
-
-@dataclass
-class SpawnSubAgentEvent(Event):
-    """生成子Agent事件 (Phase 3)
-
-    当 ConversationAgent 需要生成子Agent执行任务时发布此事件。
-    Coordinator 订阅此事件以创建和执行子Agent。
-
-    属性：
-    - subagent_type: 子Agent类型（search, mcp, python_executor, data_processor）
-    - task_payload: 任务负载数据
-    - priority: 优先级（数字越小优先级越高）
-    - session_id: 会话ID
-    - context_snapshot: 上下文快照（可选）
-    """
-
-    subagent_type: str = ""
-    task_payload: dict[str, Any] = field(default_factory=dict)
-    priority: int = 0
-    session_id: str = ""
-    context_snapshot: dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def event_type(self) -> str:
-        """事件类型"""
-        return "spawn_subagent_requested"
 
 
 @dataclass
