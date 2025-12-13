@@ -970,9 +970,12 @@ class CoordinatorBootstrap:
 
         # 自动构建 Facade
         from src.domain.services.rule_engine_facade import RuleEngineFacade
+        from src.domain.services.safety_guard import DagRuleBuilder, PayloadRuleBuilder
 
         facade = RuleEngineFacade(
             safety_guard=guardian_layer["safety_guard"],
+            payload_rule_builder=PayloadRuleBuilder(),
+            dag_rule_builder=DagRuleBuilder(),
             circuit_breaker=infra.get("circuit_breaker"),
             alert_rule_manager=agent_layer.get("alert_rule_manager"),
             rejection_rate_threshold=self.config.rejection_rate_threshold,

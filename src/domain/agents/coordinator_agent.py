@@ -2027,17 +2027,17 @@ class CoordinatorAgent:
     ) -> None:
         """添加 payload 必填字段验证规则
 
-        Phase 35.2: 委托给 PayloadRuleBuilder
+        P1-1步骤4-5: 直接委托给 RuleEngineFacade
 
         参数：
             decision_type: 决策类型
             required_fields: 必填字段列表
         """
-        rule = self._payload_rule_builder.build_required_fields_rule(
+        self._rule_engine_facade.add_payload_required_fields_rule(
             decision_type=decision_type,
             required_fields=required_fields,
         )
-        self.add_rule(rule)
+        return None
 
     def add_payload_type_validation_rule(
         self,
@@ -2047,19 +2047,19 @@ class CoordinatorAgent:
     ) -> None:
         """添加 payload 字段类型验证规则
 
-        Phase 35.2: 委托给 PayloadRuleBuilder
+        P1-1步骤4-5: 直接委托给 RuleEngineFacade
 
         参数：
             decision_type: 决策类型
             field_types: 字段类型映射 {字段名: 类型}
             nested_field_types: 嵌套字段类型映射 {字段路径: 类型}，如 {"config.timeout": int}
         """
-        rule = self._payload_rule_builder.build_type_validation_rule(
+        self._rule_engine_facade.add_payload_type_rule(
             decision_type=decision_type,
             field_types=field_types,
             nested_field_types=nested_field_types,
         )
-        self.add_rule(rule)
+        return None
 
     def add_payload_range_validation_rule(
         self,
@@ -2068,17 +2068,17 @@ class CoordinatorAgent:
     ) -> None:
         """添加 payload 字段值范围验证规则
 
-        Phase 35.2: 委托给 PayloadRuleBuilder
+        P1-1步骤4-5: 直接委托给 RuleEngineFacade
 
         参数：
             decision_type: 决策类型
             field_ranges: 字段范围映射 {字段路径: {"min": 最小值, "max": 最大值}}
         """
-        rule = self._payload_rule_builder.build_range_validation_rule(
+        self._rule_engine_facade.add_payload_range_rule(
             decision_type=decision_type,
             field_ranges=field_ranges,
         )
-        self.add_rule(rule)
+        return None
 
     def add_payload_enum_validation_rule(
         self,
@@ -2087,30 +2087,30 @@ class CoordinatorAgent:
     ) -> None:
         """添加 payload 字段枚举值验证规则
 
-        Phase 35.2: 委托给 PayloadRuleBuilder
+        P1-1步骤4-5: 直接委托给 RuleEngineFacade
 
         参数：
             decision_type: 决策类型
             field_enums: 字段枚举映射 {字段名: 允许的值列表}
         """
-        rule = self._payload_rule_builder.build_enum_validation_rule(
+        self._rule_engine_facade.add_payload_enum_rule(
             decision_type=decision_type,
             field_enums=field_enums,
         )
-        self.add_rule(rule)
+        return None
 
     def add_dag_validation_rule(self) -> None:
         """添加 DAG（有向无环图）验证规则
 
-        Phase 35.2: 委托给 DagRuleBuilder
+        P1-1步骤4-5: 直接委托给 RuleEngineFacade
 
         验证工作流的节点和边结构：
         - 节点 ID 唯一性
         - 边引用的节点存在性
         - 无循环依赖
         """
-        rule = self._dag_rule_builder.build_dag_validation_rule()
-        self.add_rule(rule)
+        self._rule_engine_facade.add_dag_validation_rule()
+        return None
 
     # Phase 35.2: _detect_cycle_kahn moved to src.domain.services.safety_guard.dag_rule_builder.CycleDetector
     # (removed from here to avoid duplication)
@@ -2161,8 +2161,11 @@ class CoordinatorAgent:
                 **event.payload,
             }
 
-            # 验证决策
-            result = self.validate_decision(decision)
+            # 验证决策（P1-1步骤4-5: 直接用 Facade）
+            result = self._rule_engine_facade.validate_decision(
+                decision,
+                session_id=decision.get("session_id"),
+            )
 
             if result.is_valid:
                 # 发布验证通过事件
