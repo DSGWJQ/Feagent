@@ -494,7 +494,10 @@ class CoordinatorAgent:
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
         self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
         self._rules: list[Rule] = wiring.base_state["_rules"]
-        # P1-1清理: _statistics 已通过 RuleEngineFacade 访问，无需直接赋值
+        # P1-1清理: 统计信息读写统一走 RuleEngineFacade，但保留 _statistics 作为向后兼容别名
+        # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
+        # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
+        self._statistics = wiring.base_state["_statistics"]
 
         # 5. 解包装配结果：工作流状态（共享bootstrap容器）
         self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
@@ -530,6 +533,10 @@ class CoordinatorAgent:
         self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
         self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
         self.task_terminator = wiring.orchestrators["task_terminator"]
+
+        # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
+        # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
+        self._safety_guard = wiring.orchestrators.get("safety_guard")
 
         # 可选组件
         if "alert_rule_manager" in wiring.orchestrators:
@@ -2261,7 +2268,9 @@ class CoordinatorAgent:
         """
         status = self._workflow_state_monitor.get_system_status()
         # 添加决策统计（CoordinatorAgent 特有功能）
-        status["decision_statistics"] = self.get_statistics()
+        # 注意：get_statistics() 是 DEPRECATED 且会发出 DeprecationWarning。
+        # 系统状态属于高频调用路径，建议直接读取 Facade 统计信息以避免 warning 噪声。
+        status["decision_statistics"] = self._rule_engine_facade.get_decision_statistics()
         return status
 
     # ==================== 阶段5：熔断器与上下文桥接 ====================
@@ -3361,7 +3370,8 @@ class CoordinatorAgent:
         stats = self._rule_engine_facade.get_decision_statistics()
         total = stats.get("total", 0)
         rejected = stats.get("rejected", 0)
-        rejection_rate = rejected / total if total > 0 else 0.0
+        # 优先使用 Facade 计算出的 rejection_rate（避免重复逻辑，且与 Facade 语义保持一致）
+        rejection_rate = stats.get("rejection_rate", (rejected / total if total > 0 else 0.0))
 
         # 评估告警规则
         metrics = {
