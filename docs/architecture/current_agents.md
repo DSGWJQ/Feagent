@@ -7871,10 +7871,10 @@ else:
 ### 15.6 执行监控
 
 ```python
-from src.domain.services.sandbox_executor import ExecutionMonitor
+from src.domain.services.sandbox_executor import SandboxExecutionMonitor
 
 # 创建监控器
-monitor = ExecutionMonitor()
+monitor = SandboxExecutionMonitor()
 
 # 注册回调
 monitor.on_start(lambda e: print(f"Started: {e}"))

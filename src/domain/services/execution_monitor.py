@@ -1,5 +1,17 @@
 """执行监控器 (Execution Monitor) - Phase 7.3
 
+.. deprecated:: Phase 7.3
+    此模块已实现但从未被生产代码集成使用。
+
+    当前工作流执行监控由以下组件提供：
+    - `container_execution_monitor.py` - 容器执行监控 (Active)
+    - `sandbox_executor.py:SandboxExecutionMonitor` - 沙箱执行回调
+
+    本模块的 ExecutionMetrics 和 ErrorHandlingPolicy 可作为未来
+    统一执行监控的参考设计，但当前不建议直接使用。
+
+Status: NOT_IN_USE (2025-12-13)
+
 业务定义：
 - 维护工作流执行上下文
 - 跟踪节点执行状态

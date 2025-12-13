@@ -449,10 +449,13 @@ class SecurityChecker:
 # ============================================================
 
 
-class ExecutionMonitor:
-    """执行监控器
+class SandboxExecutionMonitor:
+    """沙箱执行监控器
 
-    用于 Coordinator 监控代码执行过程。
+    用于 Coordinator 监控沙箱代码执行过程。
+
+    注意：此类名从 ExecutionMonitor 重命名为 SandboxExecutionMonitor，
+    以避免与 execution_monitor.py 中的同名类冲突。
     """
 
     def __init__(self):
@@ -657,7 +660,7 @@ class SandboxExecutor:
         code: str,
         config: SandboxConfig | None = None,
         input_data: dict[str, Any] | None = None,
-        monitor: ExecutionMonitor | None = None,
+        monitor: SandboxExecutionMonitor | None = None,
     ) -> SandboxResult:
         """执行代码
 
@@ -863,6 +866,10 @@ __all__ = [
     "SandboxConfig",
     "SandboxResult",
     "SecurityChecker",
-    "ExecutionMonitor",
+    "SandboxExecutionMonitor",
     "SandboxExecutor",
 ]
+
+
+# 向后兼容别名 (将在未来版本移除)
+ExecutionMonitor = SandboxExecutionMonitor

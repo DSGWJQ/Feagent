@@ -1,5 +1,17 @@
 """监控系统（Monitoring System）
 
+.. deprecated:: Phase 4.2
+    此模块已创建但从未被生产代码集成使用。
+    建议使用以下替代方案：
+    - 动态节点监控: `dynamic_node_monitoring.py`
+    - 容器执行监控: `container_execution_monitor.py`
+    - 监督系统: `supervision/` 子包
+
+    此文件保留供未来参考，但不建议在新代码中使用。
+    如需通用监控基础设施，请先评估是否可复用现有模块。
+
+Status: NOT_IN_USE (2025-12-13)
+
 Phase 4.2: 监控
 
 组件：
