@@ -52,10 +52,8 @@ from src.domain.services.reflection_context_manager import ReflectionContextMana
 # P1-1 Step 3: Import RuleEngineFacade for type hints
 from src.domain.services.rule_engine_facade import RuleEngineFacade
 
-# Phase 35.2: Rule, PayloadRuleBuilder, DagRuleBuilder moved to SafetyGuard package
+# Phase 35.2: Rule, ValidationResult from SafetyGuard package
 from src.domain.services.safety_guard import (
-    DagRuleBuilder,
-    PayloadRuleBuilder,
     Rule,
     ValidationResult,
 )
@@ -587,10 +585,6 @@ class CoordinatorAgent:
             knowledge_retriever=self.knowledge_retriever,
             workflow_context_provider=self.workflow_states,
         )
-
-        # Phase 35.2: 初始化规则构建器
-        self._payload_rule_builder = PayloadRuleBuilder()
-        self._dag_rule_builder = DagRuleBuilder()
 
         # Phase 35.3: 初始化 MessageLogListener
         self._message_log_listener = MessageLogListener(
