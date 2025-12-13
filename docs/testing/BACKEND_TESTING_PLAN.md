@@ -1,0 +1,967 @@
+# Feagent 后端完整测试规划
+
+> **文档版本**: 1.1.0
+> **创建日期**: 2025-12-14
+> **项目阶段**: 多Agent协作系统 (Phase 8+)
+> **目标**: 建立全面、可执行的后端测试策略
+> **数据来源**: `htmlcov/status.json` + `.pytest_cache/v/cache/lastfailed`
+> **数据时间**: 2025-12-14 (请运行 `pytest --cov=src` 刷新)
+
+---
+
+## 目录
+
+1. [执行摘要](#1-执行摘要)
+2. [范围与非目标](#2-范围与非目标)
+3. [当前测试状态分析](#3-当前测试状态分析)
+4. [测试缺口分析](#4-测试缺口分析)
+5. [失败测试根因分析](#5-失败测试根因分析)
+6. [测试优先级矩阵](#6-测试优先级矩阵)
+7. [分层测试策略](#7-分层测试策略)
+8. [具体测试计划](#8-具体测试计划)
+9. [测试基础设施改进](#9-测试基础设施改进)
+10. [执行计划与里程碑](#10-执行计划与里程碑)
+11. [质量门禁标准](#11-质量门禁标准)
+
+---
+
+## 1. 执行摘要
+
+### 1.1 关键指标
+
+| 指标 | 当前值 | 目标值 | 差距 |
+|------|--------|--------|------|
+| **总体覆盖率** | 14.9% | 50% | -35.1% |
+| **Domain层覆盖率** | 11.1% | 60% | -48.9% |
+| **Application层覆盖率** | 27.4% | 70% | -42.6% |
+| **Infrastructure层覆盖率** | 31.3% | 50% | -18.7% |
+| **Interface层覆盖率** | 40.3% | 50% | -9.7% |
+| **测试文件总数** | 362 | - | - |
+| **失败测试数** | 29-239* | 0 | - |
+
+> *注: 失败数根据运行环境不同有所变化。运行 `pytest --lf` 查看当前失败列表。
+
+### 1.2 核心问题
+
+1. **Domain/services 覆盖率仅 4.9%** - 21,248行代码中20,212行未覆盖
+2. **78个关键模块完全无测试** - 约23,132行代码
+3. **测试隔离问题** - 部分测试依赖外部服务/真实数据库
+4. **TDD Red阶段测试未门禁** - 导致稳定性红灯
+
+### 1.3 建议行动优先级
+
+```
+P0 (立即): 修复测试基础设施，让测试可跑且可信
+P1 (本周): 补齐Application/use_cases核心入口测试
+P2 (2周):  按业务主链路补齐Domain核心测试
+P3 (本月): 补齐Domain/agents关键状态机
+```
+
+---
+
+## 2. 范围与非目标
+
+### 2.1 测试范围 (In Scope)
+
+| 类型 | 描述 | 进入CI |
+|------|------|--------|
+| 单元测试 | Domain/Application层纯逻辑测试 | ✅ 是 |
+| 集成测试 | 多层交互、API端点测试 (mock外部) | ✅ 是 |
+| 契约测试 | 端口/协议一致性验证 | ✅ 是 |
+
+### 2.2 非目标 (Out of Scope)
+
+| 类型 | 描述 | 进入CI |
+|------|------|--------|
+| 手动测试 | `tests/manual/` 下的脚本 | ❌ 排除 |
+| 真实LLM测试 | 需要OPENAI_API_KEY的测试 | ❌ 排除或mock |
+| E2E冒烟测试 | 需要完整环境的端到端测试 | ❌ 单独流水线 |
+| 性能测试 | 负载/压力测试 | ❌ 单独流水线 |
+
+### 2.3 数据刷新命令
+
+```bash
+# 重新生成覆盖率数据
+pytest --cov=src --cov-report=json --cov-report=html
+
+# 查看覆盖率摘要
+python -c "import json; d=json.load(open('htmlcov/status.json')); print(f'Total: {d[\"totals\"][\"percent_covered\"]:.1f}%')"
+
+# 查看失败测试
+pytest --lf --collect-only
+```
+
+---
+
+## 3. 当前测试状态分析
+
+### 3.1 测试目录结构
+
+```
+tests/                              # 362 files total
+├── conftest.py                     # 全局fixtures (2个)
+├── unit/                           # 263 files (72.8%) - 单元测试
+│   ├── domain/
+│   │   ├── agents/                 # 66 files - 三Agent系统
+│   │   ├── services/               # 126 files - 核心领域服务
+│   │   ├── entities/               # 12 files - 实体测试
+│   │   ├── ports/                  # 3 files - 端口接口
+│   │   ├── knowledge_base/         # 2 files - 知识库
+│   │   └── value_objects/          # 2 files - 值对象
+│   ├── application/                # 14 files - 用例测试
+│   ├── infrastructure/             # 21 files - 基础设施
+│   ├── interfaces/                 # 5 files - API接口
+│   └── lc/                         # 12 files - LangChain集成
+├── integration/                    # 81 files (22.4%) - 集成测试
+│   ├── api/                        # 21 files - API集成
+│   │   ├── workflow_chat/          # 13 files - 聊天API
+│   │   ├── scheduler/              # 3 files - 调度器
+│   │   └── workflows/              # 5 files - 工作流
+│   └── [root]/                     # 40 files - 系统集成
+├── manual/                         # 16 files (4.4%) - 手动测试
+├── performance/                    # 1 file - 性能测试
+└── regression/                     # 1 file - 回归测试
+```
+
+### 3.2 按层覆盖率详情
+
+> **注意**: 以下数据来自 `htmlcov/status.json`，可能与最新运行结果有差异。
+> 请运行 `pytest --cov=src` 刷新后对照。
+
+#### Domain Layer (231 files, 28,630 statements)
+
+| 子模块 | 覆盖率 | 文件数 | 0%覆盖文件数 | 状态 |
+|--------|--------|--------|-------------|------|
+| agents | 23.7% | 31 | 18 | ⚠️ 需改进 |
+| services | 4.9% | 149 | 137 | 🔴 严重 |
+| entities | 46.6% | 14 | 1 | ✅ 尚可 |
+| ports | 75% | 12 | 3 | ✅ 良好 |
+| value_objects | 15.4% | 13 | 11 | ⚠️ 需改进 |
+| knowledge_base | - | 12 | 8 | 🔴 严重 |
+
+#### Application Layer (20 files, 870 statements)
+
+| 子模块 | 覆盖率 | 0%覆盖 | 状态 |
+|--------|--------|--------|------|
+| use_cases | 46.2% | 7个 | ⚠️ 需改进 |
+| services | 75% | 1个 | ✅ 良好 |
+
+#### Infrastructure Layer (43 files, 2,367 statements)
+
+| 子模块 | 覆盖率 | 状态 |
+|--------|--------|------|
+| auth | 100% | ✅ 完成 |
+| memory | 100% | ✅ 完成 |
+| websocket | 100% | ✅ 完成 |
+| database | 66.7% | ⚠️ 需改进 |
+| executors | 54.5% | ⚠️ 需改进 |
+| knowledge_base | 0% | 🔴 严重 |
+| llm | 0% | 🔴 严重 |
+
+---
+
+## 3. 测试缺口分析
+
+### 3.1 完全无测试的关键模块 (0% 覆盖)
+
+#### Domain/Agents (18个模块, ~6,901 LOC)
+
+| 模块 | 行数 | 风险等级 | 职责 |
+|------|------|----------|------|
+| `error_handling.py` | 904 | 🔴 CRITICAL | Agent错误恢复核心 |
+| `conversation_agent_react_core.py` | 645 | 🔴 CRITICAL | ReAct推理循环 |
+| `conversation_agent_state.py` | 566 | 🔴 CRITICAL | 状态管理 |
+| `agent_channel.py` | 517 | 🟠 HIGH | WebSocket通道 |
+| `container_executor.py` | 478 | 🟠 HIGH | 容器执行 |
+| `conversation_agent_recovery.py` | 440 | 🟠 HIGH | 恢复逻辑 |
+| `react_prompts.py` | 420 | 🟠 HIGH | 提示词模板 |
+| `conversation_agent_config.py` | 404 | 🟠 HIGH | Agent配置 |
+| `subtask_executor.py` | 395 | 🟠 HIGH | 子任务执行 |
+| `hierarchical_node_factory.py` | 390 | 🟠 HIGH | 节点层级工厂 |
+| `node_definition.py` | 671 | 🟠 HIGH | 节点定义核心 |
+| `conversation_engine.py` | 790 | 🟠 HIGH | 对话引擎 |
+| `workflow_plan.py` | 373 | 🟡 MEDIUM | 工作流规划 |
+| 其他5个 | ~500 | 🟡 MEDIUM | 辅助模块 |
+
+#### Domain/Services (137个模块, ~20,212 LOC)
+
+| 模块 | 行数 | 风险等级 | 职责 |
+|------|------|----------|------|
+| `self_describing_node.py` | 855 | 🔴 CRITICAL | 节点自描述验证 |
+| `node_yaml_validator.py` | 753 | 🔴 CRITICAL | YAML验证 |
+| `dynamic_node_monitoring.py` | 724 | 🔴 CRITICAL | 动态监控系统 |
+| `configurable_rule_engine.py` | 685 | 🔴 CRITICAL | 规则引擎核心 |
+| `self_describing_node_validator.py` | 653 | 🔴 CRITICAL | 节点验证器 |
+| `execution_monitor.py` | 604 | 🟠 HIGH | 执行监控 |
+| `monitoring_knowledge_bridge.py` | 558 | 🟠 HIGH | 知识桥接 |
+| `tool_engine.py` | 500+ | 🟠 HIGH | 工具执行引擎 |
+| `workflow_dependency_graph.py` | 400+ | 🟠 HIGH | 依赖图构建 |
+| `management_modules.py` | 1226 | 🟠 HIGH | 管理模块集合 |
+| `logging_metrics.py` | 1160 | 🟡 MEDIUM | 日志指标 |
+
+#### Application/UseCases (7个模块, ~1,574 LOC)
+
+| 模块 | 行数 | 风险等级 | 职责 |
+|------|------|----------|------|
+| `classify_task.py` | 303 | 🔴 CRITICAL | 任务分类入口 |
+| `execute_run.py` | 297 | 🔴 CRITICAL | 运行执行入口 |
+| `update_workflow_by_chat.py` | 285 | 🔴 CRITICAL | 聊天更新工作流 |
+| `create_agent.py` | 260 | 🟠 HIGH | Agent创建 |
+| `github_auth.py` | 159 | 🟡 MEDIUM | GitHub认证 |
+| `import_workflow.py` | 147 | 🟡 MEDIUM | 工作流导入 |
+| `create_tool.py` | 123 | 🟡 MEDIUM | 工具创建 |
+
+#### Infrastructure (14个模块)
+
+| 模块 | 行数 | 风险等级 | 职责 |
+|------|------|----------|------|
+| `models.py` | 912 | 🔴 CRITICAL | SQLAlchemy ORM模型 |
+| `chroma_retriever_service.py` | 282 | 🔴 CRITICAL | 向量检索服务 |
+| `rag_config_manager.py` | 295 | 🔴 CRITICAL | RAG配置管理 |
+| `workflow_repository.py` | 310 | 🔴 CRITICAL | 工作流持久化 |
+| `sqlite_knowledge_repository.py` | 262 | 🟠 HIGH | 知识库存储 |
+| `llm_executor.py` | 142 | 🟠 HIGH | LLM推理执行 |
+| `http_executor.py` | 71 | 🟠 HIGH | HTTP API执行 |
+
+### 3.2 关键功能路径缺失测试
+
+```
+用户请求 → API路由 → UseCase → Domain Service → Repository
+    ↓           ↓          ↓           ↓             ↓
+  40.3%      27.4%      4.9%       <10%          66.7%
+```
+
+**最薄弱环节**: Domain/Services (4.9%) 是整个链路的瓶颈
+
+---
+
+## 4. 失败测试根因分析
+
+### 4.1 失败分类统计 (基于239个lastfailed)
+
+| 根因类型 | 数量 | 占比 | 示例 |
+|----------|------|------|------|
+| TDD Red阶段未门禁 | 58 | 24.3% | `test_supervision_modules.py` |
+| 表达式求值器契约不一致 | 31 | 13.0% | `test_expression_evaluator.py` |
+| API集成测试依赖未隔离 | 34 | 14.2% | `test_scheduler_api_integration.py` |
+| Domain单测与实现漂移 | 37 | 15.5% | 各domain单测 |
+| 回归套件环境依赖 | 30 | 12.6% | `tests/integration/regression/` |
+| Manual脚本被收集 | 6 | 2.5% | `tests/manual/test_api.py` |
+| SQLite锁/并行隔离 | 5 | 2.1% | `test_database_executor.py` |
+| E2E时序flaky | 1 | 0.4% | WebSocket相关 |
+| 其他 | 37 | 15.5% | - |
+
+### 4.2 测试代码质量问题
+
+1. **脚本被pytest收集**
+   ```python
+   # tests/manual/test_api.py - 模块import时就执行HTTP请求
+   response = requests.get("http://localhost:8000/...")  # Line 9
+   ```
+
+2. **外部依赖未隔离**
+   ```python
+   # tests/unit/lc/test_task_executor.py
+   # 依赖 OPENAI_API_KEY 和 httpbin.org
+   ```
+
+3. **FastAPI依赖未override**
+   ```python
+   # tests/integration/api/scheduler/test_scheduler_api_integration.py
+   # 创建了测试DB但没接到app上
+   engine = create_engine("sqlite:///:memory:")  # Line 27
+   client = TestClient(app)  # Line 50 - 仍用默认DB
+   ```
+
+4. **时间驱动断言过多**
+   - 广泛使用 `sleep()` 导致慢/抖/偶发失败
+
+---
+
+## 5. 测试优先级矩阵
+
+### 5.1 优先级定义
+
+| 级别 | 定义 | 时间窗口 |
+|------|------|----------|
+| P0 | 阻塞CI/测试可信度 | 立即 (1-2天) |
+| P1 | 业务核心入口无测试 | 本周 |
+| P2 | 核心闭环覆盖不足 | 2周内 |
+| P3 | 辅助模块覆盖不足 | 本月 |
+
+### 5.2 P0: 测试基础设施修复
+
+| 任务 | 影响 | 工作量 |
+|------|------|--------|
+| 排除`tests/manual/`从pytest收集 | 消除6个稳定失败 | 0.5h |
+| 为外部网络调用添加mock | 消除单测外部依赖 | 2h |
+| 为FastAPI集成测试添加dependency overrides | 修复34个API测试 | 4h |
+| 将TDD Red阶段测试标记为xfail/skip | 消除58个预期失败 | 1h |
+| 修复SQLite并行隔离问题 | 消除5个flaky测试 | 2h |
+
+### 5.3 P1: Application/UseCases 测试补齐
+
+| 模块 | 当前覆盖 | 目标覆盖 | 预计用例数 |
+|------|----------|----------|-----------|
+| `execute_run.py` | 0% | 80% | 15-20 |
+| `classify_task.py` | 0% | 80% | 10-15 |
+| `update_workflow_by_chat.py` | 0% | 70% | 12-15 |
+| `create_agent.py` | 0% | 70% | 8-10 |
+| `create_tool.py` | 0% | 70% | 6-8 |
+| `import_workflow.py` | 0% | 70% | 5-7 |
+| `github_auth.py` | 0% | 60% | 5-7 |
+
+### 5.4 P2: Domain/Services 核心闭环
+
+| 子系统 | 关键模块 | 预计用例数 |
+|--------|----------|-----------|
+| 规则引擎 | `configurable_rule_engine.py` | 20-25 |
+| 节点验证 | `self_describing_node_validator.py` | 15-20 |
+| 执行监控 | `execution_monitor.py`, `dynamic_node_monitoring.py` | 25-30 |
+| 工具引擎 | `tool_engine.py` | 15-20 |
+| 依赖图 | `workflow_dependency_graph.py` | 10-15 |
+
+### 5.5 P3: Domain/Agents 状态机
+
+| 模块 | 预计用例数 | 重点 |
+|------|-----------|------|
+| `error_handling.py` | 30-40 | 错误分类、恢复策略 |
+| `conversation_agent_react_core.py` | 25-30 | ReAct循环、终止条件 |
+| `conversation_agent_state.py` | 20-25 | 状态转换、并发安全 |
+| `node_definition.py` | 20-25 | 节点创建、验证、序列化 |
+
+---
+
+## 6. 分层测试策略
+
+### 6.1 单元测试策略
+
+```
+目标: Domain层 ≥ 80%, Application层 ≥ 70%
+```
+
+#### Domain Layer 单元测试原则
+
+```python
+# 1. 纯函数测试 - 无副作用
+def test_node_definition_validates_required_fields():
+    node = NodeDefinition(name="", node_type=NodeType.PYTHON)
+    errors = node.validate()
+    assert "name不能为空" in errors
+
+# 2. 状态机测试 - 覆盖所有转换
+@pytest.mark.parametrize("from_state,event,to_state", [
+    (AgentState.IDLE, "start", AgentState.PROCESSING),
+    (AgentState.PROCESSING, "complete", AgentState.IDLE),
+    (AgentState.PROCESSING, "error", AgentState.ERROR),
+])
+def test_agent_state_transitions(from_state, event, to_state):
+    agent = ConversationAgent()
+    agent._state = from_state
+    agent.handle_event(event)
+    assert agent._state == to_state
+
+# 3. 边界条件测试
+def test_react_loop_max_iterations():
+    agent = ConversationAgent(max_iterations=3)
+    result = await agent.run_async("无限循环任务")
+    assert agent.iteration_count <= 3
+```
+
+#### Application Layer 单元测试原则
+
+```python
+# 1. UseCase测试 - Mock所有端口
+@pytest.fixture
+def mock_repository():
+    repo = Mock(spec=WorkflowRepository)
+    repo.find_by_id.return_value = sample_workflow()
+    return repo
+
+def test_execute_workflow_success(mock_repository):
+    use_case = ExecuteWorkflowUseCase(repository=mock_repository)
+    result = await use_case.execute(workflow_id="wf_123")
+    assert result.success is True
+    mock_repository.find_by_id.assert_called_once_with("wf_123")
+
+# 2. 输入验证测试
+def test_create_agent_validates_input():
+    use_case = CreateAgentUseCase(repository=mock_repo)
+    with pytest.raises(ValidationError):
+        use_case.execute(CreateAgentInput(name=""))
+```
+
+### 6.2 集成测试策略
+
+```
+目标: 覆盖所有API端点, 验证多层交互
+```
+
+#### API集成测试模板
+
+```python
+@pytest.fixture
+def test_client():
+    """正确配置依赖覆盖的TestClient"""
+    # 创建测试数据库
+    engine = create_engine("sqlite:///:memory:")
+    TestingSessionLocal = sessionmaker(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    # 覆盖依赖
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_llm_service] = lambda: MockLLMService()
+
+    with TestClient(app) as client:
+        yield client
+
+    app.dependency_overrides.clear()
+
+def test_create_workflow_api(test_client):
+    response = test_client.post("/api/workflows", json={
+        "name": "Test Workflow",
+        "nodes": [{"type": "python", "code": "print('hello')"}]
+    })
+    assert response.status_code == 201
+    assert response.json()["name"] == "Test Workflow"
+```
+
+#### 多Agent协作集成测试
+
+```python
+@pytest.mark.integration
+async def test_coordinator_conversation_workflow_collaboration():
+    """测试三Agent协作完整流程"""
+    # Setup
+    event_bus = EventBus()
+    coordinator = CoordinatorAgent(event_bus=event_bus)
+    conversation = ConversationAgent(coordinator=coordinator, event_bus=event_bus)
+    workflow = WorkflowAgent(event_bus=event_bus)
+
+    # Execute
+    result = await coordinator.process_request(
+        user_input="创建一个数据处理工作流",
+        session_id="test_session"
+    )
+
+    # Verify
+    assert result.success
+    assert len(event_bus.published_events) > 0
+    assert any(e.type == "workflow_created" for e in event_bus.published_events)
+```
+
+### 6.3 E2E测试策略
+
+```
+目标: 覆盖关键业务场景, 验证系统完整性
+```
+
+```python
+@pytest.mark.e2e
+@pytest.mark.slow
+async def test_complete_workflow_execution_scenario():
+    """完整工作流执行场景"""
+    async with AsyncClient(app, base_url="http://test") as client:
+        # 1. 创建工作流
+        create_response = await client.post("/api/workflows", json=workflow_data)
+        workflow_id = create_response.json()["id"]
+
+        # 2. 执行工作流
+        exec_response = await client.post(f"/api/workflows/{workflow_id}/execute")
+        execution_id = exec_response.json()["execution_id"]
+
+        # 3. 等待完成 (with timeout)
+        for _ in range(30):
+            status = await client.get(f"/api/executions/{execution_id}")
+            if status.json()["status"] in ["completed", "failed"]:
+                break
+            await asyncio.sleep(1)
+
+        # 4. 验证结果
+        assert status.json()["status"] == "completed"
+        assert status.json()["output"] is not None
+```
+
+---
+
+## 7. 具体测试计划
+
+### 7.1 Phase 1: 基础设施修复 (P0) - 2天
+
+#### Day 1: 测试隔离修复
+
+| 任务 | 文件 | 预计时间 |
+|------|------|----------|
+| 配置pytest忽略manual目录 | `pyproject.toml` | 15min |
+| 添加网络mock装饰器 | `tests/conftest.py` | 1h |
+| 修复scheduler API测试依赖 | `tests/integration/api/scheduler/` | 2h |
+| 标记TDD Red测试为xfail | `tests/unit/domain/services/test_supervision_modules.py` | 30min |
+
+```toml
+# pyproject.toml 修改
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+ignore = ["tests/manual"]  # 新增
+```
+
+```python
+# tests/conftest.py 新增
+import pytest
+from unittest.mock import patch
+
+@pytest.fixture(autouse=True)
+def mock_external_services(request):
+    """自动mock外部服务调用"""
+    if "integration" not in str(request.fspath):
+        with patch("requests.get"), patch("requests.post"):
+            yield
+    else:
+        yield
+```
+
+#### Day 2: 数据库隔离与并行安全
+
+| 任务 | 文件 | 预计时间 |
+|------|------|----------|
+| 创建共享测试数据库fixture | `tests/conftest.py` | 1h |
+| 修复database_executor并行问题 | `tests/unit/infrastructure/executors/test_database_executor.py` | 1h |
+| 添加测试数据清理hooks | `tests/conftest.py` | 1h |
+| 验证CI绿灯 | - | 1h |
+
+### 7.2 Phase 2: Application层测试 (P1) - 1周
+
+#### Week 1: UseCases测试补齐
+
+| 模块 | 测试文件 | 用例数 | 负责人 |
+|------|----------|--------|--------|
+| `execute_run.py` | `test_execute_run.py` | 18 | - |
+| `classify_task.py` | `test_classify_task.py` | 12 | - |
+| `update_workflow_by_chat.py` | `test_update_workflow_by_chat.py` | 15 | - |
+| `create_agent.py` | `test_create_agent.py` | 10 | - |
+| `create_tool.py` | `test_create_tool.py` | 8 | - |
+| `import_workflow.py` | `test_import_workflow.py` | 6 | - |
+| `github_auth.py` | `test_github_auth.py` | 6 | - |
+
+**测试用例模板** (`execute_run.py`):
+
+```python
+# tests/unit/application/use_cases/test_execute_run.py
+
+class TestExecuteRunUseCase:
+    """ExecuteRun用例测试"""
+
+    @pytest.fixture
+    def use_case(self, mock_run_repo, mock_workflow_repo, mock_executor):
+        return ExecuteRunUseCase(
+            run_repository=mock_run_repo,
+            workflow_repository=mock_workflow_repo,
+            executor=mock_executor
+        )
+
+    # Happy Path Tests
+    def test_execute_run_success(self, use_case):
+        """成功执行运行"""
+        result = await use_case.execute(ExecuteRunInput(run_id="run_123"))
+        assert result.success is True
+        assert result.output is not None
+
+    def test_execute_run_updates_status(self, use_case, mock_run_repo):
+        """执行时更新运行状态"""
+        await use_case.execute(ExecuteRunInput(run_id="run_123"))
+        mock_run_repo.update.assert_called()
+        saved_run = mock_run_repo.update.call_args[0][0]
+        assert saved_run.status == RunStatus.COMPLETED
+
+    # Error Path Tests
+    def test_execute_run_not_found(self, use_case, mock_run_repo):
+        """运行不存在时抛出异常"""
+        mock_run_repo.find_by_id.return_value = None
+        with pytest.raises(RunNotFoundError):
+            await use_case.execute(ExecuteRunInput(run_id="not_exist"))
+
+    def test_execute_run_workflow_not_found(self, use_case, mock_workflow_repo):
+        """工作流不存在时抛出异常"""
+        mock_workflow_repo.find_by_id.return_value = None
+        with pytest.raises(WorkflowNotFoundError):
+            await use_case.execute(ExecuteRunInput(run_id="run_123"))
+
+    def test_execute_run_executor_failure(self, use_case, mock_executor):
+        """执行器失败时记录错误"""
+        mock_executor.execute.side_effect = ExecutionError("timeout")
+        result = await use_case.execute(ExecuteRunInput(run_id="run_123"))
+        assert result.success is False
+        assert "timeout" in result.error_message
+
+    # Edge Cases
+    def test_execute_run_already_running(self, use_case, mock_run_repo):
+        """已在运行时拒绝重复执行"""
+        mock_run_repo.find_by_id.return_value = Run(status=RunStatus.RUNNING)
+        with pytest.raises(RunAlreadyRunningError):
+            await use_case.execute(ExecuteRunInput(run_id="run_123"))
+
+    def test_execute_run_concurrent_execution(self, use_case):
+        """并发执行时正确处理锁"""
+        # 模拟并发场景
+        pass
+
+    # Input Validation Tests
+    @pytest.mark.parametrize("invalid_input", [
+        {"run_id": ""},
+        {"run_id": None},
+        {},
+    ])
+    def test_execute_run_invalid_input(self, use_case, invalid_input):
+        """无效输入验证"""
+        with pytest.raises(ValidationError):
+            await use_case.execute(ExecuteRunInput(**invalid_input))
+```
+
+### 7.3 Phase 3: Domain/Services核心测试 (P2) - 2周
+
+#### Week 2-3: 核心服务测试
+
+| 子系统 | 模块 | 用例数 | 优先级 |
+|--------|------|--------|--------|
+| 规则引擎 | `configurable_rule_engine.py` | 25 | P2-1 |
+| 节点验证 | `self_describing_node_validator.py` | 20 | P2-1 |
+| 执行监控 | `execution_monitor.py` | 15 | P2-2 |
+| 动态监控 | `dynamic_node_monitoring.py` | 18 | P2-2 |
+| 工具引擎 | `tool_engine.py` | 15 | P2-3 |
+| 依赖图 | `workflow_dependency_graph.py` | 12 | P2-3 |
+
+### 7.4 Phase 4: Domain/Agents测试 (P3) - 2周
+
+#### Week 4-5: Agent系统测试
+
+| 模块 | 测试重点 | 用例数 |
+|------|----------|--------|
+| `error_handling.py` | 错误分类、恢复策略、用户消息 | 35 |
+| `conversation_agent_react_core.py` | ReAct循环、终止条件、token限制 | 28 |
+| `conversation_agent_state.py` | 状态转换、并发安全、回滚 | 22 |
+| `node_definition.py` | 创建、验证、序列化、层级 | 25 |
+| `agent_channel.py` | WebSocket连接、消息收发、重连 | 18 |
+
+---
+
+## 8. 测试基础设施改进
+
+### 8.1 Fixture库建设
+
+```python
+# tests/fixtures/__init__.py
+"""共享测试fixtures"""
+
+# tests/fixtures/agents.py
+@pytest.fixture
+def mock_llm():
+    """Mock LLM服务"""
+    llm = AsyncMock()
+    llm.think.return_value = {"thought": "分析用户请求..."}
+    llm.decide_action.return_value = {"action": "create_workflow"}
+    return llm
+
+@pytest.fixture
+def conversation_agent(mock_llm, mock_event_bus):
+    """预配置的ConversationAgent"""
+    return ConversationAgent(
+        llm=mock_llm,
+        event_bus=mock_event_bus,
+        max_iterations=5
+    )
+
+# tests/fixtures/workflows.py
+@pytest.fixture
+def sample_workflow():
+    """样本工作流"""
+    return Workflow(
+        id="wf_test_001",
+        name="Test Workflow",
+        nodes=[
+            Node(id="n1", type=NodeType.PYTHON, code="x = 1"),
+            Node(id="n2", type=NodeType.PYTHON, code="y = x + 1"),
+        ],
+        edges=[Edge(source="n1", target="n2")]
+    )
+
+# tests/fixtures/database.py
+@pytest.fixture(scope="session")
+def test_engine():
+    """测试数据库引擎 (session级别复用)"""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    yield engine
+    engine.dispose()
+
+@pytest.fixture
+def db_session(test_engine):
+    """测试数据库会话 (自动回滚)"""
+    connection = test_engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+
+    yield session
+
+    session.close()
+    transaction.rollback()
+    connection.close()
+```
+
+### 8.2 测试工具类
+
+```python
+# tests/utils/builders.py
+"""测试数据构建器"""
+
+class WorkflowBuilder:
+    """工作流构建器 (Builder Pattern)"""
+
+    def __init__(self):
+        self._id = f"wf_{uuid.uuid4().hex[:8]}"
+        self._name = "Test Workflow"
+        self._nodes = []
+        self._edges = []
+
+    def with_id(self, id: str) -> "WorkflowBuilder":
+        self._id = id
+        return self
+
+    def with_name(self, name: str) -> "WorkflowBuilder":
+        self._name = name
+        return self
+
+    def with_python_node(self, code: str, node_id: str = None) -> "WorkflowBuilder":
+        node_id = node_id or f"n_{len(self._nodes) + 1}"
+        self._nodes.append(Node(id=node_id, type=NodeType.PYTHON, code=code))
+        return self
+
+    def with_edge(self, source: str, target: str) -> "WorkflowBuilder":
+        self._edges.append(Edge(source=source, target=target))
+        return self
+
+    def build(self) -> Workflow:
+        return Workflow(
+            id=self._id,
+            name=self._name,
+            nodes=self._nodes,
+            edges=self._edges
+        )
+
+# 使用示例
+workflow = (WorkflowBuilder()
+    .with_name("Data Pipeline")
+    .with_python_node("data = load_csv('input.csv')", "load")
+    .with_python_node("result = transform(data)", "transform")
+    .with_edge("load", "transform")
+    .build())
+```
+
+### 8.3 Mock服务注册
+
+```python
+# tests/mocks/__init__.py
+"""Mock服务集合"""
+
+class MockLLMService:
+    """Mock LLM服务"""
+
+    def __init__(self, responses: dict = None):
+        self.responses = responses or {}
+        self.call_history = []
+
+    async def complete(self, prompt: str) -> str:
+        self.call_history.append(prompt)
+        return self.responses.get(prompt, "Mock response")
+
+    async def think(self, context: dict) -> dict:
+        return {"thought": "Mock thinking..."}
+
+class MockEventBus:
+    """Mock事件总线"""
+
+    def __init__(self):
+        self.published_events = []
+        self.subscribers = {}
+
+    async def publish(self, event):
+        self.published_events.append(event)
+        for handler in self.subscribers.get(type(event), []):
+            await handler(event)
+
+    def subscribe(self, event_type, handler):
+        self.subscribers.setdefault(event_type, []).append(handler)
+```
+
+---
+
+## 9. 执行计划与里程碑
+
+### 9.1 时间线
+
+```
+Week 1 (Day 1-2):   P0 - 测试基础设施修复
+Week 1 (Day 3-5):   P1 - Application层测试 (3个核心UseCase)
+Week 2:             P1 - Application层测试 (剩余4个UseCase)
+Week 3:             P2 - Domain/Services测试 (规则引擎、节点验证)
+Week 4:             P2 - Domain/Services测试 (执行监控、工具引擎)
+Week 5:             P3 - Domain/Agents测试 (error_handling, react_core)
+Week 6:             P3 - Domain/Agents测试 (state, node_definition)
+```
+
+### 9.2 里程碑定义
+
+| 里程碑 | 完成标准 | 目标日期 |
+|--------|----------|----------|
+| M1: CI绿灯 | 所有测试通过,无失败 | Week 1 Day 2 |
+| M2: App层70% | Application层覆盖率≥70% | Week 2 End |
+| M3: 核心服务50% | Domain/services关键模块≥50% | Week 4 End |
+| M4: Agent系统60% | Domain/agents关键模块≥60% | Week 6 End |
+| M5: 总体覆盖50% | 整体覆盖率≥50% | Week 6 End |
+
+### 9.3 资源需求
+
+| 角色 | 人数 | 职责 |
+|------|------|------|
+| 测试负责人 | 1 | 规划、review、质量把控 |
+| 后端开发 | 2 | 编写单元测试、修复bug |
+| QA工程师 | 1 | 集成测试、E2E测试 |
+
+---
+
+## 10. 质量门禁标准
+
+### 10.1 PR合并标准
+
+```yaml
+# .github/workflows/test.yml 建议配置
+quality_gates:
+  unit_tests:
+    required: true
+    coverage_threshold: 70%  # 新代码覆盖率
+
+  integration_tests:
+    required: true
+    all_pass: true
+
+  static_analysis:
+    ruff: pass
+    pyright: pass
+
+  coverage_regression:
+    allowed_decrease: 2%  # 允许小幅回退以支持重构
+    diff_coverage: 60%    # 新增代码覆盖率要求
+```
+
+### 10.2 分层覆盖率要求
+
+| 层 | 最低覆盖率 | 目标覆盖率 |
+|----|-----------|-----------|
+| Domain/entities | 80% | 90% |
+| Domain/services | 60% | 80% |
+| Domain/agents | 60% | 80% |
+| Application | 70% | 85% |
+| Infrastructure | 50% | 70% |
+| Interface | 40% | 60% |
+
+### 10.3 测试命名规范
+
+```python
+# 格式: test_<被测方法>_<场景>_<期望结果>
+def test_create_workflow_with_valid_input_returns_workflow():
+    pass
+
+def test_create_workflow_with_empty_name_raises_validation_error():
+    pass
+
+def test_execute_workflow_when_already_running_raises_conflict_error():
+    pass
+```
+
+### 10.4 测试文档要求
+
+每个测试类必须包含:
+
+```python
+class TestExecuteWorkflowUseCase:
+    """ExecuteWorkflow用例测试
+
+    测试范围:
+    - 成功执行工作流
+    - 工作流不存在处理
+    - 执行超时处理
+    - 并发执行控制
+
+    依赖:
+    - WorkflowRepository (mock)
+    - ExecutionEngine (mock)
+    - EventBus (mock)
+
+    相关模块:
+    - src/application/use_cases/execute_workflow.py
+    """
+    pass
+```
+
+---
+
+## 附录
+
+### A. 测试命令速查
+
+```bash
+# 运行所有测试
+pytest
+
+# 运行单元测试
+pytest tests/unit
+
+# 运行集成测试 (需先配置依赖mock)
+pytest tests/integration
+
+# 排除手动测试目录
+pytest --ignore=tests/manual
+
+# 运行特定模块测试
+pytest tests/unit/domain/agents/test_conversation_agent.py -v
+
+# 生成覆盖率报告
+pytest --cov=src --cov-report=html
+
+# 运行标记的测试 (使用已定义的marker)
+pytest -m integration  # 仅集成测试
+pytest -m asyncio      # 仅异步测试
+
+# 失败后立即停止
+pytest -x
+
+# 只运行上次失败的测试
+pytest --lf
+
+# 运行测试并显示最慢的10个
+pytest --durations=10
+
+# 详细输出失败信息
+pytest -v --tb=short
+```
+
+> **注意**:
+> - 项目启用了 `--strict-markers`，只能使用 `pyproject.toml` 中定义的marker
+> - 如需并行测试，先安装 `pytest-xdist`: `pip install pytest-xdist`，然后使用 `pytest -n auto`
+
+### B. 相关文档
+
+- [架构审计](../architecture/current_agents.md)
+- [多Agent协作指南](../architecture/multi_agent_collaboration_guide.md)
+- [运维手册](../operations/operations_guide.md)
+- [开发规范](../开发规范/)
+
+---
+
+**文档维护者**: Claude Code + Development Team
+**最后更新**: 2025-12-14
