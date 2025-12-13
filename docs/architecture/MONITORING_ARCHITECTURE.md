@@ -2,6 +2,7 @@
 
 **创建日期**: 2025-12-13
 **状态**: Active
+**最后更新**: 2025-12-13 (P1-8 清理更新)
 **分析报告**: `tmp/p1_3_supervision_analysis.md`
 
 ---
@@ -12,23 +13,28 @@ Agent_data项目包含**6个专用监控文件**，每个服务于不同的监�
 
 **核心原则**: 不同抽象层级的监控需求，使用不同的专用监控器，而非单一通用监控系统。
 
+**P1-8 清理结论**: 经生产代码分析，2个文件标记为deprecated（从未被集成使用），4个文件保持active。
+
 ---
 
 ## 监控文件总览
 
-| 文件 | 场景 | 核心组件 | 生产调用 | 测试覆盖 |
-|------|------|----------|----------|----------|
-| `dynamic_node_monitoring.py` | 动态节点生命周期 | DynamicNodeMetricsCollector<br>WorkflowRollbackManager<br>SystemRecoveryManager<br>HealthChecker<br>AlertManager | ✅ CoordinatorBootstrap | 14个测试 |
-| `execution_monitor.py` | 工作流执行编排 | ExecutionMonitor<br>ExecutionMetrics<br>ErrorHandlingPolicy | ⚠️ 仅集成测试 | 4个测试 |
-| `container_execution_monitor.py` | 容器生命周期 | ContainerExecutionMonitor | ✅ CoordinatorBootstrap | 0个单元测试 |
-| `monitoring.py` | 通用监控基础设施 | MetricsCollector<br>Tracer<br>HealthChecker<br>AlertManager | ⚠️ 未发现调用 | 0个测试 |
-| `monitoring_knowledge_bridge.py` | 监控↔知识库桥接 | MonitoringKnowledgeBridge<br>AlertKnowledgeHandler | ✅ 内部依赖 | 7个测试 |
-| `prompt_stability_monitor.py` | 提示词稳定性 | PromptUsageLog<br>DriftDetector<br>OutputFormatValidator<br>StabilityMonitor | ⚠️ 仅E2E测试 | 1个测试 |
+| 文件 | 场景 | 核心组件 | 生产调用 | 测试覆盖 | 状态 |
+|------|------|----------|----------|----------|------|
+| `dynamic_node_monitoring.py` | 动态节点生命周期 | DynamicNodeMetricsCollector<br>WorkflowRollbackManager<br>SystemRecoveryManager<br>HealthChecker<br>AlertManager | ✅ CoordinatorBootstrap | 14个测试 | ✅ Active |
+| `execution_monitor.py` | 工作流执行编排 | ExecutionMonitor<br>ExecutionMetrics<br>ErrorHandlingPolicy | ❌ 未被集成 | 4个测试 | ⚠️ **DEPRECATED** |
+| `container_execution_monitor.py` | 容器生命周期 | ContainerExecutionMonitor | ✅ CoordinatorBootstrap | 0个单元测试 | ✅ Active |
+| `monitoring.py` | 通用监控基础设施 | MetricsCollector<br>Tracer<br>HealthChecker<br>AlertManager | ❌ 未被集成 | 0个测试 | ⚠️ **DEPRECATED** |
+| `monitoring_knowledge_bridge.py` | 监控↔知识库桥接 | MonitoringKnowledgeBridge<br>AlertKnowledgeHandler | ✅ 内部依赖 | 7个测试 | ✅ Active |
+| `prompt_stability_monitor.py` | 提示词稳定性 | PromptUsageLog<br>DriftDetector<br>OutputFormatValidator<br>StabilityMonitor | ⚠️ 仅E2E测试 | 1个测试 | ✅ Active |
 
-**关键发现**:
+**关键发现 (P1-8更新)**:
 - ✅ 4个文件active使用（dynamic_node, container, knowledge_bridge, prompt_stability）
-- ⚠️ 2个文件调用不明（execution, monitoring.py）
+- ⚠️ **2个文件已标记deprecated**（execution_monitor, monitoring.py）- 从未被生产代码集成
 - ❌ **无冗余** - 每个文件服务于不同监控维度
+
+**沙箱执行监控**:
+- `sandbox_executor.py:SandboxExecutionMonitor` - 沙箱执行回调（已从 ExecutionMonitor 重命名避免冲突）
 
 ---
 
@@ -207,6 +213,13 @@ active_alerts = alert_mgr.get_active_alerts()
 
 ### 2. execution_monitor.py
 
+> ⚠️ **DEPRECATED (2025-12-13)**: 此模块已实现但从未被生产代码集成使用。
+> 当前工作流执行监控由以下组件提供：
+> - `container_execution_monitor.py` - 容器执行监控 (Active)
+> - `sandbox_executor.py:SandboxExecutionMonitor` - 沙箱执行回调
+>
+> 本模块的 ExecutionMetrics 和 ErrorHandlingPolicy 可作为未来统一执行监控的参考设计。
+
 **场景**: 工作流执行的观察者模式监控
 
 **Phase**: 7.3 (执行监控器)
@@ -378,6 +391,14 @@ execution = {
 ---
 
 ### 4. monitoring.py
+
+> ⚠️ **DEPRECATED (2025-12-13)**: 此模块已创建但从未被生产代码集成使用。
+> 建议使用以下替代方案：
+> - 动态节点监控: `dynamic_node_monitoring.py`
+> - 容器执行监控: `container_execution_monitor.py`
+> - 监督系统: `supervision/` 子包
+>
+> 此文件保留供未来参考，但不建议在新代码中使用。
 
 **场景**: 通用监控基础设施（类似logging库）
 
@@ -637,15 +658,15 @@ print(f"漂移次数: {report.drift_count}")
 |------|--------------|-----------|-----------|---------------|------------------|------------------|
 | **监控对象** | 动态节点 | 工作流编排 | 容器 | 通用 | 告警归档 | 提示词 |
 | **抽象层级** | 业务层 | 业务层 | 基础设施层 | 基础设施层 | 集成层 | 业务层 |
-| **生产调用** | ✅ | ⚠️ | ✅ | ❌ | ✅ | ⚠️ |
+| **生产调用** | ✅ | ⚠️ **DEPRECATED** | ✅ | ⚠️ **DEPRECATED** | ✅ | ⚠️ |
 | **测试覆盖** | 14 | 4 | 0 | 0 | 7 | 1 |
 | **主要功能** | 指标/回滚/恢复/健康检查/告警 | 执行追踪/错误策略 | 事件订阅/日志聚合 | 指标/追踪/健康检查 | 告警→知识库 | 版本管理/漂移检测/格式验证 |
-| **是否冗余** | ❌ | ❌ | ❌ | ⚠️ 存疑 | ❌ | ❌ |
+| **状态** | ✅ Active | ⚠️ DEPRECATED | ✅ Active | ⚠️ DEPRECATED | ✅ Active | ✅ Active |
 
-**冗余分析**:
-- dynamic_node ↔ monitoring.py: 告警管理重叠 **~20%**
-- 其他文件: **<5%** (几乎无重叠)
-- **判定**: 非冗余（专用监控按关注点分离）
+**P1-8 清理结果**:
+- `monitoring.py` - 标记为deprecated，Phase 4.2创建但从未集成
+- `execution_monitor.py` - 标记为deprecated，Phase 7.3创建但从未集成
+- `sandbox_executor.py:ExecutionMonitor` - 重命名为 `SandboxExecutionMonitor` 避免冲突
 
 ---
 
@@ -783,12 +804,20 @@ SupervisionFacade必要的原因：
 
 ### Q5: monitoring.py应该删除吗？
 
-**A**: **不应该**。虽然当前未发现生产调用，但它可能是：
-1. **基础设施层** - 为其他监控文件提供底层能力（未来优化方向）
-2. **待启用功能** - Phase 4.2引入但尚未集成
-3. **预留扩展** - 为未来Prometheus/Jaeger集成预留接口
+**A**: **不应该删除，但已标记为deprecated**。P1-8分析确认：
+1. **从未被生产代码集成** - Grep验证无调用
+2. **保留供参考** - Phase 4.2设计可作为未来统一监控的参考
+3. **无紧迫删除需求** - 不占用运行时资源
 
-**建议**: 保留文件，添加文档说明其定位和未来启用计划。
+**P1-8决策**: 添加deprecation notice，保留代码供未来参考。如需通用监控功能，优先使用已active的专用监控模块。
+
+### Q6: execution_monitor.py 和 sandbox_executor.py 的 ExecutionMonitor 有什么关系？
+
+**A**: **完全不同的组件**，P1-8已重命名避免混淆：
+- `execution_monitor.py:ExecutionMonitor` - 工作流执行编排监控（**DEPRECATED**，未被使用）
+- `sandbox_executor.py:SandboxExecutionMonitor` - 沙箱代码执行回调（**Active**，被workflow_agent使用）
+
+**P1-8行动**: `sandbox_executor.py`中的类已重命名为`SandboxExecutionMonitor`，提供向后兼容别名。
 
 ---
 
