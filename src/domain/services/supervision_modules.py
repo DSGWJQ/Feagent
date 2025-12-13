@@ -14,7 +14,7 @@
 本文件保留向后兼容性，所有导入均转发至新包。
 
 旧导入方式仍然有效：
-    from src.domain.services.supervision_modules import SupervisionCoordinator  # 仍可用
+    from src.domain.services.supervision import SupervisionCoordinator  # 仍可用
 
 建议迁移：
     - 更新导入语句使用新包路径
@@ -34,9 +34,21 @@
 
 from __future__ import annotations
 
+# ==================== DEPRECATION WARNING ====================
+import warnings
+
+warnings.warn(
+    "supervision_modules.py is deprecated (Phase 34.14). "
+    "Use 'from src.domain.services.supervision import XXX' instead. "
+    "This module will be removed in version 2.0 (2026-06-01). "
+    "See docs/architecture/SUPERVISION_MIGRATION_GUIDE.md for migration instructions.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 # ==================== 向后兼容导入 ====================
 # 从新包导入所有组件并重新导出
-from src.domain.services.supervision import (
+from src.domain.services.supervision import (  # noqa: E402
     ComprehensiveCheckResult,
     ContextInjectionEvent,
     ConversationSupervisionModule,

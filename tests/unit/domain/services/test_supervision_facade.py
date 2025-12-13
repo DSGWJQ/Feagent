@@ -334,7 +334,7 @@ def test_supervise_input_passes(facade, mock_supervision_coordinator, mock_super
     user_input = "正常的用户输入"
 
     # Mock check_all 返回 ComprehensiveCheckResult
-    from src.domain.services.supervision_modules import ComprehensiveCheckResult
+    from src.domain.services.supervision import ComprehensiveCheckResult
 
     mock_result = ComprehensiveCheckResult(
         passed=True,
@@ -360,7 +360,7 @@ def test_supervise_input_fails_with_issues(
     user_input = "违规内容"
 
     # Mock check_all 返回 ComprehensiveCheckResult with issues
-    from src.domain.services.supervision_modules import ComprehensiveCheckResult, DetectionResult
+    from src.domain.services.supervision import ComprehensiveCheckResult, DetectionResult
 
     issue = DetectionResult(
         detected=True,

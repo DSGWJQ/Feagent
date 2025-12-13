@@ -46,7 +46,7 @@ from src.domain.services.knowledge_retrieval_orchestrator import (
 from src.domain.services.power_compressor_facade import PowerCompressorFacade
 from src.domain.services.prompt_version_facade import PromptVersionFacade
 from src.domain.services.subagent_orchestrator import SubAgentOrchestrator
-from src.domain.services.supervision_modules import SupervisionCoordinator
+from src.domain.services.supervision import SupervisionCoordinator
 from src.domain.services.unified_log_collector import UnifiedLogCollector
 from src.domain.services.unified_log_integration import UnifiedLogIntegration
 from src.domain.services.workflow_failure_orchestrator import (

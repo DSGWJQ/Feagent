@@ -262,7 +262,7 @@ class SupervisionFacade:
         返回：
             检查结果 {"passed": bool, "issues": list, "action": str}
         """
-        from src.domain.services.supervision_modules import ComprehensiveCheckResult
+        from src.domain.services.supervision import ComprehensiveCheckResult
 
         result: ComprehensiveCheckResult = self.conversation_supervision.check_all(text)
 

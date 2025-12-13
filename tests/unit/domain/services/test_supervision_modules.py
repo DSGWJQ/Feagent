@@ -29,7 +29,7 @@ class TestConversationSupervisionModuleInit:
 
     def test_module_exists(self):
         """模块应存在"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -37,7 +37,7 @@ class TestConversationSupervisionModuleInit:
 
     def test_module_has_rules(self):
         """模块应有规则存储"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -47,7 +47,7 @@ class TestConversationSupervisionModuleInit:
 
     def test_module_has_default_rules(self):
         """模块应有默认规则"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -62,7 +62,7 @@ class TestBiasDetection:
 
     def test_detect_gender_bias(self):
         """检测性别偏见"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -76,7 +76,7 @@ class TestBiasDetection:
 
     def test_detect_racial_bias(self):
         """检测种族偏见"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -89,7 +89,7 @@ class TestBiasDetection:
 
     def test_no_bias_in_neutral_content(self):
         """中性内容无偏见"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -101,7 +101,7 @@ class TestBiasDetection:
 
     def test_can_add_custom_bias_rule(self):
         """可以添加自定义偏见规则"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -123,7 +123,7 @@ class TestHarmfulContentDetection:
 
     def test_detect_violence(self):
         """检测暴力内容"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -136,7 +136,7 @@ class TestHarmfulContentDetection:
 
     def test_detect_illegal_activity(self):
         """检测非法活动"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -149,7 +149,7 @@ class TestHarmfulContentDetection:
 
     def test_detect_self_harm(self):
         """检测自伤内容"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -162,7 +162,7 @@ class TestHarmfulContentDetection:
 
     def test_safe_content_passes(self):
         """安全内容通过"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -178,7 +178,7 @@ class TestStabilityDetection:
 
     def test_detect_prompt_injection(self):
         """检测提示注入"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -191,7 +191,7 @@ class TestStabilityDetection:
 
     def test_detect_jailbreak_attempt(self):
         """检测越狱尝试"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -204,7 +204,7 @@ class TestStabilityDetection:
 
     def test_detect_context_overflow(self):
         """检测上下文溢出"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -220,7 +220,7 @@ class TestStabilityDetection:
 
     def test_normal_input_stable(self):
         """正常输入稳定"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -236,7 +236,7 @@ class TestComprehensiveCheck:
 
     def test_comprehensive_check_returns_all_issues(self):
         """综合检查返回所有问题"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -249,7 +249,7 @@ class TestComprehensiveCheck:
 
     def test_comprehensive_check_passes_safe_content(self):
         """综合检查通过安全内容"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -269,13 +269,13 @@ class TestWorkflowEfficiencyMonitorInit:
 
     def test_monitor_exists(self):
         """监控器应存在"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         assert WorkflowEfficiencyMonitor is not None
 
     def test_monitor_has_thresholds(self):
         """监控器应有阈值配置"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         monitor = WorkflowEfficiencyMonitor()
 
@@ -290,7 +290,7 @@ class TestResourceMonitoring:
 
     def test_record_resource_usage(self):
         """记录资源使用"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         monitor = WorkflowEfficiencyMonitor()
 
@@ -308,7 +308,7 @@ class TestResourceMonitoring:
 
     def test_detect_memory_overuse(self):
         """检测内存过度使用"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         monitor = WorkflowEfficiencyMonitor()
         monitor.thresholds["max_memory_mb"] = 1024
@@ -328,7 +328,7 @@ class TestResourceMonitoring:
 
     def test_detect_cpu_overuse(self):
         """检测 CPU 过度使用"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         monitor = WorkflowEfficiencyMonitor()
         monitor.thresholds["max_cpu_percent"] = 80.0
@@ -352,7 +352,7 @@ class TestLatencyMonitoring:
 
     def test_record_node_latency(self):
         """记录节点延迟"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         monitor = WorkflowEfficiencyMonitor()
 
@@ -369,7 +369,7 @@ class TestLatencyMonitoring:
 
     def test_detect_slow_node(self):
         """检测慢节点"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         monitor = WorkflowEfficiencyMonitor()
         monitor.thresholds["max_node_duration_seconds"] = 30.0
@@ -389,7 +389,7 @@ class TestLatencyMonitoring:
 
     def test_calculate_workflow_total_duration(self):
         """计算工作流总时长"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         monitor = WorkflowEfficiencyMonitor()
 
@@ -417,7 +417,7 @@ class TestEfficiencyAlerts:
 
     def test_generate_efficiency_alert(self):
         """生成效率告警"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         monitor = WorkflowEfficiencyMonitor()
         monitor.thresholds["max_duration_seconds"] = 60.0
@@ -447,13 +447,13 @@ class TestStrategyRepositoryInit:
 
     def test_repository_exists(self):
         """策略库应存在"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         assert StrategyRepository is not None
 
     def test_repository_has_strategies(self):
         """策略库应有策略存储"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
         assert hasattr(repo, "strategies")
@@ -464,7 +464,7 @@ class TestStrategyRegistration:
 
     def test_register_strategy(self):
         """注册策略"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
 
@@ -479,7 +479,7 @@ class TestStrategyRegistration:
 
     def test_list_strategies(self):
         """列出策略"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
 
@@ -491,7 +491,7 @@ class TestStrategyRegistration:
 
     def test_get_strategy_by_id(self):
         """按 ID 获取策略"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
 
@@ -511,7 +511,7 @@ class TestStrategyMatching:
 
     def test_find_matching_strategies(self):
         """找到匹配的策略"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
 
@@ -535,7 +535,7 @@ class TestStrategyMatching:
 
     def test_strategies_sorted_by_priority(self):
         """策略按优先级排序"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
 
@@ -552,7 +552,7 @@ class TestStrategyActions:
 
     def test_strategy_action_block(self):
         """阻止动作"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
 
@@ -568,7 +568,7 @@ class TestStrategyActions:
 
     def test_strategy_action_warn(self):
         """警告动作"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
 
@@ -583,7 +583,7 @@ class TestStrategyActions:
 
     def test_strategy_action_terminate(self):
         """终止动作"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
 
@@ -605,13 +605,13 @@ class TestInterventionEvent:
 
     def test_event_class_exists(self):
         """事件类应存在"""
-        from src.domain.services.supervision_modules import InterventionEvent
+        from src.domain.services.supervision import InterventionEvent
 
         assert InterventionEvent is not None
 
     def test_event_has_required_fields(self):
         """事件应有必要字段"""
-        from src.domain.services.supervision_modules import InterventionEvent
+        from src.domain.services.supervision import InterventionEvent
 
         event = InterventionEvent(
             intervention_type="block",
@@ -627,7 +627,7 @@ class TestInterventionEvent:
 
     def test_event_has_timestamp(self):
         """事件应有时间戳"""
-        from src.domain.services.supervision_modules import InterventionEvent
+        from src.domain.services.supervision import InterventionEvent
 
         event = InterventionEvent(
             intervention_type="warn",
@@ -640,7 +640,7 @@ class TestInterventionEvent:
 
     def test_event_severity_levels(self):
         """事件应有严重性级别"""
-        from src.domain.services.supervision_modules import InterventionEvent
+        from src.domain.services.supervision import InterventionEvent
 
         event = InterventionEvent(
             intervention_type="terminate",
@@ -658,13 +658,13 @@ class TestContextInjectionEvent:
 
     def test_context_injection_event_exists(self):
         """上下文注入事件应存在"""
-        from src.domain.services.supervision_modules import ContextInjectionEvent
+        from src.domain.services.supervision import ContextInjectionEvent
 
         assert ContextInjectionEvent is not None
 
     def test_context_injection_has_payload(self):
         """上下文注入事件应有负载"""
-        from src.domain.services.supervision_modules import ContextInjectionEvent
+        from src.domain.services.supervision import ContextInjectionEvent
 
         event = ContextInjectionEvent(
             target_agent="conversation_agent",
@@ -680,13 +680,13 @@ class TestTaskTerminationEvent:
 
     def test_termination_event_exists(self):
         """任务终止事件应存在"""
-        from src.domain.services.supervision_modules import TaskTerminationEvent
+        from src.domain.services.supervision import TaskTerminationEvent
 
         assert TaskTerminationEvent is not None
 
     def test_termination_event_has_reason(self):
         """终止事件应有原因"""
-        from src.domain.services.supervision_modules import TaskTerminationEvent
+        from src.domain.services.supervision import TaskTerminationEvent
 
         event = TaskTerminationEvent(
             task_id="task_001",
@@ -707,7 +707,7 @@ class TestContextInjectionInterface:
 
     def test_inject_warning_context(self):
         """注入警告上下文"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -724,7 +724,7 @@ class TestContextInjectionInterface:
 
     def test_inject_blocking_context(self):
         """注入阻止上下文"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
         )
 
@@ -748,7 +748,7 @@ class TestTaskTerminationFlow:
 
     def test_initiate_termination(self):
         """发起终止"""
-        from src.domain.services.supervision_modules import SupervisionCoordinator
+        from src.domain.services.supervision import SupervisionCoordinator
 
         coordinator = SupervisionCoordinator()
 
@@ -763,7 +763,7 @@ class TestTaskTerminationFlow:
 
     def test_termination_creates_event(self):
         """终止应创建事件"""
-        from src.domain.services.supervision_modules import SupervisionCoordinator
+        from src.domain.services.supervision import SupervisionCoordinator
 
         coordinator = SupervisionCoordinator()
 
@@ -779,7 +779,7 @@ class TestTaskTerminationFlow:
 
     def test_graceful_termination(self):
         """优雅终止"""
-        from src.domain.services.supervision_modules import SupervisionCoordinator
+        from src.domain.services.supervision import SupervisionCoordinator
 
         coordinator = SupervisionCoordinator()
 
@@ -794,7 +794,7 @@ class TestTaskTerminationFlow:
 
     def test_immediate_termination(self):
         """立即终止"""
-        from src.domain.services.supervision_modules import SupervisionCoordinator
+        from src.domain.services.supervision import SupervisionCoordinator
 
         coordinator = SupervisionCoordinator()
 

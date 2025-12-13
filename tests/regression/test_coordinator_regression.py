@@ -24,7 +24,7 @@ class TestSupervisionModuleRegression:
 
     def test_conversation_supervision_bias_detection(self):
         """回归测试：对话监督偏见检测"""
-        from src.domain.services.supervision_modules import ConversationSupervisionModule
+        from src.domain.services.supervision import ConversationSupervisionModule
 
         module = ConversationSupervisionModule()
 
@@ -39,7 +39,7 @@ class TestSupervisionModuleRegression:
 
     def test_conversation_supervision_harmful_content(self):
         """回归测试：对话监督有害内容检测"""
-        from src.domain.services.supervision_modules import ConversationSupervisionModule
+        from src.domain.services.supervision import ConversationSupervisionModule
 
         module = ConversationSupervisionModule()
 
@@ -53,7 +53,7 @@ class TestSupervisionModuleRegression:
 
     def test_conversation_supervision_stability(self):
         """回归测试：对话监督稳定性检测"""
-        from src.domain.services.supervision_modules import ConversationSupervisionModule
+        from src.domain.services.supervision import ConversationSupervisionModule
 
         module = ConversationSupervisionModule()
 
@@ -68,7 +68,7 @@ class TestSupervisionModuleRegression:
 
     def test_conversation_supervision_comprehensive_check(self):
         """回归测试：对话监督综合检查"""
-        from src.domain.services.supervision_modules import ConversationSupervisionModule
+        from src.domain.services.supervision import ConversationSupervisionModule
 
         module = ConversationSupervisionModule()
 
@@ -79,7 +79,7 @@ class TestSupervisionModuleRegression:
 
     def test_workflow_efficiency_monitor(self):
         """回归测试：工作流效率监控"""
-        from src.domain.services.supervision_modules import WorkflowEfficiencyMonitor
+        from src.domain.services.supervision import WorkflowEfficiencyMonitor
 
         monitor = WorkflowEfficiencyMonitor()
 
@@ -105,7 +105,7 @@ class TestSupervisionModuleRegression:
 
     def test_strategy_repository_crud(self):
         """回归测试：策略仓库 CRUD"""
-        from src.domain.services.supervision_modules import StrategyRepository
+        from src.domain.services.supervision import StrategyRepository
 
         repo = StrategyRepository()
 
@@ -129,7 +129,7 @@ class TestSupervisionModuleRegression:
 
     def test_supervision_coordinator_flow(self):
         """回归测试：监督协调器流程"""
-        from src.domain.services.supervision_modules import SupervisionCoordinator
+        from src.domain.services.supervision import SupervisionCoordinator
 
         coordinator = SupervisionCoordinator()
 
@@ -631,7 +631,7 @@ class TestEndToEndRegression:
 
     def test_supervision_comprehensive_flow(self):
         """回归测试：监督综合检查流程"""
-        from src.domain.services.supervision_modules import (
+        from src.domain.services.supervision import (
             ConversationSupervisionModule,
             SupervisionCoordinator,
         )
@@ -706,7 +706,7 @@ class TestConfigurationRegression:
 
     def test_supervision_module_has_default_rules(self):
         """回归测试：监督模块有默认规则"""
-        from src.domain.services.supervision_modules import ConversationSupervisionModule
+        from src.domain.services.supervision import ConversationSupervisionModule
 
         module = ConversationSupervisionModule()
 

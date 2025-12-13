@@ -36,7 +36,7 @@ from datetime import datetime
 from typing import Any
 
 from src.domain.services.event_bus import Event
-from src.domain.services.supervision_modules import (
+from src.domain.services.supervision import (
     ContextInjectionEvent,
     TaskTerminationEvent,
     TerminationResult,
