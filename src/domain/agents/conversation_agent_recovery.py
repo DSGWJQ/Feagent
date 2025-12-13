@@ -36,7 +36,7 @@ from src.domain.agents.conversation_agent_models import Decision, DecisionType
 if TYPE_CHECKING:
     import asyncio
 
-    from src.domain.agents.conversation_agent_protocols import EventBusProtocol
+    from src.domain.agents.conversation_agent_protocols import EventBusProtocol, RecoveryHost
     from src.domain.agents.error_handling import (
         FormattedError,
         UserDecision,
@@ -101,7 +101,7 @@ class ConversationAgentRecoveryMixin:
     # Initialization hook
     # =========================================================================
 
-    def _init_recovery_mixin(self) -> None:
+    def _init_recovery_mixin(self: RecoveryHost) -> None:
         """Initialize feedback listening and recovery fields.
 
         This must be called by the host ConversationAgent.__init__.
@@ -114,7 +114,7 @@ class ConversationAgentRecoveryMixin:
     # Phase 13: 反馈监听与错误恢复
     # =========================================================================
 
-    def start_feedback_listening(self) -> None:
+    def start_feedback_listening(self: RecoveryHost) -> None:
         """开始监听协调者反馈事件
 
         订阅 WorkflowAdjustmentRequestedEvent 和 NodeFailureHandledEvent，
@@ -143,7 +143,7 @@ class ConversationAgentRecoveryMixin:
 
         self._is_listening_feedbacks = True
 
-    def stop_feedback_listening(self) -> None:
+    def stop_feedback_listening(self: RecoveryHost) -> None:
         """停止监听协调者反馈事件
 
         副作用：

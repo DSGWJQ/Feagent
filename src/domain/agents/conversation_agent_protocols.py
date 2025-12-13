@@ -109,6 +109,7 @@ class RecoveryHost(Protocol):
     session_context: SessionContext
     _state_lock: asyncio.Lock
     pending_feedbacks: list[dict[str, Any]]
+    _is_listening_feedbacks: bool  # Initialized by mixin
 
     def get_context_for_reasoning(self) -> dict[str, Any]:
         """Get reasoning context for LLM calls.
@@ -131,6 +132,14 @@ class RecoveryHost(Protocol):
         ...
 
 
+
+    async def _handle_adjustment_event(self, event: Any) -> None:
+        """Handle adjustment event from coordinator (internal)."""
+        ...
+
+    async def _handle_failure_handled_event(self, event: Any) -> None:
+        """Handle failure handled event from coordinator (internal)."""
+        ...
 class ReActCoreHost(Protocol):
     """Host contract for ConversationAgentReActCoreMixin (P1-7 Phase 6).
 
