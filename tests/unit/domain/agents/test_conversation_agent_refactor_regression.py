@@ -40,12 +40,14 @@ def test_type_annotations_valid():
     source_path = Path(conversation_agent.__file__)
     source_code = source_path.read_text(encoding="utf-8")
 
-    assert "from __future__ import annotations" in source_code, \
-        "Missing 'from __future__ import annotations' at file top"
+    assert (
+        "from __future__ import annotations" in source_code
+    ), "Missing 'from __future__ import annotations' at file top"
 
     # 检查TYPE_CHECKING块是否存在
-    assert "if TYPE_CHECKING:" in source_code, \
-        "Missing 'if TYPE_CHECKING:' block for forward references"
+    assert (
+        "if TYPE_CHECKING:" in source_code
+    ), "Missing 'if TYPE_CHECKING:' block for forward references"
 
     # 解析AST检查类型注解
     tree = ast.parse(source_code)
@@ -55,8 +57,7 @@ def test_type_annotations_valid():
     for node in ast.walk(tree):
         if isinstance(node, ast.If):
             # 检查是否是 if TYPE_CHECKING:
-            if (isinstance(node.test, ast.Name) and
-                node.test.id == "TYPE_CHECKING"):
+            if isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
                 for stmt in node.body:
                     if isinstance(stmt, ast.ImportFrom):
                         for alias in stmt.names:
@@ -74,8 +75,7 @@ def test_type_annotations_valid():
     }
 
     missing_types = required_types - type_checking_imports
-    assert not missing_types, \
-        f"Missing type imports in TYPE_CHECKING block: {missing_types}"
+    assert not missing_types, f"Missing type imports in TYPE_CHECKING block: {missing_types}"
 
 
 # ============================================================================
@@ -122,14 +122,16 @@ async def test_critical_events_await():
 
     # 触发状态转换(应该发布关键事件)
     from src.domain.agents.conversation_agent import ConversationAgentState
+
     await agent.transition_to_async(ConversationAgentState.PROCESSING)
 
     # 等待事件处理
     await asyncio.sleep(0.05)
 
     # 验证事件被接收
-    assert "StateChangedEvent" in events_received, \
-        "StateChangedEvent not received (critical event not published)"
+    assert (
+        "StateChangedEvent" in events_received
+    ), "StateChangedEvent not received (critical event not published)"
 
 
 # ============================================================================
@@ -164,8 +166,7 @@ async def test_notification_events_tracked():
     )
 
     # 验证_pending_tasks属性存在
-    assert hasattr(agent, "_pending_tasks"), \
-        "Agent missing _pending_tasks list for task tracking"
+    assert hasattr(agent, "_pending_tasks"), "Agent missing _pending_tasks list for task tracking"
 
     initial_task_count = len(agent._pending_tasks)
 
@@ -178,8 +179,7 @@ async def test_notification_events_tracked():
         task = agent._create_tracked_task(dummy_task())
 
         # 验证任务被追踪
-        assert len(agent._pending_tasks) > initial_task_count, \
-            "Task not added to _pending_tasks"
+        assert len(agent._pending_tasks) > initial_task_count, "Task not added to _pending_tasks"
 
         # 等待任务完成
         await asyncio.sleep(0.02)
@@ -212,24 +212,26 @@ def test_context_snapshot_deepcopy():
     if not source_path.exists():
         # 尝试从安装路径查找
         import src.domain.agents.conversation_agent as ca_module
+
         source_path = Path(ca_module.__file__)
 
     source_code = source_path.read_text(encoding="utf-8")
 
     # 验证使用deepcopy而非浅拷贝
-    assert "import copy" in source_code or "from copy import deepcopy" in source_code, \
-        "Missing 'import copy' for deep copying"
+    assert (
+        "import copy" in source_code or "from copy import deepcopy" in source_code
+    ), "Missing 'import copy' for deep copying"
 
     # 检查是否有 deepcopy 调用
-    assert "deepcopy" in source_code, \
-        "No 'deepcopy' usage found - may have shallow copy bug"
+    assert "deepcopy" in source_code, "No 'deepcopy' usage found - may have shallow copy bug"
 
     # 检查是否有_snapshot_context辅助方法
     has_snapshot_method = "_snapshot_context" in source_code
 
     # 至少要有deepcopy或_snapshot_context之一
-    assert "deepcopy" in source_code or has_snapshot_method, \
-        "No deep copy mechanism found for context snapshots"
+    assert (
+        "deepcopy" in source_code or has_snapshot_method
+    ), "No deep copy mechanism found for context snapshots"
 
 
 # ============================================================================
@@ -252,6 +254,7 @@ def test_no_ambiguous_variable_names():
     source_path = Path(ConversationAgent.__module__.replace(".", "/") + ".py")
     if not source_path.exists():
         import src.domain.agents.conversation_agent as ca_module
+
         source_path = Path(ca_module.__file__)
 
     source_code = source_path.read_text(encoding="utf-8")
@@ -271,9 +274,10 @@ def test_no_ambiguous_variable_names():
                     line_no = node.lineno
                     ambiguous_vars.append((var_name, line_no))
 
-    assert not ambiguous_vars, \
-        f"Found ambiguous variable names (E741): {ambiguous_vars}. " \
+    assert not ambiguous_vars, (
+        f"Found ambiguous variable names (E741): {ambiguous_vars}. "
         f"Use semantic names like 'loop_item', 'loop_spec' instead."
+    )
 
 
 # ============================================================================

@@ -180,29 +180,59 @@ class ConversationAgentStateMixin:
     # ---------------------------------------------------------------------
 
     def _create_tracked_task(self, coro: Any) -> asyncio.Task[Any]:
-        """Create and track a background task.
+        """创建被追踪的异步任务
 
-        TODO(Phase-2 Step-2): Implement task creation + tracking + done callback.
+        防止任务在完成前被垃圾回收（P0 Race Condition 修复）
+
+        参数：
+            coro: 协程对象
+
+        返回：
+            被追踪的 Task 对象
         """
-        raise NotImplementedError
+        task = asyncio.create_task(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        return task
 
     # ---------------------------------------------------------------------
     # Event publishing helpers
     # ---------------------------------------------------------------------
 
     async def _publish_critical_event(self, event: Event) -> None:
-        """Publish a critical event with ordering guarantees.
+        """发布关键事件（P0-2 Fix）
 
-        TODO(Phase-2 Step-2): Implement lock-protected ordered publish (await).
+        关键事件需要保证：
+        1. 按顺序发布（使用_critical_event_lock）
+        2. 必须等待发布完成（await）
+        3. 不与_state_lock嵌套以避免死锁
+
+        适用场景：StateChangedEvent、SpawnSubAgentEvent等需要严格顺序的事件
+
+        参数：
+            event: 事件对象
         """
-        raise NotImplementedError
+        if not self.event_bus:
+            return
+        async with self._critical_event_lock:
+            await self.event_bus.publish(event)
 
     def _publish_notification_event(self, event: Event) -> None:
-        """Publish a non-critical notification event in background (tracked).
+        """发布通知事件（P0-2 Fix）
 
-        TODO(Phase-2 Step-2): Implement background publish via tracked tasks.
+        通知事件特点：
+        1. 后台异步发布
+        2. 被追踪以防止丢失
+        3. 不阻塞主流程
+
+        适用场景：SaveRequest、进度通知等非关键事件
+
+        参数：
+            event: 事件对象
         """
-        raise NotImplementedError
+        if not self.event_bus:
+            return
+        self._create_tracked_task(self.event_bus.publish(event))
 
     # ---------------------------------------------------------------------
     # State transitions

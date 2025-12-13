@@ -35,6 +35,7 @@ from uuid import uuid4
 from src.domain.agents.conversation_agent_state import (
     VALID_STATE_TRANSITIONS,
     ConversationAgentState,
+    ConversationAgentStateMixin,
     SpawnSubAgentEvent,
     StateChangedEvent,
 )
@@ -241,7 +242,6 @@ class SimpleMessageEvent(Event):
     session_id: str = ""
 
 
-
 @dataclass
 class IntentClassificationResult:
     """意图分类结果 (Phase 14)
@@ -355,7 +355,7 @@ class ConversationAgentLLM(Protocol):
         ...
 
 
-class ConversationAgent:
+class ConversationAgent(ConversationAgentStateMixin):
     """对话Agent
 
     职责：
@@ -523,57 +523,6 @@ class ConversationAgent:
 
         # P1 Fix: 决策元数据自管（避免污染 session_context）
         self._decision_metadata: list[dict[str, Any]] = []
-
-    def _create_tracked_task(self, coro: Any) -> asyncio.Task[Any]:
-        """创建被追踪的异步任务
-
-        防止任务在完成前被垃圾回收（P0 Race Condition 修复）
-
-        参数：
-            coro: 协程对象
-
-        返回：
-            被追踪的 Task 对象
-        """
-        task = asyncio.create_task(coro)
-        self._pending_tasks.add(task)
-        task.add_done_callback(self._pending_tasks.discard)
-        return task
-
-    async def _publish_critical_event(self, event: Event) -> None:
-        """发布关键事件（P0-2 Fix）
-
-        关键事件需要保证：
-        1. 按顺序发布（使用_critical_event_lock）
-        2. 必须等待发布完成（await）
-        3. 不与_state_lock嵌套以避免死锁
-
-        适用场景：StateChangedEvent、SpawnSubAgentEvent等需要严格顺序的事件
-
-        参数：
-            event: 事件对象
-        """
-        if not self.event_bus:
-            return
-        async with self._critical_event_lock:
-            await self.event_bus.publish(event)
-
-    def _publish_notification_event(self, event: Event) -> None:
-        """发布通知事件（P0-2 Fix）
-
-        通知事件特点：
-        1. 后台异步发布
-        2. 被追踪以防止丢失
-        3. 不阻塞主流程
-
-        适用场景：SaveRequest、进度通知等非关键事件
-
-        参数：
-            event: 事件对象
-        """
-        if not self.event_bus:
-            return
-        self._create_tracked_task(self.event_bus.publish(event))
 
     def _transition_locked(self, new_state: ConversationAgentState) -> ConversationAgentState:
         """状态转换（锁内版本，不发布事件，P0-2 Optimization）
