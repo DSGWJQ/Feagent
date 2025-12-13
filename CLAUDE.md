@@ -20,21 +20,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Claude ↔ Codex 协作工作流（精简版）
 
-1) 需求理解 → Claude 快速识别疑问 → Codex 深度推理  
-2) 上下文收集 → Codex 全面检索 → 输出分析报告  
-3) 任务规划 → Claude 基于分析制定计划  
-4) 代码执行 → Claude 直接编码（遇复杂逻辑调用 Codex）  
-5) 质量审查 → Codex 深度审查 → Claude 最终决策  
+1) 需求理解 → Claude 快速识别疑问 → Codex 深度推理
+2) 上下文收集 → Codex 全面检索 → 输出分析报告
+3) 任务规划 → Claude 基于分析制定计划
+4) 代码执行 → Claude 直接编码（遇复杂逻辑调用 Codex）
+5) 质量审查 → Codex 深度审查 → Claude 最终决策
 
-**角色分工 / 产出**  
-- Claude：提炼问题、制定计划、落地代码与决策  
-- Codex：深度推理/检索、给出代码原型（统一 diff 参考）、质量审查  
+**角色分工 / 产出**
+- Claude：提炼问题、制定计划、落地代码与决策
+- Codex：深度推理/检索、给出代码原型（统一 diff 参考）、质量审查
 - 产出物：分析报告 → 计划 → 代码原型参考 → 落地实现 → Codex Review 意见 → Claude 采纳/决策
 
-**与现有规则/架构的对齐**  
-- 对应“架构顺序”：需求分析→Domain→Ports→Infrastructure→Application→Interface；在 Domain/Ports 阶段优先让 Codex 做深推与检索。  
-- 代码执行阶段继续遵守“每次最多改 2 个文件 + TDD”与命名约定。  
-- 前端/后端改动时保持原有项目结构；Codex 仅给出参考 patch，真实修改由 Claude 完成。  
+**与现有规则/架构的对齐**
+- 对应“架构顺序”：需求分析→Domain→Ports→Infrastructure→Application→Interface；在 Domain/Ports 阶段优先让 Codex 做深推与检索。
+- 代码执行阶段继续遵守“每次最多改 2 个文件 + TDD”与命名约定。
+- 前端/后端改动时保持原有项目结构；Codex 仅给出参考 patch，真实修改由 Claude 完成。
 - 关于 Codex 详细调用规范与合作要求，沿用文末《Core Instruction for CodeX MCP》与《Codex Tool Invocation Specification》。
 
 ---
@@ -169,11 +169,17 @@ pnpm lint     # Lint
 | ConversationAgent | `src/domain/agents/conversation_agent.py` | 意图分类、ReAct推理、决策生成 |
 | WorkflowAgent | `src/domain/agents/workflow_agent.py` | 节点执行、DAG拓扑排序、状态同步 |
 | EventBus | `src/domain/services/event_bus.py` | 事件发布/订阅、中间件链 |
-| PowerCompressor | `src/domain/services/power_compressor.py` | 八段压缩 |
-| ConfigurableRuleEngine | `src/domain/services/configurable_rule_engine.py` | 可配置规则引擎 |
+| PowerCompressor | `src/domain/services/power_compressor.py` | 八段压缩（多Agent协作场景） |
+| RuleEngineFacade | `src/domain/services/rule_engine_facade.py` | 规则引擎统一入口（Facade模式） |
+| ConfigurableRuleEngine | `src/domain/services/configurable_rule_engine.py` | 可配置规则引擎（权威实现） |
+| SupervisionFacade | `src/domain/services/supervision_facade.py` | 监督模块统一入口（Facade模式） |
+| SupervisionModule | `src/domain/services/supervision_module.py` | 监督分析器、规则引擎、日志记录 |
+| SupervisionCoordinator | `src/domain/services/supervision/coordinator.py` | 监督协调器（对话/效率/策略） |
 | SelfDescribingNodeValidator | `src/domain/services/self_describing_node_validator.py` | 自描述节点验证 |
 | WorkflowDependencyGraph | `src/domain/services/workflow_dependency_graph.py` | 依赖图构建、数据流传递 |
-| DynamicNodeMonitoring | `src/domain/services/dynamic_node_monitoring.py` | 监控指标、回滚、健康检查 |
+| DynamicNodeMonitoring | `src/domain/services/dynamic_node_monitoring.py` | 动态节点监控（指标/回滚/恢复/健康检查） |
+| ExecutionMonitor | `src/domain/services/execution_monitor.py` | 工作流执行监控（状态/指标/错误策略） |
+| ContainerExecutionMonitor | `src/domain/services/container_execution_monitor.py` | 容器执行监控（事件订阅/统计） |
 
 ---
 
@@ -334,7 +340,9 @@ CORS_ORIGINS=["http://localhost:5173"]
 |------|------|------|
 | 架构审计 | `docs/architecture/current_agents.md` | 三Agent系统最新架构审计 |
 | 多Agent协作指南 | `docs/architecture/multi_agent_collaboration_guide.md` | 三Agent架构详解 |
-| **RuleEngine迁移指南** | `docs/architecture/RULE_ENGINE_MIGRATION_GUIDE.md` | RuleEngineFacade迁移步骤与时间表 |
+| **RuleEngine迁移指南** | `docs/architecture/RULE_ENGINE_MIGRATION_GUIDE.md` | RuleEngineFacade迁移步骤与时间表（P1-1完成） |
+| **Supervision迁移指南** | `docs/architecture/SUPERVISION_MIGRATION_GUIDE.md` | SupervisionFacade架构说明与迁移指南（P1-3） |
+| **Monitoring架构说明** | `docs/architecture/MONITORING_ARCHITECTURE.md` | 6个监控文件职责划分与使用场景（P1-3） |
 | 运维手册 | `docs/operations/operations_guide.md` | 部署与运维 |
 | 动态节点Runbook | `docs/operations/dynamic_node_runbook.md` | 节点监控与故障排查 |
 | 开发规范 | `docs/开发规范/` | 架构规范、TDD流程 |
@@ -343,7 +351,7 @@ CORS_ORIGINS=["http://localhost:5173"]
 
 ---
 
-**最后更新**: 2025-12-08
+**最后更新**: 2025-12-13 (P1-3: 监督系统与监控架构文档更新)
 **项目阶段**: 多Agent协作系统 (Phase 8+ - Unified Definition System)
 
 ## Core Instruction for CodeX MCP
@@ -416,4 +424,3 @@ CORS_ORIGINS=["http://localhost:5173"]
   - 会话管理：始终追踪 SESSION_ID，避免会话混乱
   - 工作目录：确保 cd 参数指向正确且存在的目录
   - 错误处理：检查返回值的 success 字段，处理可能的错误
-
