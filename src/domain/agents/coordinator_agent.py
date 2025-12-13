@@ -530,7 +530,6 @@ class CoordinatorAgent:
         self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
         self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
         self.task_terminator = wiring.orchestrators["task_terminator"]
-        self._safety_guard = wiring.orchestrators["safety_guard"]
 
         # 可选组件
         if "alert_rule_manager" in wiring.orchestrators:
@@ -948,7 +947,9 @@ class CoordinatorAgent:
         max_content_bytes: int | None = None,
         allowed_operations: set[str] | None = None,
     ) -> None:
-        """配置文件操作安全规则（代理到 SafetyGuard）
+        """配置文件操作安全规则（代理到 RuleEngineFacade.SafetyGuard）
+
+        P1-1清理: 改为调用 Facade 以减少重复依赖
 
         参数:
             whitelist: 允许访问的路径白名单
@@ -956,7 +957,7 @@ class CoordinatorAgent:
             max_content_bytes: 内容最大字节数限制
             allowed_operations: 允许的操作类型集合
         """
-        self._safety_guard.configure_file_security(
+        self._rule_engine_facade.configure_file_security(
             whitelist=whitelist,
             blacklist=blacklist,
             max_content_bytes=max_content_bytes,
@@ -969,14 +970,16 @@ class CoordinatorAgent:
         blacklist: list[str] | None = None,
         allowed_schemes: set[str] | None = None,
     ) -> None:
-        """配置API域名白名单规则（代理到 SafetyGuard）
+        """配置API域名白名单规则（代理到 RuleEngineFacade.SafetyGuard）
+
+        P1-1清理: 改为调用 Facade 以减少重复依赖
 
         参数:
             whitelist: 允许访问的域名白名单
             blacklist: 禁止访问的域名黑名单
             allowed_schemes: 允许的URL scheme集合
         """
-        self._safety_guard.configure_api_domains(
+        self._rule_engine_facade.configure_api_domains(
             whitelist=whitelist,
             blacklist=blacklist,
             allowed_schemes=allowed_schemes,
@@ -989,7 +992,9 @@ class CoordinatorAgent:
         path: str | None,
         config: dict[str, Any] | None = None,
     ) -> ValidationResult:
-        """验证文件操作安全性（代理到 SafetyGuard）
+        """验证文件操作安全性（代理到 RuleEngineFacade.SafetyGuard）
+
+        P1-1清理: 改为调用 Facade 以减少重复依赖
 
         参数:
             node_id: 节点ID
@@ -1000,7 +1005,7 @@ class CoordinatorAgent:
         返回:
             ValidationResult: 验证结果
         """
-        return await self._safety_guard.validate_file_operation(
+        return await self._rule_engine_facade.validate_file_operation(
             node_id=node_id,
             operation=operation,
             path=path,
@@ -1015,7 +1020,9 @@ class CoordinatorAgent:
         headers: dict[str, Any] | None = None,
         body: Any | None = None,
     ) -> ValidationResult:
-        """验证API请求安全性（代理到 SafetyGuard）
+        """验证API请求安全性（代理到 RuleEngineFacade.SafetyGuard）
+
+        P1-1清理: 改为调用 Facade 以减少重复依赖
 
         参数:
             node_id: 节点ID
@@ -1027,7 +1034,7 @@ class CoordinatorAgent:
         返回:
             ValidationResult: 验证结果
         """
-        return await self._safety_guard.validate_api_request(
+        return await self._rule_engine_facade.validate_api_request(
             node_id=node_id,
             url=url,
             method=method,
@@ -1042,7 +1049,9 @@ class CoordinatorAgent:
         expected_inputs: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ValidationResult:
-        """验证人机交互内容安全性（代理到 SafetyGuard）
+        """验证人机交互内容安全性（代理到 RuleEngineFacade.SafetyGuard）
+
+        P1-1清理: 改为调用 Facade 以减少重复依赖
 
         参数:
             node_id: 节点ID
@@ -1053,7 +1062,7 @@ class CoordinatorAgent:
         返回:
             ValidationResult: 验证结果
         """
-        return await self._safety_guard.validate_human_interaction(
+        return await self._rule_engine_facade.validate_human_interaction(
             node_id=node_id,
             prompt=prompt,
             expected_inputs=expected_inputs,
