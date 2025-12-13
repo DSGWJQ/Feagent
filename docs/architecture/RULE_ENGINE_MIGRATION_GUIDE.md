@@ -307,6 +307,66 @@ filterwarnings = [
 
 ---
 
+## P1-1 后续清理阶段
+
+### 清理背景
+
+P1-1 步骤4-5完成后，CoordinatorAgent中仍存在3处重复逻辑：
+1. Builder imports/initialization (死代码，已迁移到Bootstrap)
+2. SafetyGuard proxy methods (冗余，应委托给Facade)
+3. Statistics direct access (不一致，应使用Facade API)
+
+### 清理完成情况
+
+**日期**: 2025-12-13
+**状态**: ✅ 完成并验证
+
+#### Commit记录
+
+| 阶段 | Commit | 描述 | 测试结果 |
+|------|--------|------|---------|
+| 清理1: Builder | 2ace202 | 移除DagRuleBuilder/PayloadRuleBuilder导入和初始化 | ✅ 10/11单元, 8/8集成 |
+| 清理2: SafetyGuard | 1b28e56 | 5个安全验证方法改为调用Facade | ✅ 8/8集成 |
+| 清理3: Statistics | 5e5576b | get_system_status_with_alerts()改用Facade API | ✅ 8/8集成 |
+
+#### 改动细节
+
+**清理1: Builder (Commit 2ace202)**
+- 移除imports (lines 56-58): `DagRuleBuilder`, `PayloadRuleBuilder`
+- 移除初始化 (lines 590-591): `self._payload_rule_builder`, `self._dag_rule_builder`
+
+**清理2: SafetyGuard (Commit 1b28e56)**
+- 修改5个方法委托给 `_rule_engine_facade`:
+  - `configure_file_security()` → `facade.configure_file_security()`
+  - `configure_api_domains()` → `facade.configure_api_domains()`
+  - `validate_file_operation()` → `facade.validate_file_operation()`
+  - `validate_api_request()` → `facade.validate_api_request()`
+  - `validate_human_interaction()` → `facade.validate_human_interaction()`
+- 移除属性赋值 (line 533): `self._safety_guard`
+
+**清理3: Statistics (Commit 5e5576b)**
+- 修改 `get_system_status_with_alerts()` (lines 3347-3379):
+  - 从 `self._statistics.get()` 改为 `self._rule_engine_facade.get_decision_statistics()`
+  - 添加 "P1-1清理" 文档标记
+- 移除属性赋值 (line 497): `self._statistics`，添加说明注释
+
+#### 影响评估
+
+**向后兼容性**: ✅ 完全兼容
+- 所有公开API签名保持不变
+- 行为语义完全一致（通过相同的Facade实现）
+
+**代码简化效果**:
+- 移除6个冗余imports
+- 移除3个冗余属性赋值
+- 6个方法改为Facade委托（代码更清晰）
+
+**风险**: 无
+- 所有修改都是内部实现改动
+- 测试覆盖充分，8/8集成测试全程通过
+
+---
+
 ## Codex审查意见总结 (P1-1 Step 3)
 
 ### 已修复的Critical Issues
@@ -338,5 +398,5 @@ filterwarnings = [
 
 ---
 
-**最后更新**: 2025-12-13 (P1-1 Step 4-5 完成)
+**最后更新**: 2025-12-13 (P1-1 Step 4-5 + 后续清理完成)
 **维护者**: Claude Code + Development Team
