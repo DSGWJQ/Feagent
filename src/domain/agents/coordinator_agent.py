@@ -494,7 +494,7 @@ class CoordinatorAgent:
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
         self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
         self._rules: list[Rule] = wiring.base_state["_rules"]
-        self._statistics = wiring.base_state["_statistics"]
+        # P1-1清理: _statistics 已通过 RuleEngineFacade 访问，无需直接赋值
 
         # 5. 解包装配结果：工作流状态（共享bootstrap容器）
         self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
@@ -3349,15 +3349,18 @@ class CoordinatorAgent:
 
         自动评估所有告警规则，返回系统状态和触发的告警。
 
+        P1-1清理: 改为调用 Facade API 以减少重复依赖
+
         返回：
             系统状态字典，包含 alerts 字段
         """
         # 获取基本状态
         status = self.get_system_status()
 
-        # 计算指标
-        total = self._statistics.get("total", 0)
-        rejected = self._statistics.get("rejected", 0)
+        # 从 Facade 获取统计信息
+        stats = self._rule_engine_facade.get_decision_statistics()
+        total = stats.get("total", 0)
+        rejected = stats.get("rejected", 0)
         rejection_rate = rejected / total if total > 0 else 0.0
 
         # 评估告警规则
@@ -3365,7 +3368,7 @@ class CoordinatorAgent:
             "rejection_rate": rejection_rate,
             "total_decisions": total,
             "rejected_decisions": rejected,
-            "passed_decisions": self._statistics.get("passed", 0),
+            "passed_decisions": stats.get("passed", 0),
         }
 
         alerts = self.alert_rule_manager.evaluate(metrics)
