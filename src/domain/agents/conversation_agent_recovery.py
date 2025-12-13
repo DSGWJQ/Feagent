@@ -36,13 +36,13 @@ from src.domain.agents.conversation_agent_models import Decision, DecisionType
 if TYPE_CHECKING:
     import asyncio
 
+    from src.domain.agents.conversation_agent_protocols import EventBusProtocol
     from src.domain.agents.error_handling import (
         FormattedError,
         UserDecision,
         UserDecisionResult,
     )
     from src.domain.services.context_manager import SessionContext
-    from src.domain.services.event_bus import EventBus
 
 
 class ConversationAgentRecoveryMixin:
@@ -61,11 +61,14 @@ class ConversationAgentRecoveryMixin:
     - get_context_for_reasoning(): Returns context dict for LLM calls
     - _stage_decision_record(record): Stage decision for batch commit
     - _flush_staged_state(): Flush staged decisions (async)
+
+    Type contract: Host must satisfy RecoveryHost protocol (P2 improvement).
     """
 
     # --- Host-provided attributes (runtime expectations) ---
+    # Type hint: RecoveryHost protocol (P2 improvement)
     llm: Any
-    event_bus: EventBus | None
+    event_bus: EventBusProtocol | None
     session_context: SessionContext
     _state_lock: asyncio.Lock
 

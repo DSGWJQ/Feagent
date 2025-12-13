@@ -33,10 +33,10 @@ from src.domain.agents.conversation_agent_events import DecisionMadeEvent
 from src.domain.agents.conversation_agent_models import DecisionType
 
 if TYPE_CHECKING:
+    from src.domain.agents.conversation_agent_protocols import EventBusProtocol
     from src.domain.agents.node_definition import NodeDefinition
     from src.domain.agents.workflow_plan import WorkflowPlan
     from src.domain.services.context_manager import SessionContext
-    from src.domain.services.event_bus import EventBus
 
 
 class ConversationAgentWorkflowMixin:
@@ -53,11 +53,14 @@ class ConversationAgentWorkflowMixin:
     Host expectations (methods):
     - get_context_for_reasoning(): Returns dict containing conversation history,
       goals, decision history, etc.
+
+    Type contract: Host must satisfy WorkflowHost protocol (P2 improvement).
     """
 
     # --- Host-provided attributes (runtime expectations) ---
+    # Type hint: WorkflowHost protocol (P2 improvement)
     llm: Any
-    event_bus: EventBus | None
+    event_bus: EventBusProtocol | None
     session_context: SessionContext
 
     def get_context_for_reasoning(self) -> dict[str, Any]:  # pragma: no cover

@@ -22,9 +22,12 @@ import asyncio
 import copy
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from src.domain.services.event_bus import Event, EventBus
+if TYPE_CHECKING:
+    from src.domain.agents.conversation_agent_protocols import EventBusProtocol
+
+from src.domain.services.event_bus import Event
 
 # Public API exports for backward compatibility
 __all__ = [
@@ -146,7 +149,7 @@ class ConversationAgentStateMixin:
     """
 
     # --- Host-provided attributes (expected to exist on the concrete class) ---
-    event_bus: EventBus | None
+    event_bus: EventBusProtocol | None
     session_context: Any  # expected: has `.session_id` at runtime
 
     # --- State / concurrency primitives (initialized by mixin init hook) ---
