@@ -92,13 +92,13 @@ class RecoveryHost(Protocol):
     - event_bus: Optional EventBus for subscribing to coordinator events
     - session_context: SessionContext for decision recording
     - _state_lock: asyncio.Lock for protecting pending_feedbacks
+    - pending_feedbacks: List of pending feedback items (initialized by mixin)
     - get_context_for_reasoning(): Returns reasoning context dict
     - _stage_decision_record(): Stages decision for batch commit
     - _flush_staged_state(): Flushes staged state updates
 
-    Note: pending_feedbacks and _is_listening_feedbacks are initialized
-    by the mixin itself via _init_recovery_mixin(), so they're not part
-    of this protocol.
+    Note: pending_feedbacks is initialized by the mixin via _init_recovery_mixin(),
+    but it is part of the effective host surface and is used by get_context_for_reasoning().
 
     This protocol ensures compile-time checking that the host class
     provides all required attributes and methods.
@@ -108,6 +108,7 @@ class RecoveryHost(Protocol):
     event_bus: EventBusProtocol | None
     session_context: SessionContext
     _state_lock: asyncio.Lock
+    pending_feedbacks: list[dict[str, Any]]
 
     def get_context_for_reasoning(self) -> dict[str, Any]:
         """Get reasoning context for LLM calls.
@@ -127,4 +128,68 @@ class RecoveryHost(Protocol):
 
     async def _flush_staged_state(self) -> None:
         """Flush staged state updates to session_context (P0-2 Phase 2)."""
+        ...
+
+
+class ReActCoreHost(Protocol):
+    """Host contract for ConversationAgentReActCoreMixin (P1-7 Phase 6).
+
+    Any class that uses ConversationAgentReActCoreMixin must provide:
+    - llm: LLM object with think/decide_action/should_continue methods
+    - session_context: SessionContext for tracking and history
+    - event_bus: Optional EventBus for publishing decision events
+    - max_iterations: Maximum ReAct loop iterations
+    - timeout_seconds: Optional timeout for loop (Phase 5)
+    - max_tokens: Optional token limit (Phase 5)
+    - max_cost: Optional cost limit (Phase 5)
+    - coordinator: Optional coordinator for context/circuit breaker (Phase 1)
+    - emitter: Optional emitter for streaming output (Phase 2)
+    - _current_input: Current user input being processed
+    - _coordinator_context: Cached coordinator context (Phase 1)
+    - _decision_metadata: Decision metadata tracking
+    - Helper methods: get_context_for_reasoning, _initialize_model_info, etc.
+    - Staging methods: _stage_token_usage, _flush_staged_state (P0-2 Phase 2)
+
+    This protocol ensures compile-time checking for ReAct core host requirements.
+    """
+
+    llm: Any
+    session_context: SessionContext
+    event_bus: EventBusProtocol | None
+    max_iterations: int
+    timeout_seconds: float | None
+    max_tokens: int | None
+    max_cost: float | None
+    coordinator: Any | None
+    _current_input: str | None
+    emitter: Any | None
+    _coordinator_context: Any | None
+    _decision_metadata: list[dict[str, Any]]
+
+    def get_context_for_reasoning(self) -> dict[str, Any]:
+        """Build context dict for LLM calls."""
+        ...
+
+    def _initialize_model_info(self) -> None:
+        """Initialize model context limits if not set."""
+        ...
+
+    def _log_coordinator_context(self, context: Any) -> None:
+        """Log coordinator context information."""
+        ...
+
+    def _log_context_warning(self) -> None:
+        """Log warning when approaching context limit."""
+        ...
+
+    def _stage_token_usage(self, prompt_tokens: int, completion_tokens: int) -> None:
+        """Stage token usage for batch commit (P0-2 Phase 2)."""
+        ...
+
+    def _stage_decision_record(self, record: dict[str, Any]) -> None:
+        """Stage decision record for batch commit (P0-2 Phase 2)."""
+        ...
+
+    async def _flush_staged_state(self) -> None:
+        """Flush all staged state updates atomically (P0-2 Phase 2)."""
         ...

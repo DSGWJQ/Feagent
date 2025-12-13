@@ -24,6 +24,11 @@ from uuid import uuid4
 __all__ = [
     "DecisionType",
     "Decision",
+    "StepType",
+    "IntentType",
+    "ReActStep",
+    "ReActResult",
+    "get_decision_type_map",
 ]
 
 
@@ -83,3 +88,112 @@ class Decision:
     payload: dict[str, Any] = field(default_factory=dict)
     confidence: float = 1.0
     timestamp: datetime = field(default_factory=datetime.now)
+
+
+class StepType(str, Enum):
+    """ReAct步骤类型"""
+
+    REASONING = "reasoning"  # 推理步骤
+    ACTION = "action"  # 行动步骤
+    OBSERVATION = "observation"  # 观察步骤
+    FINAL = "final"  # 最终回复
+
+
+class IntentType(str, Enum):
+    """意图类型 (Phase 14)
+
+    用于区分用户输入的意图，决定是否需要 ReAct 循环。
+    """
+
+    CONVERSATION = "conversation"  # 普通对话（不需要 ReAct）
+    WORKFLOW_MODIFICATION = "workflow_modification"  # 工作流修改（需要 ReAct）
+    WORKFLOW_QUERY = "workflow_query"  # 查询工作流状态
+    CLARIFICATION = "clarification"  # 澄清请求
+    ERROR_RECOVERY_REQUEST = "error_recovery_request"  # 错误恢复请求
+
+
+@dataclass
+class ReActStep:
+    """ReAct循环的单个步骤
+
+    属性：
+    - step_type: 步骤类型
+    - thought: 思考内容
+    - action: 行动内容
+    - observation: 观察结果
+    - timestamp: 时间戳
+    """
+
+    step_type: StepType
+    thought: str | None = None
+    action: dict[str, Any] | None = None
+    observation: str | None = None
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class ReActResult:
+    """ReAct循环的最终结果
+
+    属性：
+    - completed: 是否完成
+    - final_response: 最终回复
+    - iterations: 迭代次数
+    - terminated_by_limit: 是否因达到限制而终止
+    - steps: 所有步骤历史
+    - limit_type: 限制类型（阶段5新增）
+    - total_tokens: 总 token 消耗（阶段5新增）
+    - total_cost: 总成本（阶段5新增）
+    - execution_time: 执行时间秒（阶段5新增）
+    - alert_message: 告警消息（阶段5新增）
+    """
+
+    completed: bool = False
+    final_response: str | None = None
+    iterations: int = 0
+    terminated_by_limit: bool = False
+    steps: list[ReActStep] = field(default_factory=list)
+    # 阶段5新增：循环控制相关字段
+    limit_type: str | None = None
+    total_tokens: int = 0
+    total_cost: float = 0.0
+    execution_time: float = 0.0
+    alert_message: str | None = None
+
+
+# =========================================================================
+# Decision Type Mapping Helper (P1-7 Phase 6)
+# =========================================================================
+
+_DECISION_TYPE_MAP: dict[str, DecisionType] | None = None
+
+
+def get_decision_type_map() -> dict[str, DecisionType]:
+    """获取决策类型映射（延迟初始化）
+
+    将action_type字符串映射到DecisionType枚举。
+    此函数使用延迟初始化模式以避免模块导入时的额外开销。
+
+    Returns:
+        dict mapping action_type strings to DecisionType enums
+
+    Example:
+        >>> decision_map = get_decision_type_map()
+        >>> decision_map["create_node"]
+        <DecisionType.CREATE_NODE: 'create_node'>
+    """
+    global _DECISION_TYPE_MAP
+    if _DECISION_TYPE_MAP is None:
+        _DECISION_TYPE_MAP = {
+            "create_node": DecisionType.CREATE_NODE,
+            "create_workflow_plan": DecisionType.CREATE_WORKFLOW_PLAN,
+            "execute_workflow": DecisionType.EXECUTE_WORKFLOW,
+            "modify_node": DecisionType.MODIFY_NODE,
+            "request_clarification": DecisionType.REQUEST_CLARIFICATION,
+            "respond": DecisionType.RESPOND,
+            "continue": DecisionType.CONTINUE,
+            "error_recovery": DecisionType.ERROR_RECOVERY,
+            "replan_workflow": DecisionType.REPLAN_WORKFLOW,
+            "spawn_subagent": DecisionType.SPAWN_SUBAGENT,
+        }
+    return _DECISION_TYPE_MAP

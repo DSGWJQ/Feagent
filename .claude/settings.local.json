@@ -50,7 +50,12 @@
       "Bash(git show:*)",
       "Bash(cp:*)",
       "Bash(Select-String \"(test_|PASSED|FAILED|ERROR|===)\")",
-      "Bash(Select-Object -First 30)"
+      "Bash(Select-Object -First 30)",
+      "Bash(Select-String -Pattern \"(\\d+):\")",
+      "Bash(Select-String -Pattern \"supervision|monitor\")",
+      "Bash(Select-String \"(PASSED|FAILED|test_|====)\")",
+      "Bash(SKIP=pyright git commit:*)",
+      "Bash(Select-String -Pattern \"(error|warning|F\\d+|E\\d+)\")"
     ],
     "deny": [],
     "ask": []
