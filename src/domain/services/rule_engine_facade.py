@@ -313,11 +313,13 @@ class RuleEngineFacade:
 
         # 记录日志（异常不影响验证结果 - fail-closed 完整性保护）
         # P1-1 Step 3 Critical Fix #3: 日志收集器接口兼容（能力探测）
-        if self._log_collector and not is_valid:
+        # P1-1清理后补: 恢复记录所有验证（不仅失败），与旧行为一致
+        if self._log_collector:
             log_data = {
                 "type": "decision_validation",
                 "session_id": session_id,
                 "decision": decision,
+                "is_valid": is_valid,
                 "errors": errors,
                 "corrections": corrections,
             }
@@ -325,20 +327,40 @@ class RuleEngineFacade:
                 # 优先使用 record() 方法（如果存在）
                 if hasattr(self._log_collector, "record") and callable(self._log_collector.record):
                     self._log_collector.record(log_data)
-                # Fallback: 使用 warning() 方法（UnifiedLogCollector 支持）
-                elif hasattr(self._log_collector, "warning") and callable(
-                    self._log_collector.warning
-                ):
-                    self._log_collector.warning(
-                        f"Decision validation failed: session={session_id}, "
-                        f"errors={len(errors)}, decision_type={decision.get('type', 'unknown')}"
-                    )
-                # Fallback: 使用 log() 方法
+                # Fallback: 根据验证结果选择合适的日志级别
                 elif hasattr(self._log_collector, "log") and callable(self._log_collector.log):
-                    self._log_collector.log(
-                        "warning",
-                        f"Decision validation failed: session={session_id}, errors={len(errors)}",
-                    )
+                    if is_valid:
+                        # 成功时使用 info 级别
+                        if hasattr(self._log_collector, "info") and callable(
+                            self._log_collector.info
+                        ):
+                            self._log_collector.info(
+                                "CoordinatorAgent",
+                                "决策验证通过",
+                                {"action_type": decision.get("action_type", "unknown")},
+                            )
+                        else:
+                            self._log_collector.log(
+                                "INFO",
+                                "CoordinatorAgent",
+                                "决策验证通过",
+                            )
+                    else:
+                        # 失败时使用 warning 级别
+                        if hasattr(self._log_collector, "warning") and callable(
+                            self._log_collector.warning
+                        ):
+                            self._log_collector.warning(
+                                "CoordinatorAgent",
+                                f"Decision validation failed: session={session_id}, "
+                                f"errors={len(errors)}, decision_type={decision.get('type', 'unknown')}",
+                            )
+                        else:
+                            self._log_collector.log(
+                                "WARNING",
+                                "CoordinatorAgent",
+                                f"Decision validation failed: errors={len(errors)}",
+                            )
             except Exception as e:
                 # 日志收集失败不应影响验证结果
                 logger.debug(
