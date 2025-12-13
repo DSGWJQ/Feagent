@@ -64,14 +64,12 @@ def test_type_annotations_valid():
                             type_checking_imports.add(alias.name)
 
     # 验证关键类型已导入
+    # 注意: P1-6重构后，许多类型已迁移到mixin文件
+    # - FormattedError, UserDecision, UserDecisionResult -> conversation_agent_recovery.py
+    # - ControlFlowIR, NodeDefinition, WorkflowPlan, EdgeDefinition -> conversation_agent_control_flow.py
+    # 因此这里只检查main文件仍需要的类型
     required_types = {
-        "FormattedError",
-        "UserDecision",
-        "UserDecisionResult",
-        "ControlFlowIR",
-        "NodeDefinition",
-        "WorkflowPlan",
-        "EdgeDefinition",
+        "ConversationAgentConfig",  # 配置类型（TYPE_CHECKING导入）
     }
 
     missing_types = required_types - type_checking_imports

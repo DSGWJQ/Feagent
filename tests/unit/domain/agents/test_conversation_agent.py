@@ -382,8 +382,14 @@ class TestConversationAgentEventPublishing:
 
         agent = ConversationAgent(session_context=session_ctx, llm=mock_llm, event_bus=event_bus)
 
-        # Act
-        await agent.publish_decision({"type": "create_node", "node_type": "LLM"})
+        # Act - 使用 Decision 对象而不是 dict
+        from src.domain.agents.conversation_agent import Decision, DecisionType
+
+        decision = Decision(
+            type=DecisionType.CREATE_NODE,
+            payload={"node_type": "LLM"},
+        )
+        await agent.publish_decision(decision)
 
         # Assert
         assert len(received_events) == 1

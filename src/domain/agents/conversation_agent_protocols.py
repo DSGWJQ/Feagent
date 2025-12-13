@@ -39,8 +39,8 @@ class EventBusProtocol(Protocol):
         """Unsubscribe from an event type."""
         ...
 
-    def publish(self, event: Any) -> None:
-        """Publish an event."""
+    async def publish(self, event: Any) -> None:
+        """Publish an event (async)."""
         ...
 
 
@@ -131,8 +131,6 @@ class RecoveryHost(Protocol):
         """Flush staged state updates to session_context (P0-2 Phase 2)."""
         ...
 
-
-
     async def _handle_adjustment_event(self, event: Any) -> None:
         """Handle adjustment event from coordinator (internal)."""
         ...
@@ -140,6 +138,8 @@ class RecoveryHost(Protocol):
     async def _handle_failure_handled_event(self, event: Any) -> None:
         """Handle failure handled event from coordinator (internal)."""
         ...
+
+
 class ReActCoreHost(Protocol):
     """Host contract for ConversationAgentReActCoreMixin (P1-7 Phase 6).
 
