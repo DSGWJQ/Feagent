@@ -68,6 +68,7 @@ dmypy.json
 .ruff_cache/
 
 # Temp artifacts
+tmp/
 temp_scheduled_workflows.py
 __tmp_fix.py
 __tmp_read.py

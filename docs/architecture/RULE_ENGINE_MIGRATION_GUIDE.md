@@ -319,7 +319,7 @@ P1-1 步骤4-5完成后，CoordinatorAgent中仍存在3处重复逻辑：
 ### 清理完成情况
 
 **日期**: 2025-12-13
-**状态**: ✅ 完成并验证
+**状态**: ✅ 完成并全面验证（包括回归修复）
 
 #### Commit记录
 
@@ -328,6 +328,7 @@ P1-1 步骤4-5完成后，CoordinatorAgent中仍存在3处重复逻辑：
 | 清理1: Builder | 2ace202 | 移除DagRuleBuilder/PayloadRuleBuilder导入和初始化 | ✅ 10/11单元, 8/8集成 |
 | 清理2: SafetyGuard | 1b28e56 | 5个安全验证方法改为调用Facade | ✅ 8/8集成 |
 | 清理3: Statistics | 5e5576b | get_system_status_with_alerts()改用Facade API | ✅ 8/8集成 |
+| **回归修复: Logging** | **272884b** | **RuleEngineFacade恢复记录所有验证日志（不仅失败）** | ✅ **52/52单元, 8/8集成** |
 
 #### 改动细节
 
@@ -349,6 +350,18 @@ P1-1 步骤4-5完成后，CoordinatorAgent中仍存在3处重复逻辑：
   - 从 `self._statistics.get()` 改为 `self._rule_engine_facade.get_decision_statistics()`
   - 添加 "P1-1清理" 文档标记
 - 移除属性赋值 (line 497): `self._statistics`，添加说明注释
+
+**回归修复: Logging (Commit 272884b)** ⭐
+- **问题**: 单元测试 `test_coordinator_logs_decision_validation` 失败 (`assert 0 >= 1`)
+- **根本原因**: RuleEngineFacade只记录失败的验证，而旧实现记录所有验证
+- **修复** (`src/domain/services/rule_engine_facade.py` lines 314-369):
+  - 修改条件: `if self._log_collector and not is_valid:` → `if self._log_collector:`
+  - 添加差异化日志:
+    - 成功时使用 `info` 级别: `"决策验证通过"`
+    - 失败时使用 `warning` 级别: `"Decision validation failed"`
+  - 优先尝试 `record()` 方法，fallback到 `log()`/`info()`/`warning()` 方法
+- **验证**: 52/52单元测试, 8/8集成测试全部通过
+- **影响**: 恢复旧有行为，所有决策验证（成功和失败）都会被记录
 
 #### 影响评估
 
@@ -398,5 +411,5 @@ P1-1 步骤4-5完成后，CoordinatorAgent中仍存在3处重复逻辑：
 
 ---
 
-**最后更新**: 2025-12-13 (P1-1 Step 4-5 + 后续清理完成)
+**最后更新**: 2025-12-13 (P1-1 Step 4-5 + 后续清理完成 + 回归修复验证)
 **维护者**: Claude Code + Development Team
