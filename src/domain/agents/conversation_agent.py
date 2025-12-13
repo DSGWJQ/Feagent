@@ -19,16 +19,24 @@
 - 请求信息澄清
 """
 
+from __future__ import annotations
+
 import asyncio
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 from uuid import uuid4
 
 from src.domain.services.context_manager import Goal, SessionContext
 from src.domain.services.event_bus import Event, EventBus
+
+# =========================================================================
+# P1-4: Config兼容性支持（sentinel模式）
+# =========================================================================
+_LEGACY_UNSET: Final[object] = object()
+"""Sentinel值，用于区分'未传递参数'与'传递了None'"""
 
 # =========================================================================
 # P1 Fix: 配置常量（避免魔法数字）
@@ -47,10 +55,10 @@ RULE_BASED_EXTRACTION_CONFIDENCE = 0.6
 # =========================================================================
 # 注意：此映射在 DecisionType 枚举定义后使用，在 make_decision 中引用
 # 延迟定义为 lambda 以避免循环引用
-_DECISION_TYPE_MAP: dict[str, "DecisionType"] | None = None
+_DECISION_TYPE_MAP: dict[str, DecisionType] | None = None
 
 
-def _get_decision_type_map() -> dict[str, "DecisionType"]:
+def _get_decision_type_map() -> dict[str, DecisionType]:
     """获取决策类型映射（延迟初始化）"""
     global _DECISION_TYPE_MAP
     if _DECISION_TYPE_MAP is None:
@@ -71,6 +79,9 @@ def _get_decision_type_map() -> dict[str, "DecisionType"]:
 
 if TYPE_CHECKING:
     from src.domain.agents.control_flow_ir import ControlFlowIR
+    from src.domain.agents.conversation_agent_config import (
+        ConversationAgentConfig,
+    )
     from src.domain.agents.error_handling import (
         FormattedError,
         UserDecision,
@@ -449,18 +460,20 @@ class ConversationAgent:
 
     def __init__(
         self,
-        session_context: SessionContext,
-        llm: ConversationAgentLLM,
-        event_bus: EventBus | None = None,
-        max_iterations: int = DEFAULT_MAX_ITERATIONS,
-        timeout_seconds: float | None = None,
-        max_tokens: int | None = None,
-        max_cost: float | None = None,
-        coordinator: Any | None = None,
-        enable_intent_classification: bool = False,
-        intent_confidence_threshold: float = DEFAULT_INTENT_CONFIDENCE_THRESHOLD,
-        emitter: Any | None = None,
-        stream_emitter: Any | None = None,
+        session_context: SessionContext | object = _LEGACY_UNSET,
+        llm: ConversationAgentLLM | object = _LEGACY_UNSET,
+        event_bus: EventBus | None | object = _LEGACY_UNSET,
+        max_iterations: int | object = _LEGACY_UNSET,
+        timeout_seconds: float | None | object = _LEGACY_UNSET,
+        max_tokens: int | None | object = _LEGACY_UNSET,
+        max_cost: float | None | object = _LEGACY_UNSET,
+        coordinator: Any | None | object = _LEGACY_UNSET,
+        enable_intent_classification: bool | object = _LEGACY_UNSET,
+        intent_confidence_threshold: float | object = _LEGACY_UNSET,
+        emitter: Any | None | object = _LEGACY_UNSET,
+        stream_emitter: Any | None | object = _LEGACY_UNSET,
+        *,
+        config: ConversationAgentConfig | None = None,
     ):
         """初始化对话Agent
 
@@ -477,9 +490,63 @@ class ConversationAgent:
             intent_confidence_threshold: 意图分类置信度阈值（Phase 14）
             emitter: ConversationFlowEmitter 实例（Phase 2，可选）
             stream_emitter: 流式输出器实例（Phase 8.4，可选）
+            config: ConversationAgentConfig 实例（P1-4新增，可选）
         """
-        self.session_context = session_context
-        self.llm = llm
+        # P1-4: Config兼容性 - 解析配置
+        if config is not None or any(
+            param is not _LEGACY_UNSET
+            for param in [
+                session_context,
+                llm,
+                event_bus,
+                max_iterations,
+                timeout_seconds,
+                max_tokens,
+                max_cost,
+                coordinator,
+                enable_intent_classification,
+                intent_confidence_threshold,
+                emitter,
+                stream_emitter,
+            ]
+        ):
+            final_config = self._resolve_config(
+                config,
+                session_context,
+                llm,
+                event_bus,
+                max_iterations,
+                timeout_seconds,
+                max_tokens,
+                max_cost,
+                coordinator,
+                enable_intent_classification,
+                intent_confidence_threshold,
+                emitter,
+                stream_emitter,
+            )
+            # 从config提取参数
+            session_context = final_config.session_context
+            llm = final_config.llm.llm  # type: ignore[assignment]
+            event_bus = final_config.event_bus
+            max_iterations = final_config.react.max_iterations  # type: ignore[assignment]
+            timeout_seconds = final_config.react.timeout_seconds
+            max_tokens = final_config.resource.max_tokens
+            max_cost = final_config.resource.max_cost
+            coordinator = final_config.workflow.coordinator
+            enable_intent_classification = final_config.intent.enable_intent_classification  # type: ignore[assignment]
+            intent_confidence_threshold = final_config.intent.intent_confidence_threshold  # type: ignore[assignment]
+            emitter = final_config.streaming.emitter
+            stream_emitter = final_config.streaming.stream_emitter
+        else:
+            # P1-4: 无参构造不合法（Critical修复）
+            raise ValueError(
+                "ConversationAgent requires initialization parameters. "
+                "Provide either 'config' parameter or legacy parameters (session_context and llm are required)."
+            )
+
+        self.session_context = session_context  # type: ignore[assignment]
+        self.llm = llm  # type: ignore[assignment]
         self.event_bus = event_bus
         self.max_iterations = max_iterations
         # 阶段5新增：循环控制配置
@@ -1844,7 +1911,7 @@ class ConversationAgent:
 
     # === Phase 8: 工作流规划能力 ===
 
-    async def create_workflow_plan(self, goal: str) -> "WorkflowPlan":
+    async def create_workflow_plan(self, goal: str) -> WorkflowPlan:
         """根据目标创建工作流规划（Phase 8 新增）
 
         参数：
@@ -1946,7 +2013,7 @@ class ConversationAgent:
 
         return plan
 
-    async def decompose_to_nodes(self, goal: str) -> list["NodeDefinition"]:
+    async def decompose_to_nodes(self, goal: str) -> list[NodeDefinition]:
         """将目标分解为节点定义列表（Phase 8 新增）
 
         参数：
@@ -2010,7 +2077,7 @@ class ConversationAgent:
 
         return nodes
 
-    async def create_workflow_plan_and_publish(self, goal: str) -> "WorkflowPlan":
+    async def create_workflow_plan_and_publish(self, goal: str) -> WorkflowPlan:
         """创建工作流规划并发布决策事件（Phase 8 新增）
 
         参数：
@@ -2570,7 +2637,7 @@ class ConversationAgent:
 
     def format_error_for_user(
         self, node_id: str, error: Exception, node_name: str = ""
-    ) -> "FormattedError":
+    ) -> FormattedError:
         """将错误格式化为用户友好消息
 
         参数：
@@ -2604,7 +2671,7 @@ class ConversationAgent:
 
         return FormattedError(message=message, options=options, category=category)
 
-    async def handle_user_error_decision(self, decision: "UserDecision") -> "UserDecisionResult":
+    async def handle_user_error_decision(self, decision: UserDecision) -> UserDecisionResult:
         """处理用户的错误恢复决策
 
         参数：
@@ -2706,7 +2773,7 @@ class ConversationAgent:
 
     # === Phase 17: 控制流规划 (Priority 3) ===
 
-    def _extract_control_flow_by_rules(self, text: str) -> "ControlFlowIR":
+    def _extract_control_flow_by_rules(self, text: str) -> ControlFlowIR:
         """基于规则从文本中提取控制流
 
         使用简单的关键词匹配识别决策点和循环，支持中英文输入。
@@ -2769,10 +2836,10 @@ class ConversationAgent:
 
     def build_control_nodes(
         self,
-        control_ir: "ControlFlowIR",
-        existing_nodes: list["NodeDefinition"],
-        existing_edges: list["EdgeDefinition"],
-    ) -> tuple[list["NodeDefinition"], list["EdgeDefinition"]]:
+        control_ir: ControlFlowIR,
+        existing_nodes: list[NodeDefinition],
+        existing_edges: list[EdgeDefinition],
+    ) -> tuple[list[NodeDefinition], list[EdgeDefinition]]:
         """将 ControlFlowIR 转换为 NodeDefinition + EdgeDefinition
 
         参数：
@@ -2844,6 +2911,321 @@ class ConversationAgent:
                 new_edges.append(EdgeDefinition(source_node=loop_name, target_node=task_id))
 
         return new_nodes, new_edges
+
+    # =========================================================================
+    # P1-4: Config兼容性支持方法
+    # =========================================================================
+
+    def _resolve_config(
+        self,
+        config: ConversationAgentConfig | None,
+        session_context: SessionContext | object,
+        llm: Any | object,
+        event_bus: EventBus | None | object,
+        max_iterations: int | object,
+        timeout_seconds: float | None | object,
+        max_tokens: int | None | object,
+        max_cost: float | None | object,
+        coordinator: Any | None | object,
+        enable_intent_classification: bool | object,
+        intent_confidence_threshold: float | object,
+        emitter: Any | None | object,
+        stream_emitter: Any | None | object,
+    ) -> ConversationAgentConfig:
+        """解析最终配置（处理config与legacy参数的混用）"""
+
+        # 收集所有传入的legacy参数
+        legacy_params = {
+            "session_context": session_context,
+            "llm": llm,
+            "event_bus": event_bus,
+            "max_iterations": max_iterations,
+            "timeout_seconds": timeout_seconds,
+            "max_tokens": max_tokens,
+            "max_cost": max_cost,
+            "coordinator": coordinator,
+            "enable_intent_classification": enable_intent_classification,
+            "intent_confidence_threshold": intent_confidence_threshold,
+            "emitter": emitter,
+            "stream_emitter": stream_emitter,
+        }
+
+        # 过滤出真正传递的参数
+        provided_legacy = {k: v for k, v in legacy_params.items() if v is not _LEGACY_UNSET}
+
+        # 场景1: 仅传config
+        if config is not None and not provided_legacy:
+            return config
+
+        # 场景2: 仅传legacy
+        if config is None and provided_legacy:
+            return self._legacy_to_config(provided_legacy)
+
+        # 场景3: 混用 - 检测冲突
+        if config is not None and provided_legacy:
+            conflicts = self._detect_conflicts(config, provided_legacy)
+            if conflicts:
+                raise ValueError(
+                    f"Conflicting parameters: {', '.join(conflicts)}. "
+                    "Cannot mix config and legacy parameters for the same field."
+                )
+            return self._merge_config(config, provided_legacy)
+
+        # 场景4: 都没传（不合法）
+        raise ValueError(
+            "Must provide either 'config' or legacy parameters (session_context and llm are required)"
+        )
+
+    def _detect_conflicts(
+        self,
+        config: ConversationAgentConfig,
+        legacy_params: dict[str, Any],
+    ) -> list[str]:
+        """检测config与legacy参数的冲突"""
+
+        conflicts = []
+
+        # P1-4: 混合冲突检测语义
+        # - 对象引用（session_context, llm, coordinator等）: 使用身份比较，相同对象允许
+        # - 可选对象（event_bus等）: 两边都非None且不同对象时冲突
+        # - 标量值（max_iterations等）: config使用默认值时允许legacy覆盖，否则值不同时冲突
+
+        # 检查session_context（必选参数，config必然有值）
+        if "session_context" in legacy_params:
+            legacy_val = legacy_params["session_context"]
+            if config.session_context is not legacy_val:
+                conflicts.append(
+                    f"session_context (config={type(config.session_context).__name__}, "
+                    f"legacy={type(legacy_val).__name__})"
+                )
+
+        # 检查llm（必选参数，config.llm.llm必然有值）
+        if "llm" in legacy_params:
+            legacy_val = legacy_params["llm"]
+            config_val = config.llm.llm
+            if config_val is not legacy_val:
+                conflicts.append(
+                    f"llm (config={type(config_val).__name__}, "
+                    f"legacy={type(legacy_val).__name__})"
+                )
+
+        # 检查event_bus（仅当两边都非None且不同时冲突）
+        if "event_bus" in legacy_params:
+            legacy_val = legacy_params["event_bus"]
+            config_val = config.event_bus
+            if config_val is not None and legacy_val is not None and config_val is not legacy_val:
+                conflicts.append(
+                    f"event_bus (config={type(config_val).__name__}, "
+                    f"legacy={type(legacy_val).__name__})"
+                )
+
+        # 检查max_iterations（config使用非默认值且与legacy不同时冲突）
+        if "max_iterations" in legacy_params:
+            legacy_val = legacy_params["max_iterations"]
+            config_val = config.react.max_iterations
+            # 仅当config明确设置了非默认值，且与legacy不同时才冲突
+            if config_val != DEFAULT_MAX_ITERATIONS and config_val != legacy_val:
+                conflicts.append(f"max_iterations (config={config_val}, legacy={legacy_val})")
+
+        # 检查timeout_seconds（仅当两边都非None且不同时冲突）
+        if "timeout_seconds" in legacy_params:
+            legacy_val = legacy_params["timeout_seconds"]
+            config_val = config.react.timeout_seconds
+            if config_val is not None and legacy_val is not None and config_val != legacy_val:
+                conflicts.append(f"timeout_seconds (config={config_val}, legacy={legacy_val})")
+
+        # 检查max_tokens（仅当两边都非None且不同时冲突）
+        if "max_tokens" in legacy_params:
+            legacy_val = legacy_params["max_tokens"]
+            config_val = config.resource.max_tokens
+            if config_val is not None and legacy_val is not None and config_val != legacy_val:
+                conflicts.append(f"max_tokens (config={config_val}, legacy={legacy_val})")
+
+        # 检查max_cost（仅当两边都非None且不同时冲突）
+        if "max_cost" in legacy_params:
+            legacy_val = legacy_params["max_cost"]
+            config_val = config.resource.max_cost
+            if config_val is not None and legacy_val is not None and config_val != legacy_val:
+                conflicts.append(f"max_cost (config={config_val}, legacy={legacy_val})")
+
+        # 检查coordinator（仅当两边都非None且不同时冲突）
+        if "coordinator" in legacy_params:
+            legacy_val = legacy_params["coordinator"]
+            config_val = config.workflow.coordinator
+            if config_val is not None and legacy_val is not None and config_val is not legacy_val:
+                conflicts.append(
+                    f"coordinator (config={type(config_val).__name__}, "
+                    f"legacy={type(legacy_val).__name__})"
+                )
+
+        # 检查enable_intent_classification（config使用非默认值且与legacy不同时冲突）
+        if "enable_intent_classification" in legacy_params:
+            legacy_val = legacy_params["enable_intent_classification"]
+            config_val = config.intent.enable_intent_classification
+            # 仅当config明确设置了非默认值(False)，且与legacy不同时才冲突
+            if config_val != False and config_val != legacy_val:  # noqa: E712
+                conflicts.append(
+                    f"enable_intent_classification (config={config_val}, legacy={legacy_val})"
+                )
+
+        # 检查intent_confidence_threshold（config使用非默认值且与legacy不同时冲突）
+        if "intent_confidence_threshold" in legacy_params:
+            legacy_val = legacy_params["intent_confidence_threshold"]
+            config_val = config.intent.intent_confidence_threshold
+            # 仅当config明确设置了非默认值，且与legacy不同时才冲突
+            if config_val != DEFAULT_INTENT_CONFIDENCE_THRESHOLD and config_val != legacy_val:
+                conflicts.append(
+                    f"intent_confidence_threshold (config={config_val}, legacy={legacy_val})"
+                )
+
+        # 检查emitter（仅当两边都非None且不同时冲突）
+        if "emitter" in legacy_params:
+            legacy_val = legacy_params["emitter"]
+            config_val = config.streaming.emitter
+            if config_val is not None and legacy_val is not None and config_val is not legacy_val:
+                conflicts.append(
+                    f"emitter (config={type(config_val).__name__}, "
+                    f"legacy={type(legacy_val).__name__})"
+                )
+
+        # 检查stream_emitter（仅当两边都非None且不同时冲突）
+        if "stream_emitter" in legacy_params:
+            legacy_val = legacy_params["stream_emitter"]
+            config_val = config.streaming.stream_emitter
+            if config_val is not None and legacy_val is not None and config_val is not legacy_val:
+                conflicts.append(
+                    f"stream_emitter (config={type(config_val).__name__}, "
+                    f"legacy={type(legacy_val).__name__})"
+                )
+
+        return conflicts
+
+    def _legacy_to_config(self, legacy_params: dict[str, Any]) -> ConversationAgentConfig:
+        """将legacy参数转换为config"""
+        from src.domain.agents.conversation_agent_config import (
+            ConversationAgentConfig,
+            IntentConfig,
+            LLMConfig,
+            ReActConfig,
+            ResourceConfig,
+            StreamingConfig,
+            WorkflowConfig,
+        )
+
+        # 提取必选参数
+        session_context = legacy_params.get("session_context")
+        llm = legacy_params.get("llm")
+
+        if session_context is None or llm is None:
+            raise ValueError("session_context and llm are required")
+
+        # 构建config
+        return ConversationAgentConfig(
+            session_context=session_context,
+            llm=LLMConfig(llm=llm),
+            event_bus=legacy_params.get("event_bus"),
+            react=ReActConfig(
+                max_iterations=legacy_params.get("max_iterations", DEFAULT_MAX_ITERATIONS),
+                timeout_seconds=legacy_params.get("timeout_seconds"),
+            ),
+            intent=IntentConfig(
+                enable_intent_classification=legacy_params.get(
+                    "enable_intent_classification", False
+                ),
+                intent_confidence_threshold=legacy_params.get(
+                    "intent_confidence_threshold", DEFAULT_INTENT_CONFIDENCE_THRESHOLD
+                ),
+            ),
+            workflow=WorkflowConfig(
+                coordinator=legacy_params.get("coordinator"),
+            ),
+            streaming=StreamingConfig(
+                emitter=legacy_params.get("emitter"),
+                stream_emitter=legacy_params.get("stream_emitter"),
+            ),
+            resource=ResourceConfig(
+                max_tokens=legacy_params.get("max_tokens"),
+                max_cost=legacy_params.get("max_cost"),
+            ),
+        )
+
+    def _merge_config(
+        self,
+        config: ConversationAgentConfig,
+        legacy_params: dict[str, Any],
+    ) -> ConversationAgentConfig:
+        """合并config与legacy参数（legacy填充config未指定的字段）"""
+        from src.domain.agents.conversation_agent_config import (
+            IntentConfig,
+            ReActConfig,
+        )
+
+        overrides = {}
+
+        # event_bus
+        if "event_bus" in legacy_params and config.event_bus is None:
+            overrides["event_bus"] = legacy_params["event_bus"]
+
+        # ReAct配置
+        react_overrides = {}
+        default_react = ReActConfig()
+        if (
+            "max_iterations" in legacy_params
+            and config.react.max_iterations == default_react.max_iterations
+        ):
+            react_overrides["max_iterations"] = legacy_params["max_iterations"]
+        if "timeout_seconds" in legacy_params and config.react.timeout_seconds is None:
+            react_overrides["timeout_seconds"] = legacy_params["timeout_seconds"]
+        if react_overrides:
+            overrides["react"] = replace(config.react, **react_overrides)
+
+        # Intent配置
+        intent_overrides = {}
+        default_intent = IntentConfig()
+        if (
+            "enable_intent_classification" in legacy_params
+            and config.intent.enable_intent_classification
+            == default_intent.enable_intent_classification
+        ):
+            intent_overrides["enable_intent_classification"] = legacy_params[
+                "enable_intent_classification"
+            ]
+        if (
+            "intent_confidence_threshold" in legacy_params
+            and config.intent.intent_confidence_threshold
+            == default_intent.intent_confidence_threshold
+        ):
+            intent_overrides["intent_confidence_threshold"] = legacy_params[
+                "intent_confidence_threshold"
+            ]
+        if intent_overrides:
+            overrides["intent"] = replace(config.intent, **intent_overrides)
+
+        # Workflow配置
+        if "coordinator" in legacy_params and config.workflow.coordinator is None:
+            overrides["workflow"] = replace(
+                config.workflow, coordinator=legacy_params["coordinator"]
+            )
+
+        # Streaming配置
+        streaming_overrides = {}
+        if "emitter" in legacy_params and config.streaming.emitter is None:
+            streaming_overrides["emitter"] = legacy_params["emitter"]
+        if "stream_emitter" in legacy_params and config.streaming.stream_emitter is None:
+            streaming_overrides["stream_emitter"] = legacy_params["stream_emitter"]
+        if streaming_overrides:
+            overrides["streaming"] = replace(config.streaming, **streaming_overrides)
+
+        # Resource配置
+        resource_overrides = {}
+        if "max_tokens" in legacy_params and config.resource.max_tokens is None:
+            resource_overrides["max_tokens"] = legacy_params["max_tokens"]
+        if "max_cost" in legacy_params and config.resource.max_cost is None:
+            resource_overrides["max_cost"] = legacy_params["max_cost"]
+        if resource_overrides:
+            overrides["resource"] = replace(config.resource, **resource_overrides)
+
+        return config.with_overrides(**overrides)
 
 
 # 类型提示导入（避免循环导入）

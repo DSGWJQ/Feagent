@@ -47,7 +47,10 @@
       "Bash(Select-String -Pattern \"(error|Error)\")",
       "Bash(Select-Object -First 20)",
       "Bash(del tmpdev_plan.md)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(cp:*)",
+      "Bash(Select-String \"(test_|PASSED|FAILED|ERROR|===)\")",
+      "Bash(Select-Object -First 30)"
     ],
     "deny": [],
     "ask": []

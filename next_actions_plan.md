@@ -352,16 +352,45 @@
      - 主文件未变薄：1768行 → **2297行**（增加30%）
      - 说明：辅助模块已提取，但主体逻辑未拆分
 
+   - **✅ 新增完成（2025-12-13）：**
+     - ✅ **步骤2: 引入 `ConversationAgentConfig` dataclass + 兼容性入口**
+       - **设计**（Codex协作）：
+         - 6个配置组：LLMConfig / ReActConfig / IntentConfig / WorkflowConfig / StreamingConfig / ResourceConfig
+         - 冲突检测：使用 `_LEGACY_UNSET` sentinel区分"未传参"与"传None"
+         - 优先级：标量值允许默认值覆盖，对象引用使用身份比较
+         - 参数转换：`_resolve_config()` / `_detect_conflicts()` / `_legacy_to_config()` / `_merge_config()` 方法
+         - 兼容性测试：8个场景全覆盖（Config-only / Legacy-only / Mixed / None-vs-sentinel）
+       - **实施完成**：
+         - ✅ 创建 `conversation_agent_config.py`（405行，6个配置组）
+         - ✅ 添加 `_LEGACY_UNSET` sentinel + 4个辅助方法（~240行）
+         - ✅ 修改 `__init__` 签名（12个参数使用sentinel + config参数）
+         - ✅ 创建 `test_conversation_agent_config_compat.py`（355行，10测试）
+         - ✅ 验证通过：Ruff pass + 10/10 compat tests + 180+ regression tests
+       - **Codex审查 + Critical修复（2025-12-13）**：
+         - ✅ Critical-1: 无参构造不抛异常
+           - 问题：ConversationAgent() 不报错，创建无效状态
+           - 修复：添加 `else:` 分支抛出 ValueError with clear message
+         - ✅ High-2: 冲突检测语义过严
+           - 问题：直接值比较，不允许默认值覆盖（与P1-1不一致）
+           - 修复：标量值检查config是否使用默认值，允许legacy覆盖默认
+           - 优化：对象引用使用身份比较（`is not`），可选对象仅当两边都非None时比较
+           - 优化：错误消息包含实际值（如 `max_iterations (config=10, legacy=25)`）
+         - ✅ High-3: 默认值处理歧义
+           - 修复：使用 `DEFAULT_MAX_ITERATIONS` / `DEFAULT_INTENT_CONFIDENCE_THRESHOLD` 常量比较
+       - **最终验证**：
+         - ✅ Ruff: All checks passed
+         - ✅ 10/10 compatibility tests passed
+         - ✅ 180+ regression tests passed (ConversationAgent相关全通过)
+         - ✅ 无破坏性变更
+
    - **❌ 待完成：**
      1) ❌ 按目标结构拆分为 core/workflow/state/recovery/control_flow 五文件
-     2) ❌ 引入 `ConversationAgentConfig` dataclass
-     3) ❌ 保留外部导入路径不变（conversation_agent.py 作为门面）
+     2) ❌ 保留外部导入路径不变（conversation_agent.py 作为门面）
 
    - **下一步行动：**
      1. 创建 `src/domain/agents/conversation_agent/` 子包
      2. 拆分为 core.py/workflow.py/state.py/recovery.py/control_flow.py
-     3. 创建 `conversation_agent_config.py`
-     4. 重构主文件为薄门面（re-export）
+     3. 重构主文件为薄门面（re-export）
 
 5. WorkflowAgent：去重复执行入口 + 明确容器回退策略 - 预计8小时
    - 问题描述：多个 execute_* 入口疑似重复，默认容器执行器回退逻辑可能吞错。
