@@ -430,6 +430,26 @@ tests/                              # 362 files total
 | 工具引擎 | `tool_engine.py` | 15-20 |
 | 依赖图 | `workflow_dependency_graph.py` | 10-15 |
 
+**P2-Task1: ConfigurableRuleEngine 测试补充（Schema Validation边缘case）**
+- ✅ **需求分析**：识别87%覆盖率缺口（39 missing lines），聚焦Schema validation未覆盖分支
+- ✅ **测试设计**：Codex协作设计9个P0 Schema Validation测试用例
+- ✅ **TDD实践**：遵循Red-Green-Refactor循环，87%→94%一次通过（+9测试）
+- ✅ **Codex审查**：✅ LGTM评价，"94% is a strong finish for P2-Task1"，建议停在94%
+- ✅ **Mock策略**：RuleConfigValidator.validate() + ConfigurableRuleEngine() 构造异常测试
+- 📊 **测试结果**：58/58 单元测试通过（49原有+9新增），覆盖率94%（超出P2目标60%达34%）
+- 📁 **文件变更**：
+  - 更新：`tests/unit/domain/services/test_configurable_rule_engine.py`（新增9测试，184行）
+  - 无需修改：`src/domain/services/configurable_rule_engine.py`（实现已稳定）
+- 📝 **测试覆盖**（新增9个P0测试）：
+  - Path Rules: missing id/action、replace requires replacement
+  - Content Rules: missing fields、patterns类型错误+invalid action
+  - User Level Rules: missing fields、invalid required_level+invalid action
+  - Command Rules: missing fields、commands类型错误+invalid action
+  - Engine Init: invalid config raises ValueError
+- 📋 **Remaining Missing Lines** (19 lines, P1/P2 priority):
+  - P1: YAML errors (373-376)、Invalid regex (334-335)、Serialization (82-83, 137)、Path matching (500, 506, 522)、Bytes content (408, 591-594)、Audit adapter (648)
+  - P2: Command decode exception (593-594)
+
 ### 5.5 P3: Domain/Agents 状态机
 
 | 模块 | 预计用例数 | 重点 |

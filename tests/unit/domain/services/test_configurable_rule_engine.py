@@ -411,6 +411,191 @@ class TestRuleConfigSchema:
         errors = RuleConfigValidator.validate(config)
         assert any("replacement" in e.lower() for e in errors)
 
+    def test_path_rule_missing_id_and_action(self):
+        """测试路径规则缺少 id 和 action 字段"""
+        from src.domain.services.configurable_rule_engine import RuleConfigValidator
+
+        config = {
+            "version": "1.0",
+            "rules": {
+                "path_rules": [
+                    {
+                        "pattern": "/etc/*",
+                        # missing id and action
+                    }
+                ]
+            },
+        }
+
+        errors = RuleConfigValidator.validate(config)
+        assert any("id" in e.lower() for e in errors)
+        assert any("action" in e.lower() for e in errors)
+
+    def test_path_rule_replace_requires_replacement(self):
+        """测试路径规则使用 replace action 需要 replacement 字段"""
+        from src.domain.services.configurable_rule_engine import RuleConfigValidator
+
+        config = {
+            "version": "1.0",
+            "rules": {
+                "path_rules": [
+                    {
+                        "id": "test_replace",
+                        "pattern": "/tmp/*",
+                        "action": "replace",
+                        # missing replacement
+                    }
+                ]
+            },
+        }
+
+        errors = RuleConfigValidator.validate(config)
+        assert any("replacement" in e.lower() for e in errors)
+
+    def test_content_rule_missing_id_patterns_action(self):
+        """测试内容规则缺少 id、patterns 和 action 字段"""
+        from src.domain.services.configurable_rule_engine import RuleConfigValidator
+
+        config = {
+            "version": "1.0",
+            "rules": {
+                "content_rules": [
+                    {
+                        # missing id, patterns, action
+                        "message": "test"
+                    }
+                ]
+            },
+        }
+
+        errors = RuleConfigValidator.validate(config)
+        assert any("id" in e.lower() for e in errors)
+        assert any("patterns" in e.lower() for e in errors)
+        assert any("action" in e.lower() for e in errors)
+
+    def test_content_rule_patterns_not_list_and_invalid_action(self):
+        """测试内容规则 patterns 不是列表且 action 无效"""
+        from src.domain.services.configurable_rule_engine import RuleConfigValidator
+
+        config = {
+            "version": "1.0",
+            "rules": {
+                "content_rules": [
+                    {
+                        "id": "test_content",
+                        "patterns": "secret",  # should be list
+                        "action": "invalid_action",  # invalid action
+                        "message": "test",
+                    }
+                ]
+            },
+        }
+
+        errors = RuleConfigValidator.validate(config)
+        assert any("patterns" in e.lower() and "list" in e.lower() for e in errors)
+        assert any("action" in e.lower() for e in errors)
+
+    def test_user_level_rule_missing_fields(self):
+        """测试用户级别规则缺少必填字段"""
+        from src.domain.services.configurable_rule_engine import RuleConfigValidator
+
+        config = {
+            "version": "1.0",
+            "rules": {
+                "user_level_rules": [
+                    {
+                        # missing id, required_level, paths, action
+                        "message": "test"
+                    }
+                ]
+            },
+        }
+
+        errors = RuleConfigValidator.validate(config)
+        assert any("id" in e.lower() for e in errors)
+        assert any("required_level" in e.lower() for e in errors)
+        assert any("paths" in e.lower() for e in errors)
+        assert any("action" in e.lower() for e in errors)
+
+    def test_user_level_rule_invalid_required_level_and_action(self):
+        """测试用户级别规则 required_level 和 action 无效"""
+        from src.domain.services.configurable_rule_engine import RuleConfigValidator
+
+        config = {
+            "version": "1.0",
+            "rules": {
+                "user_level_rules": [
+                    {
+                        "id": "test_user_level",
+                        "required_level": "root",  # invalid level
+                        "paths": ["/admin/*"],
+                        "action": "invalid_action",  # invalid action
+                        "message": "test",
+                    }
+                ]
+            },
+        }
+
+        errors = RuleConfigValidator.validate(config)
+        assert any("user level" in e.lower() or "invalid" in e.lower() for e in errors)
+        assert any("action" in e.lower() for e in errors)
+
+    def test_command_rule_missing_fields(self):
+        """测试命令规则缺少必填字段"""
+        from src.domain.services.configurable_rule_engine import RuleConfigValidator
+
+        config = {
+            "version": "1.0",
+            "rules": {
+                "command_rules": [
+                    {
+                        # missing id, commands, action
+                        "message": "test"
+                    }
+                ]
+            },
+        }
+
+        errors = RuleConfigValidator.validate(config)
+        assert any("id" in e.lower() for e in errors)
+        assert any("commands" in e.lower() for e in errors)
+        assert any("action" in e.lower() for e in errors)
+
+    def test_command_rule_commands_not_list_and_invalid_action(self):
+        """测试命令规则 commands 不是列表且 action 无效"""
+        from src.domain.services.configurable_rule_engine import RuleConfigValidator
+
+        config = {
+            "version": "1.0",
+            "rules": {
+                "command_rules": [
+                    {
+                        "id": "test_command",
+                        "commands": "rm -rf",  # should be list
+                        "action": "invalid_action",  # invalid action
+                        "message": "test",
+                    }
+                ]
+            },
+        }
+
+        errors = RuleConfigValidator.validate(config)
+        assert any("commands" in e.lower() and "list" in e.lower() for e in errors)
+        assert any("action" in e.lower() for e in errors)
+
+    def test_engine_init_invalid_config_raises_value_error(self):
+        """测试引擎初始化时配置无效抛出 ValueError"""
+        from src.domain.services.configurable_rule_engine import (
+            ConfigurableRuleEngine,
+        )
+
+        config = {
+            "rules": {}  # missing version
+        }
+
+        with pytest.raises(ValueError, match="Invalid configuration"):
+            ConfigurableRuleEngine(config)
+
 
 # =============================================================================
 # 4. 路径规则测试
@@ -603,7 +788,8 @@ class TestContentRules:
 
         result = engine.evaluate(request)
         # 注意：正则表达式 password\s*=\s*['\"] 不匹配 "password":
-        # 需要调整测试或正则
+        # 因此第一个请求不应触发规则
+        assert result.final_action != RuleAction.TERMINATE
 
         request2 = MockSaveRequest(content="password = 'secret123'")
         result2 = engine.evaluate(request2)
