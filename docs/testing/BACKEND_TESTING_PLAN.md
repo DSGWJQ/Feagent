@@ -317,8 +317,8 @@ tests/                              # 362 files total
 | 模块 | 当前覆盖 | 目标覆盖 | 实际用例数 | 状态 | Commit |
 |------|----------|----------|-----------|------|--------|
 | `execute_run.py` | 95% | 80% | 7 | ✅ 完成 | `3f77a55` |
-| `classify_task.py` | 100% | 80% | 23 | ✅ 完成 | `待提交` |
-| `update_workflow_by_chat.py` | 0% | 70% | 12-15 | ⏳ 待开始 | - |
+| `classify_task.py` | 100% | 80% | 23 | ✅ 完成 | `31a53f8` |
+| `update_workflow_by_chat.py` | 100% | 70% | 16 | ✅ 完成 | `待提交` |
 | `create_agent.py` | 44% | 70% | 8-10 | ⏳ 待补充 | - |
 | `create_tool.py` | 0% | 70% | 6-8 | ⏳ 待开始 | - |
 | `import_workflow.py` | 80% | 70% | 5-7 | ✅ 已达标 | - |
@@ -353,6 +353,24 @@ tests/                              # 362 files total
   - LLM回退路径：5测试（invoke异常、缺失字段、无效confidence、None task_type、None content）
   - JSON解析：3测试（```json围栏、嵌入{}、无效JSON默认）
   - 关键词分类：6参数化测试（所有TaskType+工具建议）
+
+**P1-Task3: UpdateWorkflowByChatUseCase 测试补齐（对话式工作流修改）**
+- ✅ **业务分析**：理解双服务兼容（基础tuple+增强ModificationResult）、异步流式执行
+- ✅ **测试设计**：Codex协作设计16个测试用例（20个参数化后），覆盖6大功能组
+- ✅ **TDD实践**：遵循Red-Green-Refactor循环，初次99%后添加streaming parity测试达到100%
+- ✅ **Codex审查**：应用4处修复（未使用import、fixture文档、result变量、streaming修复）
+- ✅ **Mock策略**：SimpleNamespace模拟ModificationResult，parent_mock验证调用顺序
+- 📊 **测试结果**：20/20 单元测试通过（16函数+参数化），覆盖率100%（超出70%目标30%）
+- 📁 **文件变更**：
+  - 新增：`tests/unit/application/use_cases/test_update_workflow_by_chat.py`（589行，16测试函数）
+  - 无需修改：`src/application/use_cases/update_workflow_by_chat.py`（实现已稳定）
+- 📝 **测试覆盖**：
+  - 输入验证：2参数化测试（execute+streaming空/空白消息）
+  - 工作流检索：3测试（get_by_id返回None、抛异常、streaming在事件前拒绝）
+  - 服务兼容性：2测试（基础tuple映射、增强ModificationResult映射）
+  - 增强错误处理：3测试（success=False+message、success=False无message、modified_workflow=None）
+  - 持久化顺序：1测试（save在process_message后+实例完整性）
+  - 异步流式：5测试（基础事件序列、增强react_steps、modified_workflow=None、success=False、timestamps验证）
 
 ### 5.4 P2: Domain/Services 核心闭环
 
