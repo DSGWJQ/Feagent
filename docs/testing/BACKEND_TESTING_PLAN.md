@@ -515,6 +515,25 @@ tests/                              # 362 files total
   - 知识库缺失时的边缘cases（低优先级）
   - 部分执行器管理方法的边缘分支
 
+**P2-Task5: WorkflowDependencyGraph 单元测试补充（从集成测试到70-85%）**
+- ✅ **需求分析**：584行实现，已有25个集成测试（全部通过），但无单元测试；集成测试覆盖率估计55-75%
+- ✅ **Codex决策**：虽可能已达标，但单元测试可快速覆盖分支逻辑（_aggregate_outputs/_build_node_inputs/_emit_event），避免依赖猜测
+- ✅ **TDD实践**：55-75%→~70-85%（+14单元测试，3个测试类），39/39测试全部通过（25 integration + 14 unit）
+- ✅ **Codex审查**：✅ LGTM (good for P2)，"覆盖集成测试遗漏的高分支密度逻辑，满足P2标准"
+- 📊 **测试结果**：39/39 测试通过（25 integration + 14 unit），覆盖率估计~70-85%（超出P2目标60%达10-25%）
+- 📁 **文件变更**：
+  - 新增：`tests/unit/domain/services/test_workflow_dependency_graph.py`（14单元测试，273行）
+  - 无需修改：`src/domain/services/workflow_dependency_graph.py`（实现已稳定）
+  - 保留：`tests/integration/test_workflow_dependency_graph.py`（25集成测试继续覆盖E2E场景）
+- 📝 **单元测试覆盖**（14测试分布）：
+  - TestAggregateOutputs (7测试): merge/list/first/last策略、empty dict、unknown strategy fallback、non-dict skip
+  - TestBuildNodeInputs (5测试): basic extraction、field path extraction、multiple inputs merge、parent reference、missing node handling
+  - TestEmitEvent (2测试): callback invocation、no-op when callback None
+- 📋 **Remaining Missing Lines** (~150-200/584 lines, ~25-35% uncovered):
+  - execute_workflow中的YAML加载错误分支（Codex认为集成测试已覆盖）
+  - _execute_node/_execute_script的异常处理路径（低优先级）
+  - DependencyGraphBuilder边缘cases（invalid refs、conflicts）由集成测试间接覆盖
+
 ### 5.5 P3: Domain/Agents 状态机
 
 | 模块 | 预计用例数 | 重点 |
