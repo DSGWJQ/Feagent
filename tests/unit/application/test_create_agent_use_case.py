@@ -428,3 +428,252 @@ class TestCreateAgentWithTaskGeneration:
 
         # 验证 Tasks 未保存（因为 LLM 失败）
         mock_task_repo.save.assert_not_called()
+
+
+class TestCreateAgentWithWorkflowGeneration:
+    """测试 CreateAgentUseCase 自动生成 Workflow
+
+    业务需求：
+    - 当提供 workflow_repository 和 task_repository 时
+    - 如果成功生成了 Tasks，应该自动转换为 Workflow
+    - 使用 AgentToWorkflowConverter 进行转换
+    - 保存 Workflow 并返回 workflow_id
+
+    测试策略：
+    - Mock AgentRepository, TaskRepository, WorkflowRepository
+    - Mock AgentToWorkflowConverter
+    - Mock PlanGeneratorChain（避免真实调用 LLM）
+    - 验证 Workflow 被正确创建和保存
+    - 验证边界条件（无 tasks 时不生成 workflow）
+    """
+
+    def test_create_agent_with_tasks_and_workflow_repository_should_generate_and_save_workflow(
+        self, monkeypatch
+    ):
+        """测试：有 workflow_repository + 成功生成 tasks → 创建并保存 workflow
+
+        场景：
+        - 用户创建 Agent，系统生成 Tasks
+        - workflow_repository 和 workflow_converter 都已提供
+        - 系统应该调用 converter 将 Agent + Tasks 转换为 Workflow
+        - 保存 Workflow 并返回 workflow_id
+
+        验证点：
+        - ✅ Agent 被保存
+        - ✅ Tasks 被创建和保存
+        - ✅ workflow_converter.convert(agent, tasks) 被调用
+        - ✅ convert() 的参数正确（agent 对象和 tasks 列表）
+        - ✅ workflow_repository.save() 被调用
+        - ✅ 返回的 workflow_id 匹配保存的 workflow
+
+        覆盖目标：src/application/use_cases/create_agent.py:245, 252, 253
+        """
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, Mock
+
+        # Mock Repositories
+        mock_agent_repo = Mock()
+        mock_task_repo = Mock()
+        mock_workflow_repo = Mock()
+
+        # Mock WorkflowConverter
+        # 返回一个有 .id 属性的 workflow 对象
+        mock_workflow = SimpleNamespace(id="wf_test_123")
+        mock_workflow_converter = Mock()
+        mock_workflow_converter.convert.return_value = mock_workflow
+
+        # Mock PlanGeneratorChain
+        mock_plan = [
+            {"name": "Task 1", "description": "First task"},
+            {"name": "Task 2", "description": "Second task"},
+        ]
+        mock_chain = MagicMock()
+        mock_chain.invoke.return_value = mock_plan
+
+        def mock_create_chain():
+            return mock_chain
+
+        monkeypatch.setattr(
+            "src.application.use_cases.create_agent.create_plan_generator_chain", mock_create_chain
+        )
+
+        # 创建 Use Case（注入所有 4 个依赖）
+        use_case = CreateAgentUseCase(
+            agent_repository=mock_agent_repo,
+            task_repository=mock_task_repo,
+            workflow_repository=mock_workflow_repo,
+            workflow_converter=mock_workflow_converter,
+        )
+
+        input_data = CreateAgentInput(
+            start="我有销售数据",
+            goal="分析趋势并生成报表",
+            name="销售分析 Agent",
+        )
+
+        # Act: 执行用例
+        agent, workflow_id = use_case.execute(input_data)
+
+        # Assert: 验证 Agent 被保存
+        mock_agent_repo.save.assert_called_once()
+        saved_agent = mock_agent_repo.save.call_args[0][0]
+        assert saved_agent.id == agent.id
+
+        # 验证 Tasks 被创建和保存（2 个 tasks）
+        assert mock_task_repo.save.call_count == 2
+
+        # 验证 LLM chain 被调用
+        mock_chain.invoke.assert_called_once_with(
+            {"start": "我有销售数据", "goal": "分析趋势并生成报表"}
+        )
+
+        # 验证 workflow_converter.convert() 被调用
+        mock_workflow_converter.convert.assert_called_once()
+
+        # 验证 convert() 的参数
+        convert_call_agent = mock_workflow_converter.convert.call_args[0][0]
+        convert_call_tasks = mock_workflow_converter.convert.call_args[0][1]
+
+        assert convert_call_agent is agent, "convert() 应该接收创建的 agent 对象"
+        assert len(convert_call_tasks) == 2, "convert() 应该接收 2 个 tasks"
+
+        # 验证所有 tasks 都是 Task 实例且 agent_id 匹配
+        from src.domain.entities.task import Task
+
+        assert all(
+            isinstance(task, Task) for task in convert_call_tasks
+        ), "所有 tasks 应该是 Task 实例"
+        assert all(
+            task.agent_id == agent.id for task in convert_call_tasks
+        ), "所有 tasks 的 agent_id 应该匹配"
+
+        # 验证 workflow_repository.save() 被调用
+        mock_workflow_repo.save.assert_called_once_with(mock_workflow)
+
+        # 验证返回的 workflow_id
+        assert workflow_id == "wf_test_123"
+        assert workflow_id == mock_workflow.id
+
+    def test_create_agent_with_workflow_repository_but_without_task_repository_should_not_generate_workflow(
+        self,
+    ):
+        """测试：有 workflow_repository 但无 task_repository → 不生成 workflow
+
+        场景：
+        - 只提供 agent_repository 和 workflow_repository
+        - 没有提供 task_repository，因此不会生成 tasks
+        - 没有 tasks 的情况下，不应该调用 workflow conversion
+        - workflow_id 应该为 None
+
+        验证点：
+        - ✅ Agent 被保存
+        - ✅ workflow_converter.convert() 不被调用
+        - ✅ workflow_repository.save() 不被调用
+        - ✅ 返回的 workflow_id 为 None
+
+        覆盖目标：验证 if 条件的负路径（tasks 为空时跳过 workflow 生成）
+        """
+        # Mock Repositories（不提供 task_repository）
+        mock_agent_repo = Mock()
+        mock_workflow_repo = Mock()
+        mock_workflow_converter = Mock()
+
+        # 创建 Use Case（task_repository=None）
+        use_case = CreateAgentUseCase(
+            agent_repository=mock_agent_repo,
+            task_repository=None,
+            workflow_repository=mock_workflow_repo,
+            workflow_converter=mock_workflow_converter,
+        )
+
+        input_data = CreateAgentInput(
+            start="我有销售数据",
+            goal="分析趋势",
+            name="测试 Agent",
+        )
+
+        # Act: 执行用例
+        agent, workflow_id = use_case.execute(input_data)
+
+        # Assert: 验证 Agent 被保存
+        mock_agent_repo.save.assert_called_once()
+
+        # 验证 workflow conversion 未发生
+        mock_workflow_converter.convert.assert_not_called()
+        mock_workflow_repo.save.assert_not_called()
+
+        # 验证 workflow_id 为 None
+        assert workflow_id is None
+
+    def test_create_agent_with_empty_plan_should_not_generate_workflow_even_with_task_and_workflow_repos(
+        self, monkeypatch
+    ):
+        """测试：LLM 返回空 plan → 不生成 tasks 也不生成 workflow
+
+        场景：
+        - 提供了所有 repositories（agent + task + workflow）
+        - LLM 返回空列表（plan = []）
+        - 没有 tasks 被创建，因此也不应该生成 workflow
+        - workflow_id 应该为 None
+
+        验证点：
+        - ✅ Agent 被保存
+        - ✅ LLM chain 被调用（但返回空列表）
+        - ✅ task_repository.save() 不被调用（无 tasks）
+        - ✅ workflow_converter.convert() 不被调用
+        - ✅ workflow_repository.save() 不被调用
+        - ✅ 返回的 workflow_id 为 None
+
+        覆盖目标：防止空 tasks 列表触发 workflow 创建的回归测试
+        """
+        from unittest.mock import MagicMock, Mock
+
+        # Mock Repositories
+        mock_agent_repo = Mock()
+        mock_task_repo = Mock()
+        mock_workflow_repo = Mock()
+        mock_workflow_converter = Mock()
+
+        # Mock PlanGeneratorChain（返回空列表）
+        mock_chain = MagicMock()
+        mock_chain.invoke.return_value = []  # 空 plan
+
+        def mock_create_chain():
+            return mock_chain
+
+        monkeypatch.setattr(
+            "src.application.use_cases.create_agent.create_plan_generator_chain", mock_create_chain
+        )
+
+        # 创建 Use Case（注入所有依赖）
+        use_case = CreateAgentUseCase(
+            agent_repository=mock_agent_repo,
+            task_repository=mock_task_repo,
+            workflow_repository=mock_workflow_repo,
+            workflow_converter=mock_workflow_converter,
+        )
+
+        input_data = CreateAgentInput(
+            start="我有销售数据",
+            goal="分析趋势",
+            name="测试 Agent",
+        )
+
+        # Act: 执行用例
+        agent, workflow_id = use_case.execute(input_data)
+
+        # Assert: 验证 Agent 被保存
+        mock_agent_repo.save.assert_called_once()
+
+        # 验证 LLM chain 被调用
+        mock_chain.invoke.assert_called_once_with({"start": "我有销售数据", "goal": "分析趋势"})
+
+        # 验证没有 tasks 被保存
+        mock_task_repo.save.assert_not_called()
+
+        # 验证 workflow conversion 未发生
+        mock_workflow_converter.convert.assert_not_called()
+        mock_workflow_repo.save.assert_not_called()
+
+        # 验证 workflow_id 为 None
+        assert workflow_id is None

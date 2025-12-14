@@ -318,8 +318,8 @@ tests/                              # 362 files total
 |------|----------|----------|-----------|------|--------|
 | `execute_run.py` | 95% | 80% | 7 | ✅ 完成 | `3f77a55` |
 | `classify_task.py` | 100% | 80% | 23 | ✅ 完成 | `31a53f8` |
-| `update_workflow_by_chat.py` | 100% | 70% | 16 | ✅ 完成 | `待提交` |
-| `create_agent.py` | 44% | 70% | 8-10 | ⏳ 待补充 | - |
+| `update_workflow_by_chat.py` | 100% | 70% | 16 | ✅ 完成 | `6c6e14a` |
+| `create_agent.py` | 100% | 70% | 14 | ✅ 完成 | `待提交` |
 | `create_tool.py` | 0% | 70% | 6-8 | ⏳ 待开始 | - |
 | `import_workflow.py` | 80% | 70% | 5-7 | ✅ 已达标 | - |
 | `github_auth.py` | 36% | 60% | 5-7 | ⏳ 待补充 | - |
@@ -371,6 +371,21 @@ tests/                              # 362 files total
   - 增强错误处理：3测试（success=False+message、success=False无message、modified_workflow=None）
   - 持久化顺序：1测试（save在process_message后+实例完整性）
   - 异步流式：5测试（基础事件序列、增强react_steps、modified_workflow=None、success=False、timestamps验证）
+
+**P1-Task4: CreateAgentUseCase 测试补充（Workflow生成路径）**
+- ✅ **需求分析**：识别workflow生成缺口（lines 245-253），现有11测试覆盖Agent+Task路径，缺workflow转换
+- ✅ **测试设计**：Codex协作设计3个补充测试用例，覆盖workflow generation全路径
+- ✅ **TDD实践**：遵循Red-Green-Refactor循环，初次92%→100%（添加3测试覆盖workflow路径）
+- ✅ **Codex审查**：应用2处改进（加强Task实例断言、移除冗余import）
+- ✅ **Mock策略**：SimpleNamespace模拟workflow对象，monkeypatch mock LLM chain
+- 📊 **测试结果**：14/14 单元测试通过（11原有+3新增），覆盖率100%（超出70%目标30%）
+- 📁 **文件变更**：
+  - 更新：`tests/unit/application/test_create_agent_use_case.py`（新增TestCreateAgentWithWorkflowGeneration类，246行）
+  - 无需修改：`src/application/use_cases/create_agent.py`（实现已稳定）
+- 📝 **测试覆盖**（新增3测试）：
+  - Workflow生成成功：验证converter.convert()调用参数（agent+tasks）、workflow保存、workflow_id返回
+  - 无task_repository边界：有workflow_repository但无tasks→不生成workflow、workflow_id=None
+  - 空plan边界：LLM返回[]→无tasks创建、不生成workflow、workflow_id=None
 
 ### 5.4 P2: Domain/Services 核心闭环
 
