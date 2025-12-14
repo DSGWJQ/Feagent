@@ -121,6 +121,7 @@ addopts = [
     "--cov=src",
     "--cov-report=term-missing",
     "--cov-report=html",
+    "--ignore=tests/manual",
 ]
 markers = [
     "asyncio: marks tests as async",
