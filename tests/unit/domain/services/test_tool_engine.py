@@ -1213,3 +1213,249 @@ entry:
         ]
         assert len(validation_events) == 1
         assert validation_events[0].tool_name == "http_request"
+
+
+# =============================================================================
+# 第十部分：工具执行测试
+# =============================================================================
+
+
+class TestToolEngineExecution:
+    """ToolEngine 工具执行测试"""
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_not_found_returns_failure(self, tmp_path):
+        """测试：执行不存在的工具返回失败"""
+        from src.domain.services.tool_executor import ToolExecutionContext
+
+        config = ToolEngineConfig(tools_directory=str(tmp_path))
+        engine = ToolEngine(config=config)
+        await engine.load()
+
+        context = ToolExecutionContext(
+            caller_id="test_caller",
+            caller_type="test",
+            timeout=5.0,
+        )
+
+        result = await engine.execute("nonexistent_tool", {}, context)
+
+        assert result.is_success is False
+        assert result.error_type == "tool_not_found"
+        assert "nonexistent_tool" in result.error
+
+    @pytest.mark.asyncio
+    async def test_execute_validation_failure_returns_validation_failure(self, tmp_path):
+        """测试：参数验证失败返回验证错误"""
+        from src.domain.services.tool_executor import ToolExecutionContext
+
+        # 创建带必填参数的工具
+        tool_yaml = """
+name: test_tool
+description: 测试工具
+category: custom
+version: "1.0.0"
+parameters:
+  - name: required_param
+    type: string
+    required: true
+    description: 必填参数
+entry:
+  type: builtin
+  handler: test_handler
+"""
+        (tmp_path / "test_tool.yaml").write_text(tool_yaml, encoding="utf-8")
+
+        config = ToolEngineConfig(tools_directory=str(tmp_path))
+        engine = ToolEngine(config=config)
+        await engine.load()
+
+        context = ToolExecutionContext(
+            caller_id="test_caller",
+            caller_type="test",
+            timeout=5.0,
+        )
+
+        # 缺少必填参数
+        result = await engine.execute("test_tool", {}, context)
+
+        assert result.is_success is False
+        assert result.error_type == "validation_error"
+        assert len(result.validation_errors) > 0
+        assert result.validation_errors[0]["parameter"] == "required_param"
+
+    @pytest.mark.asyncio
+    async def test_execute_executor_not_found_returns_failure(self, tmp_path):
+        """测试：执行器未找到返回失败"""
+        from src.domain.services.tool_executor import ToolExecutionContext
+
+        tool_yaml = """
+name: test_tool
+description: 测试工具
+category: custom
+entry:
+  type: builtin
+  handler: missing_executor
+"""
+        (tmp_path / "test_tool.yaml").write_text(tool_yaml, encoding="utf-8")
+
+        config = ToolEngineConfig(tools_directory=str(tmp_path))
+        engine = ToolEngine(config=config)
+        await engine.load()
+
+        context = ToolExecutionContext(
+            caller_id="test_caller",
+            caller_type="test",
+            timeout=5.0,
+        )
+
+        result = await engine.execute("test_tool", {}, context)
+
+        assert result.is_success is False
+        assert result.error_type == "executor_not_found"
+        assert "missing_executor" in result.error
+
+    @pytest.mark.asyncio
+    async def test_execute_success_emits_events_and_records_to_knowledge_store(self, tmp_path):
+        """测试：执行成功发送事件并记录到知识库"""
+        from src.domain.services.tool_executor import ToolExecutionContext
+        from src.domain.services.tool_knowledge_store import InMemoryToolKnowledgeStore
+
+        # 创建工具
+        tool_yaml = """
+name: test_tool
+description: 测试工具
+category: custom
+entry:
+  type: builtin
+  handler: test_executor
+"""
+        (tmp_path / "test_tool.yaml").write_text(tool_yaml, encoding="utf-8")
+
+        config = ToolEngineConfig(tools_directory=str(tmp_path))
+        engine = ToolEngine(config=config)
+        await engine.load()
+
+        # 注册假执行器
+        class FakeExecutor:
+            async def execute(self, tool, params, context):
+                return {"result": "success", "output": "test_output"}
+
+        engine.register_executor("test_executor", FakeExecutor())
+
+        # 设置知识库
+        knowledge_store = InMemoryToolKnowledgeStore()
+        engine.set_knowledge_store(knowledge_store)
+
+        # 订阅事件
+        events = []
+
+        def on_event(event):
+            events.append(event)
+
+        engine.subscribe(on_event)
+
+        # 执行工具
+        context = ToolExecutionContext(
+            caller_id="test_caller",
+            caller_type="test",
+            conversation_id="test_conv",
+            timeout=5.0,
+        )
+
+        result = await engine.execute("test_tool", {}, context)
+
+        # 验证执行成功
+        assert result.is_success is True
+        assert result.output == {"result": "success", "output": "test_output"}
+
+        # 验证事件
+        started_events = [
+            e for e in events if e.event_type == ToolEngineEventType.EXECUTION_STARTED
+        ]
+        completed_events = [
+            e for e in events if e.event_type == ToolEngineEventType.EXECUTION_COMPLETED
+        ]
+
+        assert len(started_events) == 1
+        assert started_events[0].tool_name == "test_tool"
+
+        assert len(completed_events) == 1
+        assert completed_events[0].tool_name == "test_tool"
+
+        # 验证知识库记录
+        records = await engine.query_call_records(tool_name="test_tool")
+        assert len(records) == 1
+        assert records[0].tool_name == "test_tool"
+        assert records[0].is_success is True
+
+    @pytest.mark.asyncio
+    async def test_execute_timeout_emits_failed_and_records_to_knowledge_store(self, tmp_path):
+        """测试：执行超时发送失败事件并记录到知识库"""
+        from src.domain.services.tool_executor import ToolExecutionContext
+        from src.domain.services.tool_knowledge_store import InMemoryToolKnowledgeStore
+
+        # 创建工具
+        tool_yaml = """
+name: test_tool
+description: 测试工具
+category: custom
+entry:
+  type: builtin
+  handler: slow_executor
+"""
+        (tmp_path / "test_tool.yaml").write_text(tool_yaml, encoding="utf-8")
+
+        config = ToolEngineConfig(tools_directory=str(tmp_path))
+        engine = ToolEngine(config=config)
+        await engine.load()
+
+        # 注册慢执行器
+        class SlowExecutor:
+            async def execute(self, tool, params, context):
+                await asyncio.sleep(10)  # 模拟长时间执行
+                return {"result": "too_late"}
+
+        engine.register_executor("slow_executor", SlowExecutor())
+
+        # 设置知识库
+        knowledge_store = InMemoryToolKnowledgeStore()
+        engine.set_knowledge_store(knowledge_store)
+
+        # 订阅事件
+        events = []
+
+        def on_event(event):
+            events.append(event)
+
+        engine.subscribe(on_event)
+
+        # 执行工具（超时时间很短）
+        context = ToolExecutionContext(
+            caller_id="test_caller",
+            caller_type="test",
+            timeout=0.1,  # 0.1秒超时
+        )
+
+        result = await engine.execute("test_tool", {}, context)
+
+        # 验证执行失败（超时）
+        assert result.is_success is False
+        assert result.error_type == "timeout"
+        assert "0.1" in result.error
+
+        # 验证事件
+        started_events = [
+            e for e in events if e.event_type == ToolEngineEventType.EXECUTION_STARTED
+        ]
+        failed_events = [e for e in events if e.event_type == ToolEngineEventType.EXECUTION_FAILED]
+
+        assert len(started_events) == 1
+        assert len(failed_events) == 1
+        assert failed_events[0].tool_name == "test_tool"
+
+        # 验证知识库记录
+        records = await engine.query_call_records(tool_name="test_tool")
+        assert len(records) == 1
+        assert records[0].tool_name == "test_tool"
+        assert records[0].is_success is False

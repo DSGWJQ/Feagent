@@ -495,6 +495,26 @@ tests/                              # 362 files total
   - SystemRecoveryManager (lines 338-570, 252 lines): 复杂依赖（timers/threads/health-checker），Codex建议留待P1
   - Minor edges (275, 608, 715): 已测试类的边缘分支
 
+**P2-Task4: ToolEngine execute()测试补充（从~70%到~80-86%）**
+- ✅ **需求分析**：1104行实现，已有53个测试（覆盖Config/Index/Lookup/HotReload/Events/Validation），估计~70%覆盖率
+- ✅ **Codex决策**：虽已达标60%+，但execute()是核心运行时行为，建议添加5个高价值测试
+- ✅ **TDD实践**：~70%→~80-86%（+5测试，新增TestToolEngineExecution类），58/58测试全部通过
+- ✅ **Codex审查**：✅ LGTM (good for P2)，"覆盖execute()关键分支，测试质量满足P2标准"
+- 📊 **测试结果**：58/58 单元测试通过，覆盖率估计~80-86%（远超P2目标60%达20-26%）
+- 📁 **文件变更**：
+  - 修改：`tests/unit/domain/services/test_tool_engine.py`（+5测试，245行新增代码，lines 1223-1467）
+  - 无需修改：`src/domain/services/tool_engine.py`（实现已稳定）
+- 📝 **测试覆盖**（新增5测试 TestToolEngineExecution）：
+  1. test_execute_tool_not_found_returns_failure: 工具不存在返回error_type="tool_not_found"
+  2. test_execute_validation_failure_returns_validation_failure: 参数验证失败返回validation_error + validation_errors
+  3. test_execute_executor_not_found_returns_failure: 执行器未注册返回error_type="executor_not_found"
+  4. test_execute_success_emits_events_and_records_to_knowledge_store: 成功执行发送EXECUTION_STARTED/COMPLETED事件并记录到知识库
+  5. test_execute_timeout_emits_failed_and_records_to_knowledge_store: 超时执行发送EXECUTION_FAILED事件并记录失败到知识库
+- 📋 **Remaining Missing Lines** (~200/1104 lines, ~18% uncovered):
+  - Executor raises Exception → error_type="execution_error"（Codex认为可选，非P2关键）
+  - 知识库缺失时的边缘cases（低优先级）
+  - 部分执行器管理方法的边缘分支
+
 ### 5.5 P3: Domain/Agents 状态机
 
 | 模块 | 预计用例数 | 重点 |
