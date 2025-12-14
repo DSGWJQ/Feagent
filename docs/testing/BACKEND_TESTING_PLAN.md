@@ -314,15 +314,28 @@ tests/                              # 362 files total
 
 ### 5.3 P1: Application/UseCases 测试补齐
 
-| 模块 | 当前覆盖 | 目标覆盖 | 预计用例数 |
-|------|----------|----------|-----------|
-| `execute_run.py` | 0% | 80% | 15-20 |
-| `classify_task.py` | 0% | 80% | 10-15 |
-| `update_workflow_by_chat.py` | 0% | 70% | 12-15 |
-| `create_agent.py` | 0% | 70% | 8-10 |
-| `create_tool.py` | 0% | 70% | 6-8 |
-| `import_workflow.py` | 0% | 70% | 5-7 |
-| `github_auth.py` | 0% | 60% | 5-7 |
+| 模块 | 当前覆盖 | 目标覆盖 | 实际用例数 | 状态 | Commit |
+|------|----------|----------|-----------|------|--------|
+| `execute_run.py` | 95% | 80% | 7 | ✅ 完成 | `待提交` |
+| `classify_task.py` | 0% | 80% | 10-15 | ⏳ 待开始 | - |
+| `update_workflow_by_chat.py` | 0% | 70% | 12-15 | ⏳ 待开始 | - |
+| `create_agent.py` | 44% | 70% | 8-10 | ⏳ 待补充 | - |
+| `create_tool.py` | 0% | 70% | 6-8 | ⏳ 待开始 | - |
+| `import_workflow.py` | 80% | 70% | 5-7 | ✅ 已达标 | - |
+| `github_auth.py` | 36% | 60% | 5-7 | ⏳ 待补充 | - |
+
+**P1-Task1: ExecuteRunUseCase 测试补齐（LangGraph迁移）**
+- ✅ **架构迁移**：从LangChain迁移到LangGraph，移除Task实体依赖
+- ✅ **测试设计**：7个测试用例覆盖输入验证、状态转换、成功/失败场景、错误处理
+- ✅ **TDD实践**：遵循Red-Green-Refactor循环，修复Run状态突变陷阱
+- ✅ **集成修复**：修复API路由Breaking Change（移除task_repository依赖）
+- ✅ **代码审查**：Codex深度审查，三层错误检测策略（显式信号/空结果/启发式）
+- 📊 **测试结果**：7/7 单元测试通过，覆盖率95%（仅2行未覆盖为异常分支）
+- 📁 **文件变更**：
+  - 新增：`tests/unit/application/use_cases/test_execute_run_langgraph.py`（231行）
+  - 重构：`src/application/use_cases/execute_run.py`（简化85行）
+  - 修复：`src/interfaces/api/routes/runs.py`（移除task_repository）
+  - 删除：`tests/unit/application/test_execute_run_use_case.py`（旧LangChain测试）
 
 ### 5.4 P2: Domain/Services 核心闭环
 

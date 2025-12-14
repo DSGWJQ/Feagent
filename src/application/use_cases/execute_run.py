@@ -7,11 +7,9 @@
 1. 验证 Agent 是否存在
 2. 创建 Run 实体
 3. 启动 Run（PENDING → RUNNING）
-4. 生成执行计划（使用 PlanGeneratorChain）
-5. 创建 Task 实体
-6. 执行 Task（使用 TaskExecutorAgent）
-7. 完成 Run（RUNNING → SUCCEEDED/FAILED）
-8. 持久化状态变化
+4. 执行 LangGraph 任务（内部多步推理与工具调用）
+5. 完成 Run（RUNNING → SUCCEEDED/FAILED）
+6. 持久化状态变化
 
 第一性原则：
 - 用例是业务逻辑的编排者，不包含业务规则
@@ -27,22 +25,23 @@
 - 数据完整性：防止创建孤儿 Run
 - 用户体验：及早发现错误，提供清晰的错误信息
 
-LangChain 集成：
-- 使用 PlanGeneratorChain 生成执行计划
-- 使用 TaskExecutorAgent 执行每个任务
-- 处理错误和重试
-- 记录任务执行日志
+LangGraph 集成：
+- 使用 StateGraph 执行器进行多步推理
+- 不再显式创建 Task 实体（LangGraph 内部处理）
+- 从 Agent 的 start 和 goal 构造初始消息
+- 使用三层错误检测策略：显式信号、空结果、启发式匹配
 """
 
 from dataclasses import dataclass
 
+from langchain_core.messages import HumanMessage
+
 from src.domain.entities.run import Run
-from src.domain.entities.task import Task
 from src.domain.exceptions import DomainError
 from src.domain.ports.agent_repository import AgentRepository
 from src.domain.ports.run_repository import RunRepository
-from src.domain.ports.task_repository import TaskRepository
-from src.lc import create_plan_generator_chain, execute_task
+from src.lc.agents.langgraph_task_executor import AgentState, create_langgraph_task_executor
+from src.lc.agents.task_executor_adapter import extract_final_answer
 
 
 @dataclass
@@ -68,34 +67,30 @@ class ExecuteRunUseCase:
     1. 验证 Agent 是否存在
     2. 创建 Run 实体
     3. 启动 Run
-    4. 生成执行计划（LangChain）
-    5. 创建和执行 Task
-    6. 完成 Run
-    7. 持久化状态变化
+    4. 执行 LangGraph 任务（多步推理与工具调用）
+    5. 完成 Run
+    6. 持久化状态变化
 
     依赖：
     - AgentRepository: Agent 仓储接口
     - RunRepository: Run 仓储接口
-    - TaskRepository: Task 仓储接口
 
-    为什么需要三个 Repository？
-    - Agent、Run、Task 是不同的聚合根
-    - 每个聚合根有自己的 Repository
-    - 符合 DDD 聚合设计原则
+    为什么不再需要 TaskRepository？
+    - LangGraph 内部处理多步推理，不需要显式创建 Task 实体
+    - Run 成为唯一的执行跟踪单元
+    - 简化了用例的职责和依赖关系
     """
 
     def __init__(
         self,
         agent_repository: AgentRepository,
         run_repository: RunRepository,
-        task_repository: TaskRepository,
     ):
         """初始化用例
 
         参数：
             agent_repository: Agent 仓储接口
             run_repository: Run 仓储接口
-            task_repository: Task 仓储接口
 
         为什么通过构造函数注入？
         - 依赖注入：由外部管理依赖
@@ -104,7 +99,6 @@ class ExecuteRunUseCase:
         """
         self.agent_repository = agent_repository
         self.run_repository = run_repository
-        self.task_repository = task_repository
 
     def execute(self, input_data: ExecuteRunInput) -> Run:
         """执行用例：创建并执行 Run
@@ -192,94 +186,40 @@ class ExecuteRunUseCase:
         # - 符合事件溯源的思想
         self.run_repository.save(run)
 
-        # 步骤 7: 执行业务逻辑（LangChain 集成）
-        # 7.1 生成执行计划
-        # 7.2 创建 Task
-        # 7.3 执行 Task
-        # 7.4 处理错误
+        # 步骤 7: 执行业务逻辑（LangGraph 集成）
+        # - 不再创建/执行 Task 实体：LangGraph 内部完成多步推理与工具调用
+        # - 用例只负责：构造初始消息 → 调用图执行 → 解析最终答案 → 更新 Run 状态
         try:
-            # 7.1: 生成执行计划
-            # 为什么使用 PlanGeneratorChain？
-            # - 使用 LLM 自动生成执行计划
-            # - 根据 Agent 的 start 和 goal 生成任务列表
-            # - 返回 JSON 格式的计划
-            plan_chain = create_plan_generator_chain()
-            plan = plan_chain.invoke(
-                {
-                    "start": agent.start,
-                    "goal": agent.goal,
-                }
-            )
+            executor = create_langgraph_task_executor()
 
-            # 7.2: 创建 Task 实体
-            # 为什么要创建 Task？
-            # - Task 是执行的最小单元
-            # - 记录每个步骤的执行状态
-            # - 便于追踪和调试
-            tasks = []
-            for task_data in plan:
-                task = Task.create(
-                    agent_id=agent.id,
-                    run_id=run.id,
-                    name=task_data["name"],
-                    description=task_data.get("description"),
-                    input_data={"description": task_data.get("description")},
-                )
-                tasks.append(task)
-                # 保存 Task（PENDING 状态）
-                self.task_repository.save(task)
+            # LangGraph 以 messages 为核心状态；用 HumanMessage 作为输入
+            input_message = HumanMessage(content=f"Start: {agent.start}\nGoal: {agent.goal}")
+            initial_state: AgentState = {"messages": [input_message], "next": "reason"}  # type: ignore
 
-            # 7.3: 执行每个 Task
-            # 为什么要逐个执行？
-            # - 任务之间可能有依赖关系
-            # - 前一个任务的输出可能是后一个任务的输入
-            # - 便于错误处理和重试
-            has_failed_task = False
-            for task in tasks:
-                # 启动 Task（PENDING → RUNNING）
-                task.start()
-                self.task_repository.save(task)
+            final_state = executor.invoke(initial_state)
 
-                # 执行 Task（使用 TaskExecutorAgent）
-                # 为什么使用 execute_task？
-                # - 封装了 Agent 的创建和调用
-                # - 自动处理异常
-                # - 返回清晰的结果
-                result = execute_task(
-                    task_name=task.name,
-                    task_description=task.input_data.get("description", ""),
-                )
-
-                # 检查执行结果
-                # 为什么检查 "错误："？
-                # - execute_task 在失败时返回 "错误：..." 格式的字符串
-                # - 简单的错误检测机制
-                if result.startswith("错误："):
-                    # Task 执行失败
-                    task.fail(error=result)
-                    has_failed_task = True
-                else:
-                    # Task 执行成功
-                    task.succeed(output_data={"result": result})
-
-                # 保存 Task 状态
-                self.task_repository.save(task)
-
-            # 7.4: 根据 Task 执行结果更新 Run 状态
-            # 为什么要检查 has_failed_task？
-            # - 如果有任何 Task 失败，Run 应该标记为失败
-            # - 符合业务语义：只有所有 Task 成功，Run 才成功
-            if has_failed_task:
-                run.fail(error="部分任务执行失败")
+            # 优先使用显式错误信号（若未来 LangGraph 状态加入 error 字段，可直接支持）
+            explicit_error = final_state.get("error")
+            if isinstance(explicit_error, str) and explicit_error.strip():
+                run.fail(error=explicit_error)
             else:
-                run.succeed()
-
+                final_answer = extract_final_answer(final_state).strip()
+                if not final_answer:
+                    run.fail(error="执行失败：LangGraph 未返回有效结果")
+                else:
+                    # 兼容/启发式：LangGraph 内部节点目前会把错误写进 AIMessage.content
+                    # 例如：推理过程出现错误: ... / 工具执行出现错误: ...
+                    looks_like_error = (
+                        final_answer.startswith("错误：")
+                        or final_answer.startswith("执行失败")
+                        or "出现错误" in final_answer
+                    )
+                    if looks_like_error:
+                        run.fail(error=final_answer)
+                    else:
+                        run.succeed()
         except Exception as e:
-            # 捕获所有异常（计划生成失败、Task 创建失败等）
-            # 为什么捕获异常？
-            # - 确保 Run 状态被正确更新为 FAILED
-            # - 记录错误信息，便于调试
-            # - 避免 Run 一直处于 RUNNING 状态
+            # invoke 抛异常：明确视为执行失败
             run.fail(error=f"执行失败：{str(e)}")
 
         # 步骤 8: 保存最终状态
