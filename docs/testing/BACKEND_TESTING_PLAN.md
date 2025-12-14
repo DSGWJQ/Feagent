@@ -319,8 +319,8 @@ tests/                              # 362 files total
 | `execute_run.py` | 95% | 80% | 7 | ✅ 完成 | `3f77a55` |
 | `classify_task.py` | 100% | 80% | 23 | ✅ 完成 | `31a53f8` |
 | `update_workflow_by_chat.py` | 100% | 70% | 16 | ✅ 完成 | `6c6e14a` |
-| `create_agent.py` | 100% | 70% | 14 | ✅ 完成 | `待提交` |
-| `create_tool.py` | 0% | 70% | 6-8 | ⏳ 待开始 | - |
+| `create_agent.py` | 100% | 70% | 14 | ✅ 完成 | `46d5190` |
+| `create_tool.py` | 100% | 70% | 8 | ✅ 完成 | `待提交` |
 | `import_workflow.py` | 80% | 70% | 5-7 | ✅ 已达标 | - |
 | `github_auth.py` | 36% | 60% | 5-7 | ⏳ 待补充 | - |
 
@@ -386,6 +386,24 @@ tests/                              # 362 files total
   - Workflow生成成功：验证converter.convert()调用参数（agent+tasks）、workflow保存、workflow_id返回
   - 无task_repository边界：有workflow_repository但无tasks→不生成workflow、workflow_id=None
   - 空plan边界：LLM返回[]→无tasks创建、不生成workflow、workflow_id=None
+
+**P1-Task5: CreateToolUseCase 测试（工具创建）**
+- ✅ **需求分析**：识别0%覆盖率缺口（25/25 statements missing），理解业务逻辑（category转换+parameters转换+domain规则）
+- ✅ **测试设计**：Codex协作设计8个测试用例，覆盖全路径
+- ✅ **TDD实践**：遵循Red-Green-Refactor循环，0%→100%一次通过（8/8测试）
+- ✅ **Codex审查**：✅ LGTM评价，提出3个可选改进建议（malformed dict、默认值断言、类合并）
+- ✅ **Mock策略**：Mock repository + 真实Domain实体断言（ToolParameter/Tool）
+- 📊 **测试结果**：8/8 单元测试通过，覆盖率100%（超出70%目标30%）
+- 📁 **文件变更**：
+  - 新增：`tests/unit/application/use_cases/test_create_tool.py`（335行，8测试函数，5测试类）
+  - 无需修改：`src/application/use_cases/create_tool.py`（实现已稳定）
+- 📝 **测试覆盖**（8测试）：
+  - 成功路径：完整字段填充（category+parameters+implementation_config）、name/description trimming、ToolCategory枚举转换、ToolParameter对象转换
+  - 参数转换：parameters=None→[]、parameters=[]→[]（falsy检查）
+  - 默认值：implementation_config=None→{}
+  - Domain验证：空name→DomainError、纯空格name→DomainError、save不调用
+  - 枚举转换：无效category→ValueError、save不调用
+  - 异常传播：repository.save()异常→RuntimeError传播
 
 ### 5.4 P2: Domain/Services 核心闭环
 
