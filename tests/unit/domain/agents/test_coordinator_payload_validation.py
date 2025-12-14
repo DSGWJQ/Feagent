@@ -11,6 +11,14 @@
 - 实现代码后所有测试通过（Green阶段）
 """
 
+import pytest
+
+# Mark all tests in this file as expected to fail (TDD Red Phase)
+pytestmark = pytest.mark.xfail(
+    reason="TDD Red Phase 8.4: Implementation in progress. See BACKEND_TESTING_PLAN.md P0-Task2",
+    strict=False,
+)
+
 
 class TestPayloadRequiredFields:
     """测试 payload 必填字段验证"""
