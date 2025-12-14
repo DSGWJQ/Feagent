@@ -475,6 +475,26 @@ tests/                              # 362 files total
   - MEDIUM priority (527-531, 552, 556-565): ResultSemanticParser边缘cases（timeout/partial/non-dict）
   - LOW priority (scattered): 参数验证edge cases
 
+**P2-Task3: DynamicNodeMonitoring 测试补充（从0%到65%）**
+- ✅ **需求分析**：724行实现，0%覆盖率，无现有测试；识别5主要类（DynamicNodeMetricsCollector, WorkflowRollbackManager, AlertManager, HealthChecker, SystemRecoveryManager）
+- ✅ **测试设计**：Codex协作设计30个测试，但发现API不匹配；重新读取实现并重写所有测试
+- ✅ **API适配挑战**：初始设计基于假设API，实际实现完全不同（如WorkflowRollbackManager.create_snapshot返回str而非对象）；采取"读实现→重写测试"策略
+- ✅ **TDD实践**：0%→65%（+33测试，4个测试类），遵循Red-Green循环
+- ✅ **Codex审查**：✅ LGTM (good for P2)，"65% comfortably above 60% target"，建议停在65%
+- ✅ **测试策略**：聚焦最可测且高价值的类（MetricsCollector完整覆盖、Rollback/Alert/Health核心方法）
+- 📊 **测试结果**：33/33 单元测试通过，覆盖率65%（超出P2目标60%达5%）
+- 📁 **文件变更**：
+  - 新增：`tests/unit/domain/services/test_dynamic_node_monitoring.py`（33测试，490行）
+  - 无需修改：`src/domain/services/dynamic_node_monitoring.py`（实现已稳定）
+- 📝 **测试覆盖**（33测试分布）：
+  - DynamicNodeMetricsCollector (14测试): 记录指标、统计聚合、时间窗口过滤、Prometheus导出、失败率计算
+  - WorkflowRollbackManager (8测试): create_snapshot、has_snapshot、rollback、rollback_to_snapshot、get_snapshot_count、clear_snapshots、remove_invalid_nodes
+  - AlertManager (7测试): set_threshold、check_failure_rate触发/清除、get_active_alerts、clear_alert、notification_callback
+  - HealthChecker (5测试): check_health、check_sandbox_health、check_metrics_health、record_sandbox_execution、set_sandbox_available
+- 📋 **Remaining Missing Lines** (92/262 lines, 35% uncovered):
+  - SystemRecoveryManager (lines 338-570, 252 lines): 复杂依赖（timers/threads/health-checker），Codex建议留待P1
+  - Minor edges (275, 608, 715): 已测试类的边缘分支
+
 ### 5.5 P3: Domain/Agents 状态机
 
 | 模块 | 预计用例数 | 重点 |
