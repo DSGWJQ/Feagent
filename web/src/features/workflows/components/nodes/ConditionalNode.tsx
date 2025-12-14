@@ -1,5 +1,6 @@
 /**
  * Conditional Node - 条件分支节点
+ * 使用CSS Module + 设计Token系统
  */
 
 import { memo } from 'react';
@@ -7,6 +8,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Card } from 'antd';
 import { BranchesOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
+import styles from '../../styles/workflows.module.css';
 
 export interface ConditionalNodeData {
   condition: string;
@@ -19,77 +21,33 @@ function ConditionalNode({ data, selected }: NodeProps<ConditionalNodeData>) {
 
   return (
     <Card
-      className={`workflow-node ${getStatusColor(status, selected)}`}
-      style={{
-        minWidth: 280,
-        maxWidth: 400,
-        border: '2px solid',
-        transition: 'all 0.3s',
-      }}
+      className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCardWide}`}
       styles={{ body: { padding: 0 } }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '12px 16px',
-          borderBottom: '1px solid #f0f0f0',
-        }}
-      >
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 6,
-            backgroundColor: '#faad14',
-            color: '#fff',
-          }}
-        >
+      <div className={styles.nodeHeaderWrapper}>
+        <div className={`${styles.nodeIcon} ${styles.nodeTypeConditional}`}>
           <BranchesOutlined style={{ fontSize: 16 }} />
         </div>
-        <div style={{ flex: 1 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>
-            Conditional
-          </h3>
-          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#8c8c8c' }}>
+        <div className={styles.nodeTitleWrapper}>
+          <h3 className={styles.nodeTitle}>Conditional</h3>
+          <p className={styles.nodeDescription}>
             Branch based on condition
           </p>
         </div>
       </div>
 
-      <div style={{ padding: 16 }}>
-        <div style={{ marginBottom: 8 }}>
-          <span style={{ fontSize: 12, color: '#8c8c8c' }}>Condition:</span>
-          <div
-            style={{
-              marginTop: 4,
-              padding: 8,
-              backgroundColor: '#fafafa',
-              borderRadius: 4,
-              fontSize: 12,
-              fontFamily: 'monospace',
-            }}
-          >
-            {data.condition || "input1 === 'value'"}
+      <div className={styles.nodeContent}>
+        <div className={styles.nodeField}>
+          <span className={styles.nodeFieldLabel}>Condition:</span>
+          <div className={styles.nodeCodeBlock}>
+            {data.condition || 'if (value > 10) return true;'}
           </div>
         </div>
 
         {status === 'running' && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: 12,
-              color: '#faad14',
-            }}
-          >
+          <div className={`${styles.nodeStatus} ${styles.nodeStatusRunning}`} style={{ padding: 0 }}>
             <LoadingOutlined spin />
-            Evaluating...
+            Evaluating condition...
           </div>
         )}
       </div>
@@ -98,19 +56,19 @@ function ConditionalNode({ data, selected }: NodeProps<ConditionalNodeData>) {
         type="target"
         position={Position.Left}
         id="input"
-        style={{ backgroundColor: '#faad14' }}
+        style={{ backgroundColor: 'var(--color-warning)' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="true"
-        style={{ backgroundColor: '#52c41a', top: '40%' }}
+        style={{ top: '40%', backgroundColor: 'var(--color-success)' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="false"
-        style={{ backgroundColor: '#ff4d4f', top: '60%' }}
+        style={{ top: '60%', backgroundColor: 'var(--color-error)' }}
       />
     </Card>
   );

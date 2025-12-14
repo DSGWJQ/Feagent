@@ -13,13 +13,14 @@
  * - 用户点击 Agent 列表中的某个 Agent 进入此页面
  */
 
-import { Card, Button, Spin, Alert, Descriptions, List, Tag, Space, Typography } from 'antd';
+import { Button, Spin, Alert, Descriptions, List, Tag, Space } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAgent } from '@/shared/hooks';
+import { PageShell } from '@/shared/components/layout/PageShell';
+import { NeoCard } from '@/shared/components/common/NeoCard';
 import type { AgentTask } from '@/shared/types';
-
-const { Title } = Typography;
+import styles from '../styles/agents.module.css';
 
 export const AgentDetailPage: React.FC = () => {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export const AgentDetailPage: React.FC = () => {
    * 处理返回
    */
   const handleBack = () => {
-    navigate('/agents');
+    navigate('/app/agents');
   };
 
   /**
@@ -40,9 +41,9 @@ export const AgentDetailPage: React.FC = () => {
    */
   if (isLoading) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center' }}>
+      <div className={styles.loadingContainer}>
         <Spin size="large" />
-        <p style={{ marginTop: '16px', color: '#666' }}>加载中...</p>
+        <p className={styles.loadingText}>加载中...</p>
       </div>
     );
   }
@@ -52,7 +53,7 @@ export const AgentDetailPage: React.FC = () => {
    */
   if (error || !agent) {
     return (
-      <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
+      <div className={styles.pageContainer}>
         <Alert
           message="加载失败"
           description={error?.message || 'Agent 不存在'}
@@ -91,16 +92,16 @@ export const AgentDetailPage: React.FC = () => {
 
     if (tasks.length === 0) {
       return (
-        <Card title="任务列表" style={{ marginTop: '16px' }}>
-          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+        <NeoCard title="执行任务" className={styles.marginTop}>
+          <div className={styles.emptyContainer}>
             <p>暂无任务</p>
           </div>
-        </Card>
+        </NeoCard>
       );
     }
 
     return (
-      <Card title="任务列表" style={{ marginTop: '16px' }}>
+      <NeoCard title="执行任务" className={styles.marginTop}>
         <List
           dataSource={tasks}
           renderItem={(task: AgentTask, index: number) => (
@@ -117,29 +118,27 @@ export const AgentDetailPage: React.FC = () => {
             </List.Item>
           )}
         />
-      </Card>
+      </NeoCard>
     );
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* 返回按钮 */}
+    <PageShell
+      title={agent.name}
+      description={`ID: ${agent.id}`}
+      actions={
         <Button
           icon={<ArrowLeftOutlined />}
           onClick={handleBack}
-          type="text"
         >
           返回列表
         </Button>
-
-        {/* Agent 基本信息 */}
-        <Card>
-          <Title level={2}>{agent.name}</Title>
-          <Descriptions column={1} style={{ marginTop: '16px' }}>
-            <Descriptions.Item label="Agent ID">
-              <code>{agent.id}</code>
-            </Descriptions.Item>
+      }
+    >
+      <Space direction="vertical" size="large" className={styles.spaceFullWidth}>
+        {/* Agent 基本信息 - 石碑铭文风 */}
+        <NeoCard title="基础信息">
+          <Descriptions column={1}>
             <Descriptions.Item label="起点">
               {agent.start}
             </Descriptions.Item>
@@ -150,12 +149,12 @@ export const AgentDetailPage: React.FC = () => {
               {new Date(agent.created_at).toLocaleString('zh-CN')}
             </Descriptions.Item>
           </Descriptions>
-        </Card>
+        </NeoCard>
 
         {/* Tasks 列表 */}
         {renderTasks()}
       </Space>
-    </div>
+    </PageShell>
   );
 };
 

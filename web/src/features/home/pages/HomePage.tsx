@@ -4,7 +4,8 @@
  * 设计：
  * - 顶部横向主导航（Agent管理、工作流、调度器、LLM管理）
  * - Hero 区域（主标题 + 开始构建工作流按钮）
- * - 粒子背景效果
+ * - 石质背景效果
+ * - NeoCard 展示特性
  */
 
 import { useState } from 'react';
@@ -19,10 +20,12 @@ import {
   DownOutlined,
   BookOutlined,
 } from '@ant-design/icons';
-import './HomePage.css';
+import { NeoCard } from '@/shared/components/common/NeoCard';
+import styles from './HomePage.module.css';
 
 export const HomePage = () => {
   const navigate = useNavigate();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [hovering, setHovering] = useState(false);
 
   const handleCreateAgent = () => {
@@ -66,24 +69,21 @@ export const HomePage = () => {
   ];
 
   return (
-    <div className="home-page">
-      {/* 粒子背景 */}
-      <div className="particles-background" />
-
+    <div className={styles.container}>
       {/* 顶部导航 */}
-      <header className="home-header">
-        <div className="home-header-content">
+      <header className={styles.header}>
+        <div className={styles.headerContent}>
           {/* Logo */}
-          <div className="home-logo">
-            <RocketOutlined style={{ fontSize: '24px' }} />
-            <span className="home-logo-text">AI Agent Platform</span>
+          <div className={styles.logo}>
+            <RocketOutlined style={{ fontSize: '24px', color: 'var(--neo-gold)' }} />
+            <span className={styles.logoText}>AI Agent Platform</span>
           </div>
 
           {/* 主导航菜单 */}
-          <nav className="home-nav">
+          <nav className={styles.nav}>
             {/* Agent 管理 */}
             <Dropdown menu={{ items: agentMenuItems }} placement="bottom">
-              <Button type="text" className="home-nav-btn">
+              <Button type="text" className={styles.navBtn}>
                 <RobotOutlined />
                 Agent 管理
                 <DownOutlined style={{ fontSize: '12px' }} />
@@ -92,7 +92,7 @@ export const HomePage = () => {
 
             {/* 调度器 */}
             <Dropdown menu={{ items: schedulerMenuItems }} placement="bottom">
-              <Button type="text" className="home-nav-btn">
+              <Button type="text" className={styles.navBtn}>
                 <ClockCircleOutlined />
                 调度器
                 <DownOutlined style={{ fontSize: '12px' }} />
@@ -101,14 +101,14 @@ export const HomePage = () => {
 
             {/* LLM 管理 */}
             <Dropdown menu={{ items: llmMenuItems }} placement="bottom">
-              <Button type="text" className="home-nav-btn">
+              <Button type="text" className={styles.navBtn}>
                 <ApiOutlined />
                 LLM 管理
                 <DownOutlined style={{ fontSize: '12px' }} />
               </Button>
             </Dropdown>
 
-            <Button type="text" className="home-nav-btn" onClick={handleKnowledgeUpload}>
+            <Button type="text" className={styles.navBtn} onClick={handleKnowledgeUpload}>
               <BookOutlined />
               上传知识库
             </Button>
@@ -117,23 +117,23 @@ export const HomePage = () => {
       </header>
 
       {/* Hero 区域 */}
-      <div className="home-hero">
-        <div className="home-hero-content">
+      <div className={styles.hero}>
+        <div className={styles.heroContent}>
           {/* Beta 标签 */}
-          <div className="beta-pill">
-            <span className="beta-dot" />
+          <div className={styles.betaPill}>
+            <span className={styles.betaDot} />
             <span>BETA RELEASE</span>
           </div>
 
           {/* 主标题 */}
-          <h1 className="home-title">
+          <h1 className={styles.title}>
             构建你的
             <br />
-            <i className="home-title-italic">智能</i> 工作流
+            <i className={styles.titleItalic}>智能</i> 工作流
           </h1>
 
           {/* 副标题 */}
-          <p className="home-subtitle">
+          <p className={styles.subtitle}>
             通过可视化拖拽编辑器，轻松创建强大的 AI 自动化工作流
           </p>
 
@@ -145,7 +145,7 @@ export const HomePage = () => {
             onClick={handleCreateAgent}
             onMouseEnter={() => setHovering(true)}
             onMouseLeave={() => setHovering(false)}
-            className={`home-cta-btn ${hovering ? 'hovering' : ''}`}
+            className={styles.ctaBtn}
           >
             开始构建工作流
           </Button>
@@ -153,37 +153,34 @@ export const HomePage = () => {
       </div>
 
       {/* 功能区域 */}
-      <section id="features" className="home-section">
-        <div className="home-section-content">
-          <h2 className="home-section-title">核心功能</h2>
-          <div className="feature-grid">
-            <div className="feature-card">
-              <h3>可视化编辑</h3>
+      <section id="features" className={styles.section}>
+        <div className={styles.sectionContent}>
+          <h2 className={styles.sectionTitle}>核心功能</h2>
+          <div className={styles.featureGrid}>
+            <NeoCard title="可视化编辑" variant="raised">
               <p>拖拽式工作流编辑器，直观易用</p>
-            </div>
-            <div className="feature-card">
-              <h3>AI 对话编辑</h3>
+            </NeoCard>
+            <NeoCard title="AI 对话编辑" variant="raised">
               <p>通过自然语言描述，AI 自动生成工作流</p>
-            </div>
-            <div className="feature-card">
-              <h3>实时执行</h3>
+            </NeoCard>
+            <NeoCard title="实时执行" variant="raised">
               <p>即时运行工作流，查看执行结果</p>
-            </div>
+            </NeoCard>
           </div>
         </div>
       </section>
 
       {/* 工作流编辑器入口（突出显示） */}
-      <section id="workflow" className="workflow-cta-section">
-        <div className="workflow-cta-content">
-          <h2 className="workflow-cta-title">准备好开始了吗？</h2>
-          <p className="workflow-cta-subtitle">立即体验强大的工作流编辑器</p>
+      <section id="workflow" className={styles.workflowCtaSection}>
+        <div className={styles.workflowCtaContent}>
+          <h2 className={styles.workflowCtaTitle}>准备好开始了吗？</h2>
+          <p className={styles.workflowCtaSubtitle}>立即体验强大的工作流编辑器</p>
           <Button
             type="primary"
             size="large"
             icon={<RocketOutlined />}
             onClick={handleCreateAgent}
-            className="workflow-cta-btn"
+            className={styles.ctaBtn}
           >
             进入工作流编辑器
           </Button>

@@ -28,7 +28,9 @@ import {
   DashboardOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import './MainLayout.css';
+import { useTheme } from '@/shared/contexts/ThemeContext';
+import styles from './MainLayout.module.css';
+import { ThemeToggle } from '@/shared/components/ThemeToggle';
 
 const { Header, Sider, Content } = Layout;
 
@@ -80,6 +82,7 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const { theme } = useTheme();
 
   // 处理菜单点击
   const handleMenuClick: MenuProps['onClick'] = (e) => {
@@ -123,19 +126,21 @@ export default function MainLayout() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      {/* 侧边栏 */}
+      {/* 侧边栏 - 添加 neoStone 质感 */}
       <Sider
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        width={240}
-        theme="light"
-        className="main-layout-sider"
+        width={256}
+        theme={theme === 'dark' ? 'dark' : 'light'}
+        className={`${styles.sider} neoStone`}
+        trigger={null}
+        style={{ background: 'var(--neo-surface)' }}
       >
         {/* Logo 区域 */}
-        <div className="logo-container">
-          <RobotOutlined className="logo-icon" />
-          {!collapsed && <span className="logo-text">AI Agent</span>}
+        <div className={styles.logoContainer} onClick={() => setCollapsed(!collapsed)} style={{ cursor: 'pointer' }}>
+          <RobotOutlined className={styles.logoIcon} />
+          {!collapsed && <span className={styles.logoText}>AI Agent</span>}
         </div>
 
         {/* 导航菜单 */}
@@ -145,28 +150,29 @@ export default function MainLayout() {
           defaultOpenKeys={getDefaultOpenKeys()}
           items={menuItems}
           onClick={handleMenuClick}
-          className="main-layout-menu"
+          className={styles.menu}
+          theme={theme === 'dark' ? 'dark' : 'light'}
         />
       </Sider>
 
       {/* 右侧主内容区 */}
       <Layout>
         {/* 顶部栏 */}
-        <Header className="main-layout-header">
-          <div className="header-content">
-            <div className="header-left">
-              {/* 面包屑或页面标题可以放这里 */}
+        <Header className={styles.header}>
+          <div className={styles.headerContent}>
+            <div className={styles.headerLeft}>
+              {/* 这里未来可以放面包屑或通用的 PageTitle 占位 */}
             </div>
-            <div className="header-right">
-              {/* 用户信息、通知等可以放这里 */}
-              <span className="header-user">Admin</span>
+            <div className={styles.headerRight}>
+              <ThemeToggle showTooltip={false} />
+              <div className={styles.headerUser}>Admin</div>
             </div>
           </div>
         </Header>
 
-        {/* 内容区域 */}
-        <Content className="main-layout-content">
-          <div className="content-wrapper">
+        {/* 内容区域 - 去除强制的 Card 样式，由 PageShell 接管 */}
+        <Content className={styles.content}>
+          <div className={styles.contentWrapper}>
             <Outlet />
           </div>
         </Content>

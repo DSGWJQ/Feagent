@@ -1,0 +1,281 @@
+/**
+ * HomePage Styles
+ * Strict Neoclassical Design System
+ * 
+ * Key Elements:
+ * - Stone Texture (Static, Eternal)
+ * - Lintel Header (Architectural, Symmetrical)
+ * - Golden Mean Spacing
+ * - Classical Typography (Serif Dominance)
+ */
+
+/* ========== The Foundation (Background) ========== */
+.container {
+    position: relative;
+    min-height: 100vh;
+    background-color: var(--neo-bg);
+    /* Warm white / stone */
+    overflow-x: hidden;
+    color: var(--neo-text);
+}
+
+/* Pseudo-element for Stone Texture (Noise) */
+.container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    /* Subtle noise for stone effect */
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 0;
+    mix-blend-mode: multiply;
+}
+
+/* ========== The Lintel (Header) ========== */
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    /* Substantial height */
+    z-index: 100;
+    background: rgba(253, 252, 248, 0.95);
+    /* High opacity stone */
+    backdrop-filter: blur(12px);
+
+    /* The Lintel Design: clear borders */
+    border-bottom: 2px solid var(--neo-gold);
+    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.1);
+    /* Shadow casting down */
+
+    display: flex;
+    justify-content: center;
+}
+
+.headerContent {
+    width: 100%;
+    max-width: 1400px;
+    padding: 0 var(--space-8);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--neo-text);
+    font-size: 1.5rem;
+    font-family: var(--font-family-serif);
+    /* Serif for authority */
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.logoText {
+    /* Engraved Gold Effect */
+    background: linear-gradient(180deg, var(--neo-gold) 0%, #b45309 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+/* Nav Buttons: Architectural Elements */
+.navBtn {
+    color: var(--neo-text) !important;
+    font-family: var(--font-family-base) !important;
+    font-weight: 500 !important;
+    font-size: 0.95rem !important;
+    padding: 0 var(--space-4) !important;
+    height: 48px !important;
+    border-radius: 4px !important;
+    /* Slightly rounded squares */
+    border: 1px solid transparent !important;
+    transition: all 0.3s ease !important;
+}
+
+.navBtn:hover {
+    color: var(--neo-gold) !important;
+    background: rgba(217, 119, 6, 0.05) !important;
+    border-color: rgba(217, 119, 6, 0.2) !important;
+}
+
+/* ========== The Inscription (Hero) ========== */
+.hero {
+    position: relative;
+    z-index: 1;
+    min-height: 90vh;
+    /* Nearly full screen */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding-top: 80px;
+    /* Offset header */
+}
+
+.heroContent {
+    max-width: 900px;
+    padding: 0 var(--space-6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.betaPill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid var(--neo-gold);
+    color: var(--neo-gold);
+    font-family: var(--font-family-serif);
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: var(--space-8);
+    box-shadow: var(--shadow-sm);
+}
+
+.betaDot {
+    width: 6px;
+    height: 6px;
+    background: var(--neo-gold);
+    border-radius: 50%;
+}
+
+.title {
+    font-family: var(--font-family-serif);
+    font-size: clamp(3.5rem, 5vw, 5rem);
+    line-height: 1.1;
+    color: var(--neo-text);
+    margin-bottom: var(--space-8);
+    letter-spacing: -0.03em;
+    font-weight: 700;
+}
+
+.titleItalic {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    color: var(--neo-gold);
+    /* Emphasis in Gold */
+    font-weight: 400;
+}
+
+.subtitle {
+    font-size: 1.35rem;
+    color: var(--neo-text-2);
+    max-width: 640px;
+    margin-bottom: var(--space-12);
+    line-height: 1.6;
+    font-family: var(--font-family-base);
+    font-weight: 300;
+}
+
+/* Hero CTA: The Gold Block */
+.ctaBtn {
+    height: 64px !important;
+    padding: 0 48px !important;
+    font-size: 1.25rem !important;
+    font-family: var(--font-family-base) !important;
+    font-weight: 600 !important;
+    border-radius: 4px !important;
+    /* Moderate rounding */
+
+    /* Classical Gold Gradient */
+    background: linear-gradient(135deg, var(--neo-gold) 0%, #d97706 100%) !important;
+    border: none !important;
+    box-shadow: 0 10px 30px -10px rgba(217, 119, 6, 0.5) !important;
+
+    color: white !important;
+    letter-spacing: 0.02em;
+}
+
+.ctaBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 40px -10px rgba(217, 119, 6, 0.6) !important;
+}
+
+/* ========== Features Section (The Reliefs) ========== */
+.section {
+    position: relative;
+    z-index: 1;
+    padding: var(--space-20) 0;
+    background: var(--neo-surface);
+    /* Top border as a separation line */
+    border-top: 1px solid var(--neo-border);
+}
+
+.sectionContent {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 var(--space-8);
+}
+
+.sectionTitle {
+    text-align: center;
+    font-family: var(--font-family-serif);
+    font-size: 3rem;
+    color: var(--neo-text);
+    margin-bottom: var(--space-16);
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+/* Decorative line under title */
+.sectionTitle::after {
+    content: '';
+    display: block;
+    width: 80px;
+    height: 3px;
+    background: var(--neo-gold);
+    margin: var(--space-4) auto 0;
+}
+
+.featureGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: var(--space-8);
+}
+
+/* ========== Workflow CTA ========== */
+.workflowCtaSection {
+    position: relative;
+    z-index: 1;
+    padding: var(--space-24) 0;
+    text-align: center;
+    background: var(--neo-bg);
+    border-top: 1px solid var(--neo-border);
+}
+
+.workflowCtaContent {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 var(--space-8);
+}
+
+.workflowCtaTitle {
+    font-family: var(--font-family-serif);
+    font-size: 3.5rem;
+    color: var(--neo-text);
+    margin-bottom: var(--space-6);
+}
+
+.workflowCtaSubtitle {
+    font-size: 1.5rem;
+    color: var(--neo-text-2);
+    margin-bottom: var(--space-10);
+    font-weight: 300;
+}

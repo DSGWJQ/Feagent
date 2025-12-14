@@ -1,0 +1,110 @@
+/**
+ * Scheduler Module Styles
+ * Neoclassical Design System
+ */
+
+/* ========== Common Container ========== */
+.container {
+  width: 100%;
+  padding: var(--spacing-6);
+}
+
+.card {
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-md);
+  background: var(--neo-surface);
+  border: 1px solid var(--neo-border);
+}
+
+/* ========== Statistic Widget ========== */
+.statisticTitle {
+  font-size: var(--font-size-sm);
+  color: var(--neo-text-2);
+  margin-bottom: var(--spacing-2);
+}
+
+.statisticValue {
+  font-size: 1.75rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--neo-text);
+  font-family: var(--font-family-serif);
+}
+
+/* ========== Neoclassical Table ========== */
+.neoTable :global(.ant-table-thead > tr > th) {
+  background: var(--neo-surface-2) !important;
+  font-family: var(--font-family-serif);
+  color: var(--neo-text);
+  font-weight: 600;
+  border-bottom: 2px solid var(--neo-border) !important;
+}
+
+.neoTable :global(.ant-table-tbody > tr > td) {
+  border-bottom: 1px solid var(--neo-border) !important;
+  color: var(--neo-text-2);
+}
+
+.neoTable :global(.ant-table-tbody > tr:hover > td) {
+  background: var(--neo-surface-1) !important;
+}
+
+.neoTable :global(.ant-table-wrapper .ant-table-pagination) {
+  margin: var(--spacing-4) 0;
+}
+
+/* Color Classes for Statistics */
+.colorSuccess {
+  color: var(--color-success) !important;
+}
+
+.colorError {
+  color: var(--color-error) !important;
+}
+
+.colorWarning {
+  color: var(--color-warning) !important;
+}
+
+.colorInfo {
+  color: var(--neo-blue) !important;
+}
+
+/* ========== Ant Design Overrides ========== */
+:global(.ant-table) {
+  font-size: var(--font-size-sm);
+  background: transparent !important;
+}
+
+:global(.ant-tag) {
+  font-size: var(--font-size-xs);
+  border-radius: var(--radius-sm);
+}
+
+:global(.ant-modal-content) {
+  background: var(--neo-surface) !important;
+  border: 1px solid var(--neo-border);
+  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-md) !important;
+}
+
+:global(.ant-modal-header) {
+  background: transparent !important;
+  border-bottom: 1px solid var(--neo-border) !important;
+  margin-bottom: var(--spacing-4) !important;
+}
+
+:global(.ant-modal-title) {
+  color: var(--neo-text) !important;
+  font-family: var(--font-family-serif);
+}
+
+:global(.ant-card) {
+  background: var(--neo-surface) !important;
+  border: 1px solid var(--neo-border) !important;
+  border-radius: var(--radius-md) !important;
+}
+
+:global(.ant-divider-horizontal) {
+  border-color: var(--neo-border) !important;
+  margin: var(--spacing-8) 0;
+}

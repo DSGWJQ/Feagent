@@ -1,0 +1,34 @@
+/**
+ * Arch组件样式
+ * 古罗马拱形结构
+ */
+
+.arch {
+  position: relative;
+  padding: var(--space-6);
+  background: var(--neo-surface);
+  border: 1px solid var(--neo-border);
+  border-radius: 18px;
+  box-shadow: var(--neo-shadow-inset), var(--neo-shadow-ambient);
+}
+
+/* 拱门轮廓 */
+.arch::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 12px;
+  height: 140px;
+  border: 1px solid color-mix(in srgb, var(--neo-border) 65%, var(--neo-gold));
+  border-bottom: none;
+  border-top-left-radius: 999px;
+  border-top-right-radius: 999px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.inner {
+  position: relative;
+  padding-top: 120px; /* 为拱形顶部留出空间 */
+}

@@ -11,20 +11,15 @@
  * Implementation (GREEN phase)
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
-  Row,
-  Col,
-  Card,
   Statistic,
   Table,
   Spin,
   Alert,
   Tag,
-  Divider,
   Space,
   Button,
-  Progress,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -34,8 +29,10 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import * as schedulerApi from '../api/schedulerApi';
+import { PageShell } from '@/shared/components/layout/PageShell';
+import { NeoCard } from '@/shared/components/common/NeoCard';
 import type { SchedulerStatus, SchedulerJobs } from '../../../types/workflow';
-import './SchedulerMonitorPage.css';
+import styles from '../styles/scheduler.module.css';
 
 export default function SchedulerMonitorPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -158,28 +155,27 @@ export default function SchedulerMonitorPage() {
   const hasError = statusError || jobsError;
 
   return (
-    <div className="scheduler-monitor-page">
-      {/* Header with controls */}
-      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-        <Col span={24}>
-          <Space>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleRefresh}
-              loading={isLoading}
-            >
-              Refresh
-            </Button>
-            <Button
-              type={autoRefresh ? 'primary' : 'default'}
-              onClick={() => setAutoRefresh(!autoRefresh)}
-            >
-              {autoRefresh ? 'Auto-Refresh ON' : 'Auto-Refresh OFF'}
-            </Button>
-          </Space>
-        </Col>
-      </Row>
-
+    <PageShell
+      title="Scheduler Monitor"
+      description="Real-time status and job monitoring."
+      actions={
+        <Space>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={handleRefresh}
+            loading={isLoading}
+          >
+            Refresh
+          </Button>
+          <Button
+            type={autoRefresh ? 'primary' : 'default'}
+            onClick={() => setAutoRefresh(!autoRefresh)}
+          >
+            {autoRefresh ? 'Auto-Refresh ON' : 'Auto-Refresh OFF'}
+          </Button>
+        </Space>
+      }
+    >
       {/* Error Alert */}
       {hasError && (
         <Alert
@@ -192,111 +188,97 @@ export default function SchedulerMonitorPage() {
 
       {/* Loading */}
       {isLoading && !status && !jobs ? (
-        <Spin size="large" />
+        <div style={{ textAlign: 'center', padding: '48px' }}>
+          <Spin size="large" />
+        </div>
       ) : (
         <>
           {/* Key Statistics */}
-          <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Scheduler Status"
-                  value={status?.schedulerRunning ? 'Running' : 'Stopped'}
-                  prefix={
-                    status?.schedulerRunning ? (
-                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                    ) : (
-                      <StopOutlined style={{ color: '#f5222d' }} />
-                    )
-                  }
-                  valueStyle={{
-                    color: status?.schedulerRunning ? '#52c41a' : '#f5222d',
-                  }}
-                />
-              </Card>
-            </Col>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+            <NeoCard variant="flat">
+              <Statistic
+                title="Scheduler Status"
+                value={status?.schedulerRunning ? 'Running' : 'Stopped'}
+                prefix={
+                  status?.schedulerRunning ? (
+                    <CheckCircleOutlined className={styles.colorSuccess} />
+                  ) : (
+                    <StopOutlined className={styles.colorError} />
+                  )
+                }
+                valueStyle={{
+                  color: status?.schedulerRunning ? 'var(--color-success)' : 'var(--color-error)'
+                }}
+              />
+            </NeoCard>
 
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Jobs in Scheduler"
-                  value={status?.totalJobsInScheduler || 0}
-                  prefix={<ClockCircleOutlined />}
-                  valueStyle={{ color: '#1890ff' }}
-                />
-              </Card>
-            </Col>
+            <NeoCard variant="flat">
+              <Statistic
+                title="Jobs in Scheduler"
+                value={status?.totalJobsInScheduler || 0}
+                prefix={<ClockCircleOutlined />}
+                valueStyle={{ color: 'var(--neo-blue)' }}
+              />
+            </NeoCard>
 
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Active Workflows"
-                  value={jobs?.summary.totalActiveWorkflows || 0}
-                  valueStyle={{ color: '#52c41a' }}
-                />
-              </Card>
-            </Col>
+            <NeoCard variant="flat">
+              <Statistic
+                title="Active Workflows"
+                value={jobs?.summary.totalActiveWorkflows || 0}
+                valueStyle={{ color: 'var(--color-success)' }}
+              />
+            </NeoCard>
 
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Not in Scheduler"
-                  value={jobs?.summary.workflowsNotInScheduler || 0}
-                  valueStyle={{ color: '#faad14' }}
-                />
-              </Card>
-            </Col>
-          </Row>
+            <NeoCard variant="flat">
+              <Statistic
+                title="Not in Scheduler"
+                value={jobs?.summary.workflowsNotInScheduler || 0}
+                valueStyle={{ color: 'var(--color-warning)' }}
+              />
+            </NeoCard>
+          </div>
 
           {/* Jobs Table */}
-          <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-            <Col span={24}>
-              <Card title="Jobs in Scheduler" bordered={false}>
-                {status?.jobDetails && status.jobDetails.length > 0 ? (
-                  <Table
-                    columns={jobColumns}
-                    dataSource={status.jobDetails.map((job) => ({
-                      ...job,
-                      key: job.id,
-                    }))}
-                    pagination={{ pageSize: 5 }}
-                    size="small"
-                  />
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '20px' }}>
-                    No jobs in scheduler
-                  </div>
-                )}
-              </Card>
-            </Col>
-          </Row>
-
-          <Divider />
+          <NeoCard title="Jobs in Scheduler" variant="raised" style={{ marginBottom: '24px' }}>
+            {status?.jobDetails && status.jobDetails.length > 0 ? (
+              <Table
+                columns={jobColumns}
+                dataSource={status.jobDetails.map((job) => ({
+                  ...job,
+                  key: job.id,
+                }))}
+                pagination={{ pageSize: 5 }}
+                size="small"
+                className={styles.neoTable}
+              />
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--neo-text-2)' }}>
+                No jobs in scheduler
+              </div>
+            )}
+          </NeoCard>
 
           {/* Active Workflows Table */}
-          <Row gutter={[16, 16]}>
-            <Col span={24}>
-              <Card title="Active Scheduled Workflows" bordered={false}>
-                {jobs?.activeScheduledWorkflows && jobs.activeScheduledWorkflows.length > 0 ? (
-                  <Table
-                    columns={workflowColumns}
-                    dataSource={jobs.activeScheduledWorkflows.map((wf) => ({
-                      ...wf,
-                      key: wf.id,
-                    }))}
-                    pagination={{ pageSize: 10 }}
-                    size="small"
-                  />
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '20px' }}>
-                    No active scheduled workflows
-                  </div>
-                )}
-              </Card>
-            </Col>
-          </Row>
+          <NeoCard title="Active Scheduled Workflows" variant="raised">
+            {jobs?.activeScheduledWorkflows && jobs.activeScheduledWorkflows.length > 0 ? (
+              <Table
+                columns={workflowColumns}
+                dataSource={jobs.activeScheduledWorkflows.map((wf) => ({
+                  ...wf,
+                  key: wf.id,
+                }))}
+                pagination={{ pageSize: 10 }}
+                size="small"
+                className={styles.neoTable}
+              />
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--neo-text-2)' }}>
+                No active scheduled workflows
+              </div>
+            )}
+          </NeoCard>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

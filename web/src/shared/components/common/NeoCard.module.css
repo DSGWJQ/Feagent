@@ -1,0 +1,66 @@
+/**
+ * NeoCard Styles
+ * Neoclassical Design System
+ */
+
+.card {
+    position: relative;
+    /* neoStone texture will be applied via composes or class composition in React */
+    padding: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    transition: transform var(--neo-dur-base) var(--neo-ease-dignified),
+        box-shadow var(--neo-dur-base) var(--neo-ease-dignified);
+}
+
+.variantRaised {
+    box-shadow: var(--shadow-md);
+    /* Slightly lifted */
+    transform: translateY(-2px);
+}
+
+.variantRaised:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-4px);
+}
+
+.variantFlat {
+    box-shadow: var(--shadow-sm);
+}
+
+.variantFlat:hover {
+    box-shadow: var(--shadow-md);
+}
+
+/* Internal Architecture */
+.header {
+    border-bottom: 1px solid var(--neo-border);
+    padding-bottom: var(--space-4);
+    margin-bottom: var(--space-2);
+}
+
+.extra {
+    margin-left: var(--spacing-4);
+    display: flex;
+    align-items: center;
+}
+
+.title {
+    font-family: var(--font-family-serif);
+    font-size: 1.25rem;
+    color: var(--neo-text);
+    font-weight: 600;
+    margin: 0;
+}
+
+.description {
+    color: var(--neo-text-2);
+    font-size: var(--font-size-sm);
+    margin-top: var(--space-1);
+}
+
+.content {
+    color: var(--neo-text);
+    line-height: 1.6;
+}

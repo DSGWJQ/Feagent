@@ -1,0 +1,141 @@
+/**
+ * ThemeToggle Component Styles
+ * Neoclassical Design System
+ */
+
+.toggleButton {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--neo-border);
+  background-color: var(--neo-surface);
+  color: var(--neo-text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.toggleButton:hover {
+  background-color: var(--neo-surface-2);
+  border-color: var(--neo-gold);
+  transform: scale(1.05);
+  box-shadow: var(--shadow-md);
+}
+
+.toggleButton:active {
+  transform: scale(0.95);
+}
+
+.toggleButton:focus-visible {
+  outline: 2px solid var(--neo-gold);
+  outline-offset: 2px;
+}
+
+/* Icon Wrapper */
+.iconWrapper {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Icon Animation */
+.icon {
+  font-size: 18px;
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  position: absolute;
+}
+
+/* Sun Icon (Dark Mode) */
+.sunIcon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+  color: var(--neo-gold);
+}
+
+.sunIcon.hidden {
+  opacity: 0;
+  transform: rotate(180deg) scale(0);
+}
+
+/* Moon Icon (Light Mode) */
+.moonIcon {
+  opacity: 0;
+  transform: rotate(-180deg) scale(0);
+}
+
+.moonIcon.visible {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+  color: var(--neo-blue);
+}
+
+/* Background Glow Effect */
+.toggleButton::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at center,
+      var(--neo-gold) 0%,
+      transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.toggleButton:hover::before {
+  opacity: 0.1;
+}
+
+/* Tooltip */
+.toggleButton[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  padding: 4px 8px;
+  background-color: var(--neo-bg);
+  color: var(--neo-text);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 1000;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--neo-border);
+}
+
+.toggleButton:hover[data-tooltip]::after {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+/* Loading State */
+.toggleButton.loading {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.toggleButton.loading .icon {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}

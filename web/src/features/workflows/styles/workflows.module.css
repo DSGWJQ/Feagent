@@ -1,0 +1,380 @@
+/**
+ * Workflows 模块通用样式
+ * 使用设计Token系统 - 深色主题
+ */
+
+/* ========== NodePalette 节点面板 ========== */
+.nodePalette {
+  width: 280px;
+  height: 100%;
+  background-color: var(--color-neutral-900);
+  border-right: 1px solid var(--color-neutral-700);
+  padding: var(--spacing-4);
+  overflow-y: auto;
+}
+
+.nodePaletteTitle {
+  margin-bottom: var(--spacing-4);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-neutral-50);
+}
+
+.nodePaletteList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.nodePaletteCard {
+  cursor: grab;
+  background-color: var(--color-neutral-800);
+  border-color: var(--color-neutral-700);
+}
+
+.nodePaletteCard:active {
+  cursor: grabbing;
+}
+
+/* ========== ExecutionOverlay 执行覆盖层 ========== */
+.executionOverlay {
+  position: absolute;
+  top: -35px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-1) var(--spacing-2);
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  z-index: 1000;
+}
+
+.executionStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.executionOrder {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-neutral-50);
+  background-color: var(--color-primary-400);
+  padding: 2px var(--spacing-1);
+  border-radius: var(--radius-sm);
+  min-width: 20px;
+  text-align: center;
+}
+
+.executionOutput {
+  margin-top: var(--spacing-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-neutral-300);
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: var(--spacing-1);
+  border-radius: var(--radius-sm);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========== 节点状态颜色 ========== */
+.statusRunning {
+  color: var(--color-primary-400);
+}
+
+.statusCompleted {
+  color: var(--color-success);
+}
+
+.statusError {
+  color: var(--color-error);
+}
+
+.statusPending {
+  color: var(--color-neutral-400);
+}
+
+/* ========== 节点基础样式 ========== */
+.nodeBase {
+  min-width: 200px;
+  background: var(--color-white);
+  border: 2px solid var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  transition: all 0.2s;
+}
+
+.nodeBase.selected {
+  border-color: var(--color-primary-400);
+  box-shadow: 0 0 0 3px rgba(26, 127, 255, 0.1);
+}
+
+.nodeHeader {
+  padding: var(--spacing-2) var(--spacing-3);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-sm);
+  color: var(--color-white);
+}
+
+.nodeBody {
+  padding: var(--spacing-3);
+  background-color: var(--color-neutral-50);
+  border-top: 1px solid var(--color-neutral-200);
+}
+
+/* ========== 节点类型accent颜色 ========== */
+.nodeTypeStart {
+  background-color: var(--color-success);
+}
+
+.nodeTypeEnd {
+  background-color: var(--color-neutral-600);
+}
+
+.nodeTypeTool {
+  background-color: var(--color-accent-tool);
+}
+
+.nodeTypeConditional {
+  background-color: var(--color-warning);
+}
+
+.nodeTypeLoop {
+  background-color: var(--color-accent-agent);
+}
+
+.nodeTypeHttp {
+  background-color: var(--color-info);
+}
+
+.nodeTypeDatabase {
+  background-color: var(--color-primary-400);
+}
+
+.nodeTypeNotification {
+  background-color: #eb2f96;
+}
+
+.nodeTypeAudio {
+  background-color: #eb2f96;
+}
+
+.nodeTypeImage {
+  background-color: #722ed1;
+}
+
+.nodeTypeFile {
+  background-color: var(--color-neutral-600);
+}
+
+.nodeTypeJavaScript {
+  background-color: #faad14;
+}
+
+.nodeTypePrompt {
+  background-color: var(--color-primary-500);
+}
+
+.nodeTypeTextModel {
+  background-color: var(--color-primary-400);
+}
+
+.nodeTypeEmbedding {
+  background-color: #13c2c2;
+}
+
+.nodeTypeStructuredOutput {
+  background-color: var(--color-accent-workflow);
+}
+
+/* ========== NodeConfigPanel 配置面板 ========== */
+.nodeConfigPanel {
+  width: 320px;
+  height: 100%;
+  background-color: var(--color-white);
+  border-left: 1px solid var(--color-neutral-200);
+  padding: var(--spacing-4);
+  overflow-y: auto;
+}
+
+.nodeConfigTitle {
+  margin-bottom: var(--spacing-4);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-neutral-900);
+}
+
+/* ========== CodeExportModal 代码导出 ========== */
+.codeBlock {
+  background-color: var(--color-neutral-900);
+  color: var(--color-neutral-50);
+  padding: var(--spacing-4);
+  border-radius: var(--radius-md);
+  font-family: var(--font-family-code);
+  font-size: var(--font-size-sm);
+  overflow-x: auto;
+  max-height: 400px;
+}
+
+/* ========== 节点内部组件样式 ========== */
+/* 节点卡片容器 */
+.nodeCard {
+  min-width: 200px;
+  border: 2px solid;
+  transition: all 0.3s;
+}
+
+.nodeCardWide {
+  min-width: 280px;
+  max-width: 400px;
+  border: 2px solid;
+  transition: all 0.3s;
+}
+
+/* 节点头部 */
+.nodeHeaderWrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  border-bottom: 1px solid var(--color-neutral-200);
+}
+
+/* Icon容器 */
+.nodeIcon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--color-white);
+}
+
+/* 节点标题区域 */
+.nodeTitleWrapper {
+  flex: 1;
+}
+
+.nodeTitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.nodeDescription {
+  margin: 0;
+  margin-top: var(--spacing-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-neutral-500);
+}
+
+.nodeDescriptionNoMargin {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-neutral-500);
+}
+
+/* 节点内容区域 */
+.nodeContent {
+  padding: var(--spacing-4);
+}
+
+.nodeContentCompact {
+  padding: var(--spacing-3);
+}
+
+/* 节点状态区域 */
+.nodeStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  font-size: var(--font-size-xs);
+}
+
+.nodeStatusRunning {
+  color: var(--color-warning);
+}
+
+.nodeStatusCompleted {
+  color: var(--color-success);
+}
+
+.nodeStatusFailed {
+  color: var(--color-error);
+}
+
+/* 状态脉冲动画点 */
+.statusPulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.statusPulseRunning {
+  background-color: var(--color-warning);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 节点输出区域 */
+.nodeOutput {
+  padding: var(--spacing-3);
+  border-top: 1px solid var(--color-neutral-200);
+  background-color: var(--color-neutral-50);
+}
+
+.nodeOutputLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-neutral-500);
+  margin-bottom: var(--spacing-2);
+}
+
+.nodeOutputContent {
+  font-size: var(--font-size-xs);
+  color: var(--color-neutral-700);
+  max-height: 100px;
+  overflow: auto;
+}
+
+/* 代码块样式 */
+.nodeCodeBlock {
+  margin-top: var(--spacing-1);
+  padding: var(--spacing-2);
+  background-color: var(--color-neutral-50);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--font-family-code);
+  max-height: 100px;
+  overflow: auto;
+}
+
+/* 字段行 */
+.nodeField {
+  margin-bottom: var(--spacing-2);
+}
+
+.nodeFieldLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-neutral-500);
+}
+
+.nodeFieldLast {
+  margin-bottom: 0;
+}

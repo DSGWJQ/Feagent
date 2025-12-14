@@ -1,0 +1,116 @@
+.container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--neo-surface-1) !important;
+    border: 1px solid var(--neo-border) !important;
+    border-radius: var(--radius-md) !important;
+}
+
+.header {
+    background-color: var(--neo-surface-2) !important;
+    border-bottom: 1px solid var(--neo-border) !important;
+    padding: var(--spacing-3) var(--spacing-4) !important;
+    border-radius: var(--radius-md) var(--radius-md) 0 0 !important;
+}
+
+.body {
+    flex: 1;
+    background-color: var(--neo-surface-1) !important;
+    padding: var(--spacing-4) !important;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.messageList {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: var(--spacing-2);
+    margin-bottom: var(--spacing-4);
+}
+
+.message {
+    display: flex;
+    gap: var(--spacing-3);
+    margin-bottom: var(--spacing-4);
+    animation: fadeIn 0.3s ease-out;
+}
+
+.messageIcon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 1px solid var(--neo-border);
+}
+
+.iconAssistant {
+    background-color: var(--neo-surface-2);
+    color: var(--neo-blue);
+}
+
+.iconUser {
+    background-color: var(--neo-surface-2);
+    color: var(--neo-text);
+}
+
+.messageContent {
+    flex: 1;
+    max-width: 100%;
+}
+
+.messageText {
+    padding: var(--spacing-3);
+    border-radius: var(--radius-md);
+    line-height: 1.5;
+    font-size: var(--font-size-sm);
+}
+
+.textAssistant {
+    background-color: transparent;
+    color: var(--neo-text);
+}
+
+.textUser {
+    background-color: var(--neo-surface-2);
+    color: var(--neo-text);
+    border: 1px solid var(--neo-border);
+}
+
+.textArea {
+    background-color: var(--neo-surface-2) !important;
+    border: 1px solid var(--neo-border) !important;
+    color: var(--neo-text) !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+.textArea:focus {
+    border-color: var(--neo-blue) !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+}
+
+.sendButton {
+    background-color: var(--neo-blue) !important;
+    border: none !important;
+}
+
+.sendButton:disabled {
+    background-color: var(--neo-surface-3) !important;
+    color: var(--neo-text-3) !important;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

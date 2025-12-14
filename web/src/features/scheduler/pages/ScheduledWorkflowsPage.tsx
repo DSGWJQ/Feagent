@@ -26,9 +26,6 @@ import {
   Tag,
   Spin,
   Alert,
-  Row,
-  Col,
-  Card,
   message,
 } from 'antd';
 import {
@@ -36,13 +33,14 @@ import {
   PauseCircleOutlined,
   DeleteOutlined,
   PlusOutlined,
-  ReloadOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as scheduledWorkflowsApi from '../api/scheduledWorkflowsApi';
 import * as workflowsApi from '../../workflows/api/workflowsApi';
+import { PageShell } from '@/shared/components/layout/PageShell';
+import { NeoCard } from '@/shared/components/common/NeoCard';
 import type { ScheduledWorkflow } from '@/types/workflow';
-import './ScheduledWorkflowsPage.css';
+import styles from '../styles/scheduler.module.css';
 
 const statusColors: Record<string, string> = {
   active: 'green',
@@ -273,43 +271,41 @@ export default function ScheduledWorkflowsPage() {
   ];
 
   return (
-    <div className="scheduled-workflows-page">
-      <Row gutter={[16, 16]}>
-        <Col span={24}>
-          <Card
-            title="Scheduled Workflows"
-            extra={
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleCreateOpen}
-              >
-                Create Scheduled Workflow
-              </Button>
-            }
-          >
-            {error && (
-              <Alert
-                message="Error loading scheduled workflows"
-                type="error"
-                showIcon
-                style={{ marginBottom: '16px' }}
-              />
-            )}
+    <PageShell
+      title="Scheduled Workflows"
+      description="Manage your recurring task schedules."
+      actions={
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleCreateOpen}
+        >
+          Create Scheduled Workflow
+        </Button>
+      }
+    >
+      <NeoCard variant="raised">
+        {error && (
+          <Alert
+            message="Error loading scheduled workflows"
+            type="error"
+            showIcon
+            style={{ marginBottom: '16px' }}
+          />
+        )}
 
-            {isLoading ? (
-              <Spin size="large" />
-            ) : (
-              <Table
-                columns={columns}
-                dataSource={scheduledWorkflows}
-                rowKey="id"
-                pagination={{ pageSize: 10 }}
-              />
-            )}
-          </Card>
-        </Col>
-      </Row>
+        {isLoading ? (
+          <Spin size="large" />
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={scheduledWorkflows}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+            className={styles.neoTable}
+          />
+        )}
+      </NeoCard>
 
       {/* Create Modal */}
       <Modal
@@ -387,6 +383,6 @@ export default function ScheduledWorkflowsPage() {
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </PageShell>
   );
 }

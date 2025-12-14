@@ -1,5 +1,6 @@
 /**
  * Start Node - 工作流开始节点
+ * 使用CSS Module + 设计Token系统
  */
 
 import { memo } from 'react';
@@ -7,6 +8,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Card } from 'antd';
 import { PlayCircleOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
+import styles from '../../styles/workflows.module.css';
 
 export interface StartNodeData {
   status?: NodeStatus;
@@ -18,65 +20,24 @@ function StartNode({ data, selected }: NodeProps<StartNodeData>) {
 
   return (
     <Card
-      className={`workflow-node ${getStatusColor(status, selected)}`}
-      style={{
-        minWidth: 200,
-        border: '2px solid',
-        transition: 'all 0.3s',
-      }}
+      className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCard}`}
       styles={{ body: { padding: 0 } }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '12px 16px',
-          borderBottom: '1px solid #f0f0f0',
-        }}
-      >
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 6,
-            backgroundColor: '#52c41a',
-            color: '#fff',
-          }}
-        >
+      <div className={styles.nodeHeaderWrapper}>
+        <div className={`${styles.nodeIcon} ${styles.nodeTypeStart}`}>
           <PlayCircleOutlined style={{ fontSize: 16 }} />
         </div>
-        <div style={{ flex: 1 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Start</h3>
-          <p style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>
+        <div className={styles.nodeTitleWrapper}>
+          <h3 className={styles.nodeTitle}>Start</h3>
+          <p className={styles.nodeDescriptionNoMargin}>
             Workflow entry point
           </p>
         </div>
       </div>
 
       {status === 'running' && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '8px 16px',
-            fontSize: 12,
-            color: '#faad14',
-          }}
-        >
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              backgroundColor: '#faad14',
-              animation: 'pulse 1.5s ease-in-out infinite',
-            }}
-          />
+        <div className={`${styles.nodeStatus} ${styles.nodeStatusRunning}`}>
+          <div className={`${styles.statusPulse} ${styles.statusPulseRunning}`} />
           Starting...
         </div>
       )}
@@ -85,7 +46,7 @@ function StartNode({ data, selected }: NodeProps<StartNodeData>) {
         type="source"
         position={Position.Right}
         id="output"
-        style={{ backgroundColor: '#52c41a' }}
+        style={{ backgroundColor: 'var(--color-success)' }}
       />
     </Card>
   );

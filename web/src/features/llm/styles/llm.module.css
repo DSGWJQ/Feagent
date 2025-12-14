@@ -1,0 +1,86 @@
+/**
+ * LLM Providers Page Module Styles
+ * Neoclassical Design System
+ */
+
+.container {
+  width: 100%;
+  padding: var(--spacing-6);
+}
+
+.card {
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-md);
+  background: var(--neo-surface);
+  border: 1px solid var(--neo-border);
+}
+
+.urlText {
+  font-size: 12px;
+  color: var(--neo-text-2);
+  font-family: var(--font-family-mono);
+}
+
+.maskText {
+  font-size: 12px;
+  color: var(--neo-text-2);
+  font-family: var(--font-family-mono);
+  opacity: 0.7;
+}
+
+/* Scoped Neoclassical Table Styles */
+.neoTable :global(.ant-table) {
+  font-size: var(--font-size-sm);
+  background: transparent !important;
+}
+
+.neoTable :global(.ant-table-thead > tr > th) {
+  background: var(--neo-surface-2) !important;
+  color: var(--neo-text);
+  font-weight: var(--font-weight-semibold);
+  border-bottom: 1px solid var(--neo-border);
+}
+
+.neoTable :global(.ant-table-tbody > tr > td) {
+  border-bottom: 1px solid var(--neo-border) !important;
+  color: var(--neo-text);
+  padding: var(--spacing-3) var(--spacing-4) !important;
+}
+
+.neoTable :global(.ant-table-tbody > tr:hover > td) {
+  background: var(--neo-surface-2) !important;
+}
+
+/* Modal Overrides */
+:global(.ant-modal-content) {
+  background: var(--neo-surface) !important;
+  border: 1px solid var(--neo-border) !important;
+  box-shadow: var(--shadow-lg) !important;
+  border-radius: var(--radius-md) !important;
+}
+
+:global(.ant-modal-header) {
+  background: transparent !important;
+  border-bottom: 1px solid var(--neo-border) !important;
+  margin-bottom: var(--spacing-4) !important;
+}
+
+:global(.ant-modal-title) {
+  color: var(--neo-text) !important;
+  font-family: var(--font-family-serif) !important;
+}
+
+:global(.ant-form-item-label > label) {
+  color: var(--neo-text) !important;
+}
+
+/* Switch Overrides */
+:global(.ant-switch) {
+  background-color: var(--neo-surface-2);
+  border: 1px solid var(--neo-border);
+}
+
+:global(.ant-switch-checked) {
+  background-color: var(--neo-gold) !important;
+  border-color: var(--neo-gold) !important;
+}

@@ -29,6 +29,7 @@ export {
 // Task 相关类型
 export type {
   Task,
+  AgentTask,
 } from './task';
 
 export {

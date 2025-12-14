@@ -2,6 +2,7 @@
  * MainLayout 样式
  *
  * 设计原则：
+ * - 使用CSS变量替代硬编码值
  * - 简洁现代的企业后台风格
  * - 响应式布局
  * - 平滑的过渡动画
@@ -9,76 +10,76 @@
 
 /* ========== 侧边栏 ========== */
 .main-layout-sider {
-  box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+  box-shadow: var(--shadow-sm);
   position: relative;
   z-index: 10;
 }
 
 /* Logo 区域 */
 .logo-container {
-  height: 64px;
+  height: var(--spacing-16);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 16px;
-  background: #fff;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 0 var(--spacing-4);
+  background: var(--color-white);
+  border-bottom: 1px solid var(--color-neutral-100);
   transition: all 0.2s;
 }
 
 .logo-icon {
   font-size: 24px;
-  color: #1890ff;
+  color: var(--color-primary-400);
   transition: all 0.2s;
 }
 
 .logo-text {
-  margin-left: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #000;
+  margin-left: var(--spacing-3);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-neutral-900);
   white-space: nowrap;
 }
 
 /* 导航菜单 */
 .main-layout-menu {
   border-right: none;
-  padding: 8px 0;
+  padding: var(--spacing-2) 0;
 }
 
 .main-layout-menu .ant-menu-item {
-  margin: 4px 8px;
-  border-radius: 6px;
+  margin: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-base);
   transition: all 0.2s;
 }
 
 .main-layout-menu .ant-menu-item:hover {
-  background: #f5f5f5;
+  background: var(--color-neutral-50);
 }
 
 .main-layout-menu .ant-menu-item-selected {
-  background: #e6f7ff !important;
-  color: #1890ff;
-  font-weight: 500;
+  background: var(--color-primary-50) !important;
+  color: var(--color-primary-400);
+  font-weight: var(--font-weight-medium);
 }
 
 .main-layout-menu .ant-menu-submenu-title {
-  margin: 4px 8px;
-  border-radius: 6px;
+  margin: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-base);
   transition: all 0.2s;
 }
 
 .main-layout-menu .ant-menu-submenu-title:hover {
-  background: #f5f5f5;
+  background: var(--color-neutral-50);
 }
 
 /* ========== 顶部栏 ========== */
 .main-layout-header {
-  background: #fff;
-  padding: 0 24px;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
-  height: 64px;
-  line-height: 64px;
+  background: var(--color-white);
+  padding: 0 var(--spacing-6);
+  box-shadow: var(--shadow-sm);
+  height: var(--spacing-16);
+  line-height: var(--spacing-16);
   display: flex;
   align-items: center;
 }
@@ -97,49 +98,49 @@
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--spacing-4);
 }
 
 .header-user {
-  font-size: 14px;
-  color: #000;
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-900);
   cursor: pointer;
-  padding: 4px 12px;
-  border-radius: 4px;
+  padding: var(--spacing-1) var(--spacing-3);
+  border-radius: var(--radius-sm);
   transition: all 0.2s;
 }
 
 .header-user:hover {
-  background: #f5f5f5;
+  background: var(--color-neutral-50);
 }
 
 /* ========== 内容区域 ========== */
 .main-layout-content {
-  background: #f0f2f5;
-  padding: 24px;
-  min-height: calc(100vh - 64px);
+  background: var(--color-neutral-100);
+  padding: var(--spacing-6);
+  min-height: calc(100vh - var(--spacing-16));
 }
 
 .content-wrapper {
-  background: #fff;
-  padding: 24px;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  min-height: calc(100vh - 112px);
+  background: var(--color-white);
+  padding: var(--spacing-6);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  min-height: calc(100vh - var(--spacing-16) - var(--spacing-12));
 }
 
 /* ========== 响应式适配 ========== */
 @media (max-width: 768px) {
   .main-layout-header {
-    padding: 0 16px;
+    padding: 0 var(--spacing-4);
   }
 
   .main-layout-content {
-    padding: 16px;
+    padding: var(--spacing-4);
   }
 
   .content-wrapper {
-    padding: 16px;
+    padding: var(--spacing-4);
   }
 }
 
@@ -156,7 +157,7 @@
 /* ========== 菜单项图标样式 ========== */
 .main-layout-menu .ant-menu-item .anticon,
 .main-layout-menu .ant-menu-submenu-title .anticon {
-  font-size: 16px;
+  font-size: var(--font-size-base);
 }
 
 /* ========== 滚动条样式 ========== */
@@ -165,10 +166,10 @@
 }
 
 .main-layout-sider ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 3px;
+  background: var(--color-neutral-300);
+  border-radius: var(--radius-sm);
 }
 
 .main-layout-sider ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-neutral-400);
 }

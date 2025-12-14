@@ -383,20 +383,24 @@ export default function NodeConfigPanel({
       }}
     >
       <Drawer
-        title={node ? `配置 ${node.type} 节点` : '节点配置'}
+        title={
+          <span style={{ fontFamily: 'var(--font-family-serif)', color: 'var(--neo-gold)' }}>
+            {node ? `Configure ${node.type}` : 'Configuration'}
+          </span>
+        }
         placement="right"
         width={480}
         open={open}
         onClose={onClose}
         styles={{
           header: {
-            backgroundColor: '#1a1a1a',
-            borderBottom: '1px solid #262626',
-            color: '#fafafa',
+            backgroundColor: 'var(--neo-surface)',
+            borderBottom: '1px solid var(--neo-border)',
+            color: 'var(--neo-text)',
           },
           body: {
-            backgroundColor: '#141414',
-            color: '#fafafa',
+            backgroundColor: 'var(--neo-bg)',
+            color: 'var(--neo-text)',
           },
         }}
         extra={
@@ -404,22 +408,23 @@ export default function NodeConfigPanel({
             <Button
               onClick={onClose}
               style={{
-                backgroundColor: '#262626',
-                borderColor: '#434343',
-                color: '#fafafa',
+                backgroundColor: 'transparent',
+                borderColor: 'var(--neo-border)',
+                color: 'var(--neo-text-2)',
               }}
             >
-              取消
+              Cancel
             </Button>
             <Button
               type="primary"
               onClick={handleSave}
               style={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                borderColor: 'transparent',
+                background: 'var(--neo-gold)',
+                borderColor: 'var(--neo-gold)',
+                color: '#000',
               }}
             >
-              保存
+              Save Changes
             </Button>
           </Space>
         }
@@ -428,7 +433,7 @@ export default function NodeConfigPanel({
           form={form}
           layout="vertical"
           style={{
-            color: '#fafafa',
+            color: 'var(--neo-text)',
           }}
         >
           {renderConfigForm()}

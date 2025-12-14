@@ -1,0 +1,149 @@
+/* Base Message Styles */
+.streamingIndicator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  color: var(--neo-text-2);
+  padding: var(--spacing-2);
+  font-size: var(--font-size-sm);
+}
+
+.streamingSpinner {
+  color: var(--neo-blue);
+}
+
+/* Thought Message */
+.thoughtMessage {
+  background-color: var(--neo-surface-2);
+  border-left: 3px solid var(--neo-purple);
+  padding: var(--spacing-3);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-bottom: var(--spacing-3);
+  font-size: var(--font-size-sm);
+}
+
+.thoughtIcon {
+  color: var(--neo-purple);
+  margin-top: 2px;
+}
+
+.thoughtLabel {
+  display: block;
+  font-size: 11px;
+  color: var(--neo-text-2);
+  margin-bottom: 2px;
+}
+
+.thoughtContent {
+  color: var(--neo-text-2);
+  font-style: italic;
+}
+
+/* Tool Call */
+.toolCallMessage {
+  background-color: var(--neo-surface-2);
+  border: 1px solid var(--neo-border);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--spacing-3);
+}
+
+.toolIcon {
+  color: var(--neo-blue);
+}
+
+.toolName {
+  color: var(--neo-text);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+}
+
+.argsPanel {
+  background-color: var(--neo-surface-1);
+  padding: var(--spacing-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--neo-text-2);
+  margin: 0;
+  overflow-x: auto;
+}
+
+/* Tool Result */
+.toolResultMessage {
+  padding: var(--spacing-3);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--spacing-3);
+  border: 1px solid transparent;
+}
+
+.toolResultMessage.success {
+  background-color: rgba(34, 197, 94, 0.05);
+  /* very subtle green */
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.toolResultMessage.error {
+  background-color: rgba(239, 68, 68, 0.05);
+  /* very subtle red */
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.successIcon {
+  color: var(--color-success);
+}
+
+.errorIcon {
+  color: var(--color-error);
+}
+
+.successText {
+  color: var(--neo-text);
+}
+
+.errorText {
+  color: var(--neo-text);
+}
+
+/* Final Message */
+.finalMessage {
+  margin-top: var(--spacing-4);
+  padding-top: var(--spacing-3);
+  border-top: 1px solid var(--neo-border);
+}
+
+.finalIcon {
+  color: var(--color-success);
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.finalLabel {
+  display: block;
+  font-size: 11px;
+  color: var(--neo-text-2);
+  margin-bottom: var(--spacing-2);
+}
+
+.finalContent {
+  color: var(--neo-text) !important;
+  font-size: var(--font-size-md);
+  line-height: 1.6;
+}
+
+/* Delta (Real-time token stream) */
+.deltaText {
+  color: var(--neo-text);
+}
+
+/* Error Alert */
+.errorMessage {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+}
+
+/* Compact Mode Overrides */
+.compact {
+  padding: var(--spacing-2);
+  font-size: var(--font-size-xs);
+}

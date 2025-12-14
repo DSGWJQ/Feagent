@@ -20,7 +20,6 @@ import {
   Result,
   Spin,
   Tag,
-  Divider,
   Progress,
   Alert,
   Row,
@@ -29,7 +28,7 @@ import {
 import { CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { classifyTask } from '../api/classificationApi';
 import type { ClassificationResult, TaskType } from '@/types/workflow';
-import './TaskClassificationPage.css';
+import styles from '../styles/classification.module.css';
 
 const taskTypeColors: Record<TaskType, string> = {
   data_analysis: 'blue',
@@ -82,11 +81,15 @@ export default function TaskClassificationPage() {
   };
 
   return (
-    <div className="task-classification-page">
+    <div className={styles.container}>
       <Row gutter={[24, 24]}>
         {/* Input Form */}
         <Col xs={24} lg={12}>
-          <Card title="Task Classification" bordered={false}>
+          <Card
+            title="Task Classification"
+            bordered={false}
+            className={styles.card}
+          >
             <Form
               form={form}
               layout="vertical"
@@ -166,7 +169,7 @@ export default function TaskClassificationPage() {
           )}
 
           {loading && (
-            <Card>
+            <Card className={styles.card}>
               <Spin size="large" />
             </Card>
           )}
@@ -178,11 +181,12 @@ export default function TaskClassificationPage() {
                 title="Classification Result"
                 bordered={false}
                 style={{ marginBottom: '16px' }}
+                className={styles.card}
               >
                 <Space direction="vertical" style={{ width: '100%' }} size="large">
                   <div>
-                    <label style={{ fontWeight: 'bold' }}>Task Type:</label>
-                    <div style={{ marginTop: '8px' }}>
+                    <label className={styles.label}>Task Type:</label>
+                    <div className={styles.value}>
                       <Tag color={taskTypeColors[result.taskType]} style={{ fontSize: '14px' }}>
                         {taskTypeLabels[result.taskType]}
                       </Tag>
@@ -191,14 +195,14 @@ export default function TaskClassificationPage() {
 
                   {/* Confidence */}
                   <div>
-                    <label style={{ fontWeight: 'bold' }}>Confidence:</label>
-                    <div style={{ marginTop: '8px' }}>
+                    <label className={styles.label}>Confidence:</label>
+                    <div className={styles.value}>
                       <Progress
                         type="circle"
                         percent={Math.round(result.confidence * 100)}
                         width={80}
                       />
-                      <span style={{ marginLeft: '16px', fontSize: '16px' }}>
+                      <span className={styles.progressText}>
                         {(result.confidence * 100).toFixed(2)}%
                       </span>
                     </div>
@@ -206,17 +210,8 @@ export default function TaskClassificationPage() {
 
                   {/* Reasoning */}
                   <div>
-                    <label style={{ fontWeight: 'bold' }}>Reasoning:</label>
-                    <div
-                      style={{
-                        marginTop: '8px',
-                        padding: '12px',
-                        backgroundColor: '#f5f5f5',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        lineHeight: '1.6',
-                      }}
-                    >
+                    <label className={styles.label}>Reasoning:</label>
+                    <div className={styles.reasoningBox}>
                       {result.reasoning}
                     </div>
                   </div>
@@ -224,8 +219,8 @@ export default function TaskClassificationPage() {
                   {/* Suggested Tools */}
                   {result.suggestedTools && result.suggestedTools.length > 0 && (
                     <div>
-                      <label style={{ fontWeight: 'bold' }}>Suggested Tools:</label>
-                      <div style={{ marginTop: '8px' }}>
+                      <label className={styles.label}>Suggested Tools:</label>
+                      <div className={styles.value}>
                         <Space wrap>
                           {result.suggestedTools.map((tool) => (
                             <Tag key={tool} color="cyan">
@@ -249,7 +244,7 @@ export default function TaskClassificationPage() {
           )}
 
           {!result && !loading && !error && (
-            <Card>
+            <Card className={styles.card}>
               <Result
                 icon={<ExclamationCircleOutlined />}
                 title="Waiting for Input"

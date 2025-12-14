@@ -9,11 +9,14 @@
  * 这是一个临时测试页面，后续会被 V0 生成的正式页面替换
  */
 
-import { Button, Card, Spin, Alert, Space, Descriptions, Tag } from 'antd';
+import { Button, Spin, Alert, Space, Descriptions, Tag } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAgents, useCreateAgent, useDeleteAgent } from '@/shared/hooks';
+import { PageShell } from '@/shared/components/layout/PageShell';
+import { NeoCard } from '@/shared/components/common/NeoCard';
 import type { CreateAgentDto } from '@/shared/types';
+import styles from '../styles/agents.module.css';
 
 export default function AgentListTest() {
   const navigate = useNavigate();
@@ -43,112 +46,98 @@ export default function AgentListTest() {
   /**
    * 处理删除 Agent
    */
-  const handleDelete = (id: string) => {
+  const handleDelete = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // 阻止冒泡，避免触发 Card 点击
     if (window.confirm('确认删除这个 Agent 吗？')) {
       deleteAgent.mutate(id);
     }
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <Card
-        title="🧪 Agent 列表"
-        extra={
-          <Space>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => navigate('/agents/create')}
-            >
-              创建 Agent
-            </Button>
-            <Button
-              type="default"
-              icon={<PlusOutlined />}
-              onClick={handleCreateTest}
-              loading={createAgent.isPending}
-            >
-              创建测试 Agent
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => refetch()}
-              loading={isLoading}
-            >
-              刷新
-            </Button>
-          </Space>
-        }
-      >
-        {/* 加载状态 */}
-        {isLoading && (
-          <div style={{ textAlign: 'center', padding: '40px' }}>
-            <Spin size="large" />
-            <p style={{ marginTop: '16px', color: '#666' }}>加载中...</p>
-          </div>
-        )}
+    <PageShell
+      title="Agent 管理"
+      description="管理您的智能代理，查看状态与任务执行情况"
+      actions={
+        <Space>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => navigate('/agents/create')}
+          >
+            创建 Agent
+          </Button>
+          <Button
+            type="default"
+            icon={<PlusOutlined />}
+            onClick={handleCreateTest}
+            loading={createAgent.isPending}
+          >
+            创建测试 Agent
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => refetch()}
+            loading={isLoading}
+          >
+            刷新
+          </Button>
+        </Space>
+      }
+    >
+      {/* 加载状态 */}
+      {isLoading && (
+        <div className={styles.loadingContainer}>
+          <Spin size="large" />
+          <p className={styles.loadingText}>加载中...</p>
+        </div>
+      )}
 
-        {/* 错误状态 */}
-        {error && (
-          <Alert
-            message="加载失败"
-            description={
-              <div>
-                <p>无法连接到后端 API，请检查：</p>
-                <ul>
-                  <li>后端服务是否启动（http://localhost:8000）</li>
-                  <li>CORS 是否配置正确</li>
-                  <li>网络连接是否正常</li>
-                </ul>
-                <p style={{ marginTop: '8px', color: '#999' }}>
-                  错误信息：{error.message}
-                </p>
-              </div>
-            }
-            type="error"
-            showIcon
-          />
-        )}
+      {/* 错误状态 */}
+      {error && (
+        <Alert
+          message="加载失败"
+          description={
+            <div>
+              <p>无法连接到后端 API，请检查：</p>
+              <ul>
+                <li>后端服务是否启动（http://localhost:8000）</li>
+                <li>CORS 是否配置正确</li>
+                <li>网络连接是否正常</li>
+              </ul>
+              <p className={styles.textTertiary} style={{ marginTop: '8px' }}>
+                错误信息：{error.message}
+              </p>
+            </div>
+          }
+          type="error"
+          showIcon
+        />
+      )}
 
-        {/* 成功状态 - 显示 Agent 列表 */}
-        {!isLoading && !error && agents && (
-          <div>
-            <Alert
-              message="✅ API 连接成功！"
-              description={`成功获取到 ${agents.length} 个 Agent`}
-              type="success"
-              showIcon
-              style={{ marginBottom: '16px' }}
-            />
-
-            {agents.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-                <p>暂无 Agent</p>
-                <p>点击上方"创建测试 Agent"按钮创建一个测试数据</p>
-              </div>
-            ) : (
-              <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                {agents.map((agent) => (
-                  <Card
-                    key={agent.id}
-                    size="small"
-                    title={
-                      <Space>
-                        <span>{agent.name}</span>
-                        <Tag color="blue">ID: {agent.id.slice(0, 8)}</Tag>
-                      </Space>
-                    }
-                    extra={
-                      <Button
-                        danger
-                        size="small"
-                        onClick={() => handleDelete(agent.id)}
-                        loading={deleteAgent.isPending}
-                      >
-                        删除
-                      </Button>
-                    }
-                  >
+      {/* 成功状态 - 显示 Agent 列表 */}
+      {!isLoading && !error && agents && (
+        <div>
+          {agents.length === 0 ? (
+            <div className={styles.emptyContainer}>
+              <p className={styles.emptyText}>暂无 Agent</p>
+              <p>点击上方"创建测试 Agent"按钮创建一个测试数据</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--space-6)' }}>
+              {agents.map((agent) => (
+                <NeoCard
+                  key={agent.id}
+                  variant="raised"
+                  onClick={() => navigate(`/app/agents/${agent.id}`)}
+                  style={{ cursor: 'pointer' }}
+                  title={
+                    <Space>
+                      <span style={{ fontWeight: 600, fontFamily: 'var(--font-family-serif)' }}>{agent.name}</span>
+                      <Tag color="geekblue">ID: {agent.id.slice(0, 8)}</Tag>
+                    </Space>
+                  }
+                >
+                  <div style={{ marginBottom: 'var(--space-4)' }}>
                     <Descriptions column={1} size="small">
                       <Descriptions.Item label="起始状态">
                         {agent.start}
@@ -156,42 +145,48 @@ export default function AgentListTest() {
                       <Descriptions.Item label="目标状态">
                         {agent.goal}
                       </Descriptions.Item>
-                      <Descriptions.Item label="创建时间">
-                        {new Date(agent.created_at).toLocaleString('zh-CN')}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="更新时间">
-                        {new Date(agent.updated_at).toLocaleString('zh-CN')}
-                      </Descriptions.Item>
                     </Descriptions>
-                  </Card>
-                ))}
-              </Space>
-            )}
-          </div>
-        )}
-
-        {/* 底部说明 */}
-        <Alert
-          message="📝 说明"
-          description={
-            <div>
-              <p><strong>这是一个临时测试页面，用于验证：</strong></p>
-              <ul>
-                <li>✅ API 客户端（agentsApi）是否正常工作</li>
-                <li>✅ TanStack Query Hooks（useAgents, useCreateAgent, useDeleteAgent）是否正常工作</li>
-                <li>✅ 前后端连接是否正常</li>
-              </ul>
-              <p style={{ marginTop: '8px' }}>
-                <strong>下一步：</strong>使用 V0 生成正式的 Agent 管理页面
-              </p>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--neo-border)', paddingTop: 'var(--space-3)' }}>
+                    <Button
+                      danger
+                      size="small"
+                      onClick={(e) => handleDelete(e, agent.id)}
+                      loading={deleteAgent.isPending}
+                      type="text"
+                    >
+                      删除
+                    </Button>
+                  </div>
+                </NeoCard>
+              ))}
             </div>
-          }
-          type="info"
-          showIcon
-          style={{ marginTop: '16px' }}
-        />
-      </Card>
-    </div>
+          )}
+        </div>
+      )}
+
+      {/* 底部说明 */}
+      <Alert
+        message="📝 说明"
+        description={
+          <div>
+            <p><strong>这是一个临时测试页面，用于验证：</strong></p>
+            <ul>
+              <li>✅ API 客户端（agentsApi）是否正常工作</li>
+              <li>✅ TanStack Query Hooks（useAgents, useCreateAgent, useDeleteAgent）是否正常工作</li>
+              <li>✅ 前后端连接是否正常</li>
+            </ul>
+            <p style={{ marginTop: '8px' }}>
+              <strong>下一步：</strong>使用 V0 生成正式的 Agent 管理页面
+            </p>
+          </div>
+        }
+        type="info"
+        showIcon
+        className={styles.marginTop}
+        style={{ opacity: 0.8 }}
+      />
+    </PageShell>
   );
 }
 

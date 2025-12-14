@@ -1,0 +1,93 @@
+/**
+ * Knowledge Module Styles
+ * Neoclassical Design System
+ */
+
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-6);
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.inputCard {
+    /* Used for the small input section */
+}
+
+.uploadCard {
+    /* Main upload area */
+}
+
+/* Dragger Area - Replaces inline styles in KnowledgeUpload.example.tsx */
+.dropZone {
+    border: 2px dashed var(--neo-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-12);
+    text-align: center;
+    cursor: pointer;
+    background-color: var(--neo-surface-1);
+    transition: all 0.3s ease;
+}
+
+.dropZoneActive {
+    background-color: var(--neo-surface-2);
+    border-color: var(--neo-blue);
+}
+
+.dropZone:hover {
+    border-color: var(--neo-blue);
+    background-color: var(--neo-surface-2);
+}
+
+.uploadIcon {
+    font-size: 48px;
+    color: var(--neo-text-2) !important;
+    margin-bottom: var(--spacing-4);
+}
+
+.uploadText {
+    color: var(--neo-text);
+    font-size: var(--font-size-md);
+    margin-bottom: var(--spacing-2);
+}
+
+.uploadHint {
+    color: var(--neo-text-2);
+    font-size: var(--font-size-sm);
+}
+
+/* Result Box */
+.resultBox {
+    margin-top: var(--spacing-6);
+    padding: var(--spacing-4);
+    background-color: rgba(34, 197, 94, 0.05);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: var(--radius-md);
+    color: var(--neo-text);
+}
+
+.errorBox {
+    margin-top: var(--spacing-6);
+    padding: var(--spacing-4);
+    background-color: rgba(220, 38, 38, 0.05);
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    border-radius: var(--radius-md);
+    color: var(--neo-text);
+}
+
+/* Instructions */
+.instructions {
+    margin-top: var(--spacing-8);
+    padding: var(--spacing-4);
+    background-color: var(--neo-surface-2);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--neo-border);
+}
+
+.instructionList {
+    margin-left: var(--spacing-4);
+    color: var(--neo-text-2);
+    font-size: var(--font-size-sm);
+    line-height: 1.6;
+}

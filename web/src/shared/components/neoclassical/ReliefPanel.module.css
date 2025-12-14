@@ -1,0 +1,67 @@
+/**
+ * ReliefPanel组件样式
+ * 浮雕装饰面板
+ */
+
+.panel {
+  padding: var(--space-6);
+  position: relative;
+  background: var(--neo-surface);
+  color: var(--neo-text);
+  border: 1px solid var(--neo-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--neo-shadow-inset), var(--neo-shadow-ambient);
+}
+
+/* 石雕纹理 */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(1200px 500px at 10% 0%, var(--neo-stone-specular), transparent 55%),
+    radial-gradient(900px 420px at 90% 20%, rgba(255, 255, 255, 0.18), transparent 60%),
+    repeating-linear-gradient(125deg, transparent 0 18px, var(--neo-stone-ink) 18px 19px, transparent 19px 44px),
+    radial-gradient(600px 300px at 30% 60%, var(--neo-stone-vein), transparent 60%);
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* 双层边框装饰 */
+.panel::after {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  border-radius: calc(var(--radius-md) - 6px);
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--neo-border) 70%, var(--neo-gold));
+  opacity: 0.7;
+}
+
+.title {
+  font-family: var(--font-family-serif);
+  letter-spacing: 0.02em;
+  color: var(--neo-text);
+  margin: 0;
+  font-size: var(--font-size-xl);
+  position: relative;
+  z-index: 1;
+}
+
+.rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--neo-gold), transparent);
+  opacity: 0.6;
+  border: none;
+  margin: var(--space-4) 0;
+  position: relative;
+  z-index: 1;
+}
+
+.body {
+  color: var(--neo-text-2);
+  position: relative;
+  z-index: 1;
+}

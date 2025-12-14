@@ -1,0 +1,221 @@
+/**
+ * 工作流编辑器页面样式
+ * 使用CSS Module + 设计Token系统
+ */
+
+/* ==================== 布局容器 ==================== */
+.pageContainer {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background-color: var(--color-neutral-900);
+  color: var(--color-neutral-50);
+}
+
+.loadingContainer {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-neutral-900);
+  color: var(--color-neutral-50);
+}
+
+/* ==================== 头部工具栏 ==================== */
+.toolbar {
+  padding: var(--spacing-4) var(--spacing-6);
+  border-bottom: 1px solid var(--color-neutral-800);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--color-neutral-900);
+  z-index: 10;
+}
+
+.toolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.logoIcon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background-color: var(--color-neutral-800);
+  border: 1px solid var(--color-neutral-700);
+  box-shadow: var(--shadow-md);
+}
+
+.logoIcon span {
+  font-size: 20px;
+  color: var(--color-neutral-50);
+}
+
+.toolbarTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-neutral-50);
+}
+
+.toolbarSubtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-neutral-400);
+}
+
+.modeIndicator {
+  margin-left: 8px;
+}
+
+.modeChatMode {
+  color: var(--color-accent-agent);
+}
+
+.modeCanvasMode {
+  color: var(--color-primary-400);
+}
+
+.wsStatus {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.wsConnected {
+  color: var(--color-success);
+}
+
+.wsDisconnected {
+  color: var(--color-warning);
+}
+
+.toolbarActions {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+/* 按钮样式 - 使用双class选择器增加权重 */
+.saveButton.saveButton {
+  background-color: var(--color-neutral-800);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-50);
+}
+
+.saveButton.saveButton:hover {
+  background-color: var(--color-neutral-700);
+  border-color: var(--color-neutral-600);
+  color: var(--color-neutral-50);
+}
+
+.saveButton.saveButton:active,
+.saveButton.saveButton:focus {
+  background-color: var(--color-neutral-700);
+  border-color: var(--color-neutral-600);
+  color: var(--color-neutral-50);
+}
+
+/* runButton: Primary按钮由theme.ts统一管理，无需额外样式 */
+
+/* ==================== 主内容区域 ==================== */
+.contentArea {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ==================== ReactFlow 画布 ==================== */
+.reactFlowWrapper {
+  flex: 1;
+  position: relative;
+  background-color: var(--color-neutral-900);
+}
+
+/* ReactFlow Controls 定制 */
+.reactFlowWrapper :global(.react-flow__controls) {
+  background: var(--color-neutral-900);
+  border: 1px solid var(--color-neutral-800);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  font-family: var(--font-family-base);
+}
+
+.reactFlowWrapper :global(.react-flow__controls button) {
+  background: transparent;
+  border: 0;
+  color: var(--color-neutral-50);
+  width: 32px;
+  height: 32px;
+}
+
+.reactFlowWrapper :global(.react-flow__controls button:hover) {
+  background: var(--color-neutral-800);
+}
+
+.reactFlowWrapper :global(.react-flow__controls button:focus-visible) {
+  outline: 2px solid var(--color-primary-400);
+  outline-offset: -2px;
+}
+
+/* ==================== AI 聊天面板 ==================== */
+.chatPanel {
+  height: 100%;
+  background-color: var(--color-neutral-900);
+  border-left: 1px solid var(--color-neutral-800);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease;
+  overflow: hidden;
+}
+
+.chatPanelCollapsed {
+  width: 48px;
+}
+
+.chatPanelExpanded {
+  width: 400px;
+}
+
+.chatHeader {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-neutral-800);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--color-neutral-900);
+  min-height: 48px;
+}
+
+.chatTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-neutral-50);
+}
+
+.chatToggleButton {
+  margin-left: auto;
+  color: var(--color-neutral-50) !important;
+}
+
+.chatToggleButtonCollapsed {
+  margin-left: 0;
+}
+
+.chatContent {
+  flex: 1;
+  overflow: hidden;
+  background-color: var(--color-neutral-900);
+}

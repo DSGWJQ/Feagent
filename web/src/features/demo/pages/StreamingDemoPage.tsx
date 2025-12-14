@@ -9,9 +9,8 @@
  */
 
 import React, { useState } from 'react';
-import { Layout, Typography, Card, Row, Col, Divider, Switch, Space, Alert, Button } from 'antd';
+import { Typography, Switch, Space } from 'antd';
 import {
-  ExperimentOutlined,
   BulbOutlined,
   ToolOutlined,
   CheckCircleOutlined,
@@ -20,10 +19,12 @@ import {
 
 import { StreamingChat } from '@/shared/components/StreamingChat';
 import { StreamingMessageDisplay } from '@/shared/components/StreamingMessageDisplay';
+import { PageShell } from '@/shared/components/layout/PageShell';
+import { NeoCard } from '@/shared/components/common/NeoCard';
 import type { StreamingMessage } from '@/shared/types/streaming';
+import styles from '../styles/demo.module.css';
 
-const { Content } = Layout;
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 
 // 示例消息
 const exampleMessages: StreamingMessage[] = [
@@ -75,194 +76,126 @@ const exampleMessages: StreamingMessage[] = [
 
 export const StreamingDemoPage: React.FC = () => {
   const [showExamples, setShowExamples] = useState(true);
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   const [lastResponse, setLastResponse] = useState<string>('');
 
   return (
-    <Layout style={{ minHeight: '100vh', backgroundColor: '#0a0a0a' }}>
-      <Content style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-        {/* 标题 */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <Title level={2} style={{ color: '#fafafa', marginBottom: '8px' }}>
-            <ExperimentOutlined style={{ marginRight: '12px', color: '#8b5cf6' }} />
-            Phase 4: 流式消息展示 Demo
-          </Title>
-          <Paragraph style={{ color: '#8c8c8c', fontSize: '16px' }}>
-            实时展示 AI 思考过程、工具调用和最终响应
-          </Paragraph>
+    <PageShell
+      title="Phase 4: Streaming Demo"
+      description="Real-time demonstration of AI thought processes, tool usage, and final responses."
+      actions={
+        <div className={styles.legend}>
+          <div className={styles.legendItem}>
+            <BulbOutlined className={styles.colorThought} />
+            <span>Thinking</span>
+          </div>
+          <div className={styles.legendItem}>
+            <ToolOutlined className={styles.colorTool} />
+            <span>Tool Call</span>
+          </div>
+          <div className={styles.legendItem}>
+            <CheckCircleOutlined className={styles.colorResult} />
+            <span>Result</span>
+          </div>
+          <div className={styles.legendItem}>
+            <MessageOutlined className={styles.colorFinal} />
+            <span>Response</span>
+          </div>
         </div>
-
-        {/* 功能介绍 */}
-        <Alert
-          type="info"
-          showIcon
-          message="消息类型说明"
-          description={
-            <Row gutter={[16, 8]} style={{ marginTop: '8px' }}>
-              <Col span={6}>
-                <Space>
-                  <BulbOutlined style={{ color: '#8b5cf6' }} />
-                  <Text style={{ color: '#d1d5db' }}>💭 thought: 思考过程</Text>
-                </Space>
-              </Col>
-              <Col span={6}>
-                <Space>
-                  <ToolOutlined style={{ color: '#3b82f6' }} />
-                  <Text style={{ color: '#d1d5db' }}>🔧 tool_call: 工具调用</Text>
-                </Space>
-              </Col>
-              <Col span={6}>
-                <Space>
-                  <CheckCircleOutlined style={{ color: '#22c55e' }} />
-                  <Text style={{ color: '#d1d5db' }}>📋 tool_result: 工具结果</Text>
-                </Space>
-              </Col>
-              <Col span={6}>
-                <Space>
-                  <MessageOutlined style={{ color: '#10b981' }} />
-                  <Text style={{ color: '#d1d5db' }}>✅ final: 最终响应</Text>
-                </Space>
-              </Col>
-            </Row>
+      }
+    >
+      <div className={styles.container}>
+        {/* Left: Example Messages */}
+        <NeoCard
+          title="Message Types"
+          variant="raised"
+          className={styles.examplePane}
+          extra={
+            <Space>
+              <Text type="secondary" style={{ fontSize: '12px' }}>Show Examples</Text>
+              <Switch
+                checked={showExamples}
+                onChange={setShowExamples}
+                size="small"
+              />
+            </Space>
           }
-          style={{ marginBottom: '24px', backgroundColor: '#1a1a2e', borderColor: '#3b3b5a' }}
-        />
-
-        <Row gutter={24}>
-          {/* 左侧：示例消息展示 */}
-          <Col span={10}>
-            <Card
-              title={
-                <Space>
-                  <span style={{ color: '#fafafa' }}>消息类型示例</span>
-                  <Switch
-                    checked={showExamples}
-                    onChange={setShowExamples}
-                    size="small"
-                  />
-                </Space>
-              }
-              style={{
-                backgroundColor: '#141414',
-                borderColor: '#262626',
-                height: '600px',
-                overflow: 'auto',
-              }}
-              styles={{
-                header: { backgroundColor: '#1a1a1a', borderBottom: '1px solid #262626' },
-                body: { backgroundColor: '#141414', padding: '16px' },
-              }}
-            >
-              {showExamples && (
-                <div>
-                  <Paragraph style={{ color: '#8c8c8c', marginBottom: '16px' }}>
-                    以下是不同类型消息的展示效果：
-                  </Paragraph>
-
-                  {exampleMessages.map((msg, index) => (
-                    <div key={msg.message_id} style={{ marginBottom: '16px' }}>
-                      <Text
-                        type="secondary"
-                        style={{
-                          fontSize: '11px',
-                          display: 'block',
-                          marginBottom: '4px',
-                        }}
-                      >
-                        Step {index + 1}: {msg.type}
-                      </Text>
-                      <StreamingMessageDisplay
-                        message={msg}
-                        showDetails={true}
-                      />
-                    </div>
-                  ))}
-
-                  <Divider style={{ borderColor: '#262626' }} />
-
-                  <Paragraph style={{ color: '#8c8c8c', fontSize: '12px' }}>
-                    💡 提示：在右侧聊天框发送消息，将看到实时的流式响应。
-                  </Paragraph>
-                </div>
-              )}
-            </Card>
-          </Col>
-
-          {/* 右侧：实时聊天 */}
-          <Col span={14}>
-            <StreamingChat
-              showWelcome={true}
-              showIntermediateSteps={true}
-              onFinalResponse={(content) => setLastResponse(content)}
-              style={{ height: '600px' }}
-            />
-          </Col>
-        </Row>
-
-        {/* 最后响应显示 */}
-        {lastResponse && (
-          <Card
-            title={<Text style={{ color: '#fafafa' }}>最后收到的响应</Text>}
-            style={{
-              marginTop: '24px',
-              backgroundColor: '#141414',
-              borderColor: '#262626',
-            }}
-            styles={{
-              header: { backgroundColor: '#1a1a1a', borderBottom: '1px solid #262626' },
-              body: { backgroundColor: '#141414' },
-            }}
-          >
-            <Paragraph style={{ color: '#d1d5db', whiteSpace: 'pre-wrap' }}>
-              {lastResponse}
-            </Paragraph>
-          </Card>
-        )}
-
-        {/* 技术说明 */}
-        <Card
-          title={<Text style={{ color: '#fafafa' }}>技术实现</Text>}
-          style={{
-            marginTop: '24px',
-            backgroundColor: '#141414',
-            borderColor: '#262626',
-          }}
-          styles={{
-            header: { backgroundColor: '#1a1a1a', borderBottom: '1px solid #262626' },
-            body: { backgroundColor: '#141414' },
-          }}
         >
-          <Row gutter={24}>
-            <Col span={8}>
-              <Title level={5} style={{ color: '#8b5cf6' }}>后端</Title>
-              <ul style={{ color: '#8c8c8c', paddingLeft: '20px' }}>
-                <li>ConversationFlowEmitter: 消息队列管理</li>
-                <li>StreamMessageFormatter: 格式化为前端格式</li>
-                <li>SSEEmitterHandler: SSE 流式传输</li>
-                <li>/api/conversation/stream: 流式端点</li>
-              </ul>
-            </Col>
-            <Col span={8}>
-              <Title level={5} style={{ color: '#3b82f6' }}>前端</Title>
-              <ul style={{ color: '#8c8c8c', paddingLeft: '20px' }}>
-                <li>useConversationStream: 流式数据 Hook</li>
-                <li>StreamingMessageDisplay: 消息展示组件</li>
-                <li>StreamingChat: 集成聊天组件</li>
-                <li>类型定义: streaming.ts</li>
-              </ul>
-            </Col>
-            <Col span={8}>
-              <Title level={5} style={{ color: '#22c55e' }}>数据流</Title>
-              <ul style={{ color: '#8c8c8c', paddingLeft: '20px' }}>
-                <li>用户发送消息</li>
-                <li>SSE 连接建立</li>
-                <li>实时接收 thought/tool/final</li>
-                <li>组件差异化渲染</li>
-              </ul>
-            </Col>
-          </Row>
-        </Card>
-      </Content>
-    </Layout>
+          {showExamples ? (
+            <div className={styles.exampleList}>
+              <div style={{ padding: '0 16px' }}>
+                <Paragraph type="secondary" style={{ marginBottom: '24px' }}>
+                  These examples demonstrate how different message types are rendered in the stream.
+                </Paragraph>
+
+                {exampleMessages.map((msg, index) => (
+                  <div key={msg.message_id} className={styles.exampleItem}>
+                    <span className={styles.stepLabel}>Step {index + 1} • {msg.type.toUpperCase()}</span>
+                    <StreamingMessageDisplay
+                      message={msg}
+                      showDetails={true}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              height: '600px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--neo-text-2)'
+            }}>
+              Examples hidden
+            </div>
+          )}
+        </NeoCard>
+
+        {/* Right: Live Chat */}
+        <div className={styles.chatContainer}>
+          <StreamingChat
+            showWelcome={true}
+            showIntermediateSteps={true}
+            onFinalResponse={(content) => setLastResponse(content)}
+            style={{ height: '100%', border: '1px solid var(--neo-border)', borderRadius: 'var(--radius-md)' }}
+          />
+        </div>
+      </div>
+
+      {/* Tech Specs */}
+      <NeoCard title="Technical Implementation" variant="flat" style={{ marginTop: 'var(--spacing-6)' }}>
+        <div className={styles.techSpecs}>
+          <div className={styles.techSpecColumn}>
+            <h5>Backend Architecture</h5>
+            <ul className={styles.techSpecList}>
+              <li>ConversationFlowEmitter</li>
+              <li>StreamMessageFormatter</li>
+              <li>SSEEmitterHandler</li>
+              <li>/api/conversation/stream</li>
+            </ul>
+          </div>
+          <div className={styles.techSpecColumn}>
+            <h5>Frontend Components</h5>
+            <ul className={styles.techSpecList}>
+              <li>useConversationStream Hook</li>
+              <li>StreamingMessageDisplay</li>
+              <li>StreamingChat Component</li>
+              <li>Strict Type Definitions</li>
+            </ul>
+          </div>
+          <div className={styles.techSpecColumn}>
+            <h5>Data Flow</h5>
+            <ul className={styles.techSpecList}>
+              <li>User Input &rarr; SSE Connection</li>
+              <li>Real-time Chunk Streaming</li>
+              <li>Differential Rendering</li>
+              <li>Auto-scrolling & State Management</li>
+            </ul>
+          </div>
+        </div>
+      </NeoCard>
+    </PageShell>
   );
 };
 

@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Input, Button, Card, Space, Typography, Switch, Badge, Tooltip } from 'antd';
+import { Input, Button, Space, Typography, Badge, Tooltip } from 'antd';
 import {
   RobotOutlined,
   UserOutlined,
@@ -18,7 +18,7 @@ import {
 
 import { useConversationStream } from '@/hooks/useConversationStream';
 import { StreamingMessageList } from './StreamingMessageDisplay';
-import type { StreamingMessage, ChatMessageWithStreaming } from '@/shared/types/streaming';
+import styles from './AIChat.module.css';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -34,6 +34,8 @@ interface StreamingChatProps {
   onFinalResponse?: (content: string) => void;
   /** 样式 */
   style?: React.CSSProperties;
+  /** 自定义类名 */
+  className?: string;
 }
 
 /**
@@ -47,6 +49,7 @@ export const StreamingChat: React.FC<StreamingChatProps> = ({
   showIntermediateSteps: initialShowSteps = true,
   onFinalResponse,
   style,
+  className,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [showSteps, setShowSteps] = useState(initialShowSteps);
@@ -94,113 +97,62 @@ export const StreamingChat: React.FC<StreamingChatProps> = ({
   };
 
   return (
-    <Card
-      title={
-        <Space>
-          <RobotOutlined style={{ color: '#8b5cf6' }} />
-          <span style={{ color: '#fafafa' }}>AI 助手</span>
-          {isStreaming && (
-            <Badge status="processing" text={<Text type="secondary" style={{ fontSize: '12px' }}>流式传输中</Text>} />
-          )}
-          {sessionId && (
-            <Tooltip title={`Session: ${sessionId}`}>
-              <Text type="secondary" style={{ fontSize: '10px' }}>
-                #{sessionId.slice(-8)}
-              </Text>
-            </Tooltip>
-          )}
-        </Space>
-      }
-      extra={
-        <Space>
-          <Tooltip title={showSteps ? '隐藏中间步骤' : '显示中间步骤'}>
-            <Button
-              type="text"
-              size="small"
-              icon={showSteps ? <EyeOutlined /> : <EyeInvisibleOutlined />}
-              onClick={() => setShowSteps(!showSteps)}
-              style={{ color: '#8c8c8c' }}
-            />
-          </Tooltip>
-          <Tooltip title="清空消息">
-            <Button
-              type="text"
-              size="small"
-              icon={<ClearOutlined />}
-              onClick={clearMessages}
-              style={{ color: '#8c8c8c' }}
-            />
-          </Tooltip>
-        </Space>
-      }
-      style={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#141414',
-        borderColor: '#262626',
-        ...style,
-      }}
-      styles={{
-        header: {
-          backgroundColor: '#1a1a1a',
-          borderBottom: '1px solid #262626',
-          color: '#fafafa',
-        },
-        body: {
-          flex: 1,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          backgroundColor: '#141414',
-          padding: '12px',
-        },
-      }}
-    >
-      {/* 消息区域 */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          marginBottom: 16,
-          padding: '8px',
-        }}
-      >
-        {/* 欢迎消息 */}
-        {showWelcome && messages.length === 0 && chatMessages.length === 0 && (
-          <div
-            style={{
-              display: 'flex',
-              gap: '12px',
-              marginBottom: '16px',
-            }}
-          >
-            <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#8b5cf6',
-                color: '#fff',
-              }}
-            >
+    <div className={className ? `${styles.container} ${className}` : styles.container} style={style}>
+      <div className={styles.header}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Space>
+            <div className={`${styles.messageIcon} ${styles.iconAssistant}`} style={{ width: 24, height: 24, fontSize: 14 }}>
               <RobotOutlined />
             </div>
-            <div
-              style={{
-                backgroundColor: '#262626',
-                color: '#fafafa',
-                padding: '12px',
-                borderRadius: '8px',
-                flex: 1,
-              }}
-            >
-              <Text style={{ color: '#d1d5db' }}>
-                你好！我是 AI 助手。告诉我你想做什么，我会实时展示我的思考过程和工具调用。
-              </Text>
+            <span style={{ color: 'var(--neo-text)' }}>AI 助手</span>
+            {isStreaming && (
+              <Badge status="processing" text={<Text type="secondary" style={{ fontSize: '12px' }}>流式传输中</Text>} />
+            )}
+            {sessionId && (
+              <Tooltip title={`Session: ${sessionId}`}>
+                <Text type="secondary" style={{ fontSize: '10px' }}>
+                  #{sessionId.slice(-8)}
+                </Text>
+              </Tooltip>
+            )}
+          </Space>
+          <Space>
+            <Tooltip title={showSteps ? '隐藏中间步骤' : '显示中间步骤'}>
+              <Button
+                type="text"
+                size="small"
+                icon={showSteps ? <EyeOutlined /> : <EyeInvisibleOutlined />}
+                onClick={() => setShowSteps(!showSteps)}
+                style={{ color: 'var(--neo-text-2)' }}
+              />
+            </Tooltip>
+            <Tooltip title="清空消息">
+              <Button
+                type="text"
+                size="small"
+                icon={<ClearOutlined />}
+                onClick={clearMessages}
+                style={{ color: 'var(--neo-text-2)' }}
+              />
+            </Tooltip>
+          </Space>
+        </div>
+      </div>
+
+      {/* 消息区域 */}
+      <div className={styles.messageList}>
+        {/* 欢迎消息 */}
+        {showWelcome && messages.length === 0 && chatMessages.length === 0 && (
+          <div className={`${styles.message} ${styles.messageAssistant}`}>
+            <div className={`${styles.messageIcon} ${styles.iconAssistant}`}>
+              <RobotOutlined />
+            </div>
+            <div className={styles.messageContent}>
+              <div className={`${styles.messageText} ${styles.textAssistant}`}>
+                <Text style={{ color: 'var(--neo-text)' }}>
+                  你好！我是 AI 助手。告诉我你想做什么，我会实时展示我的思考过程和工具调用。
+                </Text>
+              </div>
             </div>
           </div>
         )}
@@ -211,66 +163,29 @@ export const StreamingChat: React.FC<StreamingChatProps> = ({
           .map((msg) => (
             <div
               key={msg.id}
-              style={{
-                display: 'flex',
-                gap: '12px',
-                marginBottom: '16px',
-                justifyContent: 'flex-end',
-              }}
+              className={`${styles.message} ${styles.messageUser}`}
             >
-              <div
-                style={{
-                  backgroundColor: '#3b82f6',
-                  color: '#fff',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  maxWidth: '70%',
-                }}
-              >
-                {msg.content}
-              </div>
-              <div
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: '#3b82f6',
-                  color: '#fff',
-                }}
-              >
+              <div className={`${styles.messageIcon} ${styles.iconUser}`}>
                 <UserOutlined />
+              </div>
+              <div className={styles.messageContent}>
+                <div className={`${styles.messageText} ${styles.textUser}`}>
+                  {msg.content}
+                </div>
               </div>
             </div>
           ))}
 
         {/* 流式消息（中间步骤） */}
         {messages.length > 0 && (
-          <div
-            style={{
-              display: 'flex',
-              gap: '12px',
-              marginBottom: '16px',
-            }}
-          >
+          <div className={`${styles.message} ${styles.messageAssistant}`}>
             <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#8b5cf6',
-                color: '#fff',
-                flexShrink: 0,
-              }}
+              className={`${styles.messageIcon} ${styles.iconAssistant}`}
+              style={{ flexShrink: 0 }}
             >
               {isStreaming ? <LoadingOutlined /> : <RobotOutlined />}
             </div>
-            <div style={{ flex: 1 }}>
+            <div className={styles.messageContent} style={{ flex: 1, maxWidth: '100%' }}>
               <StreamingMessageList
                 messages={messages}
                 showIntermediateSteps={showSteps}
@@ -285,8 +200,8 @@ export const StreamingChat: React.FC<StreamingChatProps> = ({
         {error && (
           <div
             style={{
-              backgroundColor: '#2e1a1a',
-              color: '#f87171',
+              backgroundColor: 'rgba(220, 38, 38, 0.1)',
+              color: 'var(--color-error)',
               padding: '12px',
               borderRadius: '8px',
               marginBottom: '16px',
@@ -308,11 +223,7 @@ export const StreamingChat: React.FC<StreamingChatProps> = ({
           placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
           autoSize={{ minRows: 1, maxRows: 4 }}
           disabled={isStreaming}
-          style={{
-            backgroundColor: '#1a1a1a',
-            borderColor: '#434343',
-            color: '#fafafa',
-          }}
+          className={styles.textArea}
         />
         {isStreaming ? (
           <Button
@@ -328,16 +239,13 @@ export const StreamingChat: React.FC<StreamingChatProps> = ({
             icon={<SendOutlined />}
             onClick={handleSend}
             disabled={!inputValue.trim()}
-            style={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderColor: 'transparent',
-            }}
+            className={styles.sendButton}
           >
             发送
           </Button>
         )}
       </Space.Compact>
-    </Card>
+    </div>
   );
 };
 

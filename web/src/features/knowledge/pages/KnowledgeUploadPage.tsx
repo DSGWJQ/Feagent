@@ -6,11 +6,14 @@
  */
 
 import { useState } from 'react';
-import { Card, Input, Typography, Space } from 'antd';
+import { Input, Typography } from 'antd';
 import type { InputProps } from 'antd';
 import KnowledgeUpload from '@/components/KnowledgeUpload.example';
+import { PageShell } from '@/shared/components/layout/PageShell';
+import { NeoCard } from '@/shared/components/common/NeoCard';
+import styles from '../styles/knowledge.module.css';
 
-const { Title, Paragraph, Text } = Typography;
+const { Paragraph, Text } = Typography;
 
 export const KnowledgeUploadPage: React.FC = () => {
   const [workflowId, setWorkflowId] = useState<string>('');
@@ -23,44 +26,42 @@ export const KnowledgeUploadPage: React.FC = () => {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)',
-        padding: '48px 16px',
-      }}
+    <PageShell
+      title="Knowledge Archives"
+      description="Digitize and index documents for the eternal repository."
     >
-      <Card
-        style={{
-          maxWidth: 960,
-          margin: '0 auto',
-          borderRadius: 20,
-          boxShadow: '0 20px 60px rgba(15, 12, 41, 0.35)',
-        }}
-        styles={{ body: { padding: '32px 40px' } }}
-      >
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <div>
-            <Title level={2} style={{ marginBottom: 12 }}>
-              上传知识库
-            </Title>
-            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              将 PDF、Word、Markdown 等文本上传到知识库，后续即可在工作流对话中引用这些资料。
-            </Paragraph>
-          </div>
+      <div className={styles.container}>
+        {/* Workflow Association */}
+        <NeoCard
+          title="Archive Designation"
+          description="Specify the target workflow for this knowledge ingestion."
+          variant="flat"
+        >
+          <Text strong style={{ display: 'block', marginBottom: '8px', color: 'var(--neo-text)' }}>
+            Workflow Reference ID (Optional)
+          </Text>
+          <Input
+            {...inputProps}
+            style={{ fontFamily: 'var(--font-family-mono)' }}
+            prefix={<span style={{ color: 'var(--neo-text-3)' }}>REF:</span>}
+          />
+          <Paragraph type="secondary" style={{ marginTop: '8px', fontSize: '12px' }}>
+            Leave blank to index into the Global Library.
+          </Paragraph>
+        </NeoCard>
 
-          <div>
-            <Text strong>关联工作流（可选）</Text>
-            <Paragraph type="secondary" style={{ marginBottom: 8 }}>
-              输入 workflow_id 可将文档存入指定工作流的私有知识库；留空则存入全局知识库。
-            </Paragraph>
-            <Input {...inputProps} />
-          </div>
-
-          <KnowledgeUpload workflowId={workflowId.trim() || undefined} />
-        </Space>
-      </Card>
-    </div>
+        {/* Upload Area */}
+        <NeoCard
+          title="Acquisition Station"
+          variant="raised"
+        >
+          <KnowledgeUpload
+            workflowId={workflowId.trim() || undefined}
+            className={styles.dropZoneWrapper}
+          />
+        </NeoCard>
+      </div>
+    </PageShell>
   );
 };
 

@@ -1,0 +1,66 @@
+/**
+ * HomePage Dashboard Styles
+ * Neoclassical Design System
+ */
+
+.dashboard {
+    padding: 24px;
+    background-color: var(--neo-bg);
+    min-height: 100vh;
+}
+
+.dashboard h1 {
+    font-size: 32px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--neo-text);
+    font-family: var(--font-family-serif);
+}
+
+.dashboard h2 {
+    font-size: 20px;
+    font-weight: 500;
+    margin: 0 0 16px 0;
+    color: var(--neo-text);
+}
+
+.card {
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--neo-border);
+    border-radius: var(--radius-md);
+    transition: all 0.3s ease;
+    background: var(--neo-surface);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--neo-blue);
+}
+
+/* Statistic Overrides */
+:global(.ant-statistic-title) {
+    font-size: 14px;
+    color: var(--neo-text-2);
+}
+
+:global(.ant-statistic-content-value) {
+    color: var(--neo-text);
+}
+
+/* List Items */
+:global(.ant-list-item) {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--neo-border);
+}
+
+:global(.ant-list-item:last-child) {
+    border-bottom: none;
+}
+
+:global(.ant-list-item-meta-title) {
+    color: var(--neo-text);
+}
+
+:global(.ant-list-item-meta-description) {
+    color: var(--neo-text-2);
+}

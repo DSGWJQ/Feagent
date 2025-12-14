@@ -1,0 +1,200 @@
+/**
+ * Workflow Drafting Room Styles
+ * Neoclassical Design System
+ * 
+ * A specialized full-screen layout for the "Drafting Room" experience.
+ */
+
+.pageContainer {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    background-color: var(--neo-bg);
+    /* Ensure it sits above other content if necessary */
+    z-index: 100;
+    overflow: hidden;
+}
+
+.loadingContainer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    width: 100vw;
+    background: var(--neo-bg);
+    color: var(--neo-gold);
+}
+
+/* ==================== Control Bar (Toolbar) ==================== */
+.controlBar {
+    height: 64px;
+    background: var(--neo-surface);
+    border-bottom: 1px solid var(--neo-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--spacing-6);
+    box-shadow: var(--shadow-sm);
+    z-index: 10;
+}
+
+.logoArea {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+}
+
+.logoIcon {
+    font-size: 24px;
+    color: var(--neo-gold);
+}
+
+.titleGroup {
+    display: flex;
+    flex-direction: column;
+}
+
+.title {
+    font-family: var(--font-family-serif);
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--neo-text);
+    line-height: 1.2;
+    letter-spacing: 0.5px;
+}
+
+.subtitle {
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    color: var(--neo-text-2);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.actionsArea {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+}
+
+/* Status Indicators */
+.statusIndicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--neo-surface-2);
+    border: 1px solid var(--neo-border);
+    font-size: 12px;
+    color: var(--neo-text-2);
+    font-family: var(--font-family-mono);
+}
+
+.statusConnected {
+    color: var(--color-success);
+}
+
+.statusDisconnected {
+    color: var(--color-error);
+}
+
+/* ==================== Drafting Table (Content) ==================== */
+.draftingTable {
+    flex: 1;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Palette (Left Panel) */
+.paletteContainer {
+    width: 280px;
+    background: var(--neo-surface);
+    border-right: 1px solid var(--neo-border);
+    display: flex;
+    flex-direction: column;
+    z-index: 5;
+}
+
+/* Canvas Area */
+.canvasArea {
+    flex: 1;
+    position: relative;
+    background-color: #1a1a1a;
+    /* Backup dark bg */
+}
+
+/* ReactFlow Overrides within context */
+.canvasArea :global(.react-flow__renderer) {
+    /* Ensure flow takes full space */
+}
+
+.canvasArea :global(.react-flow__controls) {
+    background: var(--neo-surface);
+    border: 1px solid var(--neo-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+}
+
+.canvasArea :global(.react-flow__controls button) {
+    border-bottom: 1px solid var(--neo-border);
+    color: var(--neo-text);
+    fill: var(--neo-text);
+}
+
+.canvasArea :global(.react-flow__controls button:last-child) {
+    border-bottom: none;
+}
+
+.canvasArea :global(.react-flow__controls button:hover) {
+    background: var(--neo-surface-2);
+    color: var(--neo-gold);
+    fill: var(--neo-gold);
+}
+
+/* Chat Panel (Rights Panel) */
+.chatPanel {
+    width: 400px;
+    /* Expanded width */
+    background: var(--neo-surface);
+    border-left: 1px solid var(--neo-border);
+    display: flex;
+    flex-direction: column;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 5;
+}
+
+.chatPanelCollapsed {
+    width: 48px;
+}
+
+.chatHeader {
+    height: 48px;
+    padding: 0 var(--spacing-4);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--neo-border);
+    background: var(--neo-surface-2);
+}
+
+.chatTitle {
+    font-family: var(--font-family-serif);
+    font-weight: 600;
+    color: var(--neo-gold);
+    margin: 0;
+}
+
+.chatContent {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ==================== Floating Panels (Config) ==================== */
+/* We might move Config Panel to a styled Drawer or a floating NeoCard */

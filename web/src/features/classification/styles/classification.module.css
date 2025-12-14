@@ -1,0 +1,67 @@
+/**
+ * Task Classification Page Module Styles
+ * Neoclassical Design System
+ */
+
+.container {
+  width: 100%;
+  padding: var(--spacing-6);
+}
+
+.card {
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-md);
+  background: var(--neo-surface);
+  border: 1px solid var(--neo-border);
+}
+
+.reasoningBox {
+  margin-top: var(--spacing-2);
+  padding: var(--spacing-3);
+  background-color: var(--neo-surface-2);
+  /* Replacing #f5f5f5 */
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  color: var(--neo-text);
+  border: 1px solid var(--neo-border);
+}
+
+.label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--neo-text);
+}
+
+.value {
+  margin-top: var(--spacing-2);
+}
+
+.progressText {
+  margin-left: var(--spacing-4);
+  font-size: var(--font-size-base);
+  color: var(--neo-text);
+}
+
+/* Ant Design Overrides within this scope */
+:global(.ant-form-item) {
+  margin-bottom: var(--spacing-5);
+}
+
+:global(.ant-card-head-title) {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-base);
+  color: var(--neo-text);
+}
+
+:global(.ant-tag) {
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-1) var(--spacing-3);
+}
+
+:global(.ant-progress-circle) {
+  margin-right: var(--spacing-4);
+}
+
+:global(.ant-alert) {
+  margin-bottom: var(--spacing-4);
+}

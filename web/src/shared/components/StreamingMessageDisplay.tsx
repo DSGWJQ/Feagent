@@ -2,6 +2,7 @@
  * Phase 4: 流式消息显示组件
  *
  * 根据消息类型（thought/tool_call/tool_result/final）差异化展示。
+ * 使用CSS Module + 设计Token系统
  */
 
 import React, { useMemo } from 'react';
@@ -23,6 +24,7 @@ import type {
   ToolResultMetadata,
 } from '@/shared/types/streaming';
 import { getMessageTypeLabel, isIntermediateStep } from '@/shared/types/streaming';
+import styles from './StreamingMessageDisplay.module.css';
 
 const { Text, Paragraph } = Typography;
 const { Panel } = Collapse;
@@ -40,25 +42,14 @@ const ThoughtMessage: React.FC<{ content: string; compact?: boolean }> = ({
   content,
   compact,
 }) => (
-  <div
-    style={{
-      padding: compact ? '8px 12px' : '12px 16px',
-      backgroundColor: '#2a2a3d',
-      borderLeft: '3px solid #8b5cf6',
-      borderRadius: '4px',
-      marginBottom: '8px',
-    }}
-  >
+  <div className={`${styles.thoughtMessage} ${compact ? styles.compact : ''}`}>
     <Space align="start">
-      <BulbOutlined style={{ color: '#8b5cf6', fontSize: '16px' }} />
+      <BulbOutlined className={styles.thoughtIcon} />
       <div>
-        <Text
-          type="secondary"
-          style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}
-        >
+        <Text type="secondary" className={styles.thoughtLabel}>
           💭 思考中
         </Text>
-        <Text style={{ color: '#d1d5db', whiteSpace: 'pre-wrap' }}>{content}</Text>
+        <Text className={styles.thoughtContent}>{content}</Text>
       </div>
     </Space>
   </div>
@@ -75,19 +66,11 @@ const ToolCallMessage: React.FC<{
   const { tool, tool_id, arguments: args } = metadata;
 
   return (
-    <div
-      style={{
-        padding: compact ? '8px 12px' : '12px 16px',
-        backgroundColor: '#1a2744',
-        borderLeft: '3px solid #3b82f6',
-        borderRadius: '4px',
-        marginBottom: '8px',
-      }}
-    >
+    <div className={`${styles.toolCallMessage} ${compact ? styles.compact : ''}`}>
       <Space direction="vertical" style={{ width: '100%' }}>
         <Space>
-          <ToolOutlined style={{ color: '#3b82f6', fontSize: '16px' }} />
-          <Text strong style={{ color: '#60a5fa' }}>
+          <ToolOutlined className={styles.toolIcon} />
+          <Text strong className={styles.toolName}>
             🔧 调用工具: {tool}
           </Text>
           <Tag color="blue" style={{ fontSize: '10px' }}>
@@ -101,17 +84,7 @@ const ToolCallMessage: React.FC<{
               header={<Text type="secondary" style={{ fontSize: '12px' }}>参数详情</Text>}
               key="args"
             >
-              <pre
-                style={{
-                  backgroundColor: '#0d1117',
-                  padding: '8px',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  color: '#8b949e',
-                  overflow: 'auto',
-                  maxHeight: '150px',
-                }}
-              >
+              <pre className={styles.argsPanel}>
                 {JSON.stringify(args, null, 2)}
               </pre>
             </Panel>
@@ -134,22 +107,18 @@ const ToolResultMessage: React.FC<{
 
   return (
     <div
-      style={{
-        padding: compact ? '8px 12px' : '12px 16px',
-        backgroundColor: success ? '#1a2e1a' : '#2e1a1a',
-        borderLeft: `3px solid ${success ? '#22c55e' : '#ef4444'}`,
-        borderRadius: '4px',
-        marginBottom: '8px',
-      }}
+      className={`${styles.toolResultMessage} ${compact ? styles.compact : ''} ${
+        success ? styles.success : styles.error
+      }`}
     >
       <Space direction="vertical" style={{ width: '100%' }}>
         <Space>
           {success ? (
-            <CheckCircleOutlined style={{ color: '#22c55e', fontSize: '16px' }} />
+            <CheckCircleOutlined className={styles.successIcon} />
           ) : (
-            <CloseCircleOutlined style={{ color: '#ef4444', fontSize: '16px' }} />
+            <CloseCircleOutlined className={styles.errorIcon} />
           )}
-          <Text strong style={{ color: success ? '#4ade80' : '#f87171' }}>
+          <Text strong className={success ? styles.successText : styles.errorText}>
             📋 {success ? '工具执行成功' : '工具执行失败'}
           </Text>
           <Tag color={success ? 'green' : 'red'} style={{ fontSize: '10px' }}>
@@ -169,17 +138,7 @@ const ToolResultMessage: React.FC<{
               header={<Text type="secondary" style={{ fontSize: '12px' }}>结果详情</Text>}
               key="result"
             >
-              <pre
-                style={{
-                  backgroundColor: '#0d1117',
-                  padding: '8px',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  color: '#8b949e',
-                  overflow: 'auto',
-                  maxHeight: '150px',
-                }}
-              >
+              <pre className={styles.argsPanel}>
                 {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
               </pre>
             </Panel>
@@ -197,31 +156,14 @@ const FinalMessage: React.FC<{ content: string; compact?: boolean }> = ({
   content,
   compact,
 }) => (
-  <div
-    style={{
-      padding: compact ? '12px 16px' : '16px 20px',
-      backgroundColor: '#1f2937',
-      borderRadius: '8px',
-      marginBottom: '8px',
-    }}
-  >
+  <div className={`${styles.finalMessage} ${compact ? styles.compact : ''}`}>
     <Space align="start">
-      <MessageOutlined style={{ color: '#10b981', fontSize: '18px' }} />
+      <MessageOutlined className={styles.finalIcon} />
       <div>
-        <Text
-          type="secondary"
-          style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}
-        >
+        <Text type="secondary" className={styles.finalLabel}>
           ✅ AI 回复
         </Text>
-        <Paragraph
-          style={{
-            color: '#f3f4f6',
-            whiteSpace: 'pre-wrap',
-            margin: 0,
-            fontSize: '14px',
-          }}
-        >
+        <Paragraph className={styles.finalContent}>
           {content}
         </Paragraph>
       </div>
@@ -251,7 +193,7 @@ const ErrorMessage: React.FC<{
       </Space>
     }
     description={content}
-    style={{ marginBottom: '8px' }}
+    className={styles.errorMessage}
   />
 );
 
@@ -259,16 +201,9 @@ const ErrorMessage: React.FC<{
  * 流式加载指示器
  */
 const StreamingIndicator: React.FC<{ type: StreamingMessageType }> = ({ type }) => (
-  <div
-    style={{
-      padding: '8px 12px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-    }}
-  >
-    <Spin indicator={<LoadingOutlined style={{ fontSize: 14, color: '#8b5cf6' }} spin />} />
-    <Text type="secondary" style={{ fontSize: '12px' }}>
+  <div className={styles.streamingIndicator}>
+    <Spin indicator={<LoadingOutlined className={styles.streamingSpinner} spin />} />
+    <Text type="secondary" className={styles.streamingLabel}>
       {getMessageTypeLabel(type)}中...
     </Text>
   </div>
@@ -325,8 +260,8 @@ export const StreamingMessageDisplay: React.FC<StreamingMessageDisplayProps> = (
 
     case 'status':
       return (
-        <div style={{ padding: '4px 8px', marginBottom: '4px' }}>
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+        <div className={styles.statusMessage}>
+          <Text type="secondary" className={styles.statusText}>
             📊 {content}
           </Text>
         </div>
@@ -334,7 +269,7 @@ export const StreamingMessageDisplay: React.FC<StreamingMessageDisplayProps> = (
 
     case 'delta':
       return (
-        <Text style={{ color: '#d1d5db' }}>
+        <Text className={styles.deltaText}>
           {content}
         </Text>
       );
@@ -369,7 +304,7 @@ export const StreamingMessageList: React.FC<StreamingMessageListProps> = ({
   }, [messages, showIntermediateSteps]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
+    <div className={styles.messageList}>
       {filteredMessages.map((message) => (
         <StreamingMessageDisplay
           key={message.message_id || `${message.type}_${message.sequence}`}

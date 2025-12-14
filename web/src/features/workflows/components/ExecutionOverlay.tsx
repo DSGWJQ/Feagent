@@ -2,21 +2,20 @@
  * 执行进度覆盖层组件
  *
  * 在节点旁渲染状态图标、输出摘要和运行顺序号
+ * 使用CSS Module + 设计Token系统
  */
 
 import React, { useMemo } from 'react';
-import { Badge, Tooltip, Space, Typography } from 'antd';
+import { Tooltip } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   LoadingOutlined,
   ClockCircleOutlined,
-  PlayCircleOutlined,
 } from '@ant-design/icons';
 import type { Node } from '@xyflow/react';
 import type { NodeStatusMap, NodeOutputMap } from '../hooks/useWorkflowExecution';
-
-const { Text } = Typography;
+import styles from '../styles/workflows.module.css';
 
 interface ExecutionOverlayProps {
   nodeStatusMap: NodeStatusMap;
@@ -44,26 +43,22 @@ const NodeExecutionStatus: React.FC<{
     switch (status) {
       case 'running':
         return {
-          icon: <LoadingOutlined spin style={{ color: '#1890ff' }} />,
-          color: '#1890ff',
+          icon: <LoadingOutlined spin className={styles.statusRunning} />,
           text: '运行中',
         };
       case 'completed':
         return {
-          icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-          color: '#52c41a',
+          icon: <CheckCircleOutlined className={styles.statusCompleted} />,
           text: '已完成',
         };
       case 'error':
         return {
-          icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
-          color: '#ff4d4f',
+          icon: <CloseCircleOutlined className={styles.statusError} />,
           text: '错误',
         };
       default:
         return {
-          icon: <ClockCircleOutlined style={{ color: '#8c8c8c' }} />,
-          color: '#8c8c8c',
+          icon: <ClockCircleOutlined className={styles.statusPending} />,
           text: '待执行',
         };
     }
@@ -84,57 +79,23 @@ const NodeExecutionStatus: React.FC<{
   }, [output]);
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: -35,
-        left: 0,
-        right: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '2px 8px',
-        background: 'rgba(0, 0, 0, 0.8)',
-        borderRadius: '4px 4px 0 0',
-        zIndex: 1000,
-      }}
-    >
-      <Space size={4}>
-        {order !== undefined && (
-          <Badge
-            count={order + 1}
-            size="small"
-            style={{
-              backgroundColor: isCurrent ? '#1890ff' : '#8c8c8c',
-            }}
-          />
-        )}
-        <span style={{ color: '#fff', fontSize: '12px' }}>
-          {node.data?.name || node.id}
-        </span>
-      </Space>
+    <div className={styles.executionOverlay}>
+      <Tooltip title={`状态: ${statusConfig.text}`}>
+        <div className={styles.executionStatus}>
+          {order !== undefined && (
+            <span className={styles.executionOrder}>
+              #{order + 1}
+            </span>
+          )}
+          <span>{statusConfig.icon}</span>
+        </div>
+      </Tooltip>
 
-      <Space size={4}>
-        {statusConfig.icon}
-        <span style={{ color: statusConfig.color, fontSize: '12px' }}>
-          {statusConfig.text}
-        </span>
-      </Space>
-
-      {outputSummary && (
-        <Tooltip title={typeof output === 'object' ? JSON.stringify(output, null, 2) : output}>
-          <Text
-            style={{
-              color: '#8c8c8c',
-              fontSize: '11px',
-              maxWidth: 150,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
+      {output && outputSummary && (
+        <Tooltip title={typeof output === 'string' ? output : JSON.stringify(output, null, 2)}>
+          <div className={styles.executionOutput}>
             {outputSummary}
-          </Text>
+          </div>
         </Tooltip>
       )}
     </div>

@@ -13,13 +13,14 @@
  * - 创建成功后自动跳转到列表页
  */
 
-import { Card, Button, Space, Typography, App } from 'antd';
+import { Button, App } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { CreateAgentForm } from '@/features/agents/components';
+import { PageShell } from '@/shared/components/layout/PageShell';
+import { NeoCard } from '@/shared/components/common/NeoCard';
 import type { Agent } from '@/shared/types';
-
-const { Title, Paragraph } = Typography;
+// import styles from '../styles/agents.module.css'; // Unused
 
 export const CreateAgentPage: React.FC = () => {
   const navigate = useNavigate();
@@ -27,15 +28,6 @@ export const CreateAgentPage: React.FC = () => {
 
   /**
    * 处理创建成功
-   *
-   * 流程：
-   * 1. 表单提交成功
-   * 2. 跳转到详情页
-   *
-   * 为什么跳转到详情页？
-   * - 让用户立即看到生成的任务列表
-   * - 符合用户预期（创建完成后查看详情）
-   * - 提供更好的用户体验
    */
   const handleSuccess = (agent: Agent) => {
     message.success('Agent 创建成功，即将跳转到详情页');
@@ -44,39 +36,28 @@ export const CreateAgentPage: React.FC = () => {
 
   /**
    * 处理返回
-   *
-   * 为什么需要返回按钮？
-   * - 用户可能改变主意，不想创建了
-   * - 提供明确的退出路径
-   * - 提升用户体验
    */
   const handleBack = () => {
-    navigate('/');
+    navigate('/app/agents');
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
-      {/* 页面头部 */}
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* 返回按钮 */}
-        <Button icon={<ArrowLeftOutlined />} onClick={handleBack} type="text">
-          返回
+    <PageShell
+      title="创建 Agent"
+      description="填写以下信息来创建一个新的 Agent。Agent 会根据您提供的起点和目的，自动生成执行计划并完成任务。"
+      actions={
+        <Button icon={<ArrowLeftOutlined />} onClick={handleBack}>
+          返回列表
         </Button>
-
-        {/* 页面标题和描述 */}
-        <div>
-          <Title level={2}>创建 Agent</Title>
-          <Paragraph type="secondary">
-            填写以下信息来创建一个新的 Agent。Agent 会根据您提供的起点和目的，自动生成执行计划并完成任务。
-          </Paragraph>
-        </div>
-
-        {/* 表单卡片 */}
-        <Card>
+      }
+    >
+      <div style={{ maxWidth: 800, margin: '0 auto' }}>
+        {/* 表单卡片 - 石质面板 */}
+        <NeoCard variant="raised">
           <CreateAgentForm onSuccess={handleSuccess} />
-        </Card>
-      </Space>
-    </div>
+        </NeoCard>
+      </div>
+    </PageShell>
   );
 };
 

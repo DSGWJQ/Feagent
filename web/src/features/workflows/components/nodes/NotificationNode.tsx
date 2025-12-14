@@ -1,5 +1,6 @@
 /**
  * Notification Node - 通知节点
+ * 使用CSS Module + 设计Token系统
  *
  * 功能：
  * - 发送 Webhook 通知
@@ -13,6 +14,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Card, Input } from 'antd';
 import { BellOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
+import styles from '../../styles/workflows.module.css';
 
 const { TextArea } = Input;
 
@@ -36,64 +38,34 @@ function NotificationNode({ data, selected, id }: NodeProps<NotificationNodeData
         type="target"
         position={Position.Left}
         style={{
-          background: '#1890ff',
+          background: '#eb2f96',
           width: 12,
           height: 12,
         }}
       />
 
       <Card
-        className={`workflow-node ${getStatusColor(status, selected)} ${selected ? 'selected' : ''} ${status === 'running' ? 'node-running' : ''}`}
-        style={{
-          minWidth: 320,
-          maxWidth: 450,
-          border: '2px solid',
-          borderColor: selected ? '#1890ff' : '#d9d9d9',
-          transition: 'all 0.3s',
-          boxShadow: selected
-            ? '0 4px 12px rgba(24, 144, 255, 0.3)'
-            : '0 2px 8px rgba(0, 0, 0, 0.1)',
-        }}
+        className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCardWide}`}
         styles={{ body: { padding: 0 } }}
       >
         {/* 节点头部 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '12px 16px',
-            borderBottom: '1px solid #f0f0f0',
-            backgroundColor: '#fafafa',
-          }}
-        >
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 6,
-              backgroundColor: '#fa8c16',
-              color: '#fff',
-            }}
-          >
+        <div className={styles.nodeHeaderWrapper}>
+          <div className={`${styles.nodeIcon} ${styles.nodeTypeNotification}`}>
             {status === 'running' ? (
               <LoadingOutlined style={{ fontSize: 16 }} spin />
             ) : (
               <BellOutlined style={{ fontSize: 16 }} role="img" />
             )}
           </div>
-          <div style={{ flex: 1 }}>
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>
+          <div className={styles.nodeTitleWrapper}>
+            <h3 className={styles.nodeTitle}>
               通知
             </h3>
           </div>
         </div>
 
         {/* 节点内容 */}
-        <div style={{ padding: '16px' }}>
+        <div className={styles.nodeContent}>
           {/* 通知类型 */}
           <div style={{ marginBottom: 12 }}>
             <label
@@ -213,39 +185,39 @@ function NotificationNode({ data, selected, id }: NodeProps<NotificationNodeData
               {data.include_input ? '是' : '否'}
             </div>
           </div>
-
-          {/* 执行结果 */}
-          {data.output && (
-            <div style={{ marginTop: 12 }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: 12,
-                  color: '#52c41a',
-                  marginBottom: 4,
-                }}
-              >
-                执行结果
-              </label>
-              <pre
-                style={{
-                  margin: 0,
-                  padding: 8,
-                  backgroundColor: '#f6ffed',
-                  border: '1px solid #b7eb8f',
-                  borderRadius: 4,
-                  fontSize: 11,
-                  maxHeight: 100,
-                  overflow: 'auto',
-                }}
-              >
-                {typeof data.output === 'string'
-                  ? data.output
-                  : JSON.stringify(data.output, null, 2)}
-              </pre>
-            </div>
-          )}
         </div>
+
+        {/* 执行结果 */}
+        {data.output && (
+          <div className={styles.nodeOutput}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: 12,
+                color: '#52c41a',
+                marginBottom: 4,
+              }}
+            >
+              执行结果
+            </label>
+            <pre
+              style={{
+                margin: 0,
+                padding: 8,
+                backgroundColor: '#f6ffed',
+                border: '1px solid #b7eb8f',
+                borderRadius: 4,
+                fontSize: 11,
+                maxHeight: 100,
+                overflow: 'auto',
+              }}
+            >
+              {typeof data.output === 'string'
+                ? data.output
+                : JSON.stringify(data.output, null, 2)}
+            </pre>
+          </div>
+        )}
       </Card>
 
       {/* 输出连接点 */}
@@ -253,7 +225,7 @@ function NotificationNode({ data, selected, id }: NodeProps<NotificationNodeData
         type="source"
         position={Position.Right}
         style={{
-          background: '#52c41a',
+          background: 'var(--color-success)',
           width: 12,
           height: 12,
         }}

@@ -1,0 +1,79 @@
+/**
+ * Column组件样式
+ * 古典柱式（Doric/Ionic/Corinthian）
+ */
+
+.column {
+  --cap-h: 28px;
+  --base-h: 28px;
+
+  position: relative;
+  background: var(--neo-surface);
+  border: 1px solid var(--neo-border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--neo-shadow-inset), var(--neo-shadow-ambient);
+}
+
+/* 柱身凹槽（flutes） */
+.column::before {
+  content: '';
+  position: absolute;
+  inset: var(--cap-h) 10px var(--base-h) 10px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(55, 65, 81, 0.10) 0 6px,
+    rgba(255, 255, 255, 0.18) 6px 10px
+  );
+  opacity: 0.65;
+}
+
+/* 高光效果 */
+.column::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(900px 300px at 20% 0%, rgba(255,255,255,0.28), transparent 55%);
+  pointer-events: none;
+}
+
+/* ==================== Doric (多立克柱式) ==================== */
+.doric {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--neo-surface) 90%, var(--neo-gold));
+}
+
+/* ==================== Ionic (爱奥尼亚柱式) ==================== */
+.ionic {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--neo-surface) 92%, var(--neo-blue));
+}
+
+.ionic::before {
+  inset: var(--cap-h) 10px var(--base-h) 10px;
+}
+
+/* ==================== Corinthian (科林斯柱式) ==================== */
+.corinthian {
+  border-radius: 14px;
+}
+
+.corinthian::before {
+  inset: calc(var(--cap-h) + 10px) 10px var(--base-h) 10px;
+}
+
+/* 柱头装饰（叶子和涡卷） */
+.corinthian::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--cap-h) + 14px);
+  background:
+    repeating-linear-gradient(90deg, rgba(217,119,6,0.25) 0 10px, transparent 10px 18px),
+    linear-gradient(180deg, rgba(255,255,255,0.25), transparent);
+  border-bottom: 1px solid var(--neo-border);
+  opacity: 0.9;
+  pointer-events: none;
+}

@@ -1,0 +1,93 @@
+/**
+ * PageShell Styles
+ * Neoclassical Design System
+ */
+
+/* 页面容器：定义标准内边距和流式布局 */
+.container {
+    width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+/* 头部区域：典型的 Classical Lintel 结构 */
+.header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding-bottom: var(--space-6);
+    border-bottom: 1px solid var(--neo-border);
+    position: relative;
+}
+
+/* 装饰性底边：双线效果 */
+.header::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    /* 制造层次感 */
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: var(--neo-border);
+    opacity: 0.5;
+}
+
+.titleRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-4);
+}
+
+.titleWrapper {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.title {
+    color: var(--neo-text);
+    font-family: var(--font-family-serif);
+    font-size: 1.75rem;
+    /* ~28px */
+    font-weight: 600;
+    line-height: 1.2;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+
+.description {
+    color: var(--neo-text-2);
+    font-size: var(--font-size-sm);
+    max-width: 800px;
+    line-height: 1.6;
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+/* 内容区域 */
+.content {
+    position: relative;
+    /* 确保内容区域有足够的空间展示阴影 */
+    padding: var(--space-1);
+    margin: calc(var(--space-1) * -1);
+}
+
+/* 变体：大理石底板 (Stone) */
+.variantStone .content {
+    /* 由子元素决定是否需要 Stone 效果，这里通常是一个透明容器 */
+}
+
+/* 如果 PageShell 本身被用作一个大的 Stone 面板 */
+.variantStone {
+    /* 这里可以添加特定的大背景逻辑，暂时由组件内部 Card 负责 */
+}

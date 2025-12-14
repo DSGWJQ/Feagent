@@ -1,0 +1,62 @@
+/**
+ * Agents Feature Styles
+ * Neoclassical Design System
+ */
+
+/* ========== Page Container ========== */
+.pageContainer {
+  padding: var(--spacing-6);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.pageContainerWide {
+  padding: var(--spacing-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ========== Loading State ========== */
+.loadingContainer {
+  padding: var(--spacing-6);
+  text-align: center;
+}
+
+.loadingText {
+  margin-top: var(--spacing-4);
+  color: var(--neo-text-2);
+}
+
+/* ========== Empty State ========== */
+.emptyContainer {
+  text-align: center;
+  padding: var(--spacing-10);
+  color: var(--neo-text-2);
+}
+
+.emptyText {
+  margin-bottom: var(--spacing-2);
+}
+
+/* ========== Spacing Utilities ========== */
+.spaceFullWidth {
+  width: 100%;
+}
+
+.marginTop {
+  margin-top: var(--spacing-4);
+}
+
+.marginBottom {
+  margin-bottom: var(--spacing-4);
+}
+
+/* ========== Text Colors ========== */
+.textSecondary {
+  color: var(--neo-text-2);
+}
+
+.textTertiary {
+  color: var(--neo-text-2);
+  /* Consolidated to secondary text color or use specific opacity */
+}

@@ -1,0 +1,211 @@
+/**
+ * MainLayout Styles
+ * Neoclassical Design System
+ */
+
+/* ========== Sider (Stone Column) ========== */
+.sider {
+    position: relative;
+    z-index: 100;
+    /* High z-index for shadow casting */
+    border-right: 1px solid var(--neo-border);
+    /* 
+     * Note: The .neoStone class will be applied in TSX for the texture.
+     * Here we just ensure layout properties.
+     */
+}
+
+/* Logo Area (Capital of the Column) */
+.logoContainer {
+    height: var(--space-16);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-6);
+    background: rgba(255, 255, 255, 0.02);
+    /* Subtle highlight */
+    border-bottom: 1px solid var(--neo-border);
+    transition: all var(--neo-dur-base) var(--neo-ease-dignified);
+}
+
+.logoIcon {
+    font-size: 24px;
+    color: var(--neo-gold);
+    filter: drop-shadow(0 2px 4px rgba(217, 119, 6, 0.2));
+    transition: all 0.3s;
+}
+
+.logoText {
+    margin-left: var(--space-3);
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--neo-text);
+    white-space: nowrap;
+    font-family: var(--font-family-serif);
+    letter-spacing: 0.02em;
+    background: linear-gradient(135deg, var(--neo-text) 0%, var(--neo-text-2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Navigation Menu */
+.menu {
+    border-right: none !important;
+    padding: var(--space-2) 0;
+    background: transparent !important;
+}
+
+/* Global Menu Overrides for Neoclassical Stone Feel */
+:global(.ant-menu-item) {
+    margin: var(--space-1) var(--space-2) !important;
+    width: calc(100% - var(--space-4)) !important;
+    border-radius: var(--radius-md) !important;
+    transition: all 0.2s var(--neo-ease-dignified) !important;
+    color: var(--neo-text) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Hover State: Etched Stone effect */
+:global(.ant-menu-item:hover) {
+    background: var(--neo-surface-2) !important;
+    color: var(--neo-blue) !important;
+    box-shadow: var(--neo-shadow-inset);
+}
+
+/* Selected State: Gold Inlay */
+:global(.ant-menu-item-selected) {
+    background: linear-gradient(90deg, rgba(217, 119, 6, 0.08), transparent) !important;
+    color: var(--neo-gold) !important;
+    font-weight: 600 !important;
+}
+
+/* Gold bar marker */
+:global(.ant-menu-item-selected)::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10%;
+    bottom: 10%;
+    width: 3px;
+    background: var(--neo-gold);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    box-shadow: 0 0 8px rgba(217, 119, 6, 0.4);
+}
+
+:global(.ant-menu-submenu-title) {
+    margin: var(--space-1) var(--space-2) !important;
+    width: calc(100% - var(--space-4)) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--neo-text) !important;
+}
+
+:global(.ant-menu-submenu-title:hover) {
+    background: var(--neo-surface-2) !important;
+    color: var(--neo-blue) !important;
+}
+
+/* ========== Header (Architrave) ========== */
+.header {
+    background: var(--neo-surface) !important;
+    padding: 0 var(--space-6) !important;
+    height: var(--space-16) !important;
+    /* 64px */
+    line-height: var(--space-16) !important;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--neo-border);
+    z-index: 90;
+    position: sticky;
+    top: 0;
+    /* Architectural shadow casting down */
+    box-shadow: 0 4px 20px -8px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+}
+
+.headerContent {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.headerLeft {
+    flex: 1;
+}
+
+.headerRight {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.headerUser {
+    font-size: var(--font-size-sm);
+    color: var(--neo-text);
+    cursor: pointer;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+    font-family: var(--font-family-serif);
+    border: 1px solid transparent;
+}
+
+.headerUser:hover {
+    background: var(--neo-surface-2);
+    border-color: var(--neo-border);
+    color: var(--neo-blue);
+}
+
+/* ========== Content Area ========== */
+.content {
+    background: var(--neo-bg) !important;
+    /* 
+       No forced padding here by default, 
+       pages should control their own padding via padding or PageShell.
+       However, to ensure *some* breathing room if PageShell isn't used:
+    */
+    padding: 0;
+    min-height: calc(100vh - var(--space-16));
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Remove the old contentWrapper "Card" look */
+.contentWrapper {
+    /* Pure layout container, no visuals */
+    width: 100%;
+    height: 100%;
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 768px) {
+    .header {
+        padding: 0 var(--space-4) !important;
+    }
+}
+
+/* ========== Collapsed State ========== */
+:global(.ant-layout-sider-collapsed) .logoText {
+    opacity: 0;
+    width: 0;
+    display: none;
+}
+
+:global(.ant-layout-sider-collapsed) .logoIcon {
+    font-size: 28px;
+}
+
+/* ========== Icons ========== */
+.menu :global(.anticon) {
+    font-size: 1.1em;
+}
+
+/* ========== Scrollbar ========== */
+.sider ::-webkit-scrollbar {
+    width: 4px;
+}
+
+.sider ::-webkit-scrollbar-thumb {
+    background: var(--neo-border);
+    border-radius: var(--radius-sm);
+}

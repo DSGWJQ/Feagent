@@ -19,10 +19,9 @@ import {
   DeleteOutlined,
   EditOutlined,
   CheckOutlined,
-  StopOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import './ToolsLibraryPage.css';
+import styles from '../styles/tools.module.css';
 
 const toolCategories = [
   { label: 'Database', value: 'database' },
@@ -43,7 +42,7 @@ export default function ToolsLibraryPage() {
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTool, setEditingTool] = useState(null);
+  const [editingTool, setEditingTool] = useState<any>(null);
 
   const mockTools = [
     {
@@ -238,11 +237,12 @@ export default function ToolsLibraryPage() {
   ];
 
   return (
-    <div className="tools-library-page">
+    <div className={styles.container}>
       <Row gutter={[16, 16]}>
         <Col span={24}>
           <Card
             title="Tools Library"
+            className={styles.card}
             extra={
               <Button
                 type="primary"

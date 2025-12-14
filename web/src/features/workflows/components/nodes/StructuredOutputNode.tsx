@@ -1,5 +1,6 @@
 /**
  * Structured Output Node - 结构化输出节点
+ * 使用CSS Module + 设计Token系统
  */
 
 import { memo } from 'react';
@@ -7,6 +8,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Card, Tag } from 'antd';
 import { DatabaseOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
+import styles from '../../styles/workflows.module.css';
 
 export interface StructuredOutputNodeData {
   schemaName: string;
@@ -24,49 +26,24 @@ function StructuredOutputNode({
 
   return (
     <Card
-      className={`workflow-node ${getStatusColor(status, selected)}`}
-      style={{
-        minWidth: 280,
-        maxWidth: 400,
-        border: '2px solid',
-        transition: 'all 0.3s',
-      }}
+      className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCardWide}`}
       styles={{ body: { padding: 0 } }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '12px 16px',
-          borderBottom: '1px solid #f0f0f0',
-        }}
-      >
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 6,
-            backgroundColor: '#52c41a',
-            color: '#fff',
-          }}
-        >
+      <div className={styles.nodeHeaderWrapper}>
+        <div className={`${styles.nodeIcon} ${styles.nodeTypeStructuredOutput}`}>
           <DatabaseOutlined style={{ fontSize: 16 }} />
         </div>
-        <div style={{ flex: 1 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>
+        <div className={styles.nodeTitleWrapper}>
+          <h3 className={styles.nodeTitle}>
             Structured Output
           </h3>
-          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#8c8c8c' }}>
+          <p className={styles.nodeDescription}>
             {data.schemaName || 'MySchema'}
           </p>
         </div>
       </div>
 
-      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className={styles.nodeContent} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
           <span style={{ color: '#8c8c8c' }}>Mode:</span>
           <Tag color="green" style={{ margin: 0 }}>
@@ -112,13 +89,7 @@ function StructuredOutputNode({
       </div>
 
       {data.output && (
-        <div
-          style={{
-            padding: 12,
-            borderTop: '1px solid #f0f0f0',
-            backgroundColor: '#fafafa',
-          }}
-        >
+        <div className={styles.nodeOutput}>
           <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500 }}>
             Parsed Output:
           </p>
@@ -144,13 +115,13 @@ function StructuredOutputNode({
         type="target"
         position={Position.Left}
         id="input"
-        style={{ backgroundColor: '#52c41a' }}
+        style={{ backgroundColor: 'var(--color-accent-workflow)' }}
       />
       <Handle
         type="source"
         position={Position.Right}
         id="output"
-        style={{ backgroundColor: '#52c41a' }}
+        style={{ backgroundColor: 'var(--color-accent-workflow)' }}
       />
     </Card>
   );

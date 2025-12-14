@@ -1,0 +1,67 @@
+/**
+ * Tools Library Module Styles
+ * Neoclassical Design System
+ */
+
+.container {
+  width: 100%;
+  padding: var(--spacing-6);
+}
+
+.card {
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-md);
+  background: var(--neo-surface);
+  border: 1px solid var(--neo-border);
+}
+
+/* Ant Design Overrides */
+:global(.ant-table) {
+  font-size: var(--font-size-sm);
+}
+
+:global(.ant-table-thead > tr > th) {
+  background: var(--neo-surface-2) !important;
+  color: var(--neo-text);
+  font-weight: var(--font-weight-semibold);
+}
+
+:global(.ant-table-tbody > tr > td) {
+  border-bottom: 1px solid var(--neo-border) !important;
+}
+
+:global(.ant-table-tbody > tr:hover > td) {
+  background: var(--neo-surface-2) !important;
+}
+
+:global(.ant-tag) {
+  font-size: var(--font-size-xs);
+}
+
+:global(.ant-modal-content) {
+  background: var(--neo-surface);
+  border: 1px solid var(--neo-border);
+  box-shadow: var(--shadow-lg);
+}
+
+:global(.ant-modal-header) {
+  background: transparent;
+  border-bottom: 1px solid var(--neo-border);
+}
+
+:global(.ant-modal-title) {
+  color: var(--neo-text);
+}
+
+:global(.ant-form-item) {
+  margin-bottom: var(--spacing-4);
+}
+
+:global(.ant-card) {
+  background: var(--neo-surface);
+  border: 1px solid var(--neo-border);
+}
+
+:global(.ant-form-item-label > label) {
+  color: var(--neo-text);
+}

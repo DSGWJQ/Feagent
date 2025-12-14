@@ -8,11 +8,8 @@ import {
   Input,
   Select,
   Tag,
-  Card,
   message,
   Alert,
-  Row,
-  Col,
   Switch,
 } from 'antd';
 import {
@@ -23,7 +20,9 @@ import {
   CloseCircleOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import './LLMProvidersPage.css';
+import { PageShell } from '@/shared/components/layout/PageShell';
+import { NeoCard } from '@/shared/components/common/NeoCard';
+import styles from '../styles/llm.module.css';
 
 const providerTypes = [
   { label: 'OpenAI', value: 'openai' },
@@ -31,13 +30,14 @@ const providerTypes = [
   { label: 'Qwen', value: 'qwen' },
   { label: 'Claude', value: 'claude' },
   { label: 'Ollama (Local)', value: 'ollama' },
+  { label: 'Google Gemini', value: 'gemini' },
 ];
 
 export default function LLMProvidersPage() {
   const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingProvider, setEditingProvider] = useState(null);
+  const [editingProvider, setEditingProvider] = useState<any>(null);
 
   const mockProviders = [
     {
@@ -67,11 +67,21 @@ export default function LLMProvidersPage() {
       enabled: false,
       apiKeyMasked: 'N/A',
     },
+    {
+      id: 'provider_4',
+      name: 'Google Gemini',
+      type: 'gemini',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+      model: 'gemini-1.5-pro',
+      enabled: true,
+      apiKeyMasked: 'AIz***...***',
+    }
   ];
 
   const { data: providers = mockProviders, isLoading, error } = useQuery({
     queryKey: ['llmProviders'],
     queryFn: async () => {
+      // Return mock data for now, would be API call
       await new Promise((resolve) => setTimeout(resolve, 500));
       return mockProviders;
     },
@@ -97,6 +107,7 @@ export default function LLMProvidersPage() {
   });
 
   const updateMutation = useMutation({
+    /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
     mutationFn: (data: any) => {
       return new Promise((resolve) => {
         setTimeout(() => resolve(null), 500);
@@ -105,6 +116,8 @@ export default function LLMProvidersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['llmProviders'] });
       message.success('Provider updated successfully');
+      setIsModalOpen(false); // Should close modal on update too
+      form.resetFields();
     },
     onError: () => {
       message.error('Failed to update provider');
@@ -112,6 +125,7 @@ export default function LLMProvidersPage() {
   });
 
   const deleteMutation = useMutation({
+    /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
     mutationFn: (id: string) => {
       return new Promise((resolve) => {
         setTimeout(() => resolve(null), 500);
@@ -166,7 +180,12 @@ export default function LLMProvidersPage() {
       width: '12%',
       render: (type: string) => {
         const provider = providerTypes.find((p) => p.value === type);
-        return <Tag color="cyan">{provider?.label}</Tag>;
+        let color = 'cyan';
+        if (type === 'openai') color = 'green';
+        if (type === 'claude') color = 'purple';
+        if (type === 'gemini') color = 'blue';
+
+        return <Tag color={color}>{provider?.label}</Tag>;
       },
     },
     {
@@ -175,7 +194,7 @@ export default function LLMProvidersPage() {
       key: 'baseUrl',
       width: '20%',
       render: (url: string) => (
-        <span style={{ fontSize: '12px', color: '#666' }}>{url}</span>
+        <span className={styles.urlText}>{url}</span>
       ),
     },
     {
@@ -190,7 +209,7 @@ export default function LLMProvidersPage() {
       key: 'apiKeyMasked',
       width: '12%',
       render: (masked: string) => (
-        <span style={{ fontSize: '12px', color: '#999' }}>{masked}</span>
+        <span className={styles.maskText}>{masked}</span>
       ),
     },
     {
@@ -213,7 +232,7 @@ export default function LLMProvidersPage() {
       title: 'Actions',
       key: 'actions',
       width: '16%',
-      render: (text: any, record: any) => (
+      render: (_: any, record: any) => (
         <Space size="small" wrap>
           <Button
             type="primary"
@@ -242,40 +261,44 @@ export default function LLMProvidersPage() {
   ];
 
   return (
-    <div className="llm-providers-page">
-      <Row gutter={[16, 16]}>
-        <Col span={24}>
-          <Card
-            title="LLM Provider Configuration"
-            extra={
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleCreateOpen}
-              >
-                Register Provider
-              </Button>
-            }
-          >
-            {error && (
-              <Alert
-                message="Error loading providers"
-                type="error"
-                showIcon
-                style={{ marginBottom: '16px' }}
-              />
-            )}
-
-            <Table
-              columns={columns}
-              dataSource={providers}
-              rowKey="id"
-              loading={isLoading}
-              pagination={{ pageSize: 10 }}
+    <PageShell
+      title="LLM Providers"
+      description="Manage connections to Large Language Model providers (OpenAI, DeepSeek, Local Ollama, etc)."
+      actions={
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleCreateOpen}
+        >
+          Register Provider
+        </Button>
+      }
+    >
+      <div className={styles.container}>
+        <NeoCard
+          title="Active Providers"
+          variant="standard"
+          className={styles.card}
+        >
+          {error && (
+            <Alert
+              message="Error loading providers"
+              type="error"
+              showIcon
+              style={{ marginBottom: '16px' }}
             />
-          </Card>
-        </Col>
-      </Row>
+          )}
+
+          <Table
+            className={`${styles.neoTable}`}
+            columns={columns}
+            dataSource={providers}
+            rowKey="id"
+            loading={isLoading}
+            pagination={{ pageSize: 10 }}
+          />
+        </NeoCard>
+      </div>
 
       <Modal
         title={editingProvider ? 'Edit LLM Provider' : 'Register New LLM Provider'}
@@ -367,6 +390,6 @@ export default function LLMProvidersPage() {
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </PageShell>
   );
 }

@@ -7,13 +7,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Input, Button, Card, Space, Alert, Typography, Badge } from 'antd';
 import { RobotOutlined, UserOutlined, LoadingOutlined, CheckCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
+/**
+ * 工作流 AI 聊天组件（带执行结果）
+ *
+ * 支持接收并显示执行总结信息
+ */
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Input, Button, Card, Space, Alert, Typography, Badge } from 'antd';
+import { RobotOutlined, UserOutlined, LoadingOutlined, CheckCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 
 import { useWorkflowAI } from '@/hooks/useWorkflowAI';
 import { useWorkflowInteraction } from '@/features/workflows/contexts/WorkflowInteractionContext';
 import type { ChatMessage } from '@/shared/types/chat';
 import type { Workflow } from '@/types/workflow';
 import type { ExecutionLogEntry } from '@/features/workflows/types/workflow';
-import './FakeAIChat.css';
+import styles from './AIChat.module.css';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -172,7 +181,7 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
           (data.duration ? `• 执行时长：${(data.duration / 1000).toFixed(2)}秒\n` : '') +
           (data.result ? `\n📋 执行结果：\n${JSON.stringify(data.result, null, 2)}` : ''),
         timestamp: executionSummary.timestamp,
-      });
+      } as any); // Cast as any because ChatMessage might not support execution summary props technically
     }
 
     if (errorMessage) {
@@ -202,16 +211,22 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
 
   return (
     <Card
-      className="fake-ai-chat"
+      className={styles.container}
+      classNames={{
+        header: styles.header,
+        body: styles.body,
+      }}
       title={
         <Space>
-          <RobotOutlined style={{ color: '#8b5cf6' }} />
-          <span style={{ color: '#fafafa' }}>AI助手</span>
+          <div className={`${styles.messageIcon} ${styles.iconAssistant}`} style={{ width: 24, height: 24, fontSize: 14 }}>
+            <RobotOutlined />
+          </div>
+          <span style={{ color: 'var(--neo-text)' }}>AI助手</span>
           {interactionMode !== 'idle' && (
             <Badge
               status={interactionMode === 'chat' ? 'processing' : 'default'}
               text={
-                <span style={{ color: interactionMode === 'chat' ? '#8b5cf6' : '#8c8c8c', fontSize: '12px' }}>
+                <span style={{ color: interactionMode === 'chat' ? 'var(--neo-blue)' : 'var(--neo-text-2)', fontSize: '12px' }}>
                   {interactionMode === 'chat' ? '聊天模式' : '画布模式'}
                 </span>
               }
@@ -226,34 +241,13 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
             size="small"
             icon={<PlayCircleOutlined />}
             onClick={() => setInteractionMode('chat')}
-            style={{ color: '#8c8c8c' }}
+            style={{ color: 'var(--neo-text-2)' }}
             title="切换到聊天模式"
           >
             对话
           </Button>
         )
       }
-      style={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#141414',
-        borderColor: '#262626',
-      }}
-      styles={{
-        header: {
-          backgroundColor: '#1a1a1a',
-          borderBottom: '1px solid #262626',
-          color: '#fafafa',
-        },
-        body: {
-          flex: 1,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          backgroundColor: '#141414',
-        },
-      }}
     >
       {pendingWorkflow && (
         <Alert
@@ -279,10 +273,7 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
         />
       )}
 
-      <div
-        className="fake-ai-chat__messages"
-        style={{ flex: 1, overflowY: 'auto', marginBottom: 16, padding: '16px' }}
-      >
+      <div className={styles.messageList}>
         {displayedMessages.map((msg) => {
           // 处理执行总结消息的特殊样式
           const isExecutionSummary = 'type' in msg && msg.type === 'execution_summary';
@@ -290,43 +281,23 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
           return (
             <div
               key={msg.id}
-              className={`fake-ai-chat__message fake-ai-chat__message--${msg.role}`}
-              style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}
+              className={`${styles.message} ${msg.role === 'user' ? styles.messageUser : ''}`}
             >
-              <div
-                className="fake-ai-chat__message-icon"
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: msg.role === 'user' ? '#3b82f6' : '#8b5cf6',
-                  color: '#fff',
-                }}
-              >
+              <div className={`${styles.messageIcon} ${msg.role === 'user' ? styles.iconUser : styles.iconAssistant}`}>
                 {msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
               </div>
-              <div className="fake-ai-chat__message-content" style={{ flex: 1 }}>
+              <div className={styles.messageContent}>
                 <div
-                  className="fake-ai-chat__message-text"
-                  style={{
-                    backgroundColor: msg.role === 'user' ? '#1a1a1a' : isExecutionSummary ? '#1e3a8a' : '#262626',
-                    color: '#fafafa',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    border: isExecutionSummary ? '1px solid #3b82f6' : 'none',
-                  }}
+                  className={`${styles.messageText} ${msg.role === 'user'
+                      ? styles.textUser
+                      : isExecutionSummary
+                        ? styles.textExecutionSummary
+                        : styles.textAssistant
+                    }`}
                 >
                   {msg.content}
                 </div>
-                <div
-                  className="fake-ai-chat__message-time"
-                  style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '4px' }}
-                >
+                <div className={styles.messageTime}>
                   {new Date(msg.timestamp).toLocaleTimeString('zh-CN')}
                 </div>
               </div>
@@ -335,30 +306,12 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
         })}
 
         {isProcessing && (
-          <div
-            className="fake-ai-chat__message fake-ai-chat__message--assistant"
-            style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}
-          >
-            <div
-              className="fake-ai-chat__message-icon"
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#8b5cf6',
-                color: '#fff',
-              }}
-            >
+          <div className={styles.message}>
+            <div className={`${styles.messageIcon} ${styles.iconAssistant}`}>
               <LoadingOutlined />
             </div>
-            <div className="fake-ai-chat__message-content">
-              <div
-                className="fake-ai-chat__message-text"
-                style={{ backgroundColor: '#262626', color: '#fafafa', padding: '12px', borderRadius: '8px' }}
-              >
+            <div className={styles.messageContent}>
+              <div className={`${styles.messageText} ${styles.textAssistant}`}>
                 {streamingMessage || 'AI正在思考中...'}
               </div>
             </div>
@@ -377,13 +330,13 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
           placeholder={isCanvasMode ? "输入消息... (点击后将切换到聊天模式)" : "输入消息... (Enter发送, Shift+Enter换行)"}
           autoSize={{ minRows: 1, maxRows: 4 }}
           disabled={isProcessing}
-          style={{ backgroundColor: '#1a1a1a', borderColor: '#434343', color: '#fafafa' }}
+          className={styles.textArea}
         />
         <Button
           type="primary"
           onClick={handleSend}
           disabled={isProcessing || !inputValue.trim()}
-          style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderColor: 'transparent' }}
+          className={styles.sendButton}
         >
           发送
         </Button>

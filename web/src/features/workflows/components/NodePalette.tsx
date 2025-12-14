@@ -1,10 +1,13 @@
 /**
- * Node Palette - 节点调色板
- *
- * 左侧面板，显示所有可用的节点类型，支持拖拽添加到画布
+ * Node Palette - Node Component Library
+ * Neoclassical Design System
+ * 
+ * Displays available workflow nodes as "Instruments" or "Components" 
+ * that can be dragged onto the drafting table.
  */
 
-import { Card, Tooltip } from 'antd';
+import React from 'react';
+import { Tooltip } from 'antd';
 import {
   PlayCircleOutlined,
   CheckCircleOutlined,
@@ -23,6 +26,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import { nodeTypeConfigs } from '../utils/nodeUtils';
+import styles from '../styles/drafting.module.css';
 
 interface NodePaletteProps {
   onAddNode: (type: string) => void;
@@ -56,58 +60,51 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
   };
 
   return (
-    <div
-      style={{
-        width: 280,
-        height: '100%',
-        backgroundColor: '#141414', // 深色背景
-        borderRight: '1px solid #262626',
-        padding: 16,
-        overflowY: 'auto',
-      }}
-    >
-      <h3 style={{
-        marginBottom: 16,
-        fontSize: 16,
-        fontWeight: 600,
-        color: '#fafafa' // 浅色文字
-      }}>
-        节点调色板
-      </h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div className={styles.paletteContainer}>
+      <div style={{ padding: '16px', borderBottom: '1px solid var(--neo-border)' }}>
+        <h3 style={{ margin: 0, fontFamily: 'var(--font-family-serif)', color: 'var(--neo-gold)' }}>
+          Instruments
+        </h3>
+        <p style={{ margin: 0, fontSize: '10px', color: 'var(--neo-text-2)', textTransform: 'uppercase' }}>
+          Node Component Library
+        </p>
+      </div>
+      <div style={{ padding: '12px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {nodeTypeConfigs.map((config) => (
           <Tooltip key={config.type} title={config.description} placement="right">
-            <Card
-              size="small"
-              hoverable
+            <div
               draggable
               onDragStart={(e) => handleDragStart(e, config.type)}
               onClick={() => onAddNode(config.type)}
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '10px',
+                borderRadius: '6px',
+                border: '1px solid var(--neo-border)',
+                background: 'var(--neo-surface-2)',
                 cursor: 'grab',
-                borderLeft: `4px solid ${config.color}`,
-                backgroundColor: '#1a1a1a', // 深色卡片背景
-                borderColor: '#262626',
+                transition: 'all 0.2s',
+                borderLeft: `3px solid ${config.color}`,
               }}
-              styles={{
-                body: {
-                  padding: '8px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                },
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--neo-gold)';
+                e.currentTarget.style.background = 'var(--neo-surface-1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--neo-border)';
+                e.currentTarget.style.background = 'var(--neo-surface-2)';
               }}
             >
               <div
                 style={{
-                  width: 32,
-                  height: 32,
+                  width: 24,
+                  height: 24,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  borderRadius: 6,
-                  backgroundColor: config.color,
-                  color: '#fff',
+                  color: config.color,
                   fontSize: 16,
                 }}
               >
@@ -115,25 +112,14 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: '#fafafa' // 浅色文字
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--neo-text)'
                 }}>
                   {config.label}
                 </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: '#8c8c8c', // 灰色描述文字
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {config.description}
-                </div>
               </div>
-            </Card>
+            </div>
           </Tooltip>
         ))}
       </div>
