@@ -1,13 +1,11 @@
-"""DatabaseExecutor 单元测试
-
-【遗留问题】此测试文件在并行运行时会出现数据库锁定问题（sqlite3.OperationalError: database is locked）。
-这是测试隔离问题，需要使用独立的数据库实例或添加适当的测试隔离机制。
-"""
+"""DatabaseExecutor 单元测试"""
 
 import os
 import sqlite3
 import tempfile
+import time
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -19,9 +17,14 @@ from src.infrastructure.executors.database_executor import DatabaseExecutor
 
 @pytest.fixture
 def temp_db():
-    """创建临时数据库用于测试"""
+    """创建临时数据库用于测试
+
+    使用UUID生成唯一的数据库文件名，避免并行测试时的数据库锁冲突。
+    每个测试实例使用独立的数据库文件，确保测试隔离。
+    """
     temp_dir = tempfile.gettempdir()
-    db_path = Path(temp_dir) / "test_database_executor.db"
+    # 使用UUID生成唯一的数据库文件名，避免并行冲突
+    db_path = Path(temp_dir) / f"test_database_executor_{uuid4().hex}.db"
 
     # 创建数据库和测试表
     conn = sqlite3.connect(db_path)
@@ -40,9 +43,19 @@ def temp_db():
 
     yield f"sqlite:///{db_path}"
 
-    # 清理
+    # 清理：使用重试机制处理Windows文件锁问题
+    # 等待数据库连接完全关闭后再删除文件
     if db_path.exists():
-        os.remove(db_path)
+        for attempt in range(3):
+            try:
+                time.sleep(0.1)  # 短暂延迟确保连接关闭
+                os.remove(db_path)
+                break
+            except PermissionError:
+                if attempt == 2:
+                    # 最后一次尝试失败，忽略错误（临时文件会在系统重启时清理）
+                    pass
+                time.sleep(0.2)
 
 
 @pytest.mark.asyncio
