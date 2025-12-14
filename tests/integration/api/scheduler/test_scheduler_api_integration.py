@@ -7,13 +7,18 @@
 - 任务列表管理
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+# 导入所有models以确保它们注册到Base.metadata
+from src.infrastructure.database import models  # noqa: F401
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.models import WorkflowModel
+from src.interfaces.api.dependencies.scheduler import get_scheduler_service
 from src.interfaces.api.main import app
 
 
@@ -22,12 +27,29 @@ class TestSchedulerAPIIntegration:
     """调度器API集成测试"""
 
     @pytest.fixture
-    def db_setup(self):
-        """创建测试数据库和会话"""
-        engine = create_engine("sqlite:///:memory:")
+    def test_db_engine(self):
+        """创建测试数据库引擎"""
+        # 使用共享内存数据库（file:memdb?mode=memory&cache=shared）
+        # 这样多个连接可以共享同一个内存数据库
+        engine = create_engine(
+            "sqlite:///file:test_scheduler_db?mode=memory&cache=shared&uri=true",
+            connect_args={"check_same_thread": False},
+        )
         Base.metadata.create_all(engine)
-        Session = sessionmaker(bind=engine)
-        session = Session()
+        yield engine
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+    @pytest.fixture
+    def test_session_factory(self, test_db_engine):
+        """创建测试session工厂"""
+        return sessionmaker(bind=test_db_engine)
+
+    @pytest.fixture
+    def db_setup(self, test_session_factory):
+        """准备测试数据并返回数据库依赖覆盖函数"""
+        # 创建session并准备测试数据
+        session = test_session_factory()
 
         # 创建测试工作流
         workflow = WorkflowModel(
@@ -40,14 +62,46 @@ class TestSchedulerAPIIntegration:
         )
         session.add(workflow)
         session.commit()
-
-        yield session
         session.close()
 
+        # 返回依赖覆盖函数
+        def override_get_db_session():
+            session = test_session_factory()
+            try:
+                yield session
+            finally:
+                session.close()
+
+        return override_get_db_session
+
     @pytest.fixture
-    def client(self, db_setup):
-        """创建测试客户端"""
-        return TestClient(app)
+    def mock_scheduler_service(self):
+        """创建mock scheduler service"""
+        mock_scheduler = MagicMock()
+        # 配置mock方法的默认行为
+        mock_scheduler.add_job = MagicMock(return_value=None)
+        mock_scheduler.remove_job = MagicMock(return_value=None)
+        mock_scheduler.pause_job = MagicMock(return_value=None)
+        mock_scheduler.resume_job = MagicMock(return_value=None)
+        mock_scheduler.get_jobs = MagicMock(return_value=[])
+        mock_scheduler.running = True
+        return mock_scheduler
+
+    @pytest.fixture
+    def client(self, db_setup, mock_scheduler_service):
+        """创建测试客户端并覆盖数据库依赖和scheduler依赖"""
+        from src.infrastructure.database.engine import get_db_session
+
+        # 覆盖数据库依赖
+        app.dependency_overrides[get_db_session] = db_setup
+
+        # 覆盖scheduler service依赖
+        app.dependency_overrides[get_scheduler_service] = lambda: mock_scheduler_service
+
+        yield TestClient(app)
+
+        # 清理依赖覆盖
+        app.dependency_overrides.clear()
 
     def test_create_and_trigger_scheduled_workflow(self, client):
         """测试：创建定时任务并手动触发执行"""
