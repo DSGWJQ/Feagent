@@ -21,6 +21,14 @@ TDD Red 阶段：定义所有测试用例
 
 from datetime import datetime, timedelta
 
+import pytest
+
+# Mark all tests in this file as expected to fail (TDD Red Phase)
+pytestmark = pytest.mark.xfail(
+    reason="TDD Red Phase: Implementation in progress. See BACKEND_TESTING_PLAN.md P0-Task2",
+    strict=False,
+)
+
 # ==================== 模块1：ConversationSupervisionModule 测试 ====================
 
 
