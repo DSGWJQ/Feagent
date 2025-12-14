@@ -320,9 +320,9 @@ tests/                              # 362 files total
 | `classify_task.py` | 100% | 80% | 23 | ✅ 完成 | `31a53f8` |
 | `update_workflow_by_chat.py` | 100% | 70% | 16 | ✅ 完成 | `6c6e14a` |
 | `create_agent.py` | 100% | 70% | 14 | ✅ 完成 | `46d5190` |
-| `create_tool.py` | 100% | 70% | 8 | ✅ 完成 | `待提交` |
+| `create_tool.py` | 100% | 70% | 8 | ✅ 完成 | `3952534` |
 | `import_workflow.py` | 80% | 70% | 5-7 | ✅ 已达标 | - |
-| `github_auth.py` | 36% | 60% | 5-7 | ⏳ 待补充 | - |
+| `github_auth.py` | 100% | 60% | 9 | ✅ 完成 | `待提交` |
 
 **P1-Task1: ExecuteRunUseCase 测试补齐（LangGraph迁移）**
 - ✅ **架构迁移**：从LangChain迁移到LangGraph，移除Task实体依赖
@@ -404,6 +404,21 @@ tests/                              # 362 files total
   - Domain验证：空name→DomainError、纯空格name→DomainError、save不调用
   - 枚举转换：无效category→ValueError、save不调用
   - 异常传播：repository.save()异常→RuntimeError传播
+
+**P1-Task6: GitHubAuthUseCase 测试补充（邮箱处理边缘case）**
+- ✅ **需求分析**：识别90%覆盖率缺口（missing lines 119-122, 126），聚焦邮箱处理fallback逻辑
+- ✅ **测试设计**：Codex协作设计3个边缘case测试用例，覆盖邮箱API多级fallback路径
+- ✅ **TDD实践**：遵循Red-Green-Refactor循环，90%→100%一次通过（3/3测试）
+- ✅ **Codex审查**：✅ LGTM评价，覆盖率验证通过（lines 119-122验证/第一邮箱fallback，line 126占位邮箱）
+- ✅ **Mock策略**：AsyncMock + GitHub API response模拟（空primary/空verified/空emails列表）
+- 📊 **测试结果**：9/9 单元测试通过（6原有+3新增），覆盖率100%（超出60%目标40%）
+- 📁 **文件变更**：
+  - 更新：`tests/unit/application/use_cases/test_github_auth_use_case.py`（新增3测试，118行）
+  - 无需修改：`src/application/use_cases/github_auth.py`（实现已稳定）
+- 📝 **测试覆盖**（新增3测试）：
+  - Edge Case A：无主邮箱但有verified邮箱→优先使用verified邮箱（覆盖lines 119-122 verified分支）
+  - Edge Case B：无主邮箱、无verified邮箱但emails非空→使用第一个邮箱（覆盖lines 121-122 fallback分支）
+  - Edge Case C：邮箱API返回空列表→使用占位邮箱 `{login}@users.noreply.github.com`（覆盖line 126）
 
 ### 5.4 P2: Domain/Services 核心闭环
 
@@ -641,7 +656,7 @@ def mock_external_services(request):
 | `create_agent.py` | `test_create_agent.py` | 10 | - |
 | `create_tool.py` | `test_create_tool.py` | 8 | - |
 | `import_workflow.py` | `test_import_workflow.py` | 6 | - |
-| `github_auth.py` | `test_github_auth.py` | 6 | - |
+| `github_auth.py` | `test_github_auth.py` | 9 | - |
 
 **测试用例模板** (`execute_run.py`):
 

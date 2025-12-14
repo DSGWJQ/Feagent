@@ -143,6 +143,126 @@ class TestGitHubAuthUseCaseNewUser:
         assert result.user.email == "primary@example.com"
         mock_github_service.get_user_emails.assert_called_once_with("gho_token")
 
+    @pytest.mark.asyncio
+    async def test_new_user_without_primary_email_should_use_verified_email(
+        self, github_auth_use_case, mock_github_service, mock_user_repository, mock_jwt_service
+    ):
+        """
+        Edge Case A：无主邮箱但存在verified邮箱
+
+        Given: GitHub用户信息中email为空，邮箱API返回无primary但有verified邮箱
+        When: 执行GitHub登录
+        Then: 应该选择verified邮箱作为用户邮箱
+        """
+        # Arrange
+        mock_github_service.exchange_code_for_token.return_value = "gho_token"
+        mock_github_service.get_user_info.return_value = {
+            "id": 22222,
+            "login": "verifieduser",
+            "name": "Verified User",
+            "email": None,
+            "avatar_url": "https://avatars.githubusercontent.com/u/22222",
+            "html_url": "https://github.com/verifieduser",
+        }
+        mock_github_service.get_user_emails.return_value = [
+            {"email": "first_unverified@example.com", "primary": False, "verified": False},
+            {"email": "verified@example.com", "primary": False, "verified": True},
+        ]
+        mock_user_repository.find_by_github_id.return_value = None
+        mock_jwt_service.create_access_token.return_value = "jwt_token"
+
+        # Act
+        input_data = GitHubAuthInput(code="code")
+        result = await github_auth_use_case.execute(input_data)
+
+        # Assert
+        assert result.user.email == "verified@example.com"
+        mock_github_service.exchange_code_for_token.assert_called_once_with("code")
+        mock_github_service.get_user_info.assert_called_once_with("gho_token")
+        mock_github_service.get_user_emails.assert_called_once_with("gho_token")
+        mock_user_repository.find_by_github_id.assert_called_once_with(22222)
+        mock_user_repository.save.assert_called_once()
+        mock_jwt_service.create_access_token.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_new_user_without_primary_or_verified_email_should_use_first_email(
+        self, github_auth_use_case, mock_github_service, mock_user_repository, mock_jwt_service
+    ):
+        """
+        Edge Case B：无主邮箱且无verified邮箱，但emails非空
+
+        Given: GitHub用户信息中email为空，邮箱API返回列表但都不是primary/verified
+        When: 执行GitHub登录
+        Then: 应该使用emails列表中的第一个邮箱
+        """
+        # Arrange
+        mock_github_service.exchange_code_for_token.return_value = "gho_token"
+        mock_github_service.get_user_info.return_value = {
+            "id": 33333,
+            "login": "firstemailuser",
+            "name": "First Email User",
+            "email": None,
+            "avatar_url": "https://avatars.githubusercontent.com/u/33333",
+            "html_url": "https://github.com/firstemailuser",
+        }
+        mock_github_service.get_user_emails.return_value = [
+            {"email": "first@example.com", "primary": False, "verified": False},
+            {"email": "second@example.com", "primary": False, "verified": False},
+        ]
+        mock_user_repository.find_by_github_id.return_value = None
+        mock_jwt_service.create_access_token.return_value = "jwt_token"
+
+        # Act
+        input_data = GitHubAuthInput(code="code")
+        result = await github_auth_use_case.execute(input_data)
+
+        # Assert
+        assert result.user.email == "first@example.com"
+        mock_github_service.exchange_code_for_token.assert_called_once_with("code")
+        mock_github_service.get_user_info.assert_called_once_with("gho_token")
+        mock_github_service.get_user_emails.assert_called_once_with("gho_token")
+        mock_user_repository.find_by_github_id.assert_called_once_with(33333)
+        mock_user_repository.save.assert_called_once()
+        mock_jwt_service.create_access_token.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_new_user_with_no_emails_should_use_placeholder_email(
+        self, github_auth_use_case, mock_github_service, mock_user_repository, mock_jwt_service
+    ):
+        """
+        Edge Case C：邮箱API返回空列表
+
+        Given: GitHub用户信息中email为空，邮箱API返回空列表
+        When: 执行GitHub登录
+        Then: 应该使用占位邮箱 {login}@users.noreply.github.com
+        """
+        # Arrange
+        mock_github_service.exchange_code_for_token.return_value = "gho_token"
+        mock_github_service.get_user_info.return_value = {
+            "id": 44444,
+            "login": "noemailuser",
+            "name": "No Email User",
+            "email": None,
+            "avatar_url": "https://avatars.githubusercontent.com/u/44444",
+            "html_url": "https://github.com/noemailuser",
+        }
+        mock_github_service.get_user_emails.return_value = []
+        mock_user_repository.find_by_github_id.return_value = None
+        mock_jwt_service.create_access_token.return_value = "jwt_token"
+
+        # Act
+        input_data = GitHubAuthInput(code="code")
+        result = await github_auth_use_case.execute(input_data)
+
+        # Assert
+        assert result.user.email == "noemailuser@users.noreply.github.com"
+        mock_github_service.exchange_code_for_token.assert_called_once_with("code")
+        mock_github_service.get_user_info.assert_called_once_with("gho_token")
+        mock_github_service.get_user_emails.assert_called_once_with("gho_token")
+        mock_user_repository.find_by_github_id.assert_called_once_with(44444)
+        mock_user_repository.save.assert_called_once()
+        mock_jwt_service.create_access_token.assert_called_once()
+
 
 class TestGitHubAuthUseCaseExistingUser:
     """测试老用户再次登录"""
