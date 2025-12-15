@@ -105,6 +105,8 @@ class TestRunAsync:
     @pytest.mark.asyncio
     async def test_run_async_terminates_by_circuit_breaker(self, mock_agent):
         """Test: run_async terminates when circuit breaker is open"""
+        # Set up coordinator with circuit breaker
+        mock_agent.coordinator = MagicMock()
         mock_agent.coordinator.circuit_breaker = MagicMock(is_open=True)
 
         result = await mock_agent.run_async("test input")
@@ -359,18 +361,26 @@ class TestMakeDecision:
 
     def test_make_decision_creates_decision_with_valid_action(self, mock_agent, models_module):
         """Test: make_decision creates Decision for valid action_type"""
-        mock_agent.llm.decide_action = MagicMock(return_value={"action_type": "continue"})
+        mock_agent.llm.decide_action = AsyncMock(
+            return_value={"action_type": "continue", "thought": "Continuing reasoning"}
+        )
 
         decision = mock_agent.make_decision("test hint")
 
         assert decision.type == models_module.DecisionType.CONTINUE
         assert decision.payload["action_type"] == "continue"
+        assert decision.payload["thought"] == "Continuing reasoning"
         mock_agent.session_context.add_decision.assert_called_once()
 
     def test_make_decision_records_to_session_context(self, mock_agent):
         """Test: make_decision records decision to session context"""
-        mock_agent.llm.decide_action = MagicMock(
-            return_value={"action_type": "create_node", "node_type": "python"}
+        mock_agent.llm.decide_action = AsyncMock(
+            return_value={
+                "action_type": "create_node",
+                "node_type": "PYTHON",
+                "node_name": "test_node",
+                "config": {"script": "print('hello')"},
+            }
         )
 
         mock_agent.make_decision("create a node")
@@ -384,7 +394,7 @@ class TestMakeDecision:
         """Test: make_decision handles Pydantic ValidationError"""
         from pydantic import ValidationError
 
-        mock_agent.llm.decide_action = MagicMock(
+        mock_agent.llm.decide_action = AsyncMock(
             return_value={"action_type": "create_node"}  # Missing required fields
         )
 
@@ -407,7 +417,7 @@ class TestMakeDecision:
 
     def test_make_decision_manages_metadata(self, mock_agent, monkeypatch):
         """Test: make_decision stores metadata in _decision_metadata"""
-        mock_agent.llm.decide_action = MagicMock(return_value={"action_type": "continue"})
+        mock_agent.llm.decide_action = AsyncMock(return_value={"action_type": "continue"})
 
         # Mock validate_and_enhance_decision to return metadata
         def mock_validate(*args, **kwargs):
@@ -486,21 +496,19 @@ class TestRunSync:
         assert result.final_response == "Done"
         assert result.iterations == 1
 
-    def test_run_sync_uses_mock_side_effect(self, mock_agent):
-        """Test: _run_sync handles mock side_effect for iterations"""
+    def test_run_sync_respects_should_continue_false(self, mock_agent):
+        """Test: _run_sync terminates when should_continue returns False"""
         mock_agent.llm.think = MagicMock(return_value="thinking")
-        mock_agent.llm.decide_action = MagicMock()
-        mock_agent.llm.decide_action.side_effect = [
-            {"action_type": "continue"},
-            {"action_type": "respond", "response": "Final"},
-        ]
-        mock_agent.llm.should_continue = MagicMock()
-        mock_agent.llm.should_continue.side_effect = [True, False]
+        mock_agent.llm.decide_action = MagicMock(
+            return_value={"action_type": "continue", "response": "Continuing"}
+        )
+        mock_agent.llm.should_continue = MagicMock(return_value=False)
 
         result = mock_agent._run_sync("test input")
 
-        assert result.iterations == 2
+        assert result.iterations == 1
         assert result.completed is True
+        assert result.final_response == "Continuing"
 
     def test_run_sync_terminates_by_max_iterations(self, mock_agent):
         """Test: _run_sync terminates when max iterations reached"""
@@ -517,15 +525,19 @@ class TestRunSync:
     def test_run_sync_records_decisions_for_workflow_actions(self, mock_agent, models_module):
         """Test: _run_sync records decisions for create_node/execute_workflow"""
         mock_agent.llm.think = MagicMock(return_value="thinking")
-        mock_agent.llm.decide_action = MagicMock()
-        mock_agent.llm.decide_action.side_effect = [
-            {"action_type": "create_node", "node_type": "python"},
-            {"action_type": "respond", "response": "Done"},
-        ]
-        mock_agent.llm.should_continue = MagicMock(return_value=True)
+        mock_agent.llm.decide_action = MagicMock(
+            return_value={
+                "action_type": "create_node",
+                "node_type": "PYTHON",
+                "node_name": "test_node",
+                "config": {"script": "print('test')"},
+            }
+        )
+        mock_agent.llm.should_continue = MagicMock(return_value=False)
 
         mock_agent._run_sync("test input")
 
+        # Verify _record_decision was called via session_context.add_decision
         mock_agent.session_context.add_decision.assert_called()
 
 
