@@ -1,0 +1,648 @@
+"""ChromaRetrieverService 单元测试（P0）
+
+测试范围:
+1. 初始化：Chroma/Embeddings/Tokenizer/Collection wiring（使用 monkeypatch 隔离外部依赖）
+2. 检索：where clause 构建、空结果处理、距离→相似度、排序、metadata 清洗与 chunk_index 兜底
+3. 重排序：跳过无 embedding 的 chunk、余弦相似度排序与 top_k 截断
+4. 上下文构建：token budget 跳过逻辑、格式化输出
+5. 写入/删除/更新：空输入 no-op、删除后条件性重写入
+
+测试原则:
+- 单元测试不依赖真实 OpenAI/ChromaDB（全部 mock/fake）
+- 使用 AsyncMock 覆盖 embeddings 的 async 调用
+- Given/When/Then 中文说明，便于审阅与维护
+
+覆盖目标: 21.5% → 70%（P0 tests）
+测试数量: 12 tests（P0）
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+from pydantic import SecretStr
+
+import src.infrastructure.knowledge_base.chroma_retriever_service as chroma_mod
+from src.domain.knowledge_base.entities.document_chunk import DocumentChunk
+from src.infrastructure.knowledge_base.chroma_retriever_service import ChromaRetrieverService
+
+# ====================
+# Fakes
+# ====================
+
+
+class FakeTokenizer:
+    """确定性 tokenizer：token 数量等于文本长度（仅用于测试 token budget 行为）。"""
+
+    def encode(self, text: str) -> list[int]:
+        return list(range(len(text)))
+
+
+@dataclass
+class QueryCall:
+    query_embeddings: list[list[float]]
+    n_results: int
+    where: dict[str, object] | None
+    include: list[str]
+
+
+class FakeCollection:
+    """Fake Chroma collection：记录调用参数，并返回可配置的结果。"""
+
+    def __init__(self) -> None:
+        self.query_calls: list[QueryCall] = []
+        self.add_calls: list[dict[str, object]] = []
+        self.get_calls: list[dict[str, object]] = []
+        self.delete_calls: list[dict[str, object]] = []
+
+        self.query_result: dict[str, object] = {}
+        self.get_result: dict[str, object] = {"ids": []}
+
+    def query(
+        self,
+        *,
+        query_embeddings: list[list[float]],
+        n_results: int,
+        where: dict[str, object] | None,
+        include: list[str],
+    ) -> dict[str, object]:
+        self.query_calls.append(
+            QueryCall(
+                query_embeddings=query_embeddings,
+                n_results=n_results,
+                where=where,
+                include=include,
+            )
+        )
+        return self.query_result
+
+    def add(
+        self,
+        *,
+        ids: list[str],
+        documents: list[str],
+        embeddings: list[list[float]],
+        metadatas: list[dict[str, object]],
+    ) -> None:
+        self.add_calls.append(
+            {
+                "ids": ids,
+                "documents": documents,
+                "embeddings": embeddings,
+                "metadatas": metadatas,
+            }
+        )
+
+    def get(self, *, where: dict[str, object], include: list[str]) -> dict[str, object]:
+        self.get_calls.append({"where": where, "include": include})
+        return self.get_result
+
+    def delete(self, *, ids: list[object]) -> None:
+        self.delete_calls.append({"ids": ids})
+
+
+class FakeSettings:
+    """替代 chromadb.config.Settings，便于断言 anonymized_telemetry。"""
+
+    def __init__(self, *, anonymized_telemetry: bool) -> None:
+        self.anonymized_telemetry = anonymized_telemetry
+
+
+class FakePersistentClient:
+    """替代 chromadb.PersistentClient。"""
+
+    def __init__(self, *, path: str, settings: object) -> None:
+        self.path = path
+        self.settings = settings
+        self.created_collections: list[dict[str, object]] = []
+        self._collection = FakeCollection()
+
+    def get_or_create_collection(self, *, name: str, metadata: dict[str, object]) -> FakeCollection:
+        self.created_collections.append({"name": name, "metadata": metadata})
+        return self._collection
+
+
+class FakeEmbeddings:
+    """替代 langchain_openai.OpenAIEmbeddings。"""
+
+    def __init__(self, *, model: str, api_key: SecretStr | None) -> None:
+        self.model = model
+        self.api_key = api_key
+        self.aembed_query = AsyncMock(return_value=[0.01, 0.02, 0.03])
+
+
+class FakeSplitter:
+    """替代 RecursiveCharacterTextSplitter，记录构造参数并可控返回。"""
+
+    def __init__(
+        self,
+        *,
+        chunk_size: int,
+        chunk_overlap: int,
+        length_function,
+    ) -> None:
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.length_function = length_function
+        self._chunks_to_return: list[str] = []
+
+    def split_text(self, content: str) -> list[str]:
+        if self._chunks_to_return:
+            return list(self._chunks_to_return)
+        return [content]
+
+
+# ====================
+# Fixtures
+# ====================
+
+
+@pytest.fixture
+def fake_collection() -> FakeCollection:
+    return FakeCollection()
+
+
+@pytest.fixture
+def service(fake_collection: FakeCollection) -> ChromaRetrieverService:
+    """创建不走 __init__ 的 service（隔离重依赖）"""
+    svc = ChromaRetrieverService.__new__(ChromaRetrieverService)
+    svc.repository = object()
+    svc.model_name = "text-embedding-3-small"
+    svc.chunk_size = 1000
+    svc.chunk_overlap = 200
+    svc.tokenizer = FakeTokenizer()
+    svc.embeddings = SimpleNamespace(aembed_query=AsyncMock(return_value=[0.01, 0.02, 0.03]))
+    svc.collection = fake_collection
+    return svc
+
+
+# ====================
+# Tests: __init__
+# ====================
+
+
+class TestInit:
+    """测试初始化 wiring（不触发真实外部依赖）。"""
+
+    def test_init_wires_dependencies_and_collection(self, monkeypatch: pytest.MonkeyPatch):
+        """测试：初始化应创建 chroma client 并 get_or_create_collection
+
+        Given: monkeypatch 掉 OpenAIEmbeddings / encoding_for_model / PersistentClient / Settings / Splitter
+        When: 构造 ChromaRetrieverService
+        Then: PersistentClient 使用 path/settings；collection 使用 name/metadata
+        """
+        # Given
+        monkeypatch.setattr(chroma_mod, "OpenAIEmbeddings", FakeEmbeddings)
+        monkeypatch.setattr(chroma_mod, "encoding_for_model", lambda _model: FakeTokenizer())
+        monkeypatch.setattr(chroma_mod, "Settings", FakeSettings)
+        monkeypatch.setattr(chroma_mod, "RecursiveCharacterTextSplitter", FakeSplitter)
+        monkeypatch.setattr(chroma_mod.chromadb, "PersistentClient", FakePersistentClient)
+
+        # When
+        svc = ChromaRetrieverService(
+            knowledge_repository=object(),
+            openai_api_key="explicit-key",
+            model_name="text-embedding-3-small",
+            chroma_path="tmp/chroma_db",
+        )
+
+        # Then
+        assert isinstance(svc.chroma_client, FakePersistentClient)
+        assert svc.chroma_client.path == "tmp/chroma_db"
+        assert isinstance(svc.chroma_client.settings, FakeSettings)
+        assert svc.chroma_client.settings.anonymized_telemetry is False
+        assert svc.chroma_client.created_collections == [
+            {"name": "document_chunks", "metadata": {"hnsw:space": "cosine"}}
+        ]
+        assert isinstance(svc.collection, FakeCollection)
+
+    def test_init_uses_env_var_when_openai_api_key_omitted(self, monkeypatch: pytest.MonkeyPatch):
+        """测试：未显式传 openai_api_key 时应读取 OPENAI_API_KEY 并传入 embeddings
+
+        Given: OPENAI_API_KEY 已设置，且 embeddings 构造器可记录 api_key
+        When: 构造 ChromaRetrieverService(openai_api_key=None)
+        Then: embeddings.api_key 为 SecretStr 且值为 env key
+        """
+        # Given
+        monkeypatch.setenv("OPENAI_API_KEY", "env-key-123")
+        monkeypatch.setattr(chroma_mod, "OpenAIEmbeddings", FakeEmbeddings)
+        monkeypatch.setattr(chroma_mod, "encoding_for_model", lambda _model: FakeTokenizer())
+        monkeypatch.setattr(chroma_mod, "Settings", FakeSettings)
+        monkeypatch.setattr(chroma_mod, "RecursiveCharacterTextSplitter", FakeSplitter)
+        monkeypatch.setattr(chroma_mod.chromadb, "PersistentClient", FakePersistentClient)
+
+        # When
+        svc = ChromaRetrieverService(
+            knowledge_repository=object(),
+            openai_api_key=None,
+            chroma_path="tmp/chroma_db",
+        )
+
+        # Then
+        assert isinstance(svc.embeddings, FakeEmbeddings)
+        assert isinstance(svc.embeddings.api_key, SecretStr)
+        assert svc.embeddings.api_key.get_secret_value() == "env-key-123"
+
+
+# ====================
+# Tests: retrieve_relevant_chunks
+# ====================
+
+
+class TestRetrieveRelevantChunks:
+    """测试检索结果转换逻辑（where clause / metadata 清洗 / 排序）。"""
+
+    @pytest.mark.asyncio
+    async def test_retrieve_relevant_chunks_passes_where_none_when_no_filters(
+        self, service: ChromaRetrieverService, fake_collection: FakeCollection
+    ):
+        """测试：无 workflow_id 且无 filters 时 where 应为 None
+
+        Given: collection.query 可记录 where 参数，且 query_result 为空
+        When: 调用 retrieve_relevant_chunks(workflow_id=None, filters=None)
+        Then: collection.query(where=None)
+        """
+        # Given
+        service.generate_embedding = AsyncMock(return_value=[0.1, 0.2, 0.3])
+        fake_collection.query_result = {
+            "ids": [[]],
+            "documents": [[]],
+            "metadatas": [[]],
+            "distances": [[]],
+            "embeddings": [[]],
+        }
+
+        # When
+        result = await service.retrieve_relevant_chunks(query="q", workflow_id=None, filters=None)
+
+        # Then
+        assert result == []
+        assert len(fake_collection.query_calls) == 1
+        assert fake_collection.query_calls[0].where is None
+
+    @pytest.mark.asyncio
+    async def test_retrieve_relevant_chunks_merges_workflow_id_and_filters_into_where(
+        self, service: ChromaRetrieverService, fake_collection: FakeCollection
+    ):
+        """测试：workflow_id 与 filters 应合并到 where_clause
+
+        Given: workflow_id 与 filters 均提供
+        When: 调用 retrieve_relevant_chunks
+        Then: where_clause == {"workflow_id": ..., **filters}
+        """
+        # Given
+        service.generate_embedding = AsyncMock(return_value=[0.1, 0.2, 0.3])
+        fake_collection.query_result = {
+            "ids": [[]],
+            "documents": [[]],
+            "metadatas": [[]],
+            "distances": [[]],
+            "embeddings": [[]],
+        }
+
+        # When
+        _ = await service.retrieve_relevant_chunks(
+            query="q",
+            workflow_id="wf_1",
+            filters={"source": "upload"},
+        )
+
+        # Then
+        assert len(fake_collection.query_calls) == 1
+        assert fake_collection.query_calls[0].where == {"workflow_id": "wf_1", "source": "upload"}
+
+    @pytest.mark.asyncio
+    async def test_retrieve_relevant_chunks_returns_empty_when_ids_empty(
+        self, service: ChromaRetrieverService, fake_collection: FakeCollection
+    ):
+        """测试：Chroma 返回空 ids 时应返回 []
+
+        Given: results.ids == [[]]
+        When: 调用 retrieve_relevant_chunks
+        Then: 返回 []
+        """
+        # Given
+        service.generate_embedding = AsyncMock(return_value=[0.1])
+        fake_collection.query_result = {
+            "ids": [[]],
+            "documents": [[]],
+            "metadatas": [[]],
+            "distances": [[]],
+            "embeddings": [[]],
+        }
+
+        # When
+        result = await service.retrieve_relevant_chunks(query="q")
+
+        # Then
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_retrieve_relevant_chunks_builds_document_chunk_with_sanitized_metadata_and_chunk_index_fallback(
+        self,
+        service: ChromaRetrieverService,
+        fake_collection: FakeCollection,
+    ):
+        """测试：metadata 应过滤非标量值，chunk_index 非数值时应回退为 0
+
+        Given:
+          - metadata 包含 dict/list 等不可序列化值
+          - chunk_index 为字符串 "3"
+        When: 调用 retrieve_relevant_chunks
+        Then:
+          - chunk.chunk_index == 0（因为非 int/float）
+          - chunk.metadata 不包含 dict/list 项
+          - chunk.metadata 保留标量/None（包含 "chunk_index": "3" 字符串）
+        """
+        # Given
+        service.generate_embedding = AsyncMock(return_value=[0.1])
+        metadata = {
+            "document_id": "doc_1",
+            "chunk_index": "3",
+            "ok": "x",
+            "n": 1,
+            "b": True,
+            "none": None,
+            "bad_dict": {"k": "v"},
+            "bad_list": [1, 2],
+        }
+        fake_collection.query_result = {
+            "ids": [["c1"]],
+            "documents": [["hello"]],
+            "metadatas": [[metadata]],
+            "distances": [[0.2]],
+            "embeddings": [[[0.1, 0.2, 0.3]]],
+        }
+
+        # When
+        chunks_with_scores = await service.retrieve_relevant_chunks(query="q")
+
+        # Then
+        assert len(chunks_with_scores) == 1
+        chunk, score = chunks_with_scores[0]
+        assert chunk.document_id == "doc_1"
+        assert chunk.chunk_index == 0
+        assert score == pytest.approx(0.8)
+
+        assert chunk.metadata is not None
+        assert "bad_dict" not in chunk.metadata
+        assert "bad_list" not in chunk.metadata
+        assert chunk.metadata["ok"] == "x"
+        assert chunk.metadata["n"] == 1
+        assert chunk.metadata["b"] is True
+        assert chunk.metadata["none"] is None
+        assert chunk.metadata["chunk_index"] == "3"
+
+    @pytest.mark.asyncio
+    async def test_retrieve_relevant_chunks_converts_distance_to_similarity_and_sorts_descending(
+        self,
+        service: ChromaRetrieverService,
+        fake_collection: FakeCollection,
+    ):
+        """测试：distance 应转换为 similarity=1-distance，并按 similarity 降序排序
+
+        Given: 两条结果，distance 分别为 0.8 与 0.2（相似度分别 0.2 与 0.8）
+        When: 调用 retrieve_relevant_chunks
+        Then: 返回顺序应为 similarity 0.8 的在前
+        """
+        # Given
+        service.generate_embedding = AsyncMock(return_value=[0.1])
+        fake_collection.query_result = {
+            "ids": [["c1", "c2"]],
+            "documents": [["low_sim", "high_sim"]],
+            "metadatas": [
+                [
+                    {"document_id": "doc_low", "chunk_index": 0},
+                    {"document_id": "doc_high", "chunk_index": 1},
+                ]
+            ],
+            "distances": [[0.8, 0.2]],
+            "embeddings": [[[0.1, 0.2], [0.3, 0.4]]],
+        }
+
+        # When
+        chunks_with_scores = await service.retrieve_relevant_chunks(query="q")
+
+        # Then
+        assert [score for _chunk, score in chunks_with_scores] == [
+            pytest.approx(0.8),
+            pytest.approx(0.2),
+        ]
+        assert [chunk.document_id for chunk, _score in chunks_with_scores] == [
+            "doc_high",
+            "doc_low",
+        ]
+
+
+# ====================
+# Tests: rerank_chunks
+# ====================
+
+
+class TestRerankChunks:
+    """测试重排序逻辑（余弦相似度 + top_k）。"""
+
+    @pytest.mark.asyncio
+    async def test_rerank_chunks_skips_chunks_without_embedding(
+        self, service: ChromaRetrieverService
+    ):
+        """测试：chunk.embedding 为空时应跳过
+
+        Given: chunks 中包含 embedding=[] 与 embedding=[...] 的条目
+        When: 调用 rerank_chunks
+        Then: 返回仅包含有 embedding 的 chunk
+        """
+        # Given
+        service.generate_embedding = AsyncMock(return_value=[1.0, 0.0])
+        chunks = [
+            DocumentChunk(
+                id="c_empty",
+                document_id="doc",
+                content="empty",
+                embedding=[],
+                chunk_index=0,
+                created_at=datetime(2025, 1, 1, 0, 0, 0),
+                metadata={},
+            ),
+            DocumentChunk(
+                id="c_ok",
+                document_id="doc",
+                content="ok",
+                embedding=[1.0, 0.0],
+                chunk_index=1,
+                created_at=datetime(2025, 1, 1, 0, 0, 0),
+                metadata={},
+            ),
+        ]
+
+        # When
+        ranked = await service.rerank_chunks(query="q", chunks=chunks, top_k=5)
+
+        # Then
+        assert len(ranked) == 1
+        assert ranked[0][0].id == "c_ok"
+
+    @pytest.mark.asyncio
+    async def test_rerank_chunks_returns_top_k_sorted_by_cosine_similarity(
+        self, service: ChromaRetrieverService
+    ):
+        """测试：应按余弦相似度排序并截断 top_k
+
+        Given: query 向量为 [1,0]，chunk1=[1,0] 相似度更高，chunk2=[0,1] 更低
+        When: top_k=1 调用 rerank_chunks
+        Then: 只返回 chunk1
+        """
+        # Given
+        service.generate_embedding = AsyncMock(return_value=[1.0, 0.0])
+        chunk1 = DocumentChunk(
+            id="c1",
+            document_id="doc",
+            content="c1",
+            embedding=[1.0, 0.0],
+            chunk_index=0,
+            created_at=datetime(2025, 1, 1, 0, 0, 0),
+            metadata={},
+        )
+        chunk2 = DocumentChunk(
+            id="c2",
+            document_id="doc",
+            content="c2",
+            embedding=[0.0, 1.0],
+            chunk_index=1,
+            created_at=datetime(2025, 1, 1, 0, 0, 0),
+            metadata={},
+        )
+
+        # When
+        ranked = await service.rerank_chunks(query="q", chunks=[chunk2, chunk1], top_k=1)
+
+        # Then
+        assert len(ranked) == 1
+        assert ranked[0][0].id == "c1"
+        assert ranked[0][1] == pytest.approx(1.0)
+
+
+# ====================
+# Tests: get_context_for_query
+# ====================
+
+
+class TestGetContextForQuery:
+    """测试上下文构建（token budget + 格式化）。"""
+
+    @pytest.mark.asyncio
+    async def test_get_context_for_query_respects_token_budget_and_skips_oversized_chunks(
+        self, service: ChromaRetrieverService
+    ):
+        """测试：超过 max_tokens 的 chunk 应被跳过
+
+        Given:
+          - retrieve_relevant_chunks 返回 [big(4 tokens), small(2 tokens)]
+          - max_tokens=3
+        When: 调用 get_context_for_query
+        Then: 仅 small 被加入上下文，且包含固定前缀格式
+        """
+        # Given
+        big = DocumentChunk(
+            id="big",
+            document_id="doc",
+            content="bbbb",  # 4 tokens (FakeTokenizer: len)
+            embedding=[0.1],
+            chunk_index=0,
+            created_at=datetime(2025, 1, 1, 0, 0, 0),
+            metadata={},
+        )
+        small = DocumentChunk(
+            id="small",
+            document_id="doc",
+            content="aa",  # 2 tokens
+            embedding=[0.1],
+            chunk_index=1,
+            created_at=datetime(2025, 1, 1, 0, 0, 0),
+            metadata={},
+        )
+        service.retrieve_relevant_chunks = AsyncMock(return_value=[(big, 0.9), (small, 0.8)])
+
+        # When
+        context = await service.get_context_for_query(query="q", workflow_id="wf", max_tokens=3)
+
+        # Then
+        assert context == "[文档片段] aa"
+
+
+# ====================
+# Tests: add/delete/update document chunks
+# ====================
+
+
+class TestPersistenceOperations:
+    """测试与 collection 的交互（add/get/delete + update orchestration）。"""
+
+    @pytest.mark.asyncio
+    async def test_add_document_chunks_noops_on_empty_list(
+        self, service: ChromaRetrieverService, fake_collection: FakeCollection
+    ):
+        """测试：add_document_chunks([]) 应直接返回且不调用 collection.add
+
+        Given: 空 chunks 列表
+        When: 调用 add_document_chunks
+        Then: collection.add_calls 仍为空
+        """
+        # Given / When
+        await service.add_document_chunks([])
+
+        # Then
+        assert fake_collection.add_calls == []
+
+    @pytest.mark.asyncio
+    async def test_update_document_chunk_deletes_then_conditionally_readds_based_on_embedding(
+        self, service: ChromaRetrieverService
+    ):
+        """测试：update_document_chunk 应先 delete，再根据 embedding 是否存在决定是否 add
+
+        Given:
+          - chunk_a.embedding=[]
+          - chunk_b.embedding=[...]
+        When: 分别调用 update_document_chunk
+        Then:
+          - 两次均调用 delete_document_chunks
+          - 仅 chunk_b 触发 add_document_chunks
+        """
+        # Given
+        service.delete_document_chunks = AsyncMock()
+        service.add_document_chunks = AsyncMock()
+
+        chunk_a = DocumentChunk(
+            id="a",
+            document_id="doc_a",
+            content="a",
+            embedding=[],
+            chunk_index=0,
+            created_at=datetime(2025, 1, 1, 0, 0, 0),
+            metadata={},
+        )
+        chunk_b = DocumentChunk(
+            id="b",
+            document_id="doc_b",
+            content="b",
+            embedding=[0.1],
+            chunk_index=0,
+            created_at=datetime(2025, 1, 1, 0, 0, 0),
+            metadata={},
+        )
+
+        # When
+        await service.update_document_chunk(chunk_a)
+        await service.update_document_chunk(chunk_b)
+
+        # Then
+        assert service.delete_document_chunks.await_count == 2
+        service.delete_document_chunks.assert_any_await("doc_a")
+        service.delete_document_chunks.assert_any_await("doc_b")
+
+        assert service.add_document_chunks.await_count == 1
+        service.add_document_chunks.assert_awaited_with([chunk_b])

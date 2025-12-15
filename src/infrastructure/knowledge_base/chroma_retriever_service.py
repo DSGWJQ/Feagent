@@ -124,7 +124,7 @@ class ChromaRetrieverService(RetrieverService):
             query_embeddings=[query_embedding],
             n_results=top_k,
             where=where_clause if where_clause else None,
-            include=["documents", "metadatas", "distances"],
+            include=["documents", "metadatas", "distances", "embeddings"],
         )
 
         # 转换结果
@@ -133,6 +133,7 @@ class ChromaRetrieverService(RetrieverService):
         documents = results.get("documents") or []
         metadatas = results.get("metadatas") or []
         distances = results.get("distances") or []
+        embeddings = results.get("embeddings") or []
 
         if ids and ids[0]:
             for i, _chunk_id in enumerate(ids[0]):
@@ -155,11 +156,22 @@ class ChromaRetrieverService(RetrieverService):
                     if isinstance(value, str | int | float | bool) or value is None
                 }
 
+                # 获取嵌入向量
+                embedding = []
+                if embeddings and embeddings[0]:
+                    embedding = embeddings[0][i] or []
+
+                # 验证嵌入向量存在（Domain要求）
+                if not embedding:
+                    raise ValueError(
+                        f"Chroma query did not return embeddings for chunk at index {i}"
+                    )
+
                 # 创建DocumentChunk对象
                 chunk = DocumentChunk.create(
                     document_id=document_id,
                     content=content,
-                    embedding=[],  # 不需要返回嵌入向量
+                    embedding=[float(x) for x in embedding],
                     chunk_index=chunk_index,
                     metadata=safe_metadata,
                 )
