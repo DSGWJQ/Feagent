@@ -243,6 +243,61 @@ class TestWorkflowRepositorySave:
         assert edge_loaded.target_node_id == "node_http"
         assert edge_loaded.condition == "success == true"
 
+    def test_save_existing_workflow_updates_fields_via_merge(
+        self, workflow_repository: SQLAlchemyWorkflowRepository, session: Session
+    ):
+        """
+        测试：保存已存在的工作流应更新字段（merge语义）
+
+        Given: 数据库中已存在工作流wf_update_test
+        When: 修改name/description/status后再次save
+        Then:
+          - 所有修改应被持久化
+          - 重新加载时字段值正确更新
+        """
+        # Given: 先保存初始版本
+        node_v1 = make_node(
+            node_id="node_v1",
+            node_type=NodeType.START,
+            name="开始",
+            x=0.0,
+            y=0.0,
+        )
+
+        workflow_v1 = make_workflow(
+            workflow_id="wf_update_test",
+            name="初始名称",
+            description="初始描述",
+            nodes=[node_v1],
+            edges=[],
+            status=WorkflowStatus.DRAFT,
+            created_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
+        )
+        workflow_repository.save(workflow_v1)
+        session.flush()
+
+        # When: 修改字段后再次保存
+        workflow_v2 = make_workflow(
+            workflow_id="wf_update_test",  # 相同ID
+            name="更新后的名称",
+            description="更新后的描述",
+            nodes=[node_v1],
+            edges=[],
+            status=WorkflowStatus.PUBLISHED,  # 状态改变
+            created_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 1, 11, 0, 0, tzinfo=UTC),
+        )
+        workflow_repository.save(workflow_v2)
+        session.flush()
+
+        # Then: 验证更新
+        loaded = workflow_repository.get_by_id("wf_update_test")
+        assert loaded.name == "更新后的名称"
+        assert loaded.description == "更新后的描述"
+        assert loaded.status == WorkflowStatus.PUBLISHED
+        assert loaded.updated_at == datetime(2025, 1, 1, 11, 0, 0, tzinfo=UTC)
+
 
 # ====================
 # 测试类：GetById（根据ID获取）
