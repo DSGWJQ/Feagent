@@ -536,12 +536,49 @@ tests/                              # 362 files total
 
 ### 5.5 P3: Domain/Agents 状态机
 
-| 模块 | 预计用例数 | 重点 |
-|------|-----------|------|
-| `error_handling.py` | 30-40 | 错误分类、恢复策略 |
-| `conversation_agent_react_core.py` | 25-30 | ReAct循环、终止条件 |
-| `conversation_agent_state.py` | 20-25 | 状态转换、并发安全 |
-| `node_definition.py` | 20-25 | 节点创建、验证、序列化 |
+| 模块 | 预计用例数 | 重点 | 状态 |
+|------|-----------|------|------|
+| `error_handling.py` | 30-40 | 错误分类、恢复策略 | ✅ **完成** (43测试, 100%覆盖) |
+| `conversation_agent_react_core.py` | 25-30 | ReAct循环、终止条件 | 待开始 |
+| `conversation_agent_state.py` | 20-25 | 状态转换、并发安全 | 待开始 |
+| `node_definition.py` | 20-25 | 节点创建、验证、序列化 | 待开始 |
+
+#### P3-Task1: error_handling.py ✅ (完成于 2025-12-15)
+
+**目标**: 为错误处理与恢复模块实现全面单元测试
+
+**实施结果**:
+- 📁 测试文件: `tests/unit/domain/agents/test_error_handling.py` (648 lines)
+- 📊 **测试数量**: **43个测试** (超出预期30-40的上限)
+- 📈 **覆盖率**: **100%** (302 statements, 0 missed) - 从0% → 100%
+- 🎯 **Codex审查**: LGTM (生产级质量)
+
+**测试分布** (8个测试类):
+1. **TestErrorCategoryAndMapper** (3测试): `is_retryable()`, `requires_user_intervention()`, RecoveryStrategyMapper逻辑
+2. **TestExceptionClassifier** (9测试): 精确类型映射、子类检测、关键词匹配、UNKNOWN fallback、`classify_with_context()`
+3. **TestBackoffCalculator** (5测试): 指数增长、最大延迟上限、jitter范围、零/负jitter处理
+4. **TestUserFriendlyMessageGenerator** (2测试): 消息格式化、自定义模板覆盖
+5. **TestUserActionOptionsGenerator** (2测试): 未知类别默认选项、abort选项自动追加
+6. **TestRecoveryExecutor** (8测试): RETRY/RETRY_WITH_BACKOFF/SKIP/REPLAN/ASK_USER/ABORT/FALLBACK分支、retry异常路径
+7. **TestErrorRecoveryHandler** (7测试): create_plan逻辑、backoff delay、escalation、apply_user_response (含参数化测试)
+8. **TestErrorDialogueManager** (4测试): start_error_dialogue、process_user_response、complete_recovery、无状态保护
+9. **TestErrorLoggerAndEvents** (2测试): log_error默认context、log_recovery_attempt + Event时间戳
+
+**覆盖的关键逻辑**:
+- ✅ 10种ErrorCategory的retryable/user_intervention判断
+- ✅ ExceptionClassifier的三层映射（类型 → 子类 → 关键词）
+- ✅ BackoffCalculator的指数退避 + jitter算法
+- ✅ RecoveryExecutor的7种RecoveryAction执行路径
+- ✅ ErrorRecoveryHandler的escalation逻辑（重试耗尽 → ASK_USER）
+- ✅ ErrorDialogueManager的用户干预工作流
+- ✅ 所有边缘分支（UNKNOWN fallback、retry异常、无状态保护等）
+
+**Codex合作亮点**:
+- Phase 2: Codex设计36测试规范（P0/P1/P2优先级分级）
+- Phase 3: Codex生成完整测试代码原型（606 lines unified diff）
+- Phase 4: Codex审查遗漏11行并建议补充测试（96% → 100%）
+
+**后续任务**: P3-Task2 (conversation_agent_react_core.py, 25-30测试目标)
 
 ---
 
