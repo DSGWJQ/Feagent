@@ -19,6 +19,7 @@
 """
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -42,6 +43,8 @@ from src.domain.services.expression_evaluator import (
 )
 from src.domain.services.node_hierarchy_service import NodeHierarchyService
 from src.domain.services.node_registry import Node, NodeFactory, NodeType
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -451,6 +454,21 @@ class WorkflowAgent:
             self._container_executor_initialized = True
         return self._container_executor
 
+    @property
+    def container_executor(self) -> Any:
+        """容器执行器（兼容外部注入/测试用例）"""
+        return self.get_container_executor()
+
+    @container_executor.setter
+    def container_executor(self, executor: Any) -> None:
+        """设置容器执行器（用于测试注入）"""
+        if executor is None:
+            self._container_executor = None
+            self._container_executor_initialized = False
+        else:
+            self._container_executor = executor
+            self._container_executor_initialized = True
+
     def _create_container_executor(self) -> Any:
         """创建默认容器执行器
 
@@ -547,6 +565,24 @@ class WorkflowAgent:
         self._execution_status = ExecutionStatus.PENDING
         return {"status": "pending_human_input"}
 
+    def _get_node_and_definition(
+        self, node_id: str
+    ) -> tuple["Node | None", "NodeDefinition | None"]:
+        """获取节点和节点定义（P2: 统一数据源查找）
+
+        从 _nodes 和 _node_definitions 两个存储中查找节点。
+        这是一个兼容性辅助方法，未来应该统一数据源。
+
+        参数：
+            node_id: 节点 ID
+
+        返回：
+            (Node | None, NodeDefinition | None) 元组
+        """
+        node = self._nodes.get(node_id)
+        node_def = self._node_definitions.get(node_id)
+        return node, node_def
+
     async def execute_container_node(self, node_id: str) -> dict[str, Any]:
         """执行容器节点
 
@@ -556,39 +592,128 @@ class WorkflowAgent:
         返回：
             执行结果字典
         """
+        from src.domain.agents.container_events import (
+            ContainerExecutionCompletedEvent,
+            ContainerExecutionStartedEvent,
+        )
         from src.domain.agents.container_executor import (
             ContainerConfig,
             ContainerExecutionResult,
         )
 
-        # 获取节点定义
-        node_def = self._node_definitions.get(node_id)
-        if not node_def:
+        # 使用辅助方法获取节点和定义（P2: 统一查找逻辑）
+        node, node_def = self._get_node_and_definition(node_id)
+        workflow_id = self.workflow_context.workflow_id if self.workflow_context else "unknown"
+
+        # 如果节点不存在，返回错误（不发布事件，因为没有有效的容器ID）
+        if not node and not node_def:
             return {"success": False, "error": f"Node {node_id} not found"}
 
-        # 获取容器执行器
-        executor = self.get_container_executor()
+        # 收集节点输入数据（P1: 数据流传递）
+        inputs = self._collect_node_inputs(node_id)
 
-        # 检查执行器是否可用
-        if not executor.is_available():
-            # 使用沙箱回退
-            return await self._execute_with_sandbox_fallback(node_def)
+        # 从 NodeDefinition 或 Node.config 获取执行信息
+        code = ""
+        if node_def and node_def.code is not None:
+            code = node_def.code
+        elif node:
+            code = str(node.config.get("code") or "")
 
-        # 构建容器配置
-        container_config_dict = node_def.container_config or {}
-        config = ContainerConfig(
-            image=container_config_dict.get("image", "python:3.11-slim"),
-            timeout=container_config_dict.get("timeout", 60),
-            memory_limit=container_config_dict.get("memory_limit", "256m"),
-        )
+        container_config_dict = {}
+        if node_def and node_def.container_config is not None:
+            container_config_dict = node_def.container_config
+        elif node:
+            container_config_dict = node.config.get("container_config") or {}
 
-        # 执行
-        result: ContainerExecutionResult = await executor.execute_async(
-            code=node_def.code or "",
-            config=config,
-        )
+        # 生成容器 ID（用于事件追踪）
+        container_id = f"container_{node_id[:8]}"
 
-        return result.to_dict()
+        # 使用 try/finally 确保 completed event 总是发布（P0）
+        result: dict[str, Any] = {}
+        execution_start_time = time.time()
+
+        try:
+            # 获取容器执行器
+            executor = self.get_container_executor()
+
+            # 检查执行器是否可用
+            if hasattr(executor, "is_available") and not executor.is_available():
+                # 使用沙箱回退
+                if node_def:
+                    result = await self._execute_with_sandbox_fallback(node_def)
+                else:
+                    # 如果只有 Node 没有 NodeDefinition，无法使用沙箱回退
+                    result = {
+                        "success": False,
+                        "error": "Container executor unavailable and no fallback",
+                    }
+            else:
+                # 构建容器配置（P2: 使用 from_dict 支持所有字段）
+                config = ContainerConfig.from_dict(container_config_dict)
+
+                # 发布容器执行开始事件（Codex: 移到容器路径内，使用 config.image）
+                if self.event_bus:
+                    try:
+                        await self.event_bus.publish(
+                            ContainerExecutionStartedEvent(
+                                source="workflow_agent",
+                                container_id=container_id,
+                                node_id=node_id,
+                                workflow_id=workflow_id,
+                                image=config.image,
+                                code_preview=code[:100] if code else "",
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to publish container started event: %s", e, exc_info=True
+                        )
+
+                # 执行容器（P1: 传递 inputs）
+                result_obj: ContainerExecutionResult = await executor.execute_async(
+                    code=code,
+                    config=config,
+                    inputs=inputs,
+                )
+                result = (
+                    result_obj.to_dict() if hasattr(result_obj, "to_dict") else dict(result_obj)
+                )
+
+        except Exception as e:
+            result = {"success": False, "error": str(e), "exit_code": -1}
+
+        finally:
+            # 计算执行时间
+            execution_time = time.time() - execution_start_time
+
+            # 保存结果到 workflow context
+            if self.workflow_context:
+                self.workflow_context.set_node_output(node_id, result)
+
+            # 确保总是发布执行完成事件（P0: 添加 source 字段）
+            if self.event_bus:
+                try:
+                    await self.event_bus.publish(
+                        ContainerExecutionCompletedEvent(
+                            source="workflow_agent",
+                            container_id=container_id,
+                            node_id=node_id,
+                            workflow_id=workflow_id,
+                            success=result.get("success", False),
+                            exit_code=result.get("exit_code", -1),
+                            stdout=result.get("stdout", ""),
+                            stderr=result.get("stderr", ""),
+                            execution_time=result.get("execution_time", execution_time),
+                            output_data=result.get("output_data", {}),
+                        )
+                    )
+                except Exception as e:
+                    # 事件发布失败不应中断执行（P0: 异常保护）
+                    logger.warning(
+                        "Failed to publish container completed event: %s", e, exc_info=True
+                    )
+
+        return result
 
     async def _execute_with_sandbox_fallback(self, node_def: "NodeDefinition") -> dict[str, Any]:
         """使用沙箱回退执行
@@ -614,7 +739,7 @@ class WorkflowAgent:
 
             return {
                 "success": result.success,
-                "output": result.output_data if hasattr(result, "output_data") else {},
+                "output_data": result.output_data if hasattr(result, "output_data") else {},
                 "fallback_used": True,
                 "executor_type": "sandbox",
             }
@@ -1155,6 +1280,10 @@ class WorkflowAgent:
             输入字典
         """
         inputs = {}
+
+        # workflow_context 可能为 None（Codex 建议：添加防护）
+        if not self.workflow_context:
+            return inputs
 
         # 找到所有指向该节点的边
         for edge in self._edges:
@@ -2934,6 +3063,10 @@ class WorkflowAgent:
             child_node = self.create_node_from_definition(child_def)
             child_node.parent_id = node.id
             node.add_child(child_node)
+
+        # 注册 NodeDefinition 到 _node_definitions（Codex: 统一数据源）
+        # 这确保 execute_container_node() 可以使用 sandbox fallback
+        self._node_definitions[node.id] = node_def
 
         return node
 
