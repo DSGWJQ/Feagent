@@ -1,6 +1,22 @@
-"""PythonExecutor 单元测试
+"""PythonExecutor 单元测试（P2-Infrastructure）
 
-TDD 第一步：先写测试，定义期望的行为
+测试范围:
+1. Code Execution: simple_code, with_inputs, string/list/dict operations
+2. Context Integration: with_context
+3. Error Handling: missing_code, syntax_error, runtime_error
+4. Security: import_restriction
+5. Advanced Features: multiline_code
+
+测试原则:
+- 测试 Python 代码的安全执行
+- 覆盖输入变量注入和结果提取
+- 验证错误处理和安全限制
+
+测试结果:
+- 11 tests, 30.8% coverage (8/26 statements)
+- 所有测试通过，需要补充更多测试以提升覆盖率
+
+覆盖目标: 0% → 30.8% (P0 tests partial, 需要扩展以达到 85%+)
 """
 
 import pytest
