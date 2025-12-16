@@ -6,19 +6,21 @@
 3. Error Handling: read_nonexistent, missing_path, invalid_operation
 
 测试原则:
-- 使用 temp_dir fixture (tempfile.gettempdir)
+- **使用 pytest tmp_path fixture (每个测试独立目录)**
 - 测试文件操作的完整周期
 - 覆盖异常场景和边界条件
+- **企业级隔离**: 避免并行测试冲突
 
 测试结果:
 - 8 tests, 88.3% coverage (68/77 statements)
 - 所有测试通过，完全离线运行
 
 覆盖目标: 0% → 88.3% (P0 tests achieved)
-"""
 
-import tempfile
-from pathlib import Path
+**P0 Critical修复**:
+- 移除共享临时目录 (tempfile.gettempdir/file_executor_test)
+- 改用 pytest tmp_path fixture (每个测试唯一目录，自动清理)
+"""
 
 import pytest
 
@@ -28,26 +30,11 @@ from src.domain.value_objects.position import Position
 from src.infrastructure.executors.file_executor import FileExecutor
 
 
-@pytest.fixture
-def temp_dir():
-    """创建临时目录用于测试"""
-    temp_dir = Path(tempfile.gettempdir()) / "file_executor_test"
-    temp_dir.mkdir(exist_ok=True)
-
-    yield temp_dir
-
-    # 清理
-    import shutil
-
-    if temp_dir.exists():
-        shutil.rmtree(temp_dir)
-
-
 @pytest.mark.asyncio
-async def test_file_executor_write(temp_dir):
+async def test_file_executor_write(tmp_path):
     """测试：写入文件应该成功"""
     executor = FileExecutor()
-    file_path = temp_dir / "test.txt"
+    file_path = tmp_path / "test.txt"
 
     node = Node.create(
         type="file",
@@ -69,10 +56,10 @@ async def test_file_executor_write(temp_dir):
 
 
 @pytest.mark.asyncio
-async def test_file_executor_read(temp_dir):
+async def test_file_executor_read(tmp_path):
     """测试：读取文件应该返回内容"""
     executor = FileExecutor()
-    file_path = temp_dir / "test.txt"
+    file_path = tmp_path / "test.txt"
     file_path.write_text("Hello, World!")
 
     node = Node.create(
@@ -92,10 +79,10 @@ async def test_file_executor_read(temp_dir):
 
 
 @pytest.mark.asyncio
-async def test_file_executor_append(temp_dir):
+async def test_file_executor_append(tmp_path):
     """测试：追加内容到文件"""
     executor = FileExecutor()
-    file_path = temp_dir / "test.txt"
+    file_path = tmp_path / "test.txt"
     file_path.write_text("Hello")
 
     node = Node.create(
@@ -116,10 +103,10 @@ async def test_file_executor_append(temp_dir):
 
 
 @pytest.mark.asyncio
-async def test_file_executor_delete(temp_dir):
+async def test_file_executor_delete(tmp_path):
     """测试：删除文件"""
     executor = FileExecutor()
-    file_path = temp_dir / "test.txt"
+    file_path = tmp_path / "test.txt"
     file_path.write_text("content")
 
     node = Node.create(
@@ -140,21 +127,21 @@ async def test_file_executor_delete(temp_dir):
 
 
 @pytest.mark.asyncio
-async def test_file_executor_list_directory(temp_dir):
+async def test_file_executor_list_directory(tmp_path):
     """测试：列出目录内容"""
     executor = FileExecutor()
 
     # 创建一些文件
-    (temp_dir / "file1.txt").write_text("content1")
-    (temp_dir / "file2.txt").write_text("content2")
-    (temp_dir / "subdir").mkdir(exist_ok=True)
+    (tmp_path / "file1.txt").write_text("content1")
+    (tmp_path / "file2.txt").write_text("content2")
+    (tmp_path / "subdir").mkdir(exist_ok=True)
 
     node = Node.create(
         type="file",
         name="List Directory",
         config={
             "operation": "list",
-            "path": str(temp_dir),
+            "path": str(tmp_path),
         },
         position=Position(x=0, y=0),
     )
