@@ -141,12 +141,14 @@ class SupervisionFacade:
         from src.domain.services.supervision_module import SupervisionAction
 
         action = supervision_info.action
+        action_value = getattr(action, "value", str(action))
         session_id = supervision_info.session_id
         content = supervision_info.content
         trigger_condition = supervision_info.trigger_condition
 
         # 构建返回结果
-        result = {"success": True, "action": action.value}
+        result = {"success": True, "action": action_value}
+        log_level = "warning"
 
         # 根据 action 类型执行不同的干预
         if action == SupervisionAction.WARNING:
@@ -158,6 +160,7 @@ class SupervisionFacade:
             )
             status = "warning_injected"
             result["intervention_type"] = status
+            log_level = "info"
 
         elif action == SupervisionAction.REPLACE:
             # 替换内容：创建 SUPPLEMENT 注入
@@ -166,6 +169,7 @@ class SupervisionFacade:
             status = "content_replaced"
             result["intervention_type"] = status
             result["replacement"] = content
+            log_level = "warning"
 
         elif action == SupervisionAction.TERMINATE:
             # 终止任务：注入干预消息
@@ -176,24 +180,29 @@ class SupervisionFacade:
             )
             status = "task_terminated"
             result["intervention_type"] = status
+            log_level = "error"
 
         else:
-            # 未知类型，默认记录警告
+            # 未知 action：防御性兜底（未来扩展/非法注入）
             status = "unknown_action"
             result["intervention_type"] = status
+            result["success"] = False
+            log_level = "error"
 
         # 记录监督日志
         self._supervision_logger.log_intervention(supervision_info, status)
 
         # 记录审计日志
         self._log_collector.log(
-            level="warning",
-            message=f"Supervision intervention executed: {action.value}",
-            metadata={
+            level=log_level,
+            source="supervision_facade",
+            message=f"Supervision intervention executed: {action_value}",
+            context={
                 "session_id": session_id,
-                "action_type": action.value,
+                "action_type": action_value,
                 "reason": trigger_condition,
                 "status": status,
+                "success": result["success"],
             },
         )
 
@@ -270,21 +279,23 @@ class SupervisionFacade:
         if result.passed:
             self._log_collector.log(
                 level="debug",
+                source="supervision_facade",
                 message="输入检查通过",
-                metadata={"text_length": len(text)},
+                context={"text_length": len(text)},
             )
         else:
             self._log_collector.log(
                 level="warning",
+                source="supervision_facade",
                 message=f"输入检查发现 {len(result.issues)} 个问题",
-                metadata={
+                context={
                     "text_length": len(text),
                     "issues": [issue.category for issue in result.issues],
                     "action": result.action,
                 },
             )
             # 如果提供了 session_id，记录干预事件
-            if session_id:
+            if session_id is not None:
                 for issue in result.issues:
                     self._supervision_coordinator.record_intervention(
                         intervention_type=issue.category,
@@ -292,6 +303,7 @@ class SupervisionFacade:
                         source="conversation_supervision",
                         target_id="user_input",
                         severity=issue.severity,
+                        session_id=session_id,
                     )
 
         return {
@@ -341,8 +353,9 @@ class SupervisionFacade:
         # 记录 info 日志
         self._log_collector.log(
             level="info",
+            source="supervision_facade",
             message=f"添加监督策略: {name}",
-            metadata={
+            context={
                 "strategy_id": strategy_id,
                 "trigger_conditions": trigger_conditions,
                 "action": action,
@@ -367,6 +380,7 @@ class SupervisionFacade:
                 "intervention_type": e.intervention_type,
                 "reason": e.reason,
                 "source": e.source,
+                "session_id": getattr(e, "session_id", None),
                 "target_id": e.target_id,
                 "severity": e.severity,
                 "timestamp": e.timestamp.isoformat() if e.timestamp else None,

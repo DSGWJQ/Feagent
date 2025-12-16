@@ -84,6 +84,7 @@ class SupervisionCoordinator:
         source: str,
         target_id: str,
         severity: str = "medium",
+        session_id: str | None = None,
     ) -> InterventionEvent:
         """记录干预事件
 
@@ -93,6 +94,7 @@ class SupervisionCoordinator:
             source: 来源
             target_id: 目标ID
             severity: 严重性
+            session_id: 会话ID（可选）
 
         返回：
             干预事件
@@ -103,6 +105,7 @@ class SupervisionCoordinator:
             source=source,
             target_id=target_id,
             severity=severity,
+            session_id=session_id,
         )
 
         self.intervention_events.append(event)

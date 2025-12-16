@@ -28,6 +28,7 @@ class InterventionEvent(Event):
         intervention_type: 干预类型 (warn/block/terminate)
         reason: 干预原因
         source: 干预来源模块
+        session_id: 会话ID（可选，用于追踪/审计聚合）
         target_id: 目标ID（消息/任务/工作流）
         severity: 严重性 (low/medium/high/critical)
         details: 详细信息
@@ -36,6 +37,7 @@ class InterventionEvent(Event):
     intervention_type: str = ""
     reason: str = ""
     source: str = ""
+    session_id: str | None = None
     target_id: str = ""
     severity: str = "medium"
     details: dict[str, Any] = field(default_factory=dict)

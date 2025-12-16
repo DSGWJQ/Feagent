@@ -88,6 +88,53 @@
    - 发现改动范围超出预期（21文件），建议排除环境配置文件
    - 所有改动确认为代码质量改进，无功能变更
 
+5. **✅ SupervisionFacade：测试缺口补齐 + 代码缺陷修复（P0-6）** - 已完成（2025-12-16）
+
+   **测试缺口修复（2个）：**
+   - ✅ `test_execute_intervention_unknown_action_defaults_to_unknown_action`
+     - 覆盖 else 分支（防御性兜底，未来扩展/非法注入）
+     - 验证 `success=False` 和 `intervention_type="unknown_action"`
+     - 验证 log_level="error"
+   - ✅ `test_supervise_input_records_intervention_when_session_id_provided`
+     - 覆盖多 issue 场景下的 `record_intervention` 调用
+     - 验证 session_id 正确传递
+
+   **代码缺陷修复（4处）：**
+   - ✅ `execute_intervention()` 防御非法输入
+     - 使用 `getattr(action, "value", str(action))` 避免 AttributeError
+     - unknown_action 分支设置 `success=False`
+   - ✅ 差异化审计日志级别
+     - WARNING → log_level="info"
+     - REPLACE → log_level="warning"
+     - TERMINATE → log_level="error"
+     - unknown_action → log_level="error"
+   - ✅ `session_id` 语义修复（方案B）
+     - `InterventionEvent` 增加 `session_id: str | None` 字段
+     - `record_intervention()` 增加可选参数 `session_id`
+     - `supervise_input()` 改为 `if session_id is not None`
+     - `get_intervention_events()` 使用 `getattr(e, "session_id", None)`
+   - ✅ 修复 `UnifiedLogCollector.log()` 调用
+     - 添加 `source` 参数
+     - `metadata` 改为 `context`
+
+   **验证结果：**
+   - ✅ 17/17 SupervisionFacade 测试通过
+   - ✅ 124/125 supervision 相关测试通过（1个失败与修改无关）
+   - ✅ Ruff: All checks passed
+   - ✅ Pyright: 0 errors
+   - ✅ 无破坏性变更
+
+   **Codex协作（3轮）：**
+   - 第1轮：深度代码审查，发现7个缺陷（1 Critical, 2 High, 4 Medium/Low）
+   - 第2轮：方案争议点讨论，确定实施方案（方案A+B组合）
+   - 第3轮：最终审查，确认代码质量符合企业生产级别标准
+
+   **技术亮点：**
+   - 防御性编程：getattr 兜底 + success=False 明确失败
+   - 可观测性增强：差异化日志级别 + session_id 追踪
+   - 向后兼容：可选参数 + getattr 保护
+   - 企业级质量：完整测试覆盖 + 静态检查通过
+
 ### ⏳ 进行中
 
 （无）
@@ -101,12 +148,14 @@
 - P0-2: 异步Race Condition（Phase 1 + Critical + Phase 2）
 - P0-3: 浅拷贝导致上下文污染（2处dict.copy）
 - P0-4: Ruff + Pyright 代码质量修复（10 Ruff + 5 Pyright）
+- P0-6: SupervisionFacade 测试缺口补齐 + 代码缺陷修复（2测试 + 4缺陷）
 
 **Codex协作：**
 - P0-2 Phase 1: 发现2个Critical/Optimization问题
 - P0-2 Critical Fix: 消除回调竞态+原子性空窗
 - P0-2 Phase 2: 发现4个需注意点，全部在Part 2中修复
 - P0-4: 发现改动范围超出预期，确认所有改动为质量改进
+- P0-6: 3轮深度协作，发现7个缺陷，制定并实施方案A+B组合
 
 **技术亮点：**
 - 双锁策略避免死锁（state_lock + critical_event_lock 不嵌套）

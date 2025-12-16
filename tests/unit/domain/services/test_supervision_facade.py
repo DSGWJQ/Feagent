@@ -5,7 +5,7 @@ Phase 34.13: 监督模块提取
 - 覆盖范围: 上下文监督、保存请求监督、决策链监督、干预执行、日志查询
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -212,8 +212,10 @@ def test_execute_intervention_warning_action(
     assert log_call_args[0] == supervision_info  # First arg is SupervisionInfo
     assert log_call_args[1] == "warning_injected"  # Second arg is status
 
-    # 验证记录了审计日志
+    # 验证记录了审计日志级别
     mock_log_collector.log.assert_called_once()
+    log_call = mock_log_collector.log.call_args[1]
+    assert log_call["level"] == "info"
 
 
 def test_execute_intervention_replace_action(
@@ -231,6 +233,11 @@ def test_execute_intervention_replace_action(
     )
 
     facade.execute_intervention(supervision_info)
+
+    # 验证记录了审计日志级别
+    mock_log_collector.log.assert_called_once()
+    log_call = mock_log_collector.log.call_args[1]
+    assert log_call["level"] == "warning"
 
     # 验证调用了 add_injection（通过 _create_supplement_injection）
     mock_context_injection_manager.add_injection.assert_called_once()
@@ -266,6 +273,11 @@ def test_execute_intervention_terminate_action(
 
     facade.execute_intervention(supervision_info)
 
+    # 验证记录了审计日志级别
+    mock_log_collector.log.assert_called_once()
+    log_call = mock_log_collector.log.call_args[1]
+    assert log_call["level"] == "error"
+
     # 验证调用了 inject_intervention
     mock_context_injection_manager.inject_intervention.assert_called_once_with(
         session_id="test_session",
@@ -278,6 +290,43 @@ def test_execute_intervention_terminate_action(
     log_call_args = mock_supervision_logger.log_intervention.call_args[0]  # Positional args
     assert log_call_args[0] == supervision_info  # First arg is SupervisionInfo
     assert log_call_args[1] == "task_terminated"  # Second arg is status
+
+
+def test_execute_intervention_unknown_action_defaults_to_unknown_action(
+    facade, mock_context_injection_manager, mock_supervision_logger, mock_log_collector
+):
+    """测试 execute_intervention 未知 action 分支（防御性覆盖未来扩展/非法注入）"""
+    from enum import Enum
+
+    from src.domain.services.supervision_module import SupervisionInfo
+
+    class DummyAction(str, Enum):
+        UNKNOWN = "unknown"
+
+    supervision_info = SupervisionInfo(
+        session_id="test_session",
+        action=DummyAction.UNKNOWN,  # 非 SupervisionAction，用于覆盖 else 分支
+        content="some content",
+        trigger_rule="rule_unknown",
+        trigger_condition="unknown condition",
+    )
+
+    result = facade.execute_intervention(supervision_info)
+
+    assert result["success"] is False
+    assert result["action"] == "unknown"
+    assert result["intervention_type"] == "unknown_action"
+
+    mock_context_injection_manager.inject_warning.assert_not_called()
+    mock_context_injection_manager.add_injection.assert_not_called()
+    mock_context_injection_manager.inject_intervention.assert_not_called()
+
+    mock_supervision_logger.log_intervention.assert_called_once_with(
+        supervision_info, "unknown_action"
+    )
+    mock_log_collector.log.assert_called_once()
+    log_call = mock_log_collector.log.call_args[1]
+    assert log_call["level"] == "error"
 
 
 # ==================== 测试8-9: 日志查询方法 ====================
@@ -386,6 +435,59 @@ def test_supervise_input_fails_with_issues(
     mock_supervision_coordinator.record_intervention.assert_not_called()
 
 
+def test_supervise_input_records_intervention_when_session_id_provided(
+    facade, mock_supervision_coordinator
+):
+    """测试 supervise_input 在提供 session_id 时会记录干预事件（多 issue）"""
+    user_input = "违规内容"
+    session_id = "test_session"
+
+    from src.domain.services.supervision import ComprehensiveCheckResult, DetectionResult
+
+    issue_1 = DetectionResult(
+        detected=True,
+        category="profanity_check",
+        severity="high",
+        message="包含敏感词",
+    )
+    issue_2 = DetectionResult(
+        detected=True,
+        category="bias_check",
+        severity="medium",
+        message="存在偏见倾向",
+    )
+    mock_result = ComprehensiveCheckResult(
+        passed=False,
+        issues=[issue_1, issue_2],
+        action="block",
+    )
+    mock_supervision_coordinator.conversation_supervision.check_all.return_value = mock_result
+
+    facade.supervise_input(user_input, session_id=session_id)
+
+    assert mock_supervision_coordinator.record_intervention.call_count == 2
+    mock_supervision_coordinator.record_intervention.assert_has_calls(
+        [
+            call(
+                intervention_type="profanity_check",
+                reason="包含敏感词",
+                source="conversation_supervision",
+                target_id="user_input",
+                severity="high",
+                session_id="test_session",
+            ),
+            call(
+                intervention_type="bias_check",
+                reason="存在偏见倾向",
+                source="conversation_supervision",
+                target_id="user_input",
+                severity="medium",
+                session_id="test_session",
+            ),
+        ]
+    )
+
+
 # ==================== 测试12: 策略管理与事件查询 ====================
 
 
@@ -421,10 +523,11 @@ def test_add_supervision_strategy(facade, mock_supervision_coordinator, mock_log
     mock_log_collector.log.assert_called_once()
     log_call = mock_log_collector.log.call_args[1]
     assert log_call["level"] == "info"
+    assert log_call["source"] == "supervision_facade"
     assert strategy_name in log_call["message"]
-    assert log_call["metadata"]["strategy_id"] == "strategy_001"
-    assert log_call["metadata"]["trigger_conditions"] == trigger_conditions
-    assert log_call["metadata"]["action"] == action
+    assert log_call["context"]["strategy_id"] == "strategy_001"
+    assert log_call["context"]["trigger_conditions"] == trigger_conditions
+    assert log_call["context"]["action"] == action
 
 
 def test_get_intervention_events(facade, mock_supervision_coordinator):
