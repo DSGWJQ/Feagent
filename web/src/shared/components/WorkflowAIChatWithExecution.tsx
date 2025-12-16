@@ -7,15 +7,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Input, Button, Card, Space, Alert, Typography, Badge } from 'antd';
 import { RobotOutlined, UserOutlined, LoadingOutlined, CheckCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
-/**
- * 工作流 AI 聊天组件（带执行结果）
- *
- * 支持接收并显示执行总结信息
- */
-
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Input, Button, Card, Space, Alert, Typography, Badge } from 'antd';
-import { RobotOutlined, UserOutlined, LoadingOutlined, CheckCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 
 import { useWorkflowAI } from '@/hooks/useWorkflowAI';
 import { useWorkflowInteraction } from '@/features/workflows/contexts/WorkflowInteractionContext';

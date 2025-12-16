@@ -1,0 +1,422 @@
+/**
+ * Gemini's System 01 Design Specification
+ * Global Component Library - Precision Industrial
+ *
+ * Philosophy: Information Density, Structural Honesty, Mechanical Interaction
+ */
+
+/* ==================== Extended Variables ==================== */
+:root {
+  /* Surface Colors */
+  --surface-panel: #F7F7F7;      /* Sidebar / Panel Background */
+  --surface-card: #FFFFFF;       /* Component Background */
+
+  /* Functional Signals */
+  --signal-success: #000000;     /* Success is standard state */
+  --signal-error: #FF0000;       /* ONLY color allowed: Pure RGB Red */
+  --signal-warning: #000000;     /* Warnings handled via patterns/icons */
+
+  /* Dimensions */
+  --sidebar-width: 260px;
+  --header-height: 60px;
+  --radius-sharp: 0px;           /* NO ROUNDED CORNERS */
+
+  /* Transitions */
+  --ease-mechanical: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* ==================== Forms & Inputs ==================== */
+
+.form-group {
+  margin-bottom: 24px;
+}
+
+.input-label {
+  display: block;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--stone-dark);
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+
+.input-field {
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  padding: 12px 16px;
+  font-family: var(--font-family-base);
+  font-size: 0.95rem;
+  color: var(--ink-primary);
+  outline: none;
+  transition: border-width 0.1s ease;
+  border-radius: 0;
+  /* Sharp corners */
+}
+
+.input-field:focus {
+  border: 2px solid var(--ink-primary);
+  padding: 11px 15px;
+  /* Prevent layout shift */
+}
+
+.input-field::placeholder {
+  color: var(--stone-dark);
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+}
+
+/* Textarea */
+.input-textarea {
+  min-height: 120px;
+  resize: vertical;
+  font-family: var(--font-family-mono);
+}
+
+/* Select Dropdown */
+.input-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23050505'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+  cursor: pointer;
+}
+
+/* Custom Checkbox */
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.checkbox-input {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--ink-secondary);
+  margin-right: 12px;
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+}
+
+.checkbox-input::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background: var(--ink-primary);
+  transform: scale(0);
+  transition: 0.1s transform ease-in-out;
+}
+
+.checkbox-input:checked::before {
+  transform: scale(1);
+}
+
+.checkbox-label {
+  font-family: var(--font-family-base);
+  font-size: 0.9rem;
+  color: var(--ink-primary);
+}
+
+/* ==================== Buttons ==================== */
+
+/* Primary Button - Industrial Style */
+.btn-industrial {
+  appearance: none;
+  padding: 12px 32px;
+  font-family: var(--font-family-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0;
+
+  background: var(--ink-primary);
+  color: var(--paper);
+  border: 2px solid var(--ink-primary);
+  box-shadow: 0 0 0 0 var(--ink-primary);
+
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s var(--ease-mechanical);
+}
+
+.btn-industrial:hover {
+  background: var(--paper);
+  color: var(--ink-primary);
+  transform: translate(-3px, -3px);
+  box-shadow: 3px 3px 0 0 var(--ink-primary);
+}
+
+.btn-industrial:active {
+  transform: translate(0, 0);
+  box-shadow: 0 0 0 0 var(--ink-primary);
+}
+
+/* Secondary Button */
+.btn-secondary {
+  background: var(--paper);
+  color: var(--ink-primary);
+  border: 1px solid var(--ink-secondary);
+}
+
+.btn-secondary:hover {
+  background: var(--surface-panel);
+  border-color: var(--ink-primary);
+  transform: none;
+  box-shadow: none;
+}
+
+/* Danger Button */
+.btn-danger {
+  background: var(--signal-error);
+  color: var(--paper);
+  border: 2px solid var(--signal-error);
+}
+
+.btn-danger:hover {
+  background: var(--paper);
+  color: var(--signal-error);
+  transform: translate(-3px, -3px);
+  box-shadow: 3px 3px 0 0 var(--signal-error);
+}
+
+/* Small Button */
+.btn-sm {
+  padding: 8px 20px;
+  font-size: 0.75rem;
+}
+
+/* ==================== Tables & Data Grids ==================== */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 16px;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+  border-bottom: 2px solid var(--ink-primary);
+  background: var(--surface-panel);
+}
+
+.data-table td {
+  padding: 16px;
+  border-bottom: 1px solid var(--stone-light);
+  font-family: var(--font-family-base);
+  font-size: 0.9rem;
+  color: var(--ink-primary);
+}
+
+.data-table tr:hover {
+  background: var(--surface-panel);
+}
+
+.data-table tr:hover td:first-child {
+  border-left: 3px solid var(--ink-primary);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-badge.online {
+  border: 1px solid var(--ink-primary);
+  color: var(--ink-primary);
+}
+
+.status-badge.offline {
+  border: 1px solid var(--stone-dark);
+  color: var(--stone-dark);
+}
+
+/* ==================== Modals / Dialogs ==================== */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: grayscale(100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-window {
+  background: var(--paper);
+  border: 2px solid var(--ink-primary);
+  box-shadow: 8px 8px 0px 0px var(--ink-primary);
+  padding: 32px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--stone-light);
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  font-family: var(--font-family-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1rem;
+}
+
+.modal-footer {
+  border-top: 1px solid var(--stone-light);
+  margin-top: 24px;
+  padding-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* ==================== Cards / Panels ==================== */
+
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.panel-header {
+  border-bottom: 1px solid var(--stone-light);
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  font-family: var(--font-family-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  color: var(--ink-primary);
+}
+
+/* ==================== Tabs & Navigation ==================== */
+
+.tabs-container {
+  border-bottom: 1px solid var(--stone-light);
+  margin-bottom: 24px;
+}
+
+.tab-button {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 12px 24px;
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+  color: var(--ink-primary);
+  background: var(--surface-panel);
+}
+
+.tab-button.active {
+  color: var(--ink-primary);
+  border-bottom-color: var(--ink-primary);
+}
+
+/* ==================== Loading States ==================== */
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--stone-light);
+  border-top-color: var(--ink-primary);
+  border-radius: 0;
+  /* Square spinner for industrial look */
+  animation: spin-square 1s linear infinite;
+}
+
+@keyframes spin-square {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ==================== Alerts / Messages ==================== */
+
+.alert {
+  padding: 16px 20px;
+  border: 1px solid var(--stone-light);
+  font-family: var(--font-family-base);
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+  border-left-width: 3px;
+}
+
+.alert-success {
+  border-left-color: var(--ink-primary);
+  background: var(--surface-panel);
+}
+
+.alert-error {
+  border-left-color: var(--signal-error);
+  background: #FFF5F5;
+  color: var(--signal-error);
+}
+
+.alert-warning {
+  border-left-color: var(--stone-dark);
+  background: var(--surface-panel);
+}
+
+/* ==================== Workflow Canvas Nodes ==================== */
+
+.workflow-node {
+  width: 200px;
+  background: var(--paper);
+  border: 1px solid var(--ink-primary);
+  box-shadow: 4px 4px 0 0 rgba(0,0,0,0.1);
+  position: absolute;
+}
+
+.node-header {
+  background: var(--ink-primary);
+  color: var(--paper);
+  padding: 8px 12px;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.node-body {
+  padding: 12px;
+  font-size: 0.85rem;
+  font-family: var(--font-family-base);
+}
+
+.node-port {
+  width: 10px;
+  height: 10px;
+  background: var(--ink-primary);
+  border: 1px solid var(--paper);
+  position: absolute;
+}

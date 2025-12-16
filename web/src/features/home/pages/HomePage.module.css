@@ -1,7 +1,7 @@
 /**
  * HomePage Styles
  * Strict Neoclassical Design System
- * 
+ *
  * Key Elements:
  * - Stone Texture (Static, Eternal)
  * - Lintel Header (Architectural, Symmetrical)
@@ -32,23 +32,22 @@
     mix-blend-mode: multiply;
 }
 
-/* ========== The Lintel (Header) ========== */
+/* ========== The Lintel (Header) - Gemini's Scanner Design ========== */
 .header {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: 80px;
-    /* Substantial height */
+    height: 64px;
+    /* Gemini's spec: 64px */
     z-index: 100;
-    background: rgba(253, 252, 248, 0.95);
-    /* High opacity stone */
-    backdrop-filter: blur(12px);
+    background: var(--paper);
+    /* White background, not black */
+    backdrop-filter: none;
 
-    /* The Lintel Design: clear borders */
-    border-bottom: 2px solid var(--neo-gold);
-    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.1);
-    /* Shadow casting down */
+    /* Structural border */
+    border-bottom: 1px solid var(--stone-light);
+    box-shadow: none;
 
     display: flex;
     justify-content: center;
@@ -68,20 +67,18 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    color: var(--neo-text);
-    font-size: 1.5rem;
-    font-family: var(--font-family-serif);
-    /* Serif for authority */
-    font-weight: 700;
+    color: var(--ink-primary);
+    /* Black text on white background */
+    font-size: 1.125rem;
+    font-family: var(--font-family-base);
+    /* Sans-serif */
+    font-weight: 600;
     letter-spacing: -0.02em;
 }
 
 .logoText {
-    /* Engraved Gold Effect */
-    background: linear-gradient(180deg, var(--neo-gold) 0%, #b45309 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+    color: var(--ink-primary);
+    text-shadow: none;
 }
 
 .nav {
@@ -90,38 +87,51 @@
     gap: var(--space-1);
 }
 
-/* Nav Buttons: Architectural Elements */
+/* Gemini's Nav Buttons - "The Scanner" Instant Inversion */
 .navBtn {
-    color: var(--neo-text) !important;
+    background: var(--paper) !important;
+    /* White background */
+    color: var(--ink-primary) !important;
+    /* Black text */
     font-family: var(--font-family-base) !important;
     font-weight: 500 !important;
-    font-size: 0.95rem !important;
-    padding: 0 var(--space-4) !important;
-    height: 48px !important;
-    border-radius: 4px !important;
-    /* Slightly rounded squares */
-    border: 1px solid transparent !important;
-    transition: all 0.3s ease !important;
+    font-size: 0.9rem !important;
+    padding: 0 24px !important;
+    height: 100% !important;
+    /* Full height of nav */
+    border-radius: 0 !important;
+    /* No rounding - sharp edges */
+    border: 1px solid var(--stone-light) !important;
+    border-left: 1px solid var(--stone-light) !important;
+    border-right: 1px solid var(--stone-light) !important;
+    transition: all 0.2s ease !important;
 }
 
 .navBtn:hover {
-    color: var(--neo-gold) !important;
-    background: rgba(217, 119, 6, 0.05) !important;
-    border-color: rgba(217, 119, 6, 0.2) !important;
+    /* Instant digital switching - no fade */
+    color: var(--paper) !important;
+    /* White text */
+    background: var(--ink-primary) !important;
+    /* Black background */
+    border-color: var(--ink-primary) !important;
 }
 
 /* ========== The Inscription (Hero) ========== */
 .hero {
     position: relative;
     z-index: 1;
-    min-height: 90vh;
-    /* Nearly full screen */
+    min-height: 60vh;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding-top: 80px;
-    /* Offset header */
+    padding-top: 120px;
+    padding-bottom: 120px;
+
+    /* Gemini's Dot Matrix Grid (Blueprint/Schematic Style) */
+    background-image: radial-gradient(var(--stone-light) 1px, transparent 1px);
+    background-size: 20px 20px;
+    border-bottom: 1px solid var(--stone-light);
 }
 
 .heroContent {
@@ -137,21 +147,27 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-4);
-    background: rgba(255, 255, 255, 0.8);
-    border: 1px solid var(--neo-gold);
-    color: var(--neo-gold);
-    font-family: var(--font-family-serif);
-    font-size: 0.9rem;
-    letter-spacing: 0.1em;
+    background: #ffffff;
+    border: 1px solid #000000;
+    /* Black border */
+    color: #000000;
+    /* Black text */
+    font-family: var(--font-family-base);
+    /* Sans-serif for industrial look */
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
     margin-bottom: var(--space-8);
-    box-shadow: var(--shadow-sm);
+    box-shadow: none;
+    /* Flat design */
 }
 
 .betaDot {
     width: 6px;
     height: 6px;
-    background: var(--neo-gold);
+    background: #000000;
+    /* Black dot */
     border-radius: 50%;
 }
 
@@ -166,11 +182,28 @@
 }
 
 .titleItalic {
-    font-family: 'Playfair Display', serif;
+    /* Gemini's Technical Monospace Treatment */
+    font-family: var(--font-family-mono);
     font-style: italic;
-    color: var(--neo-gold);
-    /* Emphasis in Gold */
     font-weight: 400;
+    color: var(--ink-secondary);
+    /* #404040 */
+    position: relative;
+    display: inline-block;
+}
+
+/* Gemini's Blinking Cursor Effect - "Live System Waiting for Input" */
+.titleItalic::after {
+    content: '_';
+    animation: blink 1s step-end infinite;
+    color: var(--ink-primary);
+    font-style: normal;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
 }
 
 .subtitle {
@@ -183,28 +216,47 @@
     font-weight: 300;
 }
 
-/* Hero CTA: The Gold Block */
+/* Gemini's "Hard" CTA Button - Mechanical Switch Effect */
 .ctaBtn {
-    height: 64px !important;
-    padding: 0 48px !important;
-    font-size: 1.25rem !important;
-    font-family: var(--font-family-base) !important;
+    appearance: none;
+    height: auto !important;
+    padding: 18px 42px !important;
+    font-family: var(--font-family-mono) !important;
+    /* Technical monospace */
     font-weight: 600 !important;
-    border-radius: 4px !important;
-    /* Moderate rounding */
+    font-size: 1rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 0 !important;
+    /* Sharp corners */
 
-    /* Classical Gold Gradient */
-    background: linear-gradient(135deg, var(--neo-gold) 0%, #d97706 100%) !important;
-    border: none !important;
-    box-shadow: 0 10px 30px -10px rgba(217, 119, 6, 0.5) !important;
+    /* Idle state */
+    background: var(--ink-primary) !important;
+    /* Near-black */
+    color: var(--paper) !important;
+    /* White */
+    border: 2px solid var(--ink-primary) !important;
+    box-shadow: 0 0 0 0 var(--ink-primary) !important;
 
-    color: white !important;
-    letter-spacing: 0.02em;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1) !important;
+    /* Snappy, mechanical */
 }
 
 .ctaBtn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 15px 40px -10px rgba(217, 119, 6, 0.6) !important;
+    /* Color inversion + Tactical displacement */
+    background: var(--paper) !important;
+    color: var(--ink-primary) !important;
+    transform: translate(-4px, -4px) !important;
+    box-shadow: 4px 4px 0 0 var(--ink-primary) !important;
+    /* Hard shadow */
+}
+
+.ctaBtn:active {
+    /* Mechanical click - snap back */
+    transform: translate(0, 0) !important;
+    box-shadow: 0 0 0 0 var(--ink-primary) !important;
 }
 
 /* ========== Features Section (The Reliefs) ========== */
@@ -238,9 +290,10 @@
 .sectionTitle::after {
     content: '';
     display: block;
-    width: 80px;
-    height: 3px;
-    background: var(--neo-gold);
+    width: 60px;
+    height: 2px;
+    background: #000000;
+    /* Black accent line */
     margin: var(--space-4) auto 0;
 }
 

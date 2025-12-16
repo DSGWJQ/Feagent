@@ -428,4 +428,3 @@ A: Yes, fixtures are the official pytest approach. See: pytest.org/en/stable/how
 **Format**: Quick Reference (this document)
 **For**: Developers implementing mocks
 **Next**: Implementation should take 10-15 minutes
-

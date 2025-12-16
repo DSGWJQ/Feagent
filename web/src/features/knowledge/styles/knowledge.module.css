@@ -1,93 +1,328 @@
 /**
- * Knowledge Module Styles
- * Neoclassical Design System
+ * Knowledge Module Styles - Gemini's System 01 Design
+ * Document Archive - Engineering Repository
  */
 
 .container {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-6);
+    gap: 32px;
     max-width: 800px;
     margin: 0 auto;
+    padding: 40px;
 }
 
 .inputCard {
-    /* Used for the small input section */
+    background: var(--paper);
+    border: 1px solid var(--stone-light);
+    padding: 24px;
 }
 
 .uploadCard {
-    /* Main upload area */
+    background: var(--paper);
+    border: 1px solid var(--stone-light);
+    padding: 32px;
+    position: relative;
 }
 
-/* Dragger Area - Replaces inline styles in KnowledgeUpload.example.tsx */
+/* ========== Drop Zone - Engineering Upload Area ========== */
 .dropZone {
-    border: 2px dashed var(--neo-border);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-12);
+    border: 2px dashed var(--stone-light);
+    border-radius: 0;
+    padding: 60px 40px;
     text-align: center;
     cursor: pointer;
-    background-color: var(--neo-surface-1);
-    transition: all 0.3s ease;
+    background-color: var(--paper);
+    transition: all 0.2s var(--ease-mechanical);
+    position: relative;
 }
 
 .dropZoneActive {
-    background-color: var(--neo-surface-2);
-    border-color: var(--neo-blue);
+    background-color: var(--paper-off);
+    border-color: var(--ink-primary);
+    border-style: solid;
+    border-width: 2px;
 }
 
 .dropZone:hover {
-    border-color: var(--neo-blue);
-    background-color: var(--neo-surface-2);
+    border-color: var(--ink-secondary);
+    background-color: var(--paper-off);
 }
 
 .uploadIcon {
     font-size: 48px;
-    color: var(--neo-text-2) !important;
-    margin-bottom: var(--spacing-4);
+    color: var(--ink-secondary) !important;
+    margin-bottom: 20px;
+    display: inline-block;
 }
 
 .uploadText {
-    color: var(--neo-text);
-    font-size: var(--font-size-md);
-    margin-bottom: var(--spacing-2);
+    color: var(--ink-primary);
+    font-size: 1rem;
+    font-family: var(--font-family-base);
+    font-weight: 600;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .uploadHint {
-    color: var(--neo-text-2);
-    font-size: var(--font-size-sm);
+    color: var(--stone-dark);
+    font-size: 0.85rem;
+    font-family: var(--font-family-mono);
 }
 
-/* Result Box */
+/* ========== File List ========== */
+.fileList {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.fileItem {
+    padding: 16px;
+    background: var(--paper-off);
+    border: 1px solid var(--stone-light);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s var(--ease-mechanical);
+}
+
+.fileItem:hover {
+    border-color: var(--ink-secondary);
+    background: var(--paper);
+}
+
+.fileName {
+    font-family: var(--font-family-mono);
+    font-size: 0.85rem;
+    color: var(--ink-primary);
+}
+
+.fileSize {
+    font-family: var(--font-family-mono);
+    font-size: 0.75rem;
+    color: var(--stone-dark);
+}
+
+/* ========== Result Boxes - Status Panels ========== */
 .resultBox {
-    margin-top: var(--spacing-6);
-    padding: var(--spacing-4);
-    background-color: rgba(34, 197, 94, 0.05);
-    border: 1px solid rgba(34, 197, 94, 0.2);
-    border-radius: var(--radius-md);
-    color: var(--neo-text);
+    margin-top: 32px;
+    padding: 20px 24px;
+    background-color: var(--paper);
+    border: 1px solid var(--ink-primary);
+    border-radius: 0;
+    color: var(--ink-primary);
+    font-family: var(--font-family-base);
+    font-size: 0.95rem;
+    border-left-width: 3px;
+}
+
+.resultBox::before {
+    content: '✓';
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background: var(--ink-primary);
+    color: var(--paper);
+    margin-right: 12px;
+    text-align: center;
+    line-height: 20px;
+    font-weight: bold;
+    font-size: 0.75rem;
 }
 
 .errorBox {
-    margin-top: var(--spacing-6);
-    padding: var(--spacing-4);
-    background-color: rgba(220, 38, 38, 0.05);
-    border: 1px solid rgba(220, 38, 38, 0.2);
-    border-radius: var(--radius-md);
-    color: var(--neo-text);
+    margin-top: 32px;
+    padding: 20px 24px;
+    background-color: #FFF5F5;
+    border: 1px solid var(--signal-error);
+    border-radius: 0;
+    color: var(--signal-error);
+    font-family: var(--font-family-base);
+    font-size: 0.95rem;
+    border-left-width: 3px;
 }
 
-/* Instructions */
+.errorBox::before {
+    content: '✕';
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background: var(--signal-error);
+    color: var(--paper);
+    margin-right: 12px;
+    text-align: center;
+    line-height: 20px;
+    font-weight: bold;
+    font-size: 0.75rem;
+}
+
+/* ========== Instructions Panel ========== */
 .instructions {
-    margin-top: var(--spacing-8);
-    padding: var(--spacing-4);
-    background-color: var(--neo-surface-2);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--neo-border);
+    margin-top: 40px;
+    padding: 24px;
+    background-color: var(--paper-off);
+    border-radius: 0;
+    border: 1px solid var(--stone-light);
+}
+
+.instructionsTitle {
+    font-family: var(--font-family-mono);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    color: var(--ink-primary);
+    margin-bottom: 16px;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--stone-light);
+    padding-bottom: 12px;
 }
 
 .instructionList {
-    margin-left: var(--spacing-4);
-    color: var(--neo-text-2);
-    font-size: var(--font-size-sm);
-    line-height: 1.6;
+    margin-left: 24px;
+    color: var(--ink-secondary);
+    font-size: 0.9rem;
+    font-family: var(--font-family-base);
+    line-height: 1.8;
+}
+
+.instructionList li {
+    margin-bottom: 8px;
+}
+
+/* ========== Knowledge Base Table ========== */
+.knowledgeTable {
+    margin-top: 32px;
+}
+
+.knowledgeTable :global(.ant-table) {
+    font-size: 0.85rem;
+    border: 1px solid var(--stone-light);
+    font-family: var(--font-family-base);
+}
+
+.knowledgeTable :global(.ant-table-thead > tr > th) {
+    background: var(--ink-primary) !important;
+    color: var(--paper) !important;
+    font-weight: 700 !important;
+    font-family: var(--font-family-mono) !important;
+    text-transform: uppercase !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 0.05em !important;
+    border-bottom: 2px solid var(--ink-primary) !important;
+    padding: 16px !important;
+    border-radius: 0 !important;
+}
+
+.knowledgeTable :global(.ant-table-tbody > tr > td) {
+    border-bottom: 1px solid var(--stone-light) !important;
+    padding: 16px !important;
+    background: var(--paper) !important;
+    color: var(--ink-primary) !important;
+    transition: all 0.2s var(--ease-mechanical) !important;
+}
+
+.knowledgeTable :global(.ant-table-tbody > tr:hover > td) {
+    background: var(--paper-off) !important;
+}
+
+.knowledgeTable :global(.ant-table-tbody > tr:hover td:first-child) {
+    border-left: 3px solid var(--ink-primary) !important;
+    padding-left: 13px !important;
+}
+
+/* ========== Document Card ========== */
+.documentCard {
+    background: var(--paper);
+    border: 1px solid var(--stone-light);
+    padding: 24px;
+    margin-bottom: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s var(--ease-mechanical);
+}
+
+/* Top Loading Bar on Hover */
+.documentCard::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: var(--ink-primary);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.documentCard:hover::before {
+    transform: scaleX(1);
+}
+
+.documentCard:hover {
+    border-color: var(--ink-secondary);
+    background: var(--paper-off);
+}
+
+.documentTitle {
+    font-family: var(--font-family-base);
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--ink-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 16px 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--stone-light);
+}
+
+.documentMeta {
+    display: flex;
+    gap: 16px;
+    font-family: var(--font-family-mono);
+    font-size: 0.75rem;
+    color: var(--stone-dark);
+    text-transform: uppercase;
+}
+
+.documentStatus {
+    display: inline-block;
+    padding: 4px 12px;
+    font-family: var(--font-family-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid var(--ink-primary);
+    color: var(--ink-primary);
+    margin-top: 12px;
+}
+
+.documentStatusProcessed {
+    background: var(--ink-primary);
+    color: var(--paper);
+}
+
+/* ========== Progress Indicator ========== */
+.progressBar {
+    margin-top: 24px;
+}
+
+.progressBar :global(.ant-progress-bg) {
+    background: var(--ink-primary) !important;
+    border-radius: 0 !important;
+}
+
+.progressBar :global(.ant-progress-inner) {
+    background: var(--stone-light) !important;
+    border-radius: 0 !important;
+}
+
+.progressBar :global(.ant-progress-text) {
+    font-family: var(--font-family-mono) !important;
+    color: var(--ink-primary) !important;
+    font-weight: 700 !important;
 }

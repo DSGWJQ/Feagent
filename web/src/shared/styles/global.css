@@ -1,13 +1,16 @@
 /**
- * 全局样式 + CSS变量系统
+ * 全局样式 + CSS变量系统 - Gemini's Precision Industrial Design
  *
  * 包含：
- * 1. CSS变量定义（基于设计Token）
+ * 1. CSS变量定义（Gemini设计系统）
  * 2. 全局重置样式
  * 3. 滚动条样式
  * 4. 通用工具类
  * 5. 主题切换过渡效果
  */
+
+/* ==================== Google Fonts Import ==================== */
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap');
 
 /* ==================== 主题切换过渡 ==================== */
 html.theme-transition,
@@ -154,25 +157,37 @@ html.theme-transition *::after {
   /* Golden Ratio approx */
   --line-height-loose: 2;
 
-  /* ===== 新古典主义核心变量 (权威定义) ===== */
-  /* 用于页面背景、容器和文字 */
-  --neo-bg: #FFFFFF;
-  --neo-surface: #F9FAFB;
-  --neo-surface-2: #F3F4F6;
-  --neo-text: #374151;
-  /* neutral-700 */
-  --neo-text-2: #6B7280;
-  /* neutral-500 */
-  --neo-border: #E5E7EB;
-  /* neutral-200 */
-  --neo-gold: #D97706;
-  /* primary-600 */
-  --neo-blue: #1E40AF;
-  /* info-800 */
+  /* ===== Precision Industrial - Gemini Design System ===== */
+  /* "Structure as Beauty" - High-Fidelity Monochrome */
+
+  /* Core Industrial Colors */
+  --ink-primary: #050505;
+  /* Primary text, active borders (Near-black, OLED-friendly) */
+  --ink-secondary: #404040;
+  /* Supporting text, inactive elements */
+  --stone-dark: #808080;
+  /* Metadata, timestamps, subtle labels */
+  --stone-light: #E0E0E0;
+  /* Structural grid lines and default borders */
+  --paper: #FFFFFF;
+  /* Backgrounds */
+  --paper-off: #F7F7F7;
+  /* Subtle section differentiation */
+  --signal: #000000;
+  /* Hover states, active borders (Pure Black) */
+
+  /* Legacy aliases for compatibility */
+  --neo-bg: var(--paper);
+  --neo-surface: var(--paper-off);
+  --neo-text: var(--ink-primary);
+  --neo-text-2: var(--ink-secondary);
+  --neo-text-3: var(--stone-dark);
+  --neo-border: var(--stone-light);
+  --neo-black: var(--signal);
+  --neo-charcoal: #1a1a1a;
+  --neo-gray: #333333;
   --neo-red: #DC2626;
-  /* error-main */
-  --neo-focus: #1E40AF;
-  /* Focus Ring使用皇家蓝 */
+  --neo-focus: var(--signal);
 
   /* 黄金比例间距补充 */
   --space-0: 0px;

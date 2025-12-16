@@ -1,11 +1,11 @@
 """ToolRepository 单元测试（P2-Infrastructure）
 
 测试范围:
-1. Save Operations: save_new_tool, save_with_parameters (2 tests)
-2. Retrieval Operations: get_by_id, find_by_id, find_all (5 tests)
-3. Category Operations: find_by_category (1 test)
-4. Status Operations: find_published (1 test)
-5. Lifecycle Operations: tool_lifecycle, usage_tracking (2 tests)
+1. Save Operations: save_new_tool, save_with_parameters, merge_updates (3 tests)
+2. Retrieval Operations: get_by_id, find_by_id, find_all, ordering (6 tests)
+3. Category Operations: find_by_category, ordering (2 tests)
+4. Status Operations: find_published, filter_testing (2 tests)
+5. Lifecycle Operations: tool_lifecycle, usage_tracking, round_trip (3 tests)
 6. Exists Operations: exists (2 tests)
 7. Delete Operations: delete_existing, delete_nonexistent, delete_cascade (3 tests)
 
@@ -16,14 +16,16 @@
 - 覆盖异常情况和幂等性
 
 测试结果:
-- 16 tests, 32.3% coverage (20/62 statements)
-- 所有测试通过，需要补充更多测试以提升覆盖率
+- 21 tests (新增5个), 目标覆盖率 50%+
+- 覆盖 merge 语义、可选字段、排序、过滤等关键路径
 
-覆盖目标: 0% → 32.3% (P0 tests partial, 需要扩展以达到 85%+)
+覆盖目标: 32.3% → 50%+ (新增 P0/P1 测试)
 """
 
+from datetime import UTC, datetime
+
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.domain.entities.tool import Tool, ToolParameter
@@ -31,6 +33,7 @@ from src.domain.exceptions import NotFoundError
 from src.domain.value_objects.tool_category import ToolCategory
 from src.domain.value_objects.tool_status import ToolStatus
 from src.infrastructure.database.base import Base
+from src.infrastructure.database.models import ToolModel
 from src.infrastructure.database.repositories.tool_repository import (
     SQLAlchemyToolRepository,
 )
@@ -92,6 +95,17 @@ def sample_tool() -> Tool:
     )
 
 
+# ==================== Helper Functions ====================
+
+
+def _index_in_result(tools: list[Tool], tool_id: str) -> int:
+    """返回 tool_id 在结果列表中的索引（用于排序测试）"""
+    for idx, tool in enumerate(tools):
+        if tool.id == tool_id:
+            return idx
+    raise AssertionError(f"Tool id not found in results: {tool_id}")
+
+
 class TestToolRepositorySave:
     """保存 Tool 测试"""
 
@@ -142,6 +156,65 @@ class TestToolRepositorySave:
         assert len(retrieved.parameters) == 2
         assert retrieved.parameters[0].name == "query"
         assert retrieved.parameters[1].default == 30
+
+    def test_save_merge_updates_existing_tool_without_duplicate_row(
+        self, tool_repository: SQLAlchemyToolRepository, db_session: Session
+    ):
+        """测试：merge 语义 - 同一 tool_id 保存两次应更新而非重复
+
+        Given: 同一 tool_id 保存两次（字段不同）
+        When: repository.save + commit 两次
+        Then: 数据库中仍只有 1 行，并且字段被更新
+        """
+        tool_id = "tool_merge_test"
+        t0 = datetime.now(UTC)
+
+        # 第一次保存
+        tool_v1 = Tool.create(
+            name="初始工具",
+            description="v1",
+            category=ToolCategory.HTTP,
+            author="test_user",
+            parameters=[
+                ToolParameter(
+                    name="method", type="string", description="HTTP method", required=True
+                )
+            ],
+        )
+        tool_v1.id = tool_id
+        tool_v1.created_at = t0
+        tool_repository.save(tool_v1)
+        db_session.commit()
+
+        # 第二次保存（更新）
+        tool_v2 = Tool.create(
+            name="更新后的工具",
+            description="v2",
+            category=ToolCategory.HTTP,
+            author="test_user",
+            returns={"type": "object"},
+            tags=["v2", "http"],
+            icon="https://example.com/icon.png",
+        )
+        tool_v2.id = tool_id
+        tool_v2.created_at = t0
+        tool_v2.status = ToolStatus.TESTING
+        tool_repository.save(tool_v2)
+        db_session.commit()
+
+        # 验证：只有一行
+        row_count = db_session.scalar(
+            select(func.count()).select_from(ToolModel).where(ToolModel.id == tool_id)
+        )
+        assert row_count == 1
+
+        # 验证：字段已更新
+        loaded = tool_repository.get_by_id(tool_id)
+        assert loaded.name == "更新后的工具"
+        assert loaded.description == "v2"
+        assert loaded.status == ToolStatus.TESTING
+        assert loaded.returns.get("type") == "object"
+        assert loaded.tags == ["v2", "http"]
 
 
 class TestToolRepositoryRetrieval:

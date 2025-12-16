@@ -12,7 +12,7 @@ export interface PageShellProps {
     actions?: React.ReactNode;
     /** 页面内容 */
     children: React.ReactNode;
-    /** 
+    /**
      * 变体风格
      * - default: 标准透明背景，适合内部已有 Card 的页面
      * - stone: 整个页面呈石质背景（暂未实装特殊效果，预留）
@@ -24,7 +24,7 @@ export interface PageShellProps {
 
 /**
  * PageShell - 标准页面壳组件
- * 
+ *
  * 提供统一的标题区（Lintel 风格）和内容容器。
  * 遵循新古典主义 "Order & Structure" 原则。
  */

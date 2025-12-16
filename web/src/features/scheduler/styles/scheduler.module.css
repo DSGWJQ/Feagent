@@ -1,110 +1,360 @@
 /**
- * Scheduler Module Styles
- * Neoclassical Design System
+ * Scheduler Module Styles - Gemini's System 01 Design
+ * Task Dispatcher - Engineering Control Center
  */
 
 /* ========== Common Container ========== */
 .container {
   width: 100%;
-  padding: var(--spacing-6);
+  padding: 40px;
 }
 
 .card {
-  box-shadow: var(--shadow-sm);
-  border-radius: var(--radius-md);
-  background: var(--neo-surface);
-  border: 1px solid var(--neo-border);
+  box-shadow: none;
+  border-radius: 0;
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  transition: all 0.2s var(--ease-mechanical);
 }
 
-/* ========== Statistic Widget ========== */
+.card:hover {
+  border-color: var(--ink-secondary);
+  background: var(--paper-off);
+}
+
+/* ========== Statistic Widget - Monospace Numbers ========== */
 .statisticTitle {
-  font-size: var(--font-size-sm);
-  color: var(--neo-text-2);
-  margin-bottom: var(--spacing-2);
+  font-size: 0.75rem;
+  color: var(--stone-dark);
+  margin-bottom: 12px;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .statisticValue {
-  font-size: 1.75rem;
-  font-weight: var(--font-weight-medium);
-  color: var(--neo-text);
-  font-family: var(--font-family-serif);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+  font-family: var(--font-family-mono);
+  line-height: 1;
 }
 
-/* ========== Neoclassical Table ========== */
+.statisticUnit {
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+  font-family: var(--font-family-mono);
+  margin-left: 8px;
+}
+
+/* ========== Task Card ========== */
+.taskCard {
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  padding: 24px;
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s var(--ease-mechanical);
+}
+
+/* Top Loading Bar on Hover */
+.taskCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--ink-primary);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.taskCard:hover::before {
+  transform: scaleX(1);
+}
+
+.taskCard:hover {
+  border-color: var(--ink-secondary);
+  background: var(--paper-off);
+}
+
+.taskHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--stone-light);
+}
+
+.taskName {
+  font-family: var(--font-family-base);
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.taskMeta {
+  display: flex;
+  gap: 16px;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  color: var(--stone-dark);
+  text-transform: uppercase;
+}
+
+/* ========== Engineering Table ========== */
+.neoTable :global(.ant-table) {
+  font-size: 0.85rem;
+  background: transparent !important;
+  border: 1px solid var(--stone-light);
+  font-family: var(--font-family-base);
+}
+
 .neoTable :global(.ant-table-thead > tr > th) {
-  background: var(--neo-surface-2) !important;
-  font-family: var(--font-family-serif);
-  color: var(--neo-text);
-  font-weight: 600;
-  border-bottom: 2px solid var(--neo-border) !important;
+  background: var(--ink-primary) !important;
+  font-family: var(--font-family-mono) !important;
+  color: var(--paper) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.05em !important;
+  border-bottom: 2px solid var(--ink-primary) !important;
+  padding: 16px !important;
+  border-radius: 0 !important;
 }
 
 .neoTable :global(.ant-table-tbody > tr > td) {
-  border-bottom: 1px solid var(--neo-border) !important;
-  color: var(--neo-text-2);
+  border-bottom: 1px solid var(--stone-light) !important;
+  color: var(--ink-primary) !important;
+  padding: 16px !important;
+  background: var(--paper) !important;
+  transition: all 0.2s var(--ease-mechanical) !important;
 }
 
 .neoTable :global(.ant-table-tbody > tr:hover > td) {
-  background: var(--neo-surface-1) !important;
+  background: var(--paper-off) !important;
+}
+
+.neoTable :global(.ant-table-tbody > tr:hover td:first-child) {
+  border-left: 3px solid var(--ink-primary) !important;
+  padding-left: 13px !important;
 }
 
 .neoTable :global(.ant-table-wrapper .ant-table-pagination) {
-  margin: var(--spacing-4) 0;
+  margin: 24px 0;
 }
 
-/* Color Classes for Statistics */
+/* Color Classes for Status - Monochrome System */
 .colorSuccess {
-  color: var(--color-success) !important;
+  color: var(--ink-primary) !important;
 }
 
 .colorError {
-  color: var(--color-error) !important;
+  color: var(--signal-error) !important;
 }
 
 .colorWarning {
-  color: var(--color-warning) !important;
+  color: var(--ink-primary) !important;
 }
 
 .colorInfo {
-  color: var(--neo-blue) !important;
+  color: var(--ink-secondary) !important;
 }
 
-/* ========== Ant Design Overrides ========== */
+/* ========== Status Badges ========== */
+.statusBadge {
+  display: inline-block;
+  padding: 4px 12px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0;
+}
+
+.statusActive {
+  border: 1px solid var(--ink-primary);
+  background: var(--ink-primary);
+  color: var(--paper);
+}
+
+.statusPending {
+  border: 1px solid var(--stone-dark);
+  color: var(--stone-dark);
+  background: transparent;
+}
+
+.statusCompleted {
+  border: 1px solid var(--ink-primary);
+  color: var(--ink-primary);
+  background: transparent;
+}
+
+.statusFailed {
+  border: 1px solid var(--signal-error);
+  background: var(--signal-error);
+  color: var(--paper);
+}
+
+/* ========== Ant Design Global Overrides ========== */
 :global(.ant-table) {
-  font-size: var(--font-size-sm);
+  font-size: 0.85rem;
   background: transparent !important;
 }
 
 :global(.ant-tag) {
-  font-size: var(--font-size-xs);
-  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0;
+  background: var(--paper);
+  border: 1px solid var(--ink-secondary);
+  color: var(--ink-primary);
+  padding: 4px 12px;
+}
+
+:global(.ant-tag.ant-tag-success) {
+  background: var(--ink-primary);
+  color: var(--paper);
+  border-color: var(--ink-primary);
+}
+
+:global(.ant-tag.ant-tag-error) {
+  background: var(--signal-error);
+  color: var(--paper);
+  border-color: var(--signal-error);
 }
 
 :global(.ant-modal-content) {
-  background: var(--neo-surface) !important;
-  border: 1px solid var(--neo-border);
-  box-shadow: var(--shadow-lg);
-  border-radius: var(--radius-md) !important;
+  background: var(--paper) !important;
+  border: 2px solid var(--ink-primary) !important;
+  box-shadow: 8px 8px 0px 0px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 0 !important;
 }
 
 :global(.ant-modal-header) {
-  background: transparent !important;
-  border-bottom: 1px solid var(--neo-border) !important;
-  margin-bottom: var(--spacing-4) !important;
+  background: var(--ink-primary) !important;
+  border-bottom: 1px solid var(--ink-primary) !important;
+  margin-bottom: 0 !important;
+  padding: 16px 24px !important;
+  border-radius: 0 !important;
 }
 
 :global(.ant-modal-title) {
-  color: var(--neo-text) !important;
-  font-family: var(--font-family-serif);
+  color: var(--paper) !important;
+  font-family: var(--font-family-mono) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  font-size: 0.95rem !important;
+  letter-spacing: 0.05em !important;
 }
 
 :global(.ant-card) {
-  background: var(--neo-surface) !important;
-  border: 1px solid var(--neo-border) !important;
-  border-radius: var(--radius-md) !important;
+  background: var(--paper) !important;
+  border: 1px solid var(--stone-light) !important;
+  border-radius: 0 !important;
+  transition: all 0.2s var(--ease-mechanical) !important;
+}
+
+:global(.ant-card:hover) {
+  border-color: var(--ink-secondary) !important;
+  background: var(--paper-off) !important;
+}
+
+:global(.ant-card-head) {
+  background: var(--paper-off) !important;
+  border-bottom: 1px solid var(--stone-light) !important;
+  padding: 16px 24px !important;
+  border-radius: 0 !important;
+}
+
+:global(.ant-card-head-title) {
+  font-family: var(--font-family-mono) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  font-size: 0.85rem !important;
+  color: var(--ink-primary) !important;
+  letter-spacing: 0.05em !important;
 }
 
 :global(.ant-divider-horizontal) {
-  border-color: var(--neo-border) !important;
-  margin: var(--spacing-8) 0;
+  border-color: var(--stone-light) !important;
+  margin: 32px 0 !important;
+}
+
+/* ========== Schedule Timeline ========== */
+.timeline {
+  position: relative;
+  padding-left: 32px;
+}
+
+.timelineItem {
+  position: relative;
+  padding-bottom: 24px;
+}
+
+.timelineItem::before {
+  content: '';
+  position: absolute;
+  left: -26px;
+  top: 6px;
+  width: 12px;
+  height: 12px;
+  background: var(--ink-primary);
+  border: 2px solid var(--paper);
+}
+
+.timelineItem::after {
+  content: '';
+  position: absolute;
+  left: -21px;
+  top: 18px;
+  width: 2px;
+  height: calc(100% - 12px);
+  background: var(--stone-light);
+}
+
+.timelineItem:last-child::after {
+  display: none;
+}
+
+.timelineTime {
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  color: var(--stone-dark);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.timelineContent {
+  font-family: var(--font-family-base);
+  font-size: 0.95rem;
+  color: var(--ink-primary);
+}
+
+/* ========== Cron Expression Display ========== */
+.cronExpression {
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+  color: var(--ink-primary);
+  background: var(--paper-off);
+  padding: 12px 16px;
+  border: 1px solid var(--stone-light);
+  margin-top: 16px;
+}
+
+.cronLabel {
+  font-size: 0.7rem;
+  color: var(--stone-dark);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-family: var(--font-family-mono);
 }

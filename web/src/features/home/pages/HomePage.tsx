@@ -75,7 +75,7 @@ export const HomePage = () => {
         <div className={styles.headerContent}>
           {/* Logo */}
           <div className={styles.logo}>
-            <RocketOutlined style={{ fontSize: '24px', color: 'var(--neo-gold)' }} />
+            <RocketOutlined style={{ fontSize: '20px', color: 'var(--ink-primary)' }} />
             <span className={styles.logoText}>AI Agent Platform</span>
           </div>
 
@@ -170,22 +170,6 @@ export const HomePage = () => {
         </div>
       </section>
 
-      {/* 工作流编辑器入口（突出显示） */}
-      <section id="workflow" className={styles.workflowCtaSection}>
-        <div className={styles.workflowCtaContent}>
-          <h2 className={styles.workflowCtaTitle}>准备好开始了吗？</h2>
-          <p className={styles.workflowCtaSubtitle}>立即体验强大的工作流编辑器</p>
-          <Button
-            type="primary"
-            size="large"
-            icon={<RocketOutlined />}
-            onClick={handleCreateAgent}
-            className={styles.ctaBtn}
-          >
-            进入工作流编辑器
-          </Button>
-        </div>
-      </section>
     </div>
   );
 };

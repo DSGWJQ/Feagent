@@ -1,8 +1,6 @@
 /**
- * Workflow Drafting Room Styles
- * Neoclassical Design System
- * 
- * A specialized full-screen layout for the "Drafting Room" experience.
+ * Workflow Drafting Room Styles - Gemini's System 01 Design
+ * Engineering Canvas - Full-Screen Precision Workspace
  */
 
 .pageContainer {
@@ -13,8 +11,7 @@
     position: fixed;
     top: 0;
     left: 0;
-    background-color: var(--neo-bg);
-    /* Ensure it sits above other content if necessary */
+    background-color: var(--paper);
     z-index: 100;
     overflow: hidden;
 }
@@ -25,32 +22,34 @@
     justify-content: center;
     height: 100vh;
     width: 100vw;
-    background: var(--neo-bg);
-    color: var(--neo-gold);
+    background: var(--paper);
+    color: var(--ink-primary);
+    font-family: var(--font-family-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 /* ==================== Control Bar (Toolbar) ==================== */
 .controlBar {
     height: 64px;
-    background: var(--neo-surface);
-    border-bottom: 1px solid var(--neo-border);
+    background: var(--surface-panel);
+    border-bottom: 1px solid var(--stone-light);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 var(--spacing-6);
-    box-shadow: var(--shadow-sm);
+    padding: 0 32px;
     z-index: 10;
 }
 
 .logoArea {
     display: flex;
     align-items: center;
-    gap: var(--spacing-3);
+    gap: 16px;
 }
 
 .logoIcon {
     font-size: 24px;
-    color: var(--neo-gold);
+    color: var(--ink-primary);
 }
 
 .titleGroup {
@@ -59,18 +58,19 @@
 }
 
 .title {
-    font-family: var(--font-family-serif);
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    color: var(--neo-text);
+    font-family: var(--font-family-base);
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--ink-primary);
     line-height: 1.2;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.05em;
 }
 
 .subtitle {
     font-family: var(--font-family-mono);
     font-size: 10px;
-    color: var(--neo-text-2);
+    color: var(--stone-dark);
     text-transform: uppercase;
     letter-spacing: 1px;
 }
@@ -78,29 +78,50 @@
 .actionsArea {
     display: flex;
     align-items: center;
-    gap: var(--spacing-3);
+    gap: 16px;
 }
 
-/* Status Indicators */
+/* Status Indicators - Engineering Dashboard Style */
 .statusIndicator {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
-    background: var(--neo-surface-2);
-    border: 1px solid var(--neo-border);
-    font-size: 12px;
-    color: var(--neo-text-2);
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 0;
+    background: var(--paper);
+    border: 1px solid var(--stone-light);
+    font-size: 0.7rem;
+    color: var(--ink-secondary);
     font-family: var(--font-family-mono);
+    text-transform: uppercase;
 }
 
 .statusConnected {
-    color: var(--color-success);
+    color: var(--ink-primary);
+    border-color: var(--ink-primary);
+}
+
+.statusConnected::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    background: var(--ink-primary);
+    display: inline-block;
+    margin-right: 4px;
 }
 
 .statusDisconnected {
-    color: var(--color-error);
+    color: var(--signal-error);
+    border-color: var(--signal-error);
+}
+
+.statusDisconnected::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    background: var(--signal-error);
+    display: inline-block;
+    margin-right: 4px;
 }
 
 /* ==================== Drafting Table (Content) ==================== */
@@ -111,40 +132,44 @@
     overflow: hidden;
 }
 
-/* Palette (Left Panel) */
+/* Palette (Left Panel) - Blueprint Drawer */
 .paletteContainer {
     width: 280px;
-    background: var(--neo-surface);
-    border-right: 1px solid var(--neo-border);
+    background: var(--surface-panel);
+    border-right: 1px solid var(--stone-light);
     display: flex;
     flex-direction: column;
     z-index: 5;
 }
 
-/* Canvas Area */
+/* Canvas Area - Dot Grid Engineering Workspace */
 .canvasArea {
     flex: 1;
     position: relative;
-    background-color: #1a1a1a;
-    /* Backup dark bg */
+    background-color: var(--paper);
+    /* Dot Matrix Grid Background */
+    background-image: radial-gradient(var(--stone-light) 1px, transparent 1px);
+    background-size: 20px 20px;
 }
 
-/* ReactFlow Overrides within context */
+/* ReactFlow Overrides - Industrial Controls */
 .canvasArea :global(.react-flow__renderer) {
     /* Ensure flow takes full space */
 }
 
 .canvasArea :global(.react-flow__controls) {
-    background: var(--neo-surface);
-    border: 1px solid var(--neo-border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
+    background: var(--paper);
+    border: 1px solid var(--stone-light);
+    border-radius: 0;
+    box-shadow: 4px 4px 0 0 rgba(0, 0, 0, 0.1);
 }
 
 .canvasArea :global(.react-flow__controls button) {
-    border-bottom: 1px solid var(--neo-border);
-    color: var(--neo-text);
-    fill: var(--neo-text);
+    border-bottom: 1px solid var(--stone-light);
+    color: var(--ink-primary);
+    fill: var(--ink-primary);
+    background: var(--paper);
+    transition: all 0.2s var(--ease-mechanical);
 }
 
 .canvasArea :global(.react-flow__controls button:last-child) {
@@ -152,20 +177,23 @@
 }
 
 .canvasArea :global(.react-flow__controls button:hover) {
-    background: var(--neo-surface-2);
-    color: var(--neo-gold);
-    fill: var(--neo-gold);
+    background: var(--ink-primary);
+    color: var(--paper);
+    fill: var(--paper);
 }
 
-/* Chat Panel (Rights Panel) */
+.canvasArea :global(.react-flow__controls button:active) {
+    transform: translate(2px, 2px);
+}
+
+/* Chat Panel (Right Panel) - Command Terminal */
 .chatPanel {
     width: 400px;
-    /* Expanded width */
-    background: var(--neo-surface);
-    border-left: 1px solid var(--neo-border);
+    background: var(--surface-panel);
+    border-left: 1px solid var(--stone-light);
     display: flex;
     flex-direction: column;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 0.2s var(--ease-mechanical);
     z-index: 5;
 }
 
@@ -175,26 +203,119 @@
 
 .chatHeader {
     height: 48px;
-    padding: 0 var(--spacing-4);
+    padding: 0 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid var(--neo-border);
-    background: var(--neo-surface-2);
+    border-bottom: 1px solid var(--stone-light);
+    background: var(--paper);
 }
 
 .chatTitle {
-    font-family: var(--font-family-serif);
-    font-weight: 600;
-    color: var(--neo-gold);
+    font-family: var(--font-family-mono);
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--ink-primary);
     margin: 0;
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
 }
 
 .chatContent {
     flex: 1;
     overflow: hidden;
     position: relative;
+    background: var(--paper);
 }
 
 /* ==================== Floating Panels (Config) ==================== */
-/* We might move Config Panel to a styled Drawer or a floating NeoCard */
+/* Config Panel - Styled Drawer/NeoCard */
+.configDrawer {
+    background: var(--paper);
+    border: 1px solid var(--ink-primary);
+    box-shadow: 8px 8px 0 0 rgba(0, 0, 0, 0.1);
+}
+
+.configDrawerHeader {
+    background: var(--ink-primary);
+    color: var(--paper);
+    padding: 16px 20px;
+    font-family: var(--font-family-mono);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--ink-primary);
+}
+
+.configDrawerContent {
+    padding: 24px;
+    background: var(--paper);
+}
+
+/* ==================== Responsive Behavior ==================== */
+@media (max-width: 1400px) {
+    .chatPanel {
+        width: 350px;
+    }
+
+    .paletteContainer {
+        width: 240px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .controlBar {
+        padding: 0 20px;
+    }
+
+    .chatPanel {
+        width: 300px;
+    }
+
+    .paletteContainer {
+        width: 220px;
+    }
+}
+
+@media (max-width: 768px) {
+    .controlBar {
+        height: 56px;
+        padding: 0 16px;
+    }
+
+    .title {
+        font-size: 0.9rem;
+    }
+
+    .subtitle {
+        display: none;
+    }
+
+    .chatPanel {
+        position: absolute;
+        right: 0;
+        top: 0;
+        height: 100%;
+        width: 320px;
+        transform: translateX(100%);
+        transition: transform 0.3s var(--ease-mechanical);
+    }
+
+    .chatPanel.active {
+        transform: translateX(0);
+    }
+
+    .paletteContainer {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 260px;
+        transform: translateX(-100%);
+        transition: transform 0.3s var(--ease-mechanical);
+    }
+
+    .paletteContainer.active {
+        transform: translateX(0);
+    }
+}

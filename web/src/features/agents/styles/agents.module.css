@@ -1,41 +1,55 @@
 /**
- * Agents Feature Styles
- * Neoclassical Design System
+ * Agents Feature Styles - Gemini's System 01 Design
+ * Industrial Precision Aesthetic
  */
 
 /* ========== Page Container ========== */
 .pageContainer {
-  padding: var(--spacing-6);
+  padding: 40px;
   max-width: 800px;
   margin: 0 auto;
 }
 
 .pageContainerWide {
-  padding: var(--spacing-6);
+  padding: 40px;
   max-width: 1200px;
   margin: 0 auto;
 }
 
 /* ========== Loading State ========== */
 .loadingContainer {
-  padding: var(--spacing-6);
+  padding: 60px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .loadingText {
-  margin-top: var(--spacing-4);
-  color: var(--neo-text-2);
+  margin-top: 24px;
+  color: var(--ink-secondary);
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* ========== Empty State ========== */
 .emptyContainer {
   text-align: center;
-  padding: var(--spacing-10);
-  color: var(--neo-text-2);
+  padding: 80px 40px;
+  color: var(--stone-dark);
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  margin: 40px 0;
 }
 
 .emptyText {
-  margin-bottom: var(--spacing-2);
+  margin-bottom: 16px;
+  font-family: var(--font-family-base);
+  font-size: 1rem;
+  color: var(--ink-secondary);
 }
 
 /* ========== Spacing Utilities ========== */
@@ -44,19 +58,286 @@
 }
 
 .marginTop {
-  margin-top: var(--spacing-4);
+  margin-top: 24px;
 }
 
 .marginBottom {
-  margin-bottom: var(--spacing-4);
+  margin-bottom: 24px;
 }
 
 /* ========== Text Colors ========== */
 .textSecondary {
-  color: var(--neo-text-2);
+  color: var(--ink-secondary);
+  font-family: var(--font-family-base);
 }
 
 .textTertiary {
-  color: var(--neo-text-2);
-  /* Consolidated to secondary text color or use specific opacity */
+  color: var(--stone-dark);
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+}
+
+/* ========== Agent Card List ========== */
+.agentCard {
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  padding: 24px;
+  margin-bottom: 16px;
+  transition: all 0.2s var(--ease-mechanical);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Top Loading Bar on Hover */
+.agentCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--ink-primary);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.agentCard:hover::before {
+  transform: scaleX(1);
+}
+
+.agentCard:hover {
+  background: var(--paper-off);
+  border-color: var(--ink-secondary);
+}
+
+/* ========== Agent Header ========== */
+.agentHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--stone-light);
+}
+
+.agentTitle {
+  font-family: var(--font-family-base);
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.agentMeta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* ========== Status Badge ========== */
+.statusBadge {
+  display: inline-block;
+  padding: 4px 12px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid var(--ink-primary);
+  background: transparent;
+  color: var(--ink-primary);
+}
+
+.statusBadge.active {
+  border-color: var(--ink-primary);
+  background: var(--ink-primary);
+  color: var(--paper);
+}
+
+.statusBadge.inactive {
+  border-color: var(--stone-dark);
+  color: var(--stone-dark);
+}
+
+/* ========== Agent Description ========== */
+.agentDescription {
+  color: var(--ink-secondary);
+  line-height: 1.6;
+  margin-bottom: 16px;
+  font-family: var(--font-family-base);
+  font-size: 0.95rem;
+}
+
+/* ========== Agent Actions ========== */
+.agentActions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* Action Buttons - Industrial Style */
+.actionBtn {
+  padding: 8px 20px;
+  font-family: var(--font-family-mono);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink-primary);
+  border: 1px solid var(--ink-secondary);
+  cursor: pointer;
+  transition: all 0.2s var(--ease-mechanical);
+}
+
+.actionBtn:hover {
+  background: var(--ink-primary);
+  color: var(--paper);
+  border-color: var(--ink-primary);
+  transform: translate(-2px, -2px);
+  box-shadow: 2px 2px 0 0 var(--ink-primary);
+}
+
+.actionBtn:active {
+  transform: translate(0, 0);
+  box-shadow: 0 0 0 0 var(--ink-primary);
+}
+
+.actionBtnDanger {
+  border-color: var(--signal-error);
+  color: var(--signal-error);
+}
+
+.actionBtnDanger:hover {
+  background: var(--signal-error);
+  color: var(--paper);
+  border-color: var(--signal-error);
+  box-shadow: 2px 2px 0 0 var(--signal-error);
+}
+
+/* ========== Form Elements ========== */
+.formGroup {
+  margin-bottom: 24px;
+}
+
+.formLabel {
+  display: block;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--stone-dark);
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+
+.formInput {
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  padding: 12px 16px;
+  font-family: var(--font-family-base);
+  font-size: 0.95rem;
+  color: var(--ink-primary);
+  outline: none;
+  transition: border-width 0.1s ease;
+  border-radius: 0;
+}
+
+.formInput:focus {
+  border: 2px solid var(--ink-primary);
+  padding: 11px 15px;
+}
+
+.formInput::placeholder {
+  color: var(--stone-dark);
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+}
+
+/* ========== Agent Type Selector ========== */
+.typeSelector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.typeOption {
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-mechanical);
+  position: relative;
+}
+
+.typeOption:hover {
+  border-color: var(--ink-secondary);
+  background: var(--paper-off);
+}
+
+.typeOption.selected {
+  border: 2px solid var(--ink-primary);
+  background: var(--paper);
+}
+
+.typeOption.selected::before {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  background: var(--ink-primary);
+  color: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.typeName {
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ink-primary);
+  margin-bottom: 8px;
+}
+
+.typeDescription {
+  font-family: var(--font-family-base);
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+  line-height: 1.5;
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 768px) {
+  .pageContainer,
+  .pageContainerWide {
+    padding: 20px;
+  }
+
+  .agentCard {
+    padding: 16px;
+  }
+
+  .agentHeader {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .agentActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .typeSelector {
+    grid-template-columns: 1fr;
+  }
 }

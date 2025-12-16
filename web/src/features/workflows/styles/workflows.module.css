@@ -1,39 +1,51 @@
 /**
- * Workflows 模块通用样式
- * 使用设计Token系统 - 深色主题
+ * Workflows Module Styles - Gemini's System 01 Design
+ * Engineering Canvas Aesthetic
  */
 
 /* ========== NodePalette 节点面板 ========== */
 .nodePalette {
   width: 280px;
   height: 100%;
-  background-color: var(--color-neutral-900);
-  border-right: 1px solid var(--color-neutral-700);
-  padding: var(--spacing-4);
+  background-color: var(--surface-panel);
+  border-right: 1px solid var(--stone-light);
+  padding: 20px;
   overflow-y: auto;
 }
 
 .nodePaletteTitle {
-  margin-bottom: var(--spacing-4);
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-neutral-50);
+  margin-bottom: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-primary);
+  border-bottom: 2px solid var(--ink-primary);
+  padding-bottom: 12px;
 }
 
 .nodePaletteList {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-2);
+  gap: 12px;
 }
 
 .nodePaletteCard {
   cursor: grab;
-  background-color: var(--color-neutral-800);
-  border-color: var(--color-neutral-700);
+  background-color: var(--paper);
+  border: 1px solid var(--stone-light);
+  transition: all 0.2s var(--ease-mechanical);
+}
+
+.nodePaletteCard:hover {
+  border-color: var(--ink-secondary);
+  background: var(--paper-off);
 }
 
 .nodePaletteCard:active {
   cursor: grabbing;
+  border-color: var(--ink-primary);
 }
 
 /* ========== ExecutionOverlay 执行覆盖层 ========== */
@@ -45,36 +57,39 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-1) var(--spacing-2);
-  background: rgba(0, 0, 0, 0.85);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  padding: 8px 12px;
+  background: var(--ink-primary);
+  border-radius: 0;
   z-index: 1000;
 }
 
 .executionStatus {
   display: flex;
   align-items: center;
-  gap: var(--spacing-1);
+  gap: 8px;
 }
 
 .executionOrder {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-neutral-50);
-  background-color: var(--color-primary-400);
-  padding: 2px var(--spacing-1);
-  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: var(--font-family-mono);
+  color: var(--paper);
+  background-color: var(--ink-secondary);
+  padding: 2px 8px;
+  border-radius: 0;
   min-width: 20px;
   text-align: center;
 }
 
 .executionOutput {
-  margin-top: var(--spacing-1);
-  font-size: var(--font-size-xs);
-  color: var(--color-neutral-300);
-  background-color: rgba(0, 0, 0, 0.5);
-  padding: var(--spacing-1);
-  border-radius: var(--radius-sm);
+  margin-top: 8px;
+  font-size: 0.7rem;
+  font-family: var(--font-family-mono);
+  color: var(--stone-dark);
+  background-color: var(--paper);
+  padding: 8px;
+  border-radius: 0;
+  border: 1px solid var(--stone-light);
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -83,168 +98,180 @@
 
 /* ========== 节点状态颜色 ========== */
 .statusRunning {
-  color: var(--color-primary-400);
+  color: var(--ink-primary);
 }
 
 .statusCompleted {
-  color: var(--color-success);
+  color: var(--ink-primary);
 }
 
 .statusError {
-  color: var(--color-error);
+  color: var(--signal-error);
 }
 
 .statusPending {
-  color: var(--color-neutral-400);
+  color: var(--stone-dark);
 }
 
 /* ========== 节点基础样式 ========== */
 .nodeBase {
   min-width: 200px;
-  background: var(--color-white);
-  border: 2px solid var(--color-neutral-300);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  transition: all 0.2s;
+  background: var(--paper);
+  border: 1px solid var(--ink-primary);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 0 rgba(0, 0, 0, 0.1);
+  transition: all 0.2s var(--ease-mechanical);
 }
 
 .nodeBase.selected {
-  border-color: var(--color-primary-400);
-  box-shadow: 0 0 0 3px rgba(26, 127, 255, 0.1);
+  border: 2px solid var(--ink-primary);
+  box-shadow: 6px 6px 0 0 rgba(0, 0, 0, 0.15);
 }
 
 .nodeHeader {
-  padding: var(--spacing-2) var(--spacing-3);
+  padding: 12px 16px;
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-  font-weight: var(--font-weight-medium);
-  font-size: var(--font-size-sm);
-  color: var(--color-white);
+  gap: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  color: var(--paper);
+  background: var(--ink-primary);
 }
 
 .nodeBody {
-  padding: var(--spacing-3);
-  background-color: var(--color-neutral-50);
-  border-top: 1px solid var(--color-neutral-200);
+  padding: 16px;
+  background-color: var(--paper);
+  border-top: 1px solid var(--stone-light);
 }
 
-/* ========== 节点类型accent颜色 ========== */
+/* ========== 节点类型accent颜色 (Black with subtle text indicators) ========== */
 .nodeTypeStart {
-  background-color: var(--color-success);
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeEnd {
-  background-color: var(--color-neutral-600);
+  background-color: var(--ink-secondary);
 }
 
 .nodeTypeTool {
-  background-color: var(--color-accent-tool);
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeConditional {
-  background-color: var(--color-warning);
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeLoop {
-  background-color: var(--color-accent-agent);
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeHttp {
-  background-color: var(--color-info);
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeDatabase {
-  background-color: var(--color-primary-400);
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeNotification {
-  background-color: #eb2f96;
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeAudio {
-  background-color: #eb2f96;
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeImage {
-  background-color: #722ed1;
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeFile {
-  background-color: var(--color-neutral-600);
+  background-color: var(--ink-secondary);
 }
 
 .nodeTypeJavaScript {
-  background-color: #faad14;
+  background-color: var(--ink-primary);
 }
 
 .nodeTypePrompt {
-  background-color: var(--color-primary-500);
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeTextModel {
-  background-color: var(--color-primary-400);
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeEmbedding {
-  background-color: #13c2c2;
+  background-color: var(--ink-primary);
 }
 
 .nodeTypeStructuredOutput {
-  background-color: var(--color-accent-workflow);
+  background-color: var(--ink-primary);
 }
 
 /* ========== NodeConfigPanel 配置面板 ========== */
 .nodeConfigPanel {
   width: 320px;
   height: 100%;
-  background-color: var(--color-white);
-  border-left: 1px solid var(--color-neutral-200);
-  padding: var(--spacing-4);
+  background-color: var(--paper);
+  border-left: 1px solid var(--stone-light);
+  padding: 24px;
   overflow-y: auto;
 }
 
 .nodeConfigTitle {
-  margin-bottom: var(--spacing-4);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-neutral-900);
+  margin-bottom: 24px;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  color: var(--ink-primary);
+  border-bottom: 2px solid var(--ink-primary);
+  padding-bottom: 12px;
 }
 
 /* ========== CodeExportModal 代码导出 ========== */
 .codeBlock {
-  background-color: var(--color-neutral-900);
-  color: var(--color-neutral-50);
-  padding: var(--spacing-4);
-  border-radius: var(--radius-md);
-  font-family: var(--font-family-code);
-  font-size: var(--font-size-sm);
+  background-color: var(--ink-primary);
+  color: var(--paper);
+  padding: 20px;
+  border-radius: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
   overflow-x: auto;
   max-height: 400px;
+  border: 1px solid var(--ink-primary);
 }
 
 /* ========== 节点内部组件样式 ========== */
 /* 节点卡片容器 */
 .nodeCard {
   min-width: 200px;
-  border: 2px solid;
-  transition: all 0.3s;
+  border: 1px solid var(--ink-primary);
+  background: var(--paper);
+  transition: all 0.2s var(--ease-mechanical);
 }
 
 .nodeCardWide {
   min-width: 280px;
   max-width: 400px;
-  border: 2px solid;
-  transition: all 0.3s;
+  border: 1px solid var(--ink-primary);
+  background: var(--paper);
+  transition: all 0.2s var(--ease-mechanical);
 }
 
 /* 节点头部 */
 .nodeHeaderWrapper {
   display: flex;
   align-items: center;
-  gap: var(--spacing-3);
-  padding: var(--spacing-3) var(--spacing-4);
-  border-bottom: 1px solid var(--color-neutral-200);
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--stone-light);
+  background: var(--ink-primary);
+  color: var(--paper);
 }
 
 /* Icon容器 */
@@ -254,8 +281,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-sm);
-  color: var(--color-white);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink-primary);
+  border: 1px solid var(--paper);
 }
 
 /* 节点标题区域 */
@@ -265,63 +294,75 @@
 
 .nodeTitle {
   margin: 0;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  color: var(--paper);
 }
 
 .nodeDescription {
   margin: 0;
-  margin-top: var(--spacing-1);
-  font-size: var(--font-size-xs);
-  color: var(--color-neutral-500);
+  margin-top: 4px;
+  font-size: 0.7rem;
+  font-family: var(--font-family-mono);
+  color: var(--paper);
+  opacity: 0.8;
 }
 
 .nodeDescriptionNoMargin {
   margin: 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-neutral-500);
+  font-size: 0.7rem;
+  font-family: var(--font-family-mono);
+  color: var(--stone-dark);
 }
 
 /* 节点内容区域 */
 .nodeContent {
-  padding: var(--spacing-4);
+  padding: 16px;
+  background: var(--paper);
 }
 
 .nodeContentCompact {
-  padding: var(--spacing-3);
+  padding: 12px;
+  background: var(--paper);
 }
 
 /* 节点状态区域 */
 .nodeStatus {
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-4);
-  font-size: var(--font-size-xs);
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 0.7rem;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  background: var(--paper-off);
+  border-top: 1px solid var(--stone-light);
 }
 
 .nodeStatusRunning {
-  color: var(--color-warning);
+  color: var(--ink-primary);
 }
 
 .nodeStatusCompleted {
-  color: var(--color-success);
+  color: var(--ink-primary);
 }
 
 .nodeStatusFailed {
-  color: var(--color-error);
+  color: var(--signal-error);
 }
 
 /* 状态脉冲动画点 */
 .statusPulse {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: 0;
   animation: pulse 1.5s ease-in-out infinite;
 }
 
 .statusPulseRunning {
-  background-color: var(--color-warning);
+  background-color: var(--ink-primary);
 }
 
 @keyframes pulse {
@@ -335,44 +376,52 @@
 
 /* 节点输出区域 */
 .nodeOutput {
-  padding: var(--spacing-3);
-  border-top: 1px solid var(--color-neutral-200);
-  background-color: var(--color-neutral-50);
+  padding: 12px;
+  border-top: 1px solid var(--stone-light);
+  background-color: var(--paper-off);
 }
 
 .nodeOutputLabel {
-  font-size: var(--font-size-xs);
-  color: var(--color-neutral-500);
-  margin-bottom: var(--spacing-2);
+  font-size: 0.7rem;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  color: var(--stone-dark);
+  margin-bottom: 8px;
 }
 
 .nodeOutputContent {
-  font-size: var(--font-size-xs);
-  color: var(--color-neutral-700);
+  font-size: 0.75rem;
+  font-family: var(--font-family-mono);
+  color: var(--ink-primary);
   max-height: 100px;
   overflow: auto;
 }
 
 /* 代码块样式 */
 .nodeCodeBlock {
-  margin-top: var(--spacing-1);
-  padding: var(--spacing-2);
-  background-color: var(--color-neutral-50);
-  border-radius: var(--radius-sm);
+  margin-top: 8px;
+  padding: 12px;
+  background-color: var(--ink-primary);
+  color: var(--paper);
+  border-radius: 0;
   font-size: 11px;
-  font-family: var(--font-family-code);
+  font-family: var(--font-family-mono);
   max-height: 100px;
   overflow: auto;
+  border: 1px solid var(--ink-primary);
 }
 
 /* 字段行 */
 .nodeField {
-  margin-bottom: var(--spacing-2);
+  margin-bottom: 12px;
 }
 
 .nodeFieldLabel {
-  font-size: var(--font-size-xs);
-  color: var(--color-neutral-500);
+  font-size: 0.7rem;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  color: var(--stone-dark);
+  margin-bottom: 4px;
 }
 
 .nodeFieldLast {

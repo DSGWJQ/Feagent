@@ -637,6 +637,38 @@ async def test_filtering_non_dict_items():
     assert 9 in result
 
 
+@pytest.mark.asyncio
+async def test_filtering_blocks_dunder_import():
+    """测试：filtering 不应允许 __import__（安全沙箱）"""
+    executor = TransformExecutor()
+
+    node = Node.create(
+        type="transform",
+        name="Block __import__",
+        config={"type": "filtering", "field": "items", "condition": "__import__('os')"},
+        position=Position(x=0, y=0),
+    )
+
+    with pytest.raises(DomainError, match="条件评估失败"):
+        await executor.execute(node, {"data": {"items": [{"price": 100}]}}, {})
+
+
+@pytest.mark.asyncio
+async def test_filtering_blocks_open():
+    """测试：filtering 不应允许 open（安全沙箱）"""
+    executor = TransformExecutor()
+
+    node = Node.create(
+        type="transform",
+        name="Block open",
+        config={"type": "filtering", "field": "items", "condition": "open('x','w')"},
+        position=Position(x=0, y=0),
+    )
+
+    with pytest.raises(DomainError, match="条件评估失败"):
+        await executor.execute(node, {"data": {"items": [{"price": 100}]}}, {})
+
+
 # ==================== aggregation 完整操作测试 ====================
 
 

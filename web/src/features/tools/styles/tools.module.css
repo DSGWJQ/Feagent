@@ -1,67 +1,319 @@
 /**
- * Tools Library Module Styles
- * Neoclassical Design System
+ * Tools Library Module Styles - Gemini's System 01 Design
+ * Engineering Toolbox Aesthetic
  */
 
 .container {
   width: 100%;
-  padding: var(--spacing-6);
+  padding: 40px;
 }
 
 .card {
-  box-shadow: var(--shadow-sm);
-  border-radius: var(--radius-md);
-  background: var(--neo-surface);
-  border: 1px solid var(--neo-border);
+  box-shadow: none;
+  border-radius: 0;
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  transition: all 0.2s var(--ease-mechanical);
 }
 
-/* Ant Design Overrides */
+.card:hover {
+  border-color: var(--ink-secondary);
+  background: var(--paper-off);
+}
+
+/* ========== Tool Card List ========== */
+.toolCard {
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  padding: 24px;
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s var(--ease-mechanical);
+}
+
+/* Top Loading Bar on Hover */
+.toolCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--ink-primary);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.toolCard:hover::before {
+  transform: scaleX(1);
+}
+
+.toolCard:hover {
+  border-color: var(--ink-secondary);
+  background: var(--paper-off);
+}
+
+.toolCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--stone-light);
+}
+
+.toolTitle {
+  font-family: var(--font-family-base);
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.toolDescription {
+  color: var(--ink-secondary);
+  line-height: 1.6;
+  margin-bottom: 16px;
+  font-family: var(--font-family-base);
+  font-size: 0.95rem;
+}
+
+/* Ant Design Table Overrides - Industrial Data Grid */
 :global(.ant-table) {
-  font-size: var(--font-size-sm);
+  font-size: 0.85rem;
+  font-family: var(--font-family-base);
+  border: 1px solid var(--stone-light);
 }
 
 :global(.ant-table-thead > tr > th) {
-  background: var(--neo-surface-2) !important;
-  color: var(--neo-text);
-  font-weight: var(--font-weight-semibold);
+  background: var(--ink-primary) !important;
+  color: var(--paper) !important;
+  font-weight: 700 !important;
+  font-family: var(--font-family-mono) !important;
+  text-transform: uppercase !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.05em !important;
+  border-bottom: 2px solid var(--ink-primary) !important;
+  padding: 16px !important;
+  border-radius: 0 !important;
 }
 
 :global(.ant-table-tbody > tr > td) {
-  border-bottom: 1px solid var(--neo-border) !important;
+  border-bottom: 1px solid var(--stone-light) !important;
+  padding: 16px !important;
+  background: var(--paper) !important;
+  color: var(--ink-primary) !important;
+  transition: all 0.2s var(--ease-mechanical) !important;
 }
 
 :global(.ant-table-tbody > tr:hover > td) {
-  background: var(--neo-surface-2) !important;
+  background: var(--paper-off) !important;
 }
 
+:global(.ant-table-tbody > tr:hover td:first-child) {
+  border-left: 3px solid var(--ink-primary) !important;
+  padding-left: 13px !important;
+}
+
+/* Tag Styling - Monospace Badges */
 :global(.ant-tag) {
-  font-size: var(--font-size-xs);
+  font-size: 0.7rem;
+  font-family: var(--font-family-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0;
+  background: var(--paper);
+  border: 1px solid var(--ink-secondary);
+  color: var(--ink-primary);
+  padding: 4px 12px;
 }
 
+:global(.ant-tag.ant-tag-success) {
+  background: var(--ink-primary);
+  color: var(--paper);
+  border-color: var(--ink-primary);
+}
+
+:global(.ant-tag.ant-tag-error) {
+  background: var(--signal-error);
+  color: var(--paper);
+  border-color: var(--signal-error);
+}
+
+/* Modal Styling - Engineering Dialog */
 :global(.ant-modal-content) {
-  background: var(--neo-surface);
-  border: 1px solid var(--neo-border);
-  box-shadow: var(--shadow-lg);
+  background: var(--paper);
+  border: 2px solid var(--ink-primary);
+  box-shadow: 8px 8px 0px 0px rgba(0, 0, 0, 0.1);
+  border-radius: 0;
 }
 
 :global(.ant-modal-header) {
-  background: transparent;
-  border-bottom: 1px solid var(--neo-border);
+  background: var(--ink-primary);
+  border-bottom: 1px solid var(--ink-primary);
+  border-radius: 0;
+  padding: 16px 24px;
 }
 
 :global(.ant-modal-title) {
-  color: var(--neo-text);
+  color: var(--paper);
+  font-family: var(--font-family-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
 }
 
+:global(.ant-modal-close) {
+  color: var(--paper);
+  top: 16px;
+  right: 24px;
+}
+
+:global(.ant-modal-close:hover) {
+  color: var(--stone-light);
+}
+
+:global(.ant-modal-body) {
+  padding: 24px;
+  background: var(--paper);
+}
+
+:global(.ant-modal-footer) {
+  border-top: 1px solid var(--stone-light);
+  padding: 20px 24px;
+  background: var(--paper);
+  border-radius: 0;
+}
+
+/* Form Styling - Industrial Inputs */
 :global(.ant-form-item) {
-  margin-bottom: var(--spacing-4);
-}
-
-:global(.ant-card) {
-  background: var(--neo-surface);
-  border: 1px solid var(--neo-border);
+  margin-bottom: 24px;
 }
 
 :global(.ant-form-item-label > label) {
-  color: var(--neo-text);
+  color: var(--stone-dark);
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+:global(.ant-input),
+:global(.ant-input-number),
+:global(.ant-select-selector) {
+  background: var(--paper) !important;
+  border: 1px solid var(--stone-light) !important;
+  border-radius: 0 !important;
+  font-family: var(--font-family-base) !important;
+  font-size: 0.95rem !important;
+  color: var(--ink-primary) !important;
+  transition: border-width 0.1s ease !important;
+}
+
+:global(.ant-input:focus),
+:global(.ant-input-number:focus),
+:global(.ant-select-focused .ant-select-selector) {
+  border: 2px solid var(--ink-primary) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+:global(.ant-input::placeholder) {
+  color: var(--stone-dark);
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+}
+
+/* Card Styling - Panel Containers */
+:global(.ant-card) {
+  background: var(--paper);
+  border: 1px solid var(--stone-light);
+  border-radius: 0;
+}
+
+:global(.ant-card-head) {
+  background: var(--paper-off);
+  border-bottom: 1px solid var(--stone-light);
+  padding: 16px 24px;
+  border-radius: 0;
+}
+
+:global(.ant-card-head-title) {
+  font-family: var(--font-family-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  color: var(--ink-primary);
+  letter-spacing: 0.05em;
+}
+
+:global(.ant-card-body) {
+  padding: 24px;
+}
+
+/* Button Overrides - Industrial Action Buttons */
+:global(.ant-btn) {
+  border-radius: 0 !important;
+  font-family: var(--font-family-mono) !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  transition: all 0.2s var(--ease-mechanical) !important;
+}
+
+:global(.ant-btn-primary) {
+  background: var(--ink-primary) !important;
+  border: 2px solid var(--ink-primary) !important;
+  color: var(--paper) !important;
+}
+
+:global(.ant-btn-primary:hover) {
+  background: var(--paper) !important;
+  color: var(--ink-primary) !important;
+  transform: translate(-2px, -2px) !important;
+  box-shadow: 2px 2px 0 0 var(--ink-primary) !important;
+}
+
+:global(.ant-btn-primary:active) {
+  transform: translate(0, 0) !important;
+  box-shadow: 0 0 0 0 var(--ink-primary) !important;
+}
+
+:global(.ant-btn-default) {
+  background: var(--paper) !important;
+  border: 1px solid var(--ink-secondary) !important;
+  color: var(--ink-primary) !important;
+}
+
+:global(.ant-btn-default:hover) {
+  background: var(--paper-off) !important;
+  border-color: var(--ink-primary) !important;
+}
+
+/* Pagination - Monospace Numbers */
+:global(.ant-pagination-item),
+:global(.ant-pagination-prev),
+:global(.ant-pagination-next) {
+  border-radius: 0 !important;
+  border: 1px solid var(--stone-light) !important;
+  background: var(--paper) !important;
+  font-family: var(--font-family-mono) !important;
+}
+
+:global(.ant-pagination-item-active) {
+  background: var(--ink-primary) !important;
+  border-color: var(--ink-primary) !important;
+}
+
+:global(.ant-pagination-item-active a) {
+  color: var(--paper) !important;
+}
+
+:global(.ant-pagination-item:hover) {
+  border-color: var(--ink-secondary) !important;
 }

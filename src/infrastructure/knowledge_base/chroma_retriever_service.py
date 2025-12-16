@@ -3,17 +3,11 @@
 也可以使用sqlite-vec实现，这里作为备选方案
 """
 
+import math
 import os
 from typing import Any
 
-import chromadb
-import numpy as np
-from chromadb.config import Settings
-from langchain_openai import OpenAIEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from pydantic import SecretStr
-from tiktoken import encoding_for_model
-
+from src.domain.exceptions import DomainError
 from src.domain.knowledge_base.entities.document_chunk import DocumentChunk
 from src.domain.knowledge_base.ports.knowledge_repository import KnowledgeRepository
 from src.domain.knowledge_base.ports.retriever_service import RetrieverService
@@ -46,6 +40,18 @@ class ChromaRetrieverService(RetrieverService):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
+        try:
+            import chromadb
+            from chromadb.config import Settings
+            from langchain_openai import OpenAIEmbeddings
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
+            from pydantic import SecretStr
+            from tiktoken import encoding_for_model
+        except ImportError as e:
+            raise DomainError(
+                "ChromaRetrieverService dependencies missing; install with `pip install '.[rag-chroma]'`."
+            ) from e
+
         # 初始化嵌入模型
         api_key_value = openai_api_key or os.getenv("OPENAI_API_KEY")
         api_key_secret = SecretStr(api_key_value) if api_key_value else None
@@ -77,8 +83,41 @@ class ChromaRetrieverService(RetrieverService):
 
     async def generate_embedding(self, text: str) -> list[float]:
         """生成文本的向量嵌入"""
-        embedding = await self.embeddings.aembed_query(text)
-        return embedding
+        try:
+            embedding = await self.embeddings.aembed_query(text)
+            return embedding
+        except DomainError:
+            raise
+        except Exception as e:
+            # 处理 OpenAI SDK 特定错误
+            try:
+                from openai import (
+                    APIConnectionError,
+                    APIError,
+                    APITimeoutError,
+                    AuthenticationError,
+                    BadRequestError,
+                    RateLimitError,
+                )
+
+                if isinstance(e, AuthenticationError):
+                    raise DomainError(
+                        "向量嵌入生成失败：OpenAI 认证失败（API Key 无效或缺失）"
+                    ) from e
+                if isinstance(e, RateLimitError):
+                    raise DomainError("向量嵌入生成失败：OpenAI 触发限流（Rate Limit）") from e
+                if isinstance(e, BadRequestError):
+                    raise DomainError("向量嵌入生成失败：OpenAI 请求参数错误") from e
+                if isinstance(e, APITimeoutError):
+                    raise DomainError("向量嵌入生成失败：OpenAI 请求超时") from e
+                if isinstance(e, APIConnectionError):
+                    raise DomainError("向量嵌入生成失败：OpenAI 连接失败") from e
+                if isinstance(e, APIError):
+                    raise DomainError("向量嵌入生成失败：OpenAI 服务端错误") from e
+            except ImportError:
+                pass
+
+            raise DomainError("向量嵌入生成失败") from e
 
     async def chunk_document(
         self,
@@ -87,19 +126,29 @@ class ChromaRetrieverService(RetrieverService):
         chunk_overlap: int | None = None,
     ) -> list[str]:
         """将文档切分为多个块"""
-        # 使用指定的参数或默认参数
-        chunk_size = chunk_size or self.chunk_size
-        chunk_overlap = chunk_overlap or self.chunk_overlap
+        try:
+            # 使用指定的参数或默认参数
+            chunk_size = chunk_size or self.chunk_size
+            chunk_overlap = chunk_overlap or self.chunk_overlap
 
-        # 创建新的切分器
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            length_function=self._count_tokens,
-        )
+            # 创建新的切分器（使用已初始化的splitter类型）
+            splitter_cls = type(self.text_splitter)
+            splitter = splitter_cls(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                length_function=self._count_tokens,
+            )
 
-        chunks = splitter.split_text(content)
-        return chunks
+            chunks = splitter.split_text(content)
+            return chunks
+        except DomainError:
+            raise
+        except (TypeError, ValueError) as e:
+            raise DomainError("文档切分失败：参数无效") from e
+        except KeyError as e:
+            raise DomainError("文档切分失败：分词器初始化或模型编码不可用") from e
+        except Exception as e:
+            raise DomainError("文档切分失败") from e
 
     async def retrieve_relevant_chunks(
         self,
@@ -109,78 +158,96 @@ class ChromaRetrieverService(RetrieverService):
         filters: dict[str, str] | None = None,
     ) -> list[tuple[DocumentChunk, float]]:
         """检索相关的文档块"""
-        # 生成查询向量
-        query_embedding = await self.generate_embedding(query)
+        try:
+            # 生成查询向量
+            query_embedding = await self.generate_embedding(query)
 
-        # 构建过滤条件
-        where_clause = {}
-        if workflow_id:
-            where_clause["workflow_id"] = workflow_id
-        if filters:
-            where_clause.update(filters)
+            # 构建过滤条件
+            where_clause = {}
+            if workflow_id:
+                where_clause["workflow_id"] = workflow_id
+            if filters:
+                where_clause.update(filters)
 
-        # 在ChromaDB中搜索
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k,
-            where=where_clause if where_clause else None,
-            include=["documents", "metadatas", "distances", "embeddings"],
-        )
+            # 在ChromaDB中搜索
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_k,
+                where=where_clause if where_clause else None,
+                include=["documents", "metadatas", "distances", "embeddings"],
+            )
 
-        # 转换结果
-        chunks_with_scores: list[tuple[DocumentChunk, float]] = []
-        ids = results.get("ids") or []
-        documents = results.get("documents") or []
-        metadatas = results.get("metadatas") or []
-        distances = results.get("distances") or []
-        embeddings = results.get("embeddings") or []
+            # 转换结果
+            chunks_with_scores: list[tuple[DocumentChunk, float]] = []
+            ids = results.get("ids") or []
+            documents = results.get("documents") or []
+            metadatas = results.get("metadatas") or []
+            distances = results.get("distances") or []
+            embeddings = results.get("embeddings") or []
 
-        if ids and ids[0]:
-            for i, _chunk_id in enumerate(ids[0]):
-                # 获取文档内容
-                content = documents[0][i]
-                metadata = metadatas[0][i] or {}
-                distance = distances[0][i]
+            if ids and ids[0]:
+                for i, _chunk_id in enumerate(ids[0]):
+                    # 获取文档内容
+                    content = documents[0][i]
+                    metadata = metadatas[0][i] or {}
+                    distance = distances[0][i]
 
-                # 转换距离为相似度分数（余弦距离）
-                similarity = 1 - distance
+                    # 转换距离为相似度分数（余弦距离）
+                    similarity = 1 - distance
 
-                document_id = str(metadata.get("document_id", ""))
-                chunk_index_value = metadata.get("chunk_index", 0)
-                chunk_index = (
-                    int(chunk_index_value) if isinstance(chunk_index_value, int | float) else 0
-                )
-                safe_metadata = {
-                    str(key): value
-                    for key, value in metadata.items()
-                    if isinstance(value, str | int | float | bool) or value is None
-                }
+                    document_id = str(metadata.get("document_id", ""))
+                    chunk_index_value = metadata.get("chunk_index", 0)
+                    chunk_index = (
+                        int(chunk_index_value) if isinstance(chunk_index_value, int | float) else 0
+                    )
+                    safe_metadata = {
+                        str(key): value
+                        for key, value in metadata.items()
+                        if isinstance(value, str | int | float | bool) or value is None
+                    }
 
-                # 获取嵌入向量
-                embedding = []
-                if embeddings and embeddings[0]:
-                    embedding = embeddings[0][i] or []
+                    # 获取嵌入向量
+                    embedding = []
+                    if embeddings and embeddings[0]:
+                        embedding = embeddings[0][i] or []
 
-                # 验证嵌入向量存在（Domain要求）
-                if not embedding:
-                    raise ValueError(
-                        f"Chroma query did not return embeddings for chunk at index {i}"
+                    # 验证嵌入向量存在（Domain要求）
+                    if not embedding:
+                        raise ValueError(
+                            f"Chroma query did not return embeddings for chunk at index {i}"
+                        )
+
+                    # 创建DocumentChunk对象
+                    chunk = DocumentChunk.create(
+                        document_id=document_id,
+                        content=content,
+                        embedding=[float(x) for x in embedding],
+                        chunk_index=chunk_index,
+                        metadata=safe_metadata,
                     )
 
-                # 创建DocumentChunk对象
-                chunk = DocumentChunk.create(
-                    document_id=document_id,
-                    content=content,
-                    embedding=[float(x) for x in embedding],
-                    chunk_index=chunk_index,
-                    metadata=safe_metadata,
-                )
+                    chunks_with_scores.append((chunk, similarity))
 
-                chunks_with_scores.append((chunk, similarity))
+            # 按相似度排序
+            chunks_with_scores.sort(key=lambda x: x[1], reverse=True)
+            return chunks_with_scores
+        except DomainError:
+            raise
+        except (KeyError, IndexError, TypeError) as e:
+            raise DomainError("Chroma 检索失败：查询结果格式异常") from e
+        except ValueError as e:
+            raise DomainError("Chroma 检索失败：返回数据无效（嵌入向量缺失或格式错误）") from e
+        except Exception as e:
+            # 处理 ChromaDB 特定异常
+            try:
+                from chromadb.errors import ChromaError
 
-        # 按相似度排序
-        chunks_with_scores.sort(key=lambda x: x[1], reverse=True)
-        return chunks_with_scores
+                if isinstance(e, ChromaError):
+                    raise DomainError("Chroma 检索失败：ChromaDB 错误") from e
+            except ImportError:
+                pass
+
+            raise DomainError("Chroma 检索失败") from e
 
     async def rerank_chunks(
         self,
@@ -195,17 +262,26 @@ class ChromaRetrieverService(RetrieverService):
         """
         # 生成查询向量
         query_embedding = await self.generate_embedding(query)
-        query_array = np.array(query_embedding)
+        if not query_embedding:
+            return []
+
+        def _cosine(a: list[float], b: list[float]) -> float:
+            if not a or not b:
+                return 0.0
+            if len(a) != len(b):
+                raise ValueError("Embedding dimension mismatch")
+            dot = sum(x * y for x, y in zip(a, b, strict=False))
+            norm_a = math.sqrt(sum(x * x for x in a))
+            norm_b = math.sqrt(sum(y * y for y in b))
+            if norm_a == 0.0 or norm_b == 0.0:
+                return 0.0
+            return dot / (norm_a * norm_b)
 
         chunks_with_scores = []
         for chunk in chunks[: top_k * 2]:  # 获取更多候选
             if chunk.embedding:
-                chunk_array = np.array(chunk.embedding)
-                # 计算余弦相似度
-                similarity = np.dot(query_array, chunk_array) / (
-                    np.linalg.norm(query_array) * np.linalg.norm(chunk_array)
-                )
-                chunks_with_scores.append((chunk, float(similarity)))
+                similarity = _cosine(query_embedding, chunk.embedding)
+                chunks_with_scores.append((chunk, similarity))
 
         # 按相似度排序并返回top_k
         chunks_with_scores.sort(key=lambda x: x[1], reverse=True)
@@ -249,31 +325,47 @@ class ChromaRetrieverService(RetrieverService):
 
     async def add_document_chunks(self, chunks: list[DocumentChunk]) -> None:
         """添加文档块到ChromaDB"""
-        if not chunks:
-            return
+        try:
+            if not chunks:
+                return
 
-        # 准备数据
-        ids = [chunk.id for chunk in chunks]
-        documents = [chunk.content for chunk in chunks]
-        embeddings = [chunk.embedding for chunk in chunks]
-        metadatas = []
+            # 准备数据
+            ids = [chunk.id for chunk in chunks]
+            documents = [chunk.content for chunk in chunks]
+            embeddings = [chunk.embedding for chunk in chunks]
+            metadatas = []
 
-        for chunk in chunks:
-            metadata = chunk.metadata or {}
-            metadata.update(
-                {
-                    "document_id": chunk.document_id,
-                    "chunk_index": chunk.chunk_index,
-                    "created_at": chunk.created_at.isoformat(),
-                    "token_count": self._count_tokens(chunk.content),
-                }
+            for chunk in chunks:
+                metadata = chunk.metadata or {}
+                metadata.update(
+                    {
+                        "document_id": chunk.document_id,
+                        "chunk_index": chunk.chunk_index,
+                        "created_at": chunk.created_at.isoformat(),
+                        "token_count": self._count_tokens(chunk.content),
+                    }
+                )
+                metadatas.append(metadata)
+
+            # 批量添加到ChromaDB
+            self.collection.add(
+                ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas
             )
-            metadatas.append(metadata)
+        except DomainError:
+            raise
+        except (TypeError, ValueError) as e:
+            raise DomainError("Chroma 写入失败：数据格式无效") from e
+        except Exception as e:
+            # 处理 ChromaDB 特定异常
+            try:
+                from chromadb.errors import ChromaError
 
-        # 批量添加到ChromaDB
-        self.collection.add(
-            ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas
-        )
+                if isinstance(e, ChromaError):
+                    raise DomainError("Chroma 写入失败：ChromaDB 错误") from e
+            except ImportError:
+                pass
+
+            raise DomainError("Chroma 写入失败") from e
 
     async def delete_document_chunks(self, document_id: str) -> None:
         """删除指定文档的所有块"""

@@ -15,6 +15,7 @@ import { router } from './router';
 import { theme } from '@/shared/styles/theme';
 import { ThemeProvider } from '@/shared/contexts/ThemeContext';
 import '@/shared/styles/global.css';
+import '@/shared/styles/components.css';  /* Gemini's System 01 Component Library */
 import '@/shared/styles/neoclassical.css';
 
 /**

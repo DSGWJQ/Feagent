@@ -1,8 +1,8 @@
 /**
  * Node Palette - Node Component Library
  * Neoclassical Design System
- * 
- * Displays available workflow nodes as "Instruments" or "Components" 
+ *
+ * Displays available workflow nodes as "Instruments" or "Components"
  * that can be dragged onto the drafting table.
  */
 

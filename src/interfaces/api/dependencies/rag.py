@@ -10,7 +10,6 @@ from src.application.services.rag_service import RAGService
 from src.config import settings
 from src.domain.knowledge_base.entities.document_chunk import DocumentChunk
 from src.domain.knowledge_base.ports.retriever_service import RetrieverService
-from src.infrastructure.knowledge_base.chroma_retriever_service import ChromaRetrieverService
 from src.infrastructure.knowledge_base.rag_config_manager import RAGConfigManager
 from src.infrastructure.knowledge_base.sqlite_knowledge_repository import SQLiteKnowledgeRepository
 
@@ -62,6 +61,15 @@ async def get_rag_service() -> AsyncGenerator[RAGService, None]:
             # 创建检索服务
             embedding_config = RAGConfigManager.get_embedding_config()
             if vector_type == "chroma":
+                try:
+                    from src.infrastructure.knowledge_base.chroma_retriever_service import (
+                        ChromaRetrieverService,
+                    )
+                except ImportError as e:
+                    raise RuntimeError(
+                        "Chroma retriever not available; install with `pip install '.[rag-chroma]'`."
+                    ) from e
+
                 retriever_service: RetrieverService = ChromaRetrieverService(
                     knowledge_repository=knowledge_repository,
                     openai_api_key=embedding_config.get("api_key"),

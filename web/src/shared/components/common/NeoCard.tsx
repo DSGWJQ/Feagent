@@ -9,7 +9,7 @@ export interface NeoCardProps {
     description?: React.ReactNode;
     /** 内容 */
     children: React.ReactNode;
-    /** 
+    /**
      * 变体
      * - standard: 标准石板（默认）
      * - raised: 浮起效果（适合可点击卡片）
@@ -30,7 +30,7 @@ export interface NeoCardProps {
 
 /**
  * NeoCard - 新古典主义卡片
- * 
+ *
  * 代表一块经过切割和打磨的石板。
  * 可用于展示信息、作为容器或交互单元。
  */

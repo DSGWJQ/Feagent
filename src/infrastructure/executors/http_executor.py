@@ -43,6 +43,15 @@ class HttpExecutor(NodeExecutor):
         except json.JSONDecodeError as e:
             raise DomainError(f"HTTP 节点 headers 格式错误: {headers_str}") from e
 
+        # 验证 headers 类型
+        if headers is None:
+            headers = {}
+        if not isinstance(headers, dict):
+            raise DomainError("HTTP 节点 headers 必须是 JSON 对象")
+        for key, value in headers.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise DomainError("HTTP 节点 headers 必须是字符串键值对")
+
         try:
             body = json.loads(body_str) if body_str and method in ["POST", "PUT", "PATCH"] else None
         except json.JSONDecodeError as e:
@@ -65,6 +74,8 @@ class HttpExecutor(NodeExecutor):
                 except json.JSONDecodeError:
                     return response.text
 
+        except httpx.InvalidURL as e:
+            raise DomainError("HTTP 节点 URL 格式错误") from e
         except httpx.HTTPStatusError as e:
             raise DomainError(f"HTTP 请求失败: {e.response.status_code} {e.response.text}") from e
         except httpx.RequestError as e:

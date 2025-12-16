@@ -26,23 +26,50 @@ class LlmExecutor(NodeExecutor):
         配置参数：
             model: 模型名称（如 openai/gpt-4）
             temperature: 温度参数
-            maxTokens: 最大 token 数
-            prompt: 提示词（可选，如果未提供则从输入获取）
+            maxTokens/max_tokens: 最大 token 数
+            prompt/user_prompt: 提示词（可选，如果未提供则从输入获取）
+            system_prompt: 系统提示词（可选）
+            promptSourceNodeId: 当存在多个输入时，指定使用哪个上游节点输出作为 prompt
             structuredOutput: 是否使用结构化输出
             schema: 结构化输出的 schema
         """
-        # 获取配置
+        # 获取配置（支持多种命名约定）
         model = node.config.get("model", "openai/gpt-4")
         temperature = node.config.get("temperature", 0.7)
-        max_tokens = node.config.get("maxTokens", 2000)
-        prompt = node.config.get("prompt", "")
+        max_tokens = node.config.get("maxTokens") or node.config.get("max_tokens", 2000)
+        prompt = node.config.get("prompt", "") or node.config.get("user_prompt", "")
+        system_prompt = node.config.get("system_prompt", "")
+        prompt_source = node.config.get("promptSourceNodeId", "") or node.config.get(
+            "promptSource", ""
+        )
         structured_output = node.config.get("structuredOutput", False)
         schema_str = node.config.get("schema", "")
 
-        # 如果没有配置 prompt，从输入获取
-        if not prompt and inputs:
-            first_key = next(iter(inputs))
-            prompt = str(inputs[first_key])
+        # 如果没有配置 prompt，从输入获取（输入 key 为 source_node_id）
+        if not prompt:
+            if prompt_source:
+                # 显式指定了输入源
+                if prompt_source not in inputs:
+                    available = ", ".join(sorted(inputs.keys()))
+                    raise DomainError(
+                        f"LLM 节点 promptSourceNodeId 指向的输入不存在: {prompt_source}；"
+                        f"可用输入源: [{available}]"
+                    )
+                prompt = str(inputs[prompt_source])
+            else:
+                # 未指定输入源，根据输入数量处理
+                if not inputs:
+                    raise DomainError("LLM 节点缺少 prompt")
+                if len(inputs) == 1:
+                    # 单输入：直接使用（保持现有行为）
+                    prompt = str(next(iter(inputs.values())))
+                else:
+                    # 多输入：要求明确指定来源
+                    available = ", ".join(sorted(inputs.keys()))
+                    raise DomainError(
+                        f"LLM 节点 prompt 来源不明确：存在多个输入源 [{available}]；"
+                        f"请配置 promptSourceNodeId 或使用 Prompt 节点合并输入"
+                    )
 
         if not prompt:
             raise DomainError("LLM 节点缺少 prompt")
@@ -58,10 +85,18 @@ class LlmExecutor(NodeExecutor):
         try:
             if provider == "openai":
                 return await self._call_openai(
-                    model_name, prompt, temperature, max_tokens, structured_output, schema_str
+                    model_name,
+                    prompt,
+                    temperature,
+                    max_tokens,
+                    structured_output,
+                    schema_str,
+                    system_prompt,
                 )
             elif provider == "anthropic":
-                return await self._call_anthropic(model_name, prompt, temperature, max_tokens)
+                return await self._call_anthropic(
+                    model_name, prompt, temperature, max_tokens, system_prompt
+                )
             elif provider == "google":
                 return await self._call_google(model_name, prompt, temperature, max_tokens)
             else:
@@ -77,6 +112,7 @@ class LlmExecutor(NodeExecutor):
         max_tokens: int,
         structured_output: bool,
         schema_str: str,
+        system_prompt: str = "",
     ) -> Any:
         """调用 OpenAI API"""
         try:
@@ -86,10 +122,16 @@ class LlmExecutor(NodeExecutor):
 
         client = AsyncOpenAI(api_key=self.api_key)
 
+        # 构建消息列表（支持 system_prompt）
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
         # 构建请求参数
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
@@ -115,7 +157,7 @@ class LlmExecutor(NodeExecutor):
         return content
 
     async def _call_anthropic(
-        self, model: str, prompt: str, temperature: float, max_tokens: int
+        self, model: str, prompt: str, temperature: float, max_tokens: int, system_prompt: str = ""
     ) -> str:
         """调用 Anthropic API"""
         try:
@@ -125,13 +167,17 @@ class LlmExecutor(NodeExecutor):
 
         client = AsyncAnthropic(api_key=self.api_key)
 
-        response = await client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        # 构建请求参数（Anthropic 的 system 是单独参数）
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if system_prompt:
+            kwargs["system"] = system_prompt
 
+        response = await client.messages.create(**kwargs)
         return response.content[0].text
 
     async def _call_google(

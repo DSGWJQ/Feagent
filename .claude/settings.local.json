@@ -82,7 +82,17 @@
       "Bash(Select-Object -First 40)",
       "Bash(pnpm run lint:*)",
       "Bash(del \"D:\\My_Project\\agent_data\\tests\\unit\\application\\test_execute_run_use_case.py\")",
-      "Bash(Select-String -Pattern \"(test_|PASSED|FAILED|ERROR|====|TOTAL)\")"
+      "Bash(Select-String -Pattern \"(test_|PASSED|FAILED|ERROR|====|TOTAL)\")",
+      "Bash(Select-String \"(test_|PASSED|FAILED|error_handling.py)\")",
+      "Bash(Select-String \"(test_|PASSED|FAILED|====)\")",
+      "Bash(set TESTING=true)",
+      "Bash(Select-String \"(test_|PASSED|FAILED|ERROR|workflow_repository.py)\")",
+      "Bash(Select-String -Pattern \"(test_rag|TOTAL|Missing)\")",
+      "Bash(Select-String -Pattern \"http_executor\")",
+      "Bash(Select-String \"llm_executor\")",
+      "Bash(Select-String -Pattern \"workflow_repository\")",
+      "Bash(Select-String \"(test_|PASSED|FAILED|llm_executor)\")",
+      "Bash(Select-String \"file_executor\")"
     ],
     "deny": [],
     "ask": []

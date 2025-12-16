@@ -336,7 +336,7 @@ class TestHttpExecutorHeadersParsing:
 
         Given: headers 为合法 JSON 但不是字典（如数组）
         When: 执行 HttpExecutor.execute
-        Then: httpx 应接收到该值（实际行为由 httpx 验证）
+        Then: 抛出 DomainError（不把非法 headers 透传给 httpx）
         """
         # Given
         state = fake_httpx(response=_FakeResponse(status_code=200, json_value={"ok": True}))
@@ -345,11 +345,12 @@ class TestHttpExecutorHeadersParsing:
             {"url": "https://example.com/api", "method": "GET", "headers": '["not", "a", "dict"]'}
         )
 
-        # When
-        await executor.execute(node, {}, {})
+        # When & Then
+        with pytest.raises(DomainError, match=r"HTTP 节点 headers 必须是 JSON 对象"):
+            await executor.execute(node, {}, {})
 
-        # Then: httpx 会收到数组（但可能在实际请求时报错）
-        assert state.request_calls[0]["headers"] == ["not", "a", "dict"]
+        # Then: 不应发出请求
+        assert state.request_calls == []
 
 
 # ====================
@@ -590,18 +591,13 @@ class TestHttpExecutorErrorHandling:
             await executor.execute(node, {}, {})
 
     @pytest.mark.asyncio
-    async def test_execute_invalid_url_raises_httpx_invalid_url_uncaught(
-        self, node_factory, fake_httpx
-    ):
+    async def test_execute_invalid_url_raises_domain_error(self, node_factory, fake_httpx):
         """
-        测试：httpx.InvalidURL 应直接抛出（未被捕获）
+        测试：httpx.InvalidURL 应被转换为 DomainError
 
         Given: httpx 抛出 InvalidURL（不是 RequestError 的子类）
         When: 执行 HttpExecutor.execute
-        Then: httpx.InvalidURL 直接抛出，不被转换为 DomainError
-
-        注意：这是当前生产代码的已知行为（设计缺陷）
-        InvalidURL 不会被 except httpx.RequestError 捕获
+        Then: 抛出 DomainError（不泄漏 httpx 异常类型）
         """
         # Given
         fake_httpx(raises_invalid_url=True)
@@ -609,9 +605,7 @@ class TestHttpExecutorErrorHandling:
         node = node_factory({"url": "https://example.com/api", "method": "GET"})
 
         # When & Then
-        import httpx
-
-        with pytest.raises(httpx.InvalidURL, match="Invalid URL format"):
+        with pytest.raises(DomainError, match=r"HTTP 节点 URL 格式错误"):
             await executor.execute(node, {}, {})
 
 

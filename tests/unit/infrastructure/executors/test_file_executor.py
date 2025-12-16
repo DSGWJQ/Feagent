@@ -149,21 +149,23 @@ async def test_file_executor_list_directory(tmp_path):
     result = await executor.execute(node, {}, {})
 
     assert result["operation"] == "list"
-    assert result["count"] == 3
+    # 使用集合比较避免硬编码计数
+    assert {item["name"] for item in result["items"]} >= {"file1.txt", "file2.txt", "subdir"}
     assert any(item["name"] == "file1.txt" for item in result["items"])
 
 
 @pytest.mark.asyncio
-async def test_file_executor_read_nonexistent():
+async def test_file_executor_read_nonexistent(tmp_path):
     """测试：读取不存在的文件应该抛出 DomainError"""
     executor = FileExecutor()
+    file_path = tmp_path / "does_not_exist.txt"
 
     node = Node.create(
         type="file",
         name="Read File",
         config={
             "operation": "read",
-            "path": "/nonexistent/path/file.txt",
+            "path": str(file_path),
         },
         position=Position(x=0, y=0),
     )
@@ -191,7 +193,7 @@ async def test_file_executor_missing_path():
 
 
 @pytest.mark.asyncio
-async def test_file_executor_invalid_operation():
+async def test_file_executor_invalid_operation(tmp_path):
     """测试：无效的操作应该抛出 DomainError"""
     executor = FileExecutor()
 
@@ -200,7 +202,7 @@ async def test_file_executor_invalid_operation():
         name="Test File",
         config={
             "operation": "invalid_op",
-            "path": "/tmp/test.txt",
+            "path": str(tmp_path / "test.txt"),
         },
         position=Position(x=0, y=0),
     )

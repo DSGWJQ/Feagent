@@ -1,125 +1,123 @@
 /**
- * MainLayout Styles
- * Neoclassical Design System
+ * MainLayout Styles - Gemini's System 01 Design
+ * IDE / Engineering Dashboard Aesthetic
  */
 
-/* ========== Sider (Stone Column) ========== */
+/* ========== Sider - Command Center ========== */
 .sider {
     position: relative;
     z-index: 100;
-    /* High z-index for shadow casting */
-    border-right: 1px solid var(--neo-border);
-    /* 
-     * Note: The .neoStone class will be applied in TSX for the texture.
-     * Here we just ensure layout properties.
-     */
+    background: var(--surface-panel) !important;
+    border-right: 1px solid var(--stone-light) !important;
+    padding: 20px 0;
 }
 
-/* Logo Area (Capital of the Column) */
+/* Logo Area */
 .logoContainer {
-    height: var(--space-16);
+    height: 60px;
     display: flex;
     align-items: center;
-    padding: 0 var(--space-6);
-    background: rgba(255, 255, 255, 0.02);
-    /* Subtle highlight */
-    border-bottom: 1px solid var(--neo-border);
-    transition: all var(--neo-dur-base) var(--neo-ease-dignified);
+    padding: 0 24px;
+    border-bottom: 1px solid var(--stone-light);
+    margin-bottom: 16px;
 }
 
 .logoIcon {
-    font-size: 24px;
-    color: var(--neo-gold);
-    filter: drop-shadow(0 2px 4px rgba(217, 119, 6, 0.2));
-    transition: all 0.3s;
+    font-size: 20px;
+    color: var(--ink-primary);
+    /* Black icon */
 }
 
 .logoText {
-    margin-left: var(--space-3);
-    font-size: 1.125rem;
+    margin-left: 12px;
+    font-size: 0.95rem;
     font-weight: 600;
-    color: var(--neo-text);
+    color: var(--ink-primary);
     white-space: nowrap;
-    font-family: var(--font-family-serif);
-    letter-spacing: 0.02em;
-    background: linear-gradient(135deg, var(--neo-text) 0%, var(--neo-text-2) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-family: var(--font-family-mono);
+    /* Monospace for technical look */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
-/* Navigation Menu */
+/* Navigation Menu - Gemini's Sidebar Nav */
 .menu {
     border-right: none !important;
-    padding: var(--space-2) 0;
+    padding: 0;
     background: transparent !important;
 }
 
-/* Global Menu Overrides for Neoclassical Stone Feel */
+/* Individual Nav Items - Gemini's Scanner Design */
 :global(.ant-menu-item) {
-    margin: var(--space-1) var(--space-2) !important;
-    width: calc(100% - var(--space-4)) !important;
-    border-radius: var(--radius-md) !important;
-    transition: all 0.2s var(--neo-ease-dignified) !important;
-    color: var(--neo-text) !important;
-    position: relative;
-    overflow: hidden;
+    height: 40px !important;
+    line-height: 40px !important;
+    margin: 4px 12px !important;
+    width: calc(100% - 24px) !important;
+    border-radius: 0 !important;
+    /* No rounding */
+    padding: 0 16px !important;
+    font-family: var(--font-family-mono) !important;
+    font-size: 0.8rem !important;
+    background: var(--paper) !important;
+    /* White background */
+    color: var(--ink-primary) !important;
+    /* Black text */
+    border: 1px solid var(--stone-light) !important;
+    border-left: 2px solid var(--stone-light) !important;
+    transition: all 0.2s var(--ease-mechanical) !important;
 }
 
-/* Hover State: Etched Stone effect */
 :global(.ant-menu-item:hover) {
-    background: var(--neo-surface-2) !important;
-    color: var(--neo-blue) !important;
-    box-shadow: var(--neo-shadow-inset);
+    background: var(--ink-primary) !important;
+    /* Instant black fill */
+    color: var(--paper) !important;
+    /* White text */
+    border-color: var(--ink-primary) !important;
 }
 
-/* Selected State: Gold Inlay */
+/* Active/Selected State - Black Background, White Text */
 :global(.ant-menu-item-selected) {
-    background: linear-gradient(90deg, rgba(217, 119, 6, 0.08), transparent) !important;
-    color: var(--neo-gold) !important;
+    background: var(--ink-primary) !important;
+    color: var(--paper) !important;
+    border-left: 2px solid var(--ink-primary) !important;
     font-weight: 600 !important;
 }
 
-/* Gold bar marker */
-:global(.ant-menu-item-selected)::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 10%;
-    bottom: 10%;
-    width: 3px;
-    background: var(--neo-gold);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    box-shadow: 0 0 8px rgba(217, 119, 6, 0.4);
-}
-
 :global(.ant-menu-submenu-title) {
-    margin: var(--space-1) var(--space-2) !important;
-    width: calc(100% - var(--space-4)) !important;
-    border-radius: var(--radius-md) !important;
-    color: var(--neo-text) !important;
+    height: 40px !important;
+    line-height: 40px !important;
+    margin: 4px 12px !important;
+    width: calc(100% - 24px) !important;
+    border-radius: 0 !important;
+    padding: 0 16px !important;
+    font-family: var(--font-family-mono) !important;
+    font-size: 0.8rem !important;
+    background: var(--paper) !important;
+    /* White background */
+    color: var(--ink-primary) !important;
+    /* Black text */
+    border: 1px solid var(--stone-light) !important;
+    transition: all 0.2s var(--ease-mechanical) !important;
 }
 
 :global(.ant-menu-submenu-title:hover) {
-    background: var(--neo-surface-2) !important;
-    color: var(--neo-blue) !important;
+    background: var(--ink-primary) !important;
+    /* Instant black fill */
+    color: var(--paper) !important;
+    /* White text */
+    border-color: var(--ink-primary) !important;
 }
 
-/* ========== Header (Architrave) ========== */
+/* ========== Header - Minimal Breadcrumbs ========== */
 .header {
-    background: var(--neo-surface) !important;
-    padding: 0 var(--space-6) !important;
-    height: var(--space-16) !important;
-    /* 64px */
-    line-height: var(--space-16) !important;
+    background: transparent !important;
+    padding: 0 40px !important;
+    height: 60px !important;
+    line-height: 60px !important;
     display: flex;
     align-items: center;
-    border-bottom: 1px solid var(--neo-border);
-    z-index: 90;
-    position: sticky;
-    top: 0;
-    /* Architectural shadow casting down */
-    box-shadow: 0 4px 20px -8px rgba(0, 0, 0, 0.1);
-    backdrop-filter: blur(8px);
+    border-bottom: none !important;
+    box-shadow: none !important;
 }
 
 .headerContent {
@@ -136,41 +134,38 @@
 .headerRight {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
+    gap: 16px;
 }
 
 .headerUser {
-    font-size: var(--font-size-sm);
-    color: var(--neo-text);
+    font-size: 0.85rem;
+    color: var(--ink-primary);
     cursor: pointer;
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-sm);
+    padding: 8px 16px;
+    border-radius: 0;
     transition: all 0.2s;
-    font-family: var(--font-family-serif);
+    font-family: var(--font-family-mono);
     border: 1px solid transparent;
 }
 
 .headerUser:hover {
-    background: var(--neo-surface-2);
-    border-color: var(--neo-border);
-    color: var(--neo-blue);
+    background: var(--surface-panel);
+    border-color: var(--stone-light);
+    color: var(--ink-primary);
 }
 
-/* ========== Content Area ========== */
+/* ========== Content Area - Dot Grid Workspace ========== */
 .content {
-    background: var(--neo-bg) !important;
-    /* 
-       No forced padding here by default, 
-       pages should control their own padding via padding or PageShell.
-       However, to ensure *some* breathing room if PageShell isn't used:
-    */
-    padding: 0;
-    min-height: calc(100vh - var(--space-16));
+    background: var(--paper) !important;
+    /* Gemini's Dot Matrix Grid */
+    background-image: radial-gradient(var(--stone-light) 1px, transparent 1px) !important;
+    background-size: 20px 20px !important;
+    padding: 40px !important;
+    min-height: calc(100vh - 60px);
     position: relative;
-    overflow-x: hidden;
+    overflow-y: auto;
 }
 
-/* Remove the old contentWrapper "Card" look */
 .contentWrapper {
     /* Pure layout container, no visuals */
     width: 100%;
@@ -180,7 +175,11 @@
 /* ========== Responsive ========== */
 @media (max-width: 768px) {
     .header {
-        padding: 0 var(--space-4) !important;
+        padding: 0 20px !important;
+    }
+
+    .content {
+        padding: 20px !important;
     }
 }
 
@@ -192,12 +191,13 @@
 }
 
 :global(.ant-layout-sider-collapsed) .logoIcon {
-    font-size: 28px;
+    font-size: 24px;
 }
 
 /* ========== Icons ========== */
 .menu :global(.anticon) {
-    font-size: 1.1em;
+    font-size: 1em;
+    color: inherit;
 }
 
 /* ========== Scrollbar ========== */
@@ -206,6 +206,6 @@
 }
 
 .sider ::-webkit-scrollbar-thumb {
-    background: var(--neo-border);
-    border-radius: var(--radius-sm);
+    background: var(--stone-light);
+    border-radius: 0;
 }

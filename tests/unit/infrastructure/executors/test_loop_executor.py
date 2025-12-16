@@ -728,3 +728,143 @@ async def test_for_each_skip_none_all_none():
     result = await executor.execute(node, {"data": {"items": [1, 2, 3]}}, {})
 
     assert result == []
+
+
+# ==================== 安全沙箱测试（P0 Critical） ====================
+
+
+@pytest.mark.asyncio
+async def test_loop_executor_safe_builtins_allowed():
+    """测试：允许的安全内置函数（SAFE_BUILTINS）在for_each中可用"""
+    executor = LoopExecutor()
+
+    node = Node.create(
+        type="loop",
+        name="Safe Builtins",
+        config={
+            "type": "for_each",
+            "array": "items",
+            "code": """
+result = {
+    'len': len(item),
+    'sum': sum(item),
+    'max': max(item),
+    'min': min(item),
+    'abs': abs(item[0]),
+    'sorted': sorted(item)
+}
+""",
+        },
+        position=Position(x=0, y=0),
+    )
+
+    result = await executor.execute(node, {"data": {"items": [[3, 1, -2, 5]]}}, {})
+
+    assert len(result) == 1
+    assert result[0]["len"] == 4
+    assert result[0]["sum"] == 7
+    assert result[0]["max"] == 5
+    assert result[0]["min"] == -2
+    assert result[0]["abs"] == 3
+    assert result[0]["sorted"] == [-2, 1, 3, 5]
+
+
+@pytest.mark.asyncio
+async def test_loop_executor_unsafe_builtin_open_blocked():
+    """测试：危险内置函数open应该不可用（for_each）"""
+    executor = LoopExecutor()
+
+    node = Node.create(
+        type="loop",
+        name="Block open",
+        config={
+            "type": "for_each",
+            "array": "items",
+            "code": "result = open('/etc/passwd', 'r')",
+        },
+        position=Position(x=0, y=0),
+    )
+
+    # open不在SAFE_BUILTINS中，应该抛出NameError -> DomainError
+    with pytest.raises(DomainError, match="循环执行失败"):
+        await executor.execute(node, {"data": {"items": [1]}}, {})
+
+
+@pytest.mark.asyncio
+async def test_loop_executor_eval_not_available():
+    """测试：eval函数不可用（range循环）"""
+    executor = LoopExecutor()
+
+    node = Node.create(
+        type="loop",
+        name="Block eval",
+        config={"type": "range", "start": 0, "end": 2, "code": "result = eval('1 + 1')"},
+        position=Position(x=0, y=0),
+    )
+
+    with pytest.raises(DomainError, match="循环执行失败"):
+        await executor.execute(node, {}, {})
+
+
+@pytest.mark.asyncio
+async def test_loop_executor_exec_not_available():
+    """测试：嵌套exec函数不可用（while循环）"""
+    executor = LoopExecutor()
+
+    node = Node.create(
+        type="loop",
+        name="Block nested exec",
+        config={
+            "type": "while",
+            "condition": "counter < 1",
+            "code": "exec('result = 1'); counter = counter + 1",
+            "max_iterations": 5,
+            "initial_vars": {"counter": 0},
+        },
+        position=Position(x=0, y=0),
+    )
+
+    with pytest.raises(DomainError, match="循环执行失败"):
+        await executor.execute(node, {}, {})
+
+
+@pytest.mark.asyncio
+async def test_loop_executor_import_not_available():
+    """测试：__import__函数不可用"""
+    executor = LoopExecutor()
+
+    node = Node.create(
+        type="loop",
+        name="Block __import__",
+        config={
+            "type": "for_each",
+            "array": "items",
+            "code": "result = __import__('os')",
+        },
+        position=Position(x=0, y=0),
+    )
+
+    with pytest.raises(DomainError, match="循环执行失败"):
+        await executor.execute(node, {"data": {"items": [1]}}, {})
+
+
+@pytest.mark.asyncio
+async def test_loop_executor_file_access_blocked():
+    """测试：文件访问应该被阻止（无file/open函数）"""
+    executor = LoopExecutor()
+
+    node = Node.create(
+        type="loop",
+        name="Block file access",
+        config={
+            "type": "range",
+            "start": 0,
+            "end": 1,
+            "code": "result = open(__file__, 'r').read()",
+        },
+        position=Position(x=0, y=0),
+    )
+
+    # open和__file__都不在SAFE_BUILTINS中
+    with pytest.raises(DomainError, match="循环执行失败"):
+        await executor.execute(node, {}, {})
