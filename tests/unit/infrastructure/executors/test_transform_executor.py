@@ -363,11 +363,31 @@ async def test_type_conversion_bool_special_cases():
         position=Position(x=0, y=0),
     )
 
-    # 测试 "1" 字符串
+    # 测试 "1" 字符串 → True
     result = await executor.execute(node, {"data": {"flag": "1"}}, {})
     assert result["flag"] is True
 
-    # 测试非字符串值
+    # 测试 "true" 字符串 → True
+    result = await executor.execute(node, {"data": {"flag": "true"}}, {})
+    assert result["flag"] is True
+
+    # 测试 "True" 字符串 → True
+    result = await executor.execute(node, {"data": {"flag": "True"}}, {})
+    assert result["flag"] is True
+
+    # 测试 "0" 字符串 → False (CRITICAL: 暴露bug)
+    result = await executor.execute(node, {"data": {"flag": "0"}}, {})
+    assert result["flag"] is False
+
+    # 测试 "false" 字符串 → False (CRITICAL: 暴露bug)
+    result = await executor.execute(node, {"data": {"flag": "false"}}, {})
+    assert result["flag"] is False
+
+    # 测试 "False" 字符串 → False (CRITICAL: 暴露bug)
+    result = await executor.execute(node, {"data": {"flag": "False"}}, {})
+    assert result["flag"] is False
+
+    # 测试非字符串值 - 整数
     result = await executor.execute(node, {"data": {"flag": 1}}, {})
     assert result["flag"] is True
 

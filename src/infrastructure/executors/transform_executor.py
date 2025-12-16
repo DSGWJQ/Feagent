@@ -120,11 +120,18 @@ class TransformExecutor(NodeExecutor):
                 elif target_type == "str":
                     result[field] = str(value)
                 elif target_type == "bool":
-                    result[field] = (
-                        bool(value)
-                        if isinstance(value, str) and value.lower() in ["true", "1"]
-                        else bool(value)
-                    )
+                    # 处理字符串布尔值
+                    if isinstance(value, str):
+                        value_lower = value.lower()
+                        if value_lower in ["true", "1"]:
+                            result[field] = True
+                        elif value_lower in ["false", "0"]:
+                            result[field] = False
+                        else:
+                            # 其他字符串按标准bool()处理（非空为True）
+                            result[field] = bool(value)
+                    else:
+                        result[field] = bool(value)
                 else:
                     result[field] = value
             except (ValueError, TypeError) as e:
