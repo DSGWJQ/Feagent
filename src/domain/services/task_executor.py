@@ -71,7 +71,7 @@ class TaskExecutor:
 
     职责：
     1. 执行单个 Task
-    2. 调用 LangChain Agent
+    2. 调用 TaskRunner（端口）
     3. 处理执行结果
     4. 记录执行事件
     5. 超时控制
@@ -80,13 +80,20 @@ class TaskExecutor:
     8. 工具调用超时控制（新增）
     """
 
-    def __init__(self, timeout: int = 300, tool_timeout: int = 60):
+    def __init__(
+        self,
+        task_runner: TaskRunner | None = None,
+        timeout: int = 300,
+        tool_timeout: int = 60,
+    ):
         """初始化任务执行器
 
         参数：
+            task_runner: TaskRunner 端口实现（可选，为 None 时延迟加载默认实现）
             timeout: 执行超时时间（秒），默认 300 秒（5 分钟）
             tool_timeout: 单个工具调用超时时间（秒），默认 60 秒
         """
+        self._task_runner = task_runner
         self.timeout = timeout
         self.tool_timeout = tool_timeout
 
@@ -129,8 +136,8 @@ class TaskExecutor:
                 task_description += context_str
                 task.add_event(f"使用上下文: {len(context)} 个前置任务结果")
 
-            # 步骤 3: 调用 LangChain Agent（带超时控制）
-            task.add_event("调用 LangChain Agent")
+            # 步骤 3: 调用 TaskRunner（带超时控制）
+            task.add_event("调用 TaskRunner")
 
             result = self._execute_with_timeout(task_name, task_description)
 
@@ -161,6 +168,22 @@ class TaskExecutor:
             logger.error(f"Task {task.id} 执行异常: {str(e)}")
             raise
 
+    def _get_task_runner(self) -> TaskRunner:
+        """获取 TaskRunner 实例
+
+        返回：
+            TaskRunner 实例
+
+        异常：
+            ValueError: 如果未提供 task_runner 实例
+        """
+        if self._task_runner is None:
+            raise ValueError(
+                "TaskRunner 未提供。TaskExecutor 必须通过依赖注入获取 TaskRunner 实例，"
+                "不应在 Domain 层直接实例化 Infrastructure 实现。"
+            )
+        return self._task_runner
+
     def _execute_with_timeout(self, task_name: str, task_description: str) -> str:
         """执行 Task（带超时控制）
 
@@ -174,10 +197,7 @@ class TaskExecutor:
         异常：
             TaskExecutionTimeout: 执行超时
         """
-        # FIXME (P1-3): Domain层不应直接依赖Infrastructure层
-        # TODO: 创建 TaskExecutorPort 协议并通过依赖注入传入
-        # 导入 LangChain Agent（延迟导入，避免循环依赖）
-        from src.infrastructure.lc_adapters.agents.task_executor import execute_task
+        runner = self._get_task_runner()
 
         # 注意：signal.alarm 在 Windows 上不可用
         # 这里使用简单的实现，实际生产环境应该使用 threading.Timer 或 asyncio.wait_for
@@ -187,13 +207,13 @@ class TaskExecutor:
 
             if platform.system() != "Windows":
                 with TimeoutHandler(self.timeout):
-                    return execute_task(
+                    return runner.run(
                         task_name=task_name,
                         task_description=task_description,
                     )
             else:
                 # Windows 上暂时不支持超时（需要使用其他方法）
-                return execute_task(
+                return runner.run(
                     task_name=task_name,
                     task_description=task_description,
                 )

@@ -10,8 +10,8 @@ Date: 2025-11-30
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from src.application.services.composite_memory_service import CompositeMemoryService
-from src.interfaces.api.dependencies.memory import get_composite_memory_service
+from src.domain.ports.memory_service import MemoryServicePort
+from src.interfaces.api.dependencies.memory import get_memory_service
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
@@ -46,7 +46,7 @@ class CacheInvalidateResponse(BaseModel):
 
 @router.get("/metrics", response_model=MemoryMetricsResponse)
 async def get_memory_metrics(
-    memory_service: CompositeMemoryService = Depends(get_composite_memory_service),
+    memory_service: MemoryServicePort = Depends(get_memory_service),
 ):
     """
     获取内存系统性能指标
@@ -71,7 +71,7 @@ async def get_memory_metrics(
 @router.post("/cache/invalidate/{workflow_id}", response_model=CacheInvalidateResponse)
 async def invalidate_cache(
     workflow_id: str,
-    memory_service: CompositeMemoryService = Depends(get_composite_memory_service),
+    memory_service: MemoryServicePort = Depends(get_memory_service),
 ):
     """
     手动失效指定 workflow 的缓存
@@ -82,6 +82,6 @@ async def invalidate_cache(
     Returns:
         操作状态
     """
-    memory_service._cache.invalidate(workflow_id)
+    memory_service.clear(workflow_id)
 
     return CacheInvalidateResponse(status="invalidated", workflow_id=workflow_id)

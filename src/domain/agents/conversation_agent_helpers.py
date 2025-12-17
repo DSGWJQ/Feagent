@@ -55,6 +55,7 @@ class ConversationAgentHelpersMixin:
     llm: Any  # ConversationAgentLLM protocol
     session_context: SessionContext
     coordinator: Any | None
+    model_metadata_port: Any | None  # ModelMetadataPort (optional injection)
     pending_feedbacks: list[dict[str, Any]]  # Initialized by RecoveryMixin
 
     # =========================================================================
@@ -212,12 +213,9 @@ class ConversationAgentHelpersMixin:
         """初始化模型信息（Step 1: 模型上下文能力确认）
 
         从 LLM 客户端或配置中获取模型信息，并设置到 SessionContext。
+        优先使用注入的 ModelMetadataPort，fallback 到直接导入（向后兼容）。
         """
         from src.config import settings
-
-        # FIXME (P1-3): Domain层不应直接依赖Infrastructure层
-        # TODO: 创建 ModelMetadataPort 协议并通过依赖注入传入
-        from src.infrastructure.lc_adapters.model_metadata import get_model_metadata
 
         logger = logging.getLogger(__name__)
 
@@ -225,15 +223,24 @@ class ConversationAgentHelpersMixin:
         provider = "openai"  # 默认提供商
         model = settings.openai_model
 
-        # 获取模型元数据
-        metadata = get_model_metadata(provider, model)
+        # P1 Optimization: 优先使用注入的 Port
+        if hasattr(self, "model_metadata_port") and self.model_metadata_port is not None:
+            # 使用注入的 ModelMetadataPort
+            metadata = self.model_metadata_port.get_model_metadata(provider, model)
+            context_window = metadata.max_tokens
+        else:
+            # Fallback: 向后兼容，直接导入（待弃用）
+            from src.infrastructure.lc_adapters.model_metadata import get_model_metadata
+
+            metadata = get_model_metadata(provider, model)
+            context_window = metadata.context_window
 
         # 设置到 SessionContext
         self.session_context.set_model_info(
-            provider=provider, model=model, context_limit=metadata.context_window
+            provider=provider, model=model, context_limit=context_window
         )
 
         logger.info(
             f"Model info initialized: provider={provider}, model={model}, "
-            f"context_limit={metadata.context_window}"
+            f"context_limit={context_window}"
         )

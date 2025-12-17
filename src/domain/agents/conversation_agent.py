@@ -315,6 +315,9 @@ class ConversationAgent(
         self.coordinator = coordinator
         self._current_input: str | None = None
 
+        # P1 Optimization: Domain层解耦 - 模型元数据端口（可选注入）
+        self.model_metadata_port: Any | None = None
+
         # Phase 14: 意图分类配置
         self.enable_intent_classification = enable_intent_classification
         self.intent_confidence_threshold = intent_confidence_threshold
@@ -451,7 +454,7 @@ class ConversationAgent(
         target_path: str,
         content: str | bytes,
         reason: str | None = None,
-        priority: "SaveRequestPriority | None" = None,
+        priority: SaveRequestPriority | None = None,
         is_binary: bool = False,
     ) -> str | None:
         """Send save request via EventBus.
@@ -504,9 +507,9 @@ class ConversationAgent(
         from src.domain.services.save_request_channel import (
             SaveRequest,
             SaveRequestPriority,
+            SaveRequestQueueFullError,
             SaveRequestType,
             SaveRequestValidationError,
-            SaveRequestQueueFullError,
         )
 
         logger_instance = logging.getLogger(__name__)
@@ -550,7 +553,7 @@ class ConversationAgent(
         target_path: str,
         content: str | bytes,
         reason: str,
-        priority: "SaveRequestPriority | None" = None,
+        priority: SaveRequestPriority | None = None,
         is_binary: bool = False,
     ) -> str | None:
         """发起保存请求（已弃用，请使用 send_save_request）
@@ -592,6 +595,7 @@ class ConversationAgent(
             )
         """
         import warnings
+
         warnings.warn(
             "request_save() is deprecated, use send_save_request() instead. "
             "request_save() will be removed in the next major version.",
