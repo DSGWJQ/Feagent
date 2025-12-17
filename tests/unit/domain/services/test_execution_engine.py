@@ -273,3 +273,133 @@ class TestExecutionEngine:
         # Assert
         # 验证执行顺序
         assert execution_order == ["Task 1", "Task 2", "Task 3"]
+
+    def test_execute_task_success_returns_result(self):
+        """测试场景 7: execute_task()成功执行并返回结果 (lines 194-208)"""
+        # Arrange
+        agent_id = "agent-123"
+        run_id = "run-456"
+        task_id = "task-789"
+
+        task = Task.create(
+            agent_id=agent_id,
+            run_id=run_id,
+            name="单独任务",
+            description="测试单独执行",
+        )
+        task.id = task_id
+
+        run_repository = Mock()
+        task_repository = Mock()
+        task_executor = Mock()
+
+        task_repository.get_by_id.return_value = task
+        task_executor.execute.return_value = {"result": "单独执行成功"}
+
+        from src.domain.services.execution_engine import ExecutionEngine
+
+        engine = ExecutionEngine(
+            run_repository=run_repository,
+            task_repository=task_repository,
+            task_executor=task_executor,
+        )
+
+        # Act
+        result = engine.execute_task(task_id=task_id, context={"previous": "data"})
+
+        # Assert
+        # P0-1 修复: 验证 task_executor.execute() 的输入参数
+        task_executor.execute.assert_called_once_with(
+            task,  # 验证传入正确的 task 对象
+            {"previous": "data"},  # 验证传入正确的 context
+        )
+
+        assert result == {"result": "单独执行成功"}
+        assert task.status == TaskStatus.SUCCEEDED
+
+        # P0-1 修复: 验证状态转换的完整性
+        assert task.started_at is not None  # start() 被调用
+        assert task.finished_at is not None  # succeed() 被调用
+        assert task.error is None  # 成功路径不应有错误
+
+        # 保持原有的持久化验证
+        assert task_repository.save.call_count == 2  # start + succeed
+
+    def test_execute_task_not_found_raises_error(self):
+        """测试场景 8: execute_task() Task不存在时抛出异常 (line 194)"""
+        # Arrange
+        task_id = "non-existent-task"
+
+        run_repository = Mock()
+        task_repository = Mock()
+        task_executor = Mock()
+
+        task_repository.get_by_id.side_effect = NotFoundError("Task", task_id)
+
+        from src.domain.services.execution_engine import ExecutionEngine
+
+        engine = ExecutionEngine(
+            run_repository=run_repository,
+            task_repository=task_repository,
+            task_executor=task_executor,
+        )
+
+        # Act & Assert
+        with pytest.raises(NotFoundError):
+            engine.execute_task(task_id)
+
+    def test_execute_task_failure_reraises_exception(self):
+        """测试场景 9: execute_task()执行失败时更新Task状态并重新抛出异常 (lines 210-214)"""
+        # Arrange
+        agent_id = "agent-123"
+        run_id = "run-456"
+        task_id = "task-789"
+
+        task = Task.create(
+            agent_id=agent_id,
+            run_id=run_id,
+            name="失败任务",
+            description="测试失败场景",
+        )
+        task.id = task_id
+
+        run_repository = Mock()
+        task_repository = Mock()
+        task_executor = Mock()
+
+        task_repository.get_by_id.return_value = task
+        task_executor.execute.side_effect = Exception("执行失败")
+
+        from src.domain.services.execution_engine import ExecutionEngine
+
+        engine = ExecutionEngine(
+            run_repository=run_repository,
+            task_repository=task_repository,
+            task_executor=task_executor,
+        )
+
+        # Act & Assert
+        with pytest.raises(Exception, match="执行失败"):
+            engine.execute_task(task_id)
+
+        # P0-2 修复: 验证状态转换的完整性
+        assert task.status == TaskStatus.FAILED
+        assert "执行失败" in task.error
+        assert task.started_at is not None  # start() 被调用
+        assert task.finished_at is not None  # fail() 被调用
+
+        # P0-2 修复: 验证 task_executor.execute() 被正确调用
+        task_executor.execute.assert_called_once_with(task, {})
+
+        # P0-2 修复: 验证持久化调用顺序和内容
+        save_calls = task_repository.save.call_args_list
+        assert len(save_calls) == 2
+
+        # 第一次 save: start() 后调用
+        first_save_task = save_calls[0][0][0]  # save(task) 的 task 参数
+        assert first_save_task.id == task_id
+
+        # 第二次 save: fail() 后调用
+        second_save_task = save_calls[1][0][0]
+        assert second_save_task.id == task_id
+        assert second_save_task.status == TaskStatus.FAILED
