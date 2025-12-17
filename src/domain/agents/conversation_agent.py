@@ -286,6 +286,7 @@ class ConversationAgent(
             session_context = final_config.session_context
             llm = final_config.llm.llm  # type: ignore[assignment]
             event_bus = final_config.event_bus
+            model_metadata_port = final_config.model_metadata_port  # P1-1
             max_iterations = final_config.react.max_iterations  # type: ignore[assignment]
             timeout_seconds = final_config.react.timeout_seconds
             max_tokens = final_config.resource.max_tokens
@@ -315,8 +316,8 @@ class ConversationAgent(
         self.coordinator = coordinator
         self._current_input: str | None = None
 
-        # P1 Optimization: Domain层解耦 - 模型元数据端口（可选注入）
-        self.model_metadata_port: Any | None = None
+        # P1-1: Domain层解耦 - 模型元数据端口（依赖注入）
+        self.model_metadata_port: Any | None = model_metadata_port if config else None
 
         # Phase 14: 意图分类配置
         self.enable_intent_classification = enable_intent_classification

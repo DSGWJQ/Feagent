@@ -213,7 +213,7 @@ class ConversationAgentHelpersMixin:
         """初始化模型信息（Step 1: 模型上下文能力确认）
 
         从 LLM 客户端或配置中获取模型信息，并设置到 SessionContext。
-        优先使用注入的 ModelMetadataPort，fallback 到直接导入（向后兼容）。
+        使用依赖注入的 ModelMetadataPort，符合 Ports and Adapters 架构。
         """
         from src.config import settings
 
@@ -223,13 +223,19 @@ class ConversationAgentHelpersMixin:
         provider = "openai"  # 默认提供商
         model = settings.openai_model
 
-        # P1 Optimization: 优先使用注入的 Port
+        # P1-1: 使用注入的 ModelMetadataPort（必需依赖）
         if hasattr(self, "model_metadata_port") and self.model_metadata_port is not None:
             # 使用注入的 ModelMetadataPort
             metadata = self.model_metadata_port.get_model_metadata(provider, model)
             context_window = metadata.max_tokens
         else:
-            # Fallback: 向后兼容，直接导入（待弃用）
+            # Fallback: 向后兼容，直接导入（将在 v2.0 移除）
+            # TODO (v2.0): 移除 fallback 逻辑，强制要求注入 ModelMetadataPort
+            logger.warning(
+                "ModelMetadataPort not injected, falling back to direct import. "
+                "This fallback will be removed in v2.0. "
+                "Please inject ModelMetadataPort via ConversationAgentConfig."
+            )
             from src.infrastructure.lc_adapters.model_metadata import get_model_metadata
 
             metadata = get_model_metadata(provider, model)

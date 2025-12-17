@@ -69,9 +69,9 @@ class TestSchedulerIntegrationComplete:
         scheduled_repo = SQLAlchemyScheduledWorkflowRepository(session)
         return workflow_repo, scheduled_repo
 
-    def _create_executor(self):
+    def _create_executor(self, session: Session):
         """创建工作流执行器"""
-        return WorkflowExecutorAdapter()
+        return WorkflowExecutorAdapter(session_factory=lambda: session)
 
     def _create_scheduler_service(self, scheduled_repo, executor):
         """创建调度器服务"""
@@ -84,7 +84,7 @@ class TestSchedulerIntegrationComplete:
         """测试：调度器启动时应该自动加载所有活跃任务"""
         # Arrange
         workflow_repo, scheduled_repo = self._create_repositories(db_setup)
-        executor = self._create_executor()
+        executor = self._create_executor(db_setup)
         scheduler = self._create_scheduler_service(scheduled_repo, executor)
 
         # 创建活跃的定时任务
@@ -113,7 +113,7 @@ class TestSchedulerIntegrationComplete:
         """测试：调度器应该按计划执行工作流"""
         # Arrange
         workflow_repo, scheduled_repo = self._create_repositories(db_setup)
-        executor = self._create_executor()
+        executor = self._create_executor(db_setup)
         scheduler = self._create_scheduler_service(scheduled_repo, executor)
 
         # 创建定时任务
@@ -152,7 +152,7 @@ class TestSchedulerIntegrationComplete:
         """测试：调度器应该处理执行失败并重试"""
         # Arrange
         workflow_repo, scheduled_repo = self._create_repositories(db_setup)
-        executor = self._create_executor()
+        executor = self._create_executor(db_setup)
         scheduler = self._create_scheduler_service(scheduled_repo, executor)
 
         # 创建定时任务
@@ -190,7 +190,7 @@ class TestSchedulerIntegrationComplete:
         """测试：调度器应该支持暂停和恢复任务"""
         # Arrange
         workflow_repo, scheduled_repo = self._create_repositories(db_setup)
-        executor = self._create_executor()
+        executor = self._create_executor(db_setup)
         scheduler = self._create_scheduler_service(scheduled_repo, executor)
 
         # 创建定时任务
@@ -235,7 +235,7 @@ class TestSchedulerIntegrationComplete:
         """测试：调度器应该提供监控信息"""
         # Arrange
         workflow_repo, scheduled_repo = self._create_repositories(db_setup)
-        executor = self._create_executor()
+        executor = self._create_executor(db_setup)
         scheduler = self._create_scheduler_service(scheduled_repo, executor)
 
         # 创建多个不同状态的任务
@@ -275,7 +275,7 @@ class TestSchedulerIntegrationComplete:
         """测试：调度器通过UseCase的完整集成"""
         # Arrange
         workflow_repo, scheduled_repo = self._create_repositories(db_setup)
-        executor = self._create_executor()
+        executor = self._create_executor(db_setup)
         scheduler = self._create_scheduler_service(scheduled_repo, executor)
 
         use_case = ScheduleWorkflowUseCase(

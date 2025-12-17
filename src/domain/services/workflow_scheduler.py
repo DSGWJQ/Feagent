@@ -1,56 +1,38 @@
 """工作流调度服务"""
 
 import asyncio
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from src.domain.entities.scheduled_workflow import ScheduledWorkflow
-from src.domain.ports.scheduler_repository import SchedulerRepository, SchedulerRepositoryProvider
+from src.domain.ports.scheduler_repository import SchedulerRepository
 
 
 class ScheduleWorkflowService:
-    """使用 APScheduler 管理定时工作流执行。"""
+    """使用 APScheduler 管理定时工作流执行。
+
+    依赖注入：
+    - scheduled_workflow_repo: 定时工作流持久化仓库（必需）
+    - workflow_executor: 工作流执行器（必需）
+    """
 
     def __init__(
         self,
-        session_factory: Callable[[], Any],
+        scheduled_workflow_repo: SchedulerRepository,
         workflow_executor: Any,
-        scheduler_repository: SchedulerRepositoryProvider | None = None,
     ):
-        self._session_factory = session_factory
-        self._scheduler_repository = (
-            scheduler_repository or self._create_default_scheduler_repository_provider()
-        )
+        """初始化调度服务
+
+        参数：
+            scheduled_workflow_repo: 定时工作流仓库实例（必需）
+            workflow_executor: 工作流执行器实例（必需）
+        """
+        self._repo = scheduled_workflow_repo
         self.executor = workflow_executor
         self.scheduler = BackgroundScheduler()
         self._is_running = False
-
-    @contextmanager
-    def _repo(self) -> Iterator[SchedulerRepository]:
-        with self._scheduler_repository() as repo:
-            yield repo
-
-    def _create_default_scheduler_repository_provider(self) -> SchedulerRepositoryProvider:
-        @contextmanager
-        def _provider() -> Iterator[SchedulerRepository]:
-            from src.infrastructure.database.repositories.scheduled_workflow_repository import (
-                SQLAlchemyScheduledWorkflowRepository,
-            )
-
-            session = self._session_factory()
-            repo = SQLAlchemyScheduledWorkflowRepository(session)
-            try:
-                yield repo
-            finally:
-                close = getattr(session, "close", None)
-                if callable(close):
-                    close()
-
-        return _provider
 
     def start(self) -> None:
         """启动调度器并加载已存在的任务。"""
@@ -60,10 +42,9 @@ class ScheduleWorkflowService:
         self.scheduler.start()
         self._is_running = True
 
-        with self._repo() as repo:
-            active_workflows = repo.find_active()
-            for workflow in active_workflows:
-                self._add_to_scheduler(workflow)
+        active_workflows = self._repo.find_active()
+        for workflow in active_workflows:
+            self._add_to_scheduler(workflow)
 
     def stop(self) -> None:
         """停止调度器。"""
@@ -97,28 +78,26 @@ class ScheduleWorkflowService:
         """执行定时任务并记录结果。"""
         scheduled: ScheduledWorkflow | None = None
         try:
-            with self._repo() as repo:
-                scheduled = repo.get_by_id(scheduled_workflow_id)
-                result = await self.executor.execute_workflow_async(
-                    workflow_id=scheduled.workflow_id,
-                    input_data={},
-                )
+            scheduled = self._repo.get_by_id(scheduled_workflow_id)
+            result = await self.executor.execute_workflow_async(
+                workflow_id=scheduled.workflow_id,
+                input_data={},
+            )
 
-                scheduled.record_execution_success()
-                repo.save(scheduled)
+            scheduled.record_execution_success()
+            self._repo.save(scheduled)
 
-                return {
-                    "status": scheduled.last_execution_status,
-                    "timestamp": scheduled.last_execution_at,
-                    "executor_result": result,
-                }
+            return {
+                "status": scheduled.last_execution_status,
+                "timestamp": scheduled.last_execution_at,
+                "executor_result": result,
+            }
         except Exception as e:
             if scheduled is None:
                 return {"status": "FAILED", "error": str(e)}
 
             scheduled.record_execution_failure(str(e))
-            with self._repo() as repo:
-                repo.save(scheduled)
+            self._repo.save(scheduled)
             raise
 
     async def trigger_execution_async(self, scheduled_workflow_id: str) -> dict[str, Any]:
@@ -142,19 +121,17 @@ class ScheduleWorkflowService:
 
     def pause_scheduled_workflow(self, scheduled_workflow_id: str) -> None:
         """暂停任务并从调度器移除。"""
-        with self._repo() as repo:
-            scheduled = repo.get_by_id(scheduled_workflow_id)
-            scheduled.disable()
-            repo.save(scheduled)
+        scheduled = self._repo.get_by_id(scheduled_workflow_id)
+        scheduled.disable()
+        self._repo.save(scheduled)
 
         self.unschedule_workflow(scheduled_workflow_id)
 
     def resume_scheduled_workflow(self, scheduled_workflow_id: str) -> None:
         """重新启用任务并注册到调度器。"""
-        with self._repo() as repo:
-            scheduled = repo.get_by_id(scheduled_workflow_id)
-            scheduled.enable()
-            repo.save(scheduled)
+        scheduled = self._repo.get_by_id(scheduled_workflow_id)
+        scheduled.enable()
+        self._repo.save(scheduled)
 
         self._add_to_scheduler(scheduled)
 

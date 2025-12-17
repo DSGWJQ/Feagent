@@ -82,14 +82,14 @@ class TaskExecutor:
 
     def __init__(
         self,
-        task_runner: TaskRunner | None = None,
+        task_runner: TaskRunner,
         timeout: int = 300,
         tool_timeout: int = 60,
     ):
         """初始化任务执行器
 
         参数：
-            task_runner: TaskRunner 端口实现（可选，为 None 时延迟加载默认实现）
+            task_runner: TaskRunner 端口实现（必需，通过依赖注入）
             timeout: 执行超时时间（秒），默认 300 秒（5 分钟）
             tool_timeout: 单个工具调用超时时间（秒），默认 60 秒
         """
@@ -173,15 +173,7 @@ class TaskExecutor:
 
         返回：
             TaskRunner 实例
-
-        异常：
-            ValueError: 如果未提供 task_runner 实例
         """
-        if self._task_runner is None:
-            raise ValueError(
-                "TaskRunner 未提供。TaskExecutor 必须通过依赖注入获取 TaskRunner 实例，"
-                "不应在 Domain 层直接实例化 Infrastructure 实现。"
-            )
         return self._task_runner
 
     def _execute_with_timeout(self, task_name: str, task_description: str) -> str:

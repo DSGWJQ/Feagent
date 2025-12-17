@@ -141,27 +141,21 @@ class ContainerExecutor:
         result = await executor.execute_async(code, config)
     """
 
-    def __init__(self, executor: Any = None):
+    def __init__(self, executor: Any):
         """初始化容器执行器
 
         参数：
-            executor: ContainerExecutorPort 实现（可选，为None时延迟加载默认实现）
+            executor: ContainerExecutorPort 实现（必需，不允许为 None）
         """
-        self._executor = executor
-
-    def _get_executor(self) -> Any:
-        """获取执行器实例（延迟加载）"""
-        if self._executor is None:
-            from src.infrastructure.executors.container_executor import (
-                ContainerExecutor as InfraContainerExecutor,
+        if executor is None:
+            raise ValueError(
+                "executor cannot be None. Must provide a ContainerExecutorPort implementation."
             )
-
-            self._executor = InfraContainerExecutor()
-        return self._executor
+        self._executor = executor
 
     def is_available(self) -> bool:
         """检查容器执行环境是否可用"""
-        return self._get_executor().is_available()
+        return self._executor.is_available()
 
     def execute(
         self,
@@ -170,7 +164,7 @@ class ContainerExecutor:
         inputs: dict[str, Any] | None = None,
     ) -> ContainerExecutionResult:
         """同步执行代码"""
-        return self._get_executor().execute(code, config, inputs)
+        return self._executor.execute(code, config, inputs)
 
     async def execute_async(
         self,
@@ -179,7 +173,7 @@ class ContainerExecutor:
         inputs: dict[str, Any] | None = None,
     ) -> ContainerExecutionResult:
         """异步执行代码"""
-        return await self._get_executor().execute_async(code, config, inputs)
+        return await self._executor.execute_async(code, config, inputs)
 
 
 class MockContainerExecutor:

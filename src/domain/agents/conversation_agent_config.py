@@ -264,6 +264,7 @@ class ConversationAgentConfig:
         session_context: 会话上下文（必选）
         llm: LLM 配置组（必选）
         event_bus: 事件总线实例（可选）
+        model_metadata_port: 模型元数据端口（可选，P1-1）
         react: ReAct 循环配置
         intent: 意图分类配置
         workflow: 工作流协调配置
@@ -274,6 +275,7 @@ class ConversationAgentConfig:
     session_context: Any  # SessionContext 实例（必选）
     llm: LLMConfig  # LLM 配置（必选）
     event_bus: Any | None = None  # EventBus 实例（可选）
+    model_metadata_port: Any | None = None  # ModelMetadataPort 实例（可选，P1-1）
     react: ReActConfig = field(default_factory=ReActConfig)
     intent: IntentConfig = field(default_factory=IntentConfig)
     workflow: WorkflowConfig = field(default_factory=WorkflowConfig)
@@ -374,6 +376,7 @@ class ConversationAgentConfig:
         return {
             "session_context_configured": self.session_context is not None,
             "event_bus_configured": self.event_bus is not None,
+            "model_metadata_port_configured": self.model_metadata_port is not None,
             "llm": {
                 "llm_configured": self.llm.llm is not None,
                 "model": self.llm.model,

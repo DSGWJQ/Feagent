@@ -74,7 +74,7 @@ class TestWorkflowExecutionIntegration:
         workflow_repo = SQLAlchemyWorkflowRepository(db_setup)
 
         # 1. 通过 UseCase 创建定时工作流
-        executor = WorkflowExecutorAdapter()
+        executor = WorkflowExecutorAdapter(session_factory=lambda: db_setup)
         scheduler = ScheduleWorkflowService(
             scheduled_workflow_repo=scheduled_repo,
             workflow_executor=executor,

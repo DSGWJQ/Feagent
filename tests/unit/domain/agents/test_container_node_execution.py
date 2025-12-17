@@ -122,25 +122,41 @@ class TestContainerExecutorInterface:
 
     def test_container_executor_has_execute_method(self):
         """ContainerExecutor 应有 execute 方法"""
+        from unittest.mock import Mock
+
         from src.domain.agents.container_executor import ContainerExecutor
 
-        executor = ContainerExecutor()
+        mock_executor = Mock()
+        executor = ContainerExecutor(mock_executor)
         assert hasattr(executor, "execute")
         assert callable(executor.execute)
 
     def test_container_executor_has_execute_async_method(self):
         """ContainerExecutor 应有异步执行方法"""
+        from unittest.mock import Mock
+
         from src.domain.agents.container_executor import ContainerExecutor
 
-        executor = ContainerExecutor()
+        mock_executor = Mock()
+        executor = ContainerExecutor(mock_executor)
         assert hasattr(executor, "execute_async")
 
     def test_container_executor_has_is_available_method(self):
         """ContainerExecutor 应有可用性检查方法"""
+        from unittest.mock import Mock
+
         from src.domain.agents.container_executor import ContainerExecutor
 
-        executor = ContainerExecutor()
+        mock_executor = Mock()
+        executor = ContainerExecutor(mock_executor)
         assert hasattr(executor, "is_available")
+
+    def test_container_executor_requires_executor_argument(self):
+        """ContainerExecutor 应要求传入 executor 参数（不允许 None）"""
+        from src.domain.agents.container_executor import ContainerExecutor
+
+        with pytest.raises(ValueError, match="executor cannot be None"):
+            ContainerExecutor(None)
 
 
 # ==================== 测试4：执行结果结构 ====================

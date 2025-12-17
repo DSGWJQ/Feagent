@@ -7,6 +7,7 @@ Agent系统的依赖注入配置，提供：
 
 Author: Claude Code
 Date: 2025-12-17 (P1-2 Fix: Agent Collaboration Integration)
+Updated: 2025-12-17 (P1-1 Fix: ModelMetadataPort Injection)
 """
 
 from typing import Annotated
@@ -17,6 +18,7 @@ from src.domain.agents.conversation_agent import ConversationAgent
 from src.domain.agents.conversation_agent_config import ConversationAgentConfig, StreamingConfig
 from src.domain.agents.workflow_agent import WorkflowAgent
 from src.domain.services.event_bus import EventBus
+from src.infrastructure.adapters.model_metadata_adapter import create_model_metadata_adapter
 
 # 全局单例
 _event_bus: EventBus | None = None
@@ -51,6 +53,7 @@ def get_conversation_agent(
         Interface Layer → ConversationAgent (Domain Layer)
                          ↑
                       EventBus (Domain Service)
+                      ModelMetadataPort (P1-1)
 
     Example:
         >>> from fastapi import Depends
@@ -64,12 +67,16 @@ def get_conversation_agent(
     global _conversation_agent
 
     if _conversation_agent is None:
+        # P1-1: 创建模型元数据适配器（Infrastructure → Domain Port）
+        model_metadata_port = create_model_metadata_adapter()
+
         # 创建配置（使用简化配置）
         config = ConversationAgentConfig(
             streaming=StreamingConfig(
                 enable_save_request_channel=True,
             ),
             event_bus=event_bus,
+            model_metadata_port=model_metadata_port,  # P1-1: 注入模型元数据端口
         )
 
         # 创建Agent实例（使用config参数）

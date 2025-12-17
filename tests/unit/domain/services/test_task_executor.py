@@ -16,7 +16,7 @@
 
 import platform
 import time
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -26,6 +26,12 @@ from src.domain.services.task_executor import TaskExecutionTimeout, TaskExecutor
 
 class TestTaskExecutor:
     """TaskExecutor 测试类"""
+
+    def _create_mock_task_runner(self, return_value: str) -> Mock:
+        """创建 Mock TaskRunner"""
+        mock_runner = Mock()
+        mock_runner.run.return_value = return_value
+        return mock_runner
 
     def test_execute_task_success_no_tools(self):
         """测试场景 1: 成功执行 Task（无工具调用）"""
@@ -39,23 +45,21 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent（修复：正确的 Mock 路径）
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.return_value = "分析完成：销售额增长 20%"
+        # Mock TaskRunner
+        mock_task_runner = self._create_mock_task_runner("分析完成：销售额增长 20%")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # Act
+        result = executor.execute(task, context)
 
-            # Act
-            result = executor.execute(task, context)
+        # Assert
+        assert result["result"] == "分析完成：销售额增长 20%"
+        mock_task_runner.run.assert_called_once()
 
-            # Assert
-            assert result["result"] == "分析完成：销售额增长 20%"
-            mock_execute.assert_called_once()
-
-            # 验证 Task 记录了事件
-            assert len(task.events) > 0
-            assert any("开始执行" in event.message for event in task.events)
-            assert any("执行成功" in event.message for event in task.events)
+        # 验证 Task 记录了事件
+        assert len(task.events) > 0
+        assert any("开始执行" in event.message for event in task.events)
+        assert any("执行成功" in event.message for event in task.events)
 
     def test_execute_task_success_with_tools(self):
         """测试场景 2: 成功执行 Task（有工具调用）"""
@@ -69,21 +73,19 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent（模拟工具调用）
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.return_value = "网页内容已获取：{'origin': '1.2.3.4'}"
+        # Mock TaskRunner（模拟工具调用）
+        mock_task_runner = self._create_mock_task_runner("网页内容已获取：{'origin': '1.2.3.4'}")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # Act
+        result = executor.execute(task, context)
 
-            # Act
-            result = executor.execute(task, context)
+        # Assert
+        assert "网页内容已获取" in result["result"]
 
-            # Assert
-            assert "网页内容已获取" in result["result"]
-
-            # 验证记录了工具调用事件
-            assert len(task.events) > 0
-            # 注意：实际的工具调用事件需要在 TaskExecutor 中记录
+        # 验证记录了工具调用事件
+        assert len(task.events) > 0
+        # 注意：实际的工具调用事件需要在 TaskExecutor 中记录
 
     @pytest.mark.skipif(platform.system() == "Windows", reason="signal.alarm 在 Windows 上不可用")
     def test_execute_task_timeout(self):
@@ -101,23 +103,24 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent（模拟超时）
+        # Mock TaskRunner（模拟超时）
         def slow_execute(*args, **kwargs):
             time.sleep(10)  # 模拟长时间执行
             return "完成"
 
-        with patch("src.lc.agents.task_executor.execute_task", side_effect=slow_execute):
-            executor = TaskExecutor(timeout=1)  # 设置 1 秒超时
+        mock_task_runner = Mock()
+        mock_task_runner.run.side_effect = slow_execute
+        executor = TaskExecutor(task_runner=mock_task_runner, timeout=1)  # 设置 1 秒超时
 
-            # Act & Assert
-            with pytest.raises(TaskExecutionTimeout) as exc_info:
-                executor.execute(task, context)
+        # Act & Assert
+        with pytest.raises(TaskExecutionTimeout) as exc_info:
+            executor.execute(task, context)
 
-            assert "超时" in str(exc_info.value)
+        assert "超时" in str(exc_info.value)
 
-            # 验证记录了超时事件
-            assert len(task.events) > 0
-            assert any("超时" in event.message for event in task.events)
+        # 验证记录了超时事件
+        assert len(task.events) > 0
+        assert any("超时" in event.message for event in task.events)
 
     def test_execute_task_llm_error(self):
         """测试场景 4: Task 执行失败（LLM 错误）"""
@@ -131,21 +134,19 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent（返回错误）
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.return_value = "错误：API 调用失败"
+        # Mock TaskRunner（返回错误）
+        mock_task_runner = self._create_mock_task_runner("错误：API 调用失败")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # Act & Assert
+        with pytest.raises(Exception) as exc_info:
+            executor.execute(task, context)
 
-            # Act & Assert
-            with pytest.raises(Exception) as exc_info:
-                executor.execute(task, context)
+        assert "API 调用失败" in str(exc_info.value)
 
-            assert "API 调用失败" in str(exc_info.value)
-
-            # 验证记录了错误事件
-            assert len(task.events) > 0
-            assert any("错误" in event.message or "失败" in event.message for event in task.events)
+        # 验证记录了错误事件
+        assert len(task.events) > 0
+        assert any("错误" in event.message or "失败" in event.message for event in task.events)
 
     def test_execute_task_tool_call_error(self):
         """测试场景 5: 工具调用失败"""
@@ -159,17 +160,16 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent（模拟工具调用失败）
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.side_effect = Exception("文件不存在")
+        # Mock TaskRunner（模拟工具调用失败）
+        mock_task_runner = Mock()
+        mock_task_runner.run.side_effect = Exception("文件不存在")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # Act & Assert
+        with pytest.raises(Exception) as exc_info:
+            executor.execute(task, context)
 
-            # Act & Assert
-            with pytest.raises(Exception) as exc_info:
-                executor.execute(task, context)
-
-            assert "文件不存在" in str(exc_info.value)
+        assert "文件不存在" in str(exc_info.value)
 
     def test_execute_task_records_events(self):
         """测试场景 6: 记录执行日志（TaskEvent）"""
@@ -183,23 +183,21 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.return_value = "任务完成"
+        # Mock TaskRunner
+        mock_task_runner = self._create_mock_task_runner("任务完成")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # Act
+        result = executor.execute(task, context)
 
-            # Act
-            result = executor.execute(task, context)
+        # Assert
+        assert result["result"] == "任务完成"
+        # 验证记录了完整的执行事件
+        assert len(task.events) >= 2  # 至少有开始和结束事件
 
-            # Assert
-            assert result["result"] == "任务完成"
-            # 验证记录了完整的执行事件
-            assert len(task.events) >= 2  # 至少有开始和结束事件
-
-            event_messages = [event.message for event in task.events]
-            assert any("开始执行" in msg for msg in event_messages)
-            assert any("执行成功" in msg or "完成" in msg for msg in event_messages)
+        event_messages = [event.message for event in task.events]
+        assert any("开始执行" in msg for msg in event_messages)
+        assert any("执行成功" in msg or "完成" in msg for msg in event_messages)
 
     def test_execute_task_with_context(self):
         """测试场景 7: 上下文传递"""
@@ -217,24 +215,22 @@ class TestTaskExecutor:
             "Task 2": {"result": "数据已清洗"},
         }
 
-        # Mock LangChain Agent
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.return_value = "分析完成"
+        # Mock TaskRunner
+        mock_task_runner = self._create_mock_task_runner("分析完成")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # Act
+        result = executor.execute(task, context)
 
-            # Act
-            result = executor.execute(task, context)
+        # Assert
+        # execute 返回 dict[str, Any]，包含 result 键
+        assert result["result"] == "分析完成"
+        # 验证上下文被传递给 TaskRunner
+        call_args = mock_task_runner.run.call_args
+        task_description = call_args.kwargs.get("task_description", "")
 
-            # Assert
-            # execute 返回 dict[str, Any]，包含 result 键
-            assert result["result"] == "分析完成"
-            # 验证上下文被传递给 LangChain Agent
-            call_args = mock_execute.call_args
-            task_description = call_args.kwargs.get("task_description", "")
-
-            # 上下文应该被添加到任务描述中
-            assert "Task 1" in task_description or "上下文" in task_description
+        # 上下文应该被添加到任务描述中
+        assert "Task 1" in task_description or "上下文" in task_description
 
     def test_execute_task_multiple_tool_calls(self):
         """测试场景 8: 多次工具调用"""
@@ -248,20 +244,18 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent（模拟多次工具调用）
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.return_value = "任务完成：下载 → 分析 → 报告"
+        # Mock TaskRunner（模拟多次工具调用）
+        mock_task_runner = self._create_mock_task_runner("任务完成：下载 → 分析 → 报告")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # Act
+        result = executor.execute(task, context)
 
-            # Act
-            result = executor.execute(task, context)
+        # Assert
+        assert "任务完成" in result["result"]
 
-            # Assert
-            assert "任务完成" in result["result"]
-
-            # 验证记录了多个事件（如果 TaskExecutor 支持记录工具调用）
-            assert len(task.events) > 0
+        # 验证记录了多个事件（如果 TaskExecutor 支持记录工具调用）
+        assert len(task.events) > 0
 
     def test_execute_task_with_custom_timeout(self):
         """测试场景 9: 自定义超时时间"""
@@ -275,18 +269,17 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.return_value = "完成"
+        # Mock TaskRunner
+        mock_task_runner = self._create_mock_task_runner("完成")
 
-            # 创建自定义超时的 executor
-            executor = TaskExecutor(timeout=30)
+        # 创建自定义超时的 executor
+        executor = TaskExecutor(task_runner=mock_task_runner, timeout=30)
 
-            # Act
-            result = executor.execute(task, context)
+        # Act
+        result = executor.execute(task, context)
 
-            # Assert
-            assert result["result"] == "完成"
+        # Assert
+        assert result["result"] == "完成"
 
     def test_execute_task_empty_description(self):
         """测试场景 10: Task 描述为空"""
@@ -300,21 +293,19 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.return_value = "完成"
+        # Mock TaskRunner
+        mock_task_runner = self._create_mock_task_runner("完成")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # Act
+        result = executor.execute(task, context)
 
-            # Act
-            result = executor.execute(task, context)
+        # Assert
+        assert result["result"] == "完成"
 
-            # Assert
-            assert result["result"] == "完成"
-
-            # 验证调用时使用了空描述
-            call_args = mock_execute.call_args
-            assert call_args.kwargs.get("task_description") == ""
+        # 验证调用时使用了空描述
+        call_args = mock_task_runner.run.call_args
+        assert call_args.kwargs.get("task_description") == ""
 
     def test_tool_call_logging(self):
         """测试场景 9: 工具调用日志记录
@@ -335,35 +326,33 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent 和工具调用
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            # 模拟返回工具调用信息
-            mock_execute.return_value = "API 调用成功"
+        # Mock TaskRunner 和工具调用
+        mock_task_runner = self._create_mock_task_runner("API 调用成功")
 
-            # Mock 工具调用回调
-            with patch("src.domain.services.task_executor.TaskExecutor._log_tool_call") as mock_log:
-                executor = TaskExecutor()
+        # Mock 工具调用回调
+        with patch("src.domain.services.task_executor.TaskExecutor._log_tool_call") as mock_log:
+            executor = TaskExecutor(task_runner=mock_task_runner)
 
-                # 手动触发工具调用日志（模拟）
-                executor._log_tool_call(
-                    task=task,
-                    tool_name="http_request",
-                    tool_input={"url": "https://httpbin.org/get", "method": "GET"},
-                    tool_output="{'origin': '1.2.3.4'}",
-                    duration=0.5,
-                )
+            # 手动触发工具调用日志（模拟）
+            executor._log_tool_call(
+                task=task,
+                tool_name="http_request",
+                tool_input={"url": "https://httpbin.org/get", "method": "GET"},
+                tool_output="{'origin': '1.2.3.4'}",
+                duration=0.5,
+            )
 
-                # Act
-                result = executor.execute(task, context)
+            # Act
+            result = executor.execute(task, context)
 
-                # Assert
-                assert result["result"] == "API 调用成功"
+            # Assert
+            assert result["result"] == "API 调用成功"
 
-                # 验证记录了工具调用日志
-                mock_log.assert_called_once()
-                call_args = mock_log.call_args
-                assert call_args.kwargs["tool_name"] == "http_request"
-                assert "url" in call_args.kwargs["tool_input"]
+            # 验证记录了工具调用日志
+            mock_log.assert_called_once()
+            call_args = mock_log.call_args
+            assert call_args.kwargs["tool_name"] == "http_request"
+            assert "url" in call_args.kwargs["tool_input"]
 
     def test_tool_call_timeout_control(self):
         """测试场景 10: 工具调用超时控制
@@ -388,22 +377,23 @@ class TestTaskExecutor:
             time.sleep(5)  # 模拟慢速工具
             return "完成"
 
-        with patch("src.lc.agents.task_executor.execute_task", side_effect=slow_tool_call):
-            executor = TaskExecutor(timeout=2)  # 设置 2 秒超时
+        mock_task_runner = Mock()
+        mock_task_runner.run.side_effect = slow_tool_call
+        executor = TaskExecutor(task_runner=mock_task_runner, timeout=2)  # 设置 2 秒超时
 
-            # Act & Assert
-            if platform.system() != "Windows":
-                # Unix 系统上应该超时
-                with pytest.raises(TaskExecutionTimeout) as exc_info:
-                    executor.execute(task, context)
+        # Act & Assert
+        if platform.system() != "Windows":
+            # Unix 系统上应该超时
+            with pytest.raises(TaskExecutionTimeout) as exc_info:
+                executor.execute(task, context)
 
-                assert "超时" in str(exc_info.value)
+            assert "超时" in str(exc_info.value)
 
-                # 验证记录了超时事件
-                assert any("超时" in event.message for event in task.events)
-            else:
-                # Windows 上暂时不支持超时，跳过
-                pytest.skip("Windows 不支持 signal.alarm")
+            # 验证记录了超时事件
+            assert any("超时" in event.message for event in task.events)
+        else:
+            # Windows 上暂时不支持超时，跳过
+            pytest.skip("Windows 不支持 signal.alarm")
 
     def test_tool_call_error_handling(self):
         """测试场景 11: 工具调用错误处理
@@ -424,19 +414,18 @@ class TestTaskExecutor:
         context = {}
 
         # Mock 工具调用失败
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.side_effect = Exception("工具调用失败：网络错误")
+        mock_task_runner = Mock()
+        mock_task_runner.run.side_effect = Exception("工具调用失败：网络错误")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # Act & Assert
+        with pytest.raises(Exception) as exc_info:
+            executor.execute(task, context)
 
-            # Act & Assert
-            with pytest.raises(Exception) as exc_info:
-                executor.execute(task, context)
+        assert "工具调用失败" in str(exc_info.value)
 
-            assert "工具调用失败" in str(exc_info.value)
-
-            # 验证记录了错误事件
-            assert any("异常" in event.message or "错误" in event.message for event in task.events)
+        # 验证记录了错误事件
+        assert any("异常" in event.message or "错误" in event.message for event in task.events)
 
     def test_multiple_tool_calls_logging(self):
         """测试场景 12: 多次工具调用日志记录
@@ -456,43 +445,41 @@ class TestTaskExecutor:
 
         context = {}
 
-        # Mock LangChain Agent（模拟多次工具调用）
-        with patch("src.lc.agents.task_executor.execute_task") as mock_execute:
-            mock_execute.return_value = "所有工具调用完成"
+        # Mock TaskRunner（模拟多次工具调用）
+        mock_task_runner = self._create_mock_task_runner("所有工具调用完成")
+        executor = TaskExecutor(task_runner=mock_task_runner)
 
-            executor = TaskExecutor()
+        # 模拟记录多次工具调用
+        executor._log_tool_call(
+            task=task,
+            tool_name="http_request",
+            tool_input={"url": "https://api.example.com"},
+            tool_output="{'data': 'value'}",
+            duration=0.3,
+        )
 
-            # 模拟记录多次工具调用
-            executor._log_tool_call(
-                task=task,
-                tool_name="http_request",
-                tool_input={"url": "https://api.example.com"},
-                tool_output="{'data': 'value'}",
-                duration=0.3,
-            )
+        executor._log_tool_call(
+            task=task,
+            tool_name="read_file",
+            tool_input={"path": "data.txt"},
+            tool_output="file content",
+            duration=0.1,
+        )
 
-            executor._log_tool_call(
-                task=task,
-                tool_name="read_file",
-                tool_input={"path": "data.txt"},
-                tool_output="file content",
-                duration=0.1,
-            )
+        executor._log_tool_call(
+            task=task,
+            tool_name="execute_python",
+            tool_input={"code": "print('hello')"},
+            tool_output="hello",
+            duration=0.2,
+        )
 
-            executor._log_tool_call(
-                task=task,
-                tool_name="execute_python",
-                tool_input={"code": "print('hello')"},
-                tool_output="hello",
-                duration=0.2,
-            )
+        # Act
+        result = executor.execute(task, context)
 
-            # Act
-            result = executor.execute(task, context)
+        # Assert
+        assert result["result"] == "所有工具调用完成"
 
-            # Assert
-            assert result["result"] == "所有工具调用完成"
-
-            # 验证记录了所有工具调用事件
-            tool_events = [e for e in task.events if "工具调用" in e.message]
-            assert len(tool_events) >= 3  # 至少 3 次工具调用
+        # 验证记录了所有工具调用事件
+        tool_events = [e for e in task.events if "工具调用" in e.message]
+        assert len(tool_events) >= 3  # 至少 3 次工具调用

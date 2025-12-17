@@ -44,6 +44,10 @@ def _create_session():
 
 
 def _init_scheduler() -> ScheduleWorkflowService:
+    from src.infrastructure.database.repositories.scheduled_workflow_repository import (
+        SQLAlchemyScheduledWorkflowRepository,
+    )
+
     executor_registry = create_executor_registry(
         openai_api_key=settings.openai_api_key or None,
         anthropic_api_key=getattr(settings, "anthropic_api_key", None),
@@ -52,8 +56,13 @@ def _init_scheduler() -> ScheduleWorkflowService:
         session_factory=_create_session,
         executor_registry=executor_registry,
     )
+
+    # Create repository instance for scheduler
+    session = _create_session()
+    scheduled_workflow_repo = SQLAlchemyScheduledWorkflowRepository(session)
+
     return ScheduleWorkflowService(
-        session_factory=_create_session,
+        scheduled_workflow_repo=scheduled_workflow_repo,
         workflow_executor=workflow_executor,
     )
 
