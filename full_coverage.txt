@@ -183,7 +183,7 @@ agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent o
     def test_request_save_basic_usage(self, agent_with_event_bus):
         """测试：request_save基本使用"""
         agent = agent_with_event_bus
-    
+
         with patch.object(agent, "_create_tracked_task") as mock_tracked:
             with patch.object(agent.event_bus, "publish", new_callable=AsyncMock) as mock_publish:
                 request_id = agent.request_save(
@@ -191,7 +191,7 @@ agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent o
                     content="test content",
                     reason="测试原因",
                 )
-    
+
                 assert request_id is not None
                 # 验证使用了_create_tracked_task
 >               mock_tracked.assert_called_once()
@@ -223,9 +223,9 @@ agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent o
     def test_request_save_creates_request_with_all_fields(self, agent_with_event_bus):
         """测试：request_save创建完整的SaveRequest对象"""
         agent = agent_with_event_bus
-    
+
         from src.domain.services.save_request_channel import SaveRequestPriority
-    
+
         with patch.object(agent, "_create_tracked_task") as mock_tracked:
             with patch.object(agent.event_bus, "publish", new_callable=AsyncMock):
                 request_id = agent.request_save(
@@ -235,7 +235,7 @@ agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent o
                     priority=SaveRequestPriority.HIGH,
                     is_binary=False,
                 )
-    
+
                 assert request_id is not None
 >               mock_tracked.assert_called_once()
 E               AssertionError: Expected '_create_tracked_task' to have been called once. Called 0 times.
@@ -250,7 +250,7 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394963254912'>
     def test_no_arguments_creates_with_defaults(self, mock_bootstrap):
         """无参数创建使用默认配置"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
-    
+
         # Mock Bootstrap to avoid actual initialization
         mock_wiring = MagicMock()
         mock_wiring.base_state = {
@@ -299,12 +299,12 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394963254912'>
             "intervention_logger": MagicMock(),
         }
         mock_bootstrap.return_value.assemble.return_value = mock_wiring
-    
+
         # Create agent without arguments
 >       _ = CoordinatorAgent()
             ^^^^^^^^^^^^^^^^^^
 
-tests\unit\domain\agents\test_coordinator_agent_config_compat.py:80: 
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:80:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3D9F90>
@@ -331,7 +331,7 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         config: CoordinatorAgentConfig | None = None,
     ):
         """初始化协调者Agent（P1-1: 支持新配置系统）
-    
+
         参数（旧方式 - 保持向后兼容）：
             event_bus: 事件总线（用于发布验证/拒绝事件）
             rejection_rate_threshold: 拒绝率告警阈值
@@ -341,10 +341,10 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             context_compressor: 上下文压缩器（阶段2新增）
             snapshot_manager: 快照管理器（阶段2新增）
             knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
-    
+
         参数（新方式 - P1-1）：
             config: CoordinatorAgentConfig 配置对象
-    
+
         注意：
             - 旧参数和 config 参数可以共存，但不能冲突
             - config 优先级高于旧参数
@@ -363,16 +363,16 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             knowledge_retriever=knowledge_retriever,
         )
         from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
-    
+
         # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
         # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
         bootstrap = CoordinatorBootstrap(config=agent_config)
         wiring = bootstrap.assemble()
-    
+
         # 3. 解包装配结果：配置属性（从 agent_config 读取）
         self.event_bus = agent_config.event_bus
         self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
-    
+
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
         self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
         self._rules: list[Rule] = wiring.base_state["_rules"]
@@ -380,20 +380,20 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
         # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
         self._statistics = wiring.base_state["_statistics"]
-    
+
         # 5. 解包装配结果：工作流状态（共享bootstrap容器）
         self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
         self._is_monitoring = wiring.base_state["_is_monitoring"]
         # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
         # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
-    
+
         # 6. 解包装配结果：共享组件（log_collector）
         self.log_collector = wiring.log_collector
-    
+
         # 7. 解包装配结果：所有别名
         for alias_name, alias_value in wiring.aliases.items():
             setattr(self, alias_name, alias_value)
-    
+
         # 8. 解包装配结果：所有编排器
         self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
         self._container_monitor = wiring.orchestrators["container_monitor"]
@@ -415,17 +415,17 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
         self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
         self.task_terminator = wiring.orchestrators["task_terminator"]
-    
+
         # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
         # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
         self._safety_guard = wiring.orchestrators.get("safety_guard")
-    
+
         # 可选组件
         if "alert_rule_manager" in wiring.orchestrators:
             self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
         if "circuit_breaker" in wiring.orchestrators:
             self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
-    
+
         # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
         if "rule_engine_facade" not in wiring.orchestrators:
 >           raise RuntimeError(
@@ -444,9 +444,9 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394955736672'>
     def test_single_event_bus_parameter(self, mock_bootstrap):
         """传入单个event_bus参数"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
-    
+
         mock_event_bus = MagicMock()
-    
+
         # Mock Bootstrap
         mock_wiring = MagicMock()
         mock_wiring.base_state = {
@@ -495,12 +495,12 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394955736672'>
             "intervention_logger": MagicMock(),
         }
         mock_bootstrap.return_value.assemble.return_value = mock_wiring
-    
+
         # Create agent with event_bus
 >       _ = CoordinatorAgent(event_bus=mock_event_bus)
             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests\unit\domain\agents\test_coordinator_agent_config_compat.py:150: 
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:150:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DA210>
@@ -527,7 +527,7 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         config: CoordinatorAgentConfig | None = None,
     ):
         """初始化协调者Agent（P1-1: 支持新配置系统）
-    
+
         参数（旧方式 - 保持向后兼容）：
             event_bus: 事件总线（用于发布验证/拒绝事件）
             rejection_rate_threshold: 拒绝率告警阈值
@@ -537,10 +537,10 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             context_compressor: 上下文压缩器（阶段2新增）
             snapshot_manager: 快照管理器（阶段2新增）
             knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
-    
+
         参数（新方式 - P1-1）：
             config: CoordinatorAgentConfig 配置对象
-    
+
         注意：
             - 旧参数和 config 参数可以共存，但不能冲突
             - config 优先级高于旧参数
@@ -559,16 +559,16 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             knowledge_retriever=knowledge_retriever,
         )
         from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
-    
+
         # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
         # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
         bootstrap = CoordinatorBootstrap(config=agent_config)
         wiring = bootstrap.assemble()
-    
+
         # 3. 解包装配结果：配置属性（从 agent_config 读取）
         self.event_bus = agent_config.event_bus
         self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
-    
+
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
         self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
         self._rules: list[Rule] = wiring.base_state["_rules"]
@@ -576,20 +576,20 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
         # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
         self._statistics = wiring.base_state["_statistics"]
-    
+
         # 5. 解包装配结果：工作流状态（共享bootstrap容器）
         self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
         self._is_monitoring = wiring.base_state["_is_monitoring"]
         # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
         # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
-    
+
         # 6. 解包装配结果：共享组件（log_collector）
         self.log_collector = wiring.log_collector
-    
+
         # 7. 解包装配结果：所有别名
         for alias_name, alias_value in wiring.aliases.items():
             setattr(self, alias_name, alias_value)
-    
+
         # 8. 解包装配结果：所有编排器
         self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
         self._container_monitor = wiring.orchestrators["container_monitor"]
@@ -611,17 +611,17 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
         self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
         self.task_terminator = wiring.orchestrators["task_terminator"]
-    
+
         # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
         # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
         self._safety_guard = wiring.orchestrators.get("safety_guard")
-    
+
         # 可选组件
         if "alert_rule_manager" in wiring.orchestrators:
             self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
         if "circuit_breaker" in wiring.orchestrators:
             self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
-    
+
         # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
         if "rule_engine_facade" not in wiring.orchestrators:
 >           raise RuntimeError(
@@ -644,13 +644,13 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394957615456'>
             CoordinatorAgentConfig,
             RuleEngineConfig,
         )
-    
+
         mock_event_bus = MagicMock()
         config = CoordinatorAgentConfig(
             event_bus=mock_event_bus,
             rules=RuleEngineConfig(rejection_rate_threshold=0.7),
         )
-    
+
         # Mock Bootstrap
         mock_wiring = MagicMock()
         mock_wiring.base_state = {
@@ -699,12 +699,12 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394957615456'>
             "intervention_logger": MagicMock(),
         }
         mock_bootstrap.return_value.assemble.return_value = mock_wiring
-    
+
         # Create agent with config only
 >       _ = CoordinatorAgent(config=config)
             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests\unit\domain\agents\test_coordinator_agent_config_compat.py:225: 
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:225:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DAC10>
@@ -731,7 +731,7 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         config: CoordinatorAgentConfig | None = None,
     ):
         """初始化协调者Agent（P1-1: 支持新配置系统）
-    
+
         参数（旧方式 - 保持向后兼容）：
             event_bus: 事件总线（用于发布验证/拒绝事件）
             rejection_rate_threshold: 拒绝率告警阈值
@@ -741,10 +741,10 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             context_compressor: 上下文压缩器（阶段2新增）
             snapshot_manager: 快照管理器（阶段2新增）
             knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
-    
+
         参数（新方式 - P1-1）：
             config: CoordinatorAgentConfig 配置对象
-    
+
         注意：
             - 旧参数和 config 参数可以共存，但不能冲突
             - config 优先级高于旧参数
@@ -763,16 +763,16 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             knowledge_retriever=knowledge_retriever,
         )
         from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
-    
+
         # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
         # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
         bootstrap = CoordinatorBootstrap(config=agent_config)
         wiring = bootstrap.assemble()
-    
+
         # 3. 解包装配结果：配置属性（从 agent_config 读取）
         self.event_bus = agent_config.event_bus
         self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
-    
+
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
         self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
         self._rules: list[Rule] = wiring.base_state["_rules"]
@@ -780,20 +780,20 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
         # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
         self._statistics = wiring.base_state["_statistics"]
-    
+
         # 5. 解包装配结果：工作流状态（共享bootstrap容器）
         self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
         self._is_monitoring = wiring.base_state["_is_monitoring"]
         # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
         # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
-    
+
         # 6. 解包装配结果：共享组件（log_collector）
         self.log_collector = wiring.log_collector
-    
+
         # 7. 解包装配结果：所有别名
         for alias_name, alias_value in wiring.aliases.items():
             setattr(self, alias_name, alias_value)
-    
+
         # 8. 解包装配结果：所有编排器
         self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
         self._container_monitor = wiring.orchestrators["container_monitor"]
@@ -815,17 +815,17 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
         self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
         self.task_terminator = wiring.orchestrators["task_terminator"]
-    
+
         # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
         # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
         self._safety_guard = wiring.orchestrators.get("safety_guard")
-    
+
         # 可选组件
         if "alert_rule_manager" in wiring.orchestrators:
             self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
         if "circuit_breaker" in wiring.orchestrators:
             self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
-    
+
         # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
         if "rule_engine_facade" not in wiring.orchestrators:
 >           raise RuntimeError(
@@ -848,13 +848,13 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394962356480'>
             CoordinatorAgentConfig,
             RuleEngineConfig,
         )
-    
+
         mock_event_bus = MagicMock()
         config = CoordinatorAgentConfig(
             event_bus=mock_event_bus,
             rules=RuleEngineConfig(rejection_rate_threshold=0.7),
         )
-    
+
         # Mock Bootstrap
         mock_wiring = MagicMock()
         mock_wiring.base_state = {
@@ -903,12 +903,12 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394962356480'>
             "intervention_logger": MagicMock(),
         }
         mock_bootstrap.return_value.assemble.return_value = mock_wiring
-    
+
         # Pass consistent values: event_bus matches config.event_bus
 >       agent = CoordinatorAgent(event_bus=mock_event_bus, config=config)
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests\unit\domain\agents\test_coordinator_agent_config_compat.py:302: 
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:302:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DA990>
@@ -935,7 +935,7 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         config: CoordinatorAgentConfig | None = None,
     ):
         """初始化协调者Agent（P1-1: 支持新配置系统）
-    
+
         参数（旧方式 - 保持向后兼容）：
             event_bus: 事件总线（用于发布验证/拒绝事件）
             rejection_rate_threshold: 拒绝率告警阈值
@@ -945,10 +945,10 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             context_compressor: 上下文压缩器（阶段2新增）
             snapshot_manager: 快照管理器（阶段2新增）
             knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
-    
+
         参数（新方式 - P1-1）：
             config: CoordinatorAgentConfig 配置对象
-    
+
         注意：
             - 旧参数和 config 参数可以共存，但不能冲突
             - config 优先级高于旧参数
@@ -967,16 +967,16 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             knowledge_retriever=knowledge_retriever,
         )
         from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
-    
+
         # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
         # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
         bootstrap = CoordinatorBootstrap(config=agent_config)
         wiring = bootstrap.assemble()
-    
+
         # 3. 解包装配结果：配置属性（从 agent_config 读取）
         self.event_bus = agent_config.event_bus
         self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
-    
+
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
         self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
         self._rules: list[Rule] = wiring.base_state["_rules"]
@@ -984,20 +984,20 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
         # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
         self._statistics = wiring.base_state["_statistics"]
-    
+
         # 5. 解包装配结果：工作流状态（共享bootstrap容器）
         self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
         self._is_monitoring = wiring.base_state["_is_monitoring"]
         # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
         # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
-    
+
         # 6. 解包装配结果：共享组件（log_collector）
         self.log_collector = wiring.log_collector
-    
+
         # 7. 解包装配结果：所有别名
         for alias_name, alias_value in wiring.aliases.items():
             setattr(self, alias_name, alias_value)
-    
+
         # 8. 解包装配结果：所有编排器
         self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
         self._container_monitor = wiring.orchestrators["container_monitor"]
@@ -1019,17 +1019,17 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
         self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
         self.task_terminator = wiring.orchestrators["task_terminator"]
-    
+
         # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
         # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
         self._safety_guard = wiring.orchestrators.get("safety_guard")
-    
+
         # 可选组件
         if "alert_rule_manager" in wiring.orchestrators:
             self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
         if "circuit_breaker" in wiring.orchestrators:
             self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
-    
+
         # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
         if "rule_engine_facade" not in wiring.orchestrators:
 >           raise RuntimeError(
@@ -1052,12 +1052,12 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394961104912'>
             CoordinatorAgentConfig,
             RuleEngineConfig,
         )
-    
+
         # Create config with non-default rejection_rate
         config = CoordinatorAgentConfig(
             rules=RuleEngineConfig(rejection_rate_threshold=0.7),
         )
-    
+
         # Mock Bootstrap
         mock_wiring = MagicMock()
         mock_wiring.base_state = {
@@ -1106,13 +1106,13 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394961104912'>
             "intervention_logger": MagicMock(),
         }
         mock_bootstrap.return_value.assemble.return_value = mock_wiring
-    
+
         # Do not pass rejection_rate_threshold explicitly - should use sentinel
         # and not conflict with config
 >       _ = CoordinatorAgent(config=config)
             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests\unit\domain\agents\test_coordinator_agent_config_compat.py:408: 
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:408:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E259810>
@@ -1139,7 +1139,7 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         config: CoordinatorAgentConfig | None = None,
     ):
         """初始化协调者Agent（P1-1: 支持新配置系统）
-    
+
         参数（旧方式 - 保持向后兼容）：
             event_bus: 事件总线（用于发布验证/拒绝事件）
             rejection_rate_threshold: 拒绝率告警阈值
@@ -1149,10 +1149,10 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             context_compressor: 上下文压缩器（阶段2新增）
             snapshot_manager: 快照管理器（阶段2新增）
             knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
-    
+
         参数（新方式 - P1-1）：
             config: CoordinatorAgentConfig 配置对象
-    
+
         注意：
             - 旧参数和 config 参数可以共存，但不能冲突
             - config 优先级高于旧参数
@@ -1171,16 +1171,16 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             knowledge_retriever=knowledge_retriever,
         )
         from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
-    
+
         # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
         # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
         bootstrap = CoordinatorBootstrap(config=agent_config)
         wiring = bootstrap.assemble()
-    
+
         # 3. 解包装配结果：配置属性（从 agent_config 读取）
         self.event_bus = agent_config.event_bus
         self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
-    
+
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
         self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
         self._rules: list[Rule] = wiring.base_state["_rules"]
@@ -1188,20 +1188,20 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
         # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
         self._statistics = wiring.base_state["_statistics"]
-    
+
         # 5. 解包装配结果：工作流状态（共享bootstrap容器）
         self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
         self._is_monitoring = wiring.base_state["_is_monitoring"]
         # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
         # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
-    
+
         # 6. 解包装配结果：共享组件（log_collector）
         self.log_collector = wiring.log_collector
-    
+
         # 7. 解包装配结果：所有别名
         for alias_name, alias_value in wiring.aliases.items():
             setattr(self, alias_name, alias_value)
-    
+
         # 8. 解包装配结果：所有编排器
         self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
         self._container_monitor = wiring.orchestrators["container_monitor"]
@@ -1223,17 +1223,17 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
         self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
         self.task_terminator = wiring.orchestrators["task_terminator"]
-    
+
         # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
         # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
         self._safety_guard = wiring.orchestrators.get("safety_guard")
-    
+
         # 可选组件
         if "alert_rule_manager" in wiring.orchestrators:
             self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
         if "circuit_breaker" in wiring.orchestrators:
             self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
-    
+
         # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
         if "rule_engine_facade" not in wiring.orchestrators:
 >           raise RuntimeError(
@@ -1255,13 +1255,13 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394953609440'>
         from src.domain.services.workflow_failure_orchestrator import (
             FailureHandlingStrategy,
         )
-    
+
         failure_dict = {
             "max_retry_attempts": 5,
             "retry_delay_seconds": 2.0,
             "enable_auto_recovery": False,
         }
-    
+
         # Mock Bootstrap
         mock_wiring = MagicMock()
         mock_wiring.base_state = {
@@ -1310,12 +1310,12 @@ mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394953609440'>
             "intervention_logger": MagicMock(),
         }
         mock_bootstrap.return_value.assemble.return_value = mock_wiring
-    
+
         # Create agent with failure_strategy_config dict
 >       _ = CoordinatorAgent(failure_strategy_config=failure_dict)
             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests\unit\domain\agents\test_coordinator_agent_config_compat.py:483: 
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:483:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DB390>
@@ -1342,7 +1342,7 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         config: CoordinatorAgentConfig | None = None,
     ):
         """初始化协调者Agent（P1-1: 支持新配置系统）
-    
+
         参数（旧方式 - 保持向后兼容）：
             event_bus: 事件总线（用于发布验证/拒绝事件）
             rejection_rate_threshold: 拒绝率告警阈值
@@ -1352,10 +1352,10 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             context_compressor: 上下文压缩器（阶段2新增）
             snapshot_manager: 快照管理器（阶段2新增）
             knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
-    
+
         参数（新方式 - P1-1）：
             config: CoordinatorAgentConfig 配置对象
-    
+
         注意：
             - 旧参数和 config 参数可以共存，但不能冲突
             - config 优先级高于旧参数
@@ -1374,16 +1374,16 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
             knowledge_retriever=knowledge_retriever,
         )
         from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
-    
+
         # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
         # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
         bootstrap = CoordinatorBootstrap(config=agent_config)
         wiring = bootstrap.assemble()
-    
+
         # 3. 解包装配结果：配置属性（从 agent_config 读取）
         self.event_bus = agent_config.event_bus
         self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
-    
+
         # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
         self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
         self._rules: list[Rule] = wiring.base_state["_rules"]
@@ -1391,20 +1391,20 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
         # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
         self._statistics = wiring.base_state["_statistics"]
-    
+
         # 5. 解包装配结果：工作流状态（共享bootstrap容器）
         self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
         self._is_monitoring = wiring.base_state["_is_monitoring"]
         # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
         # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
-    
+
         # 6. 解包装配结果：共享组件（log_collector）
         self.log_collector = wiring.log_collector
-    
+
         # 7. 解包装配结果：所有别名
         for alias_name, alias_value in wiring.aliases.items():
             setattr(self, alias_name, alias_value)
-    
+
         # 8. 解包装配结果：所有编排器
         self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
         self._container_monitor = wiring.orchestrators["container_monitor"]
@@ -1426,17 +1426,17 @@ knowledge_retriever = <object object at 0x0000022D996272E0>
         self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
         self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
         self.task_terminator = wiring.orchestrators["task_terminator"]
-    
+
         # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
         # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
         self._safety_guard = wiring.orchestrators.get("safety_guard")
-    
+
         # 可选组件
         if "alert_rule_manager" in wiring.orchestrators:
             self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
         if "circuit_breaker" in wiring.orchestrators:
             self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
-    
+
         # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
         if "rule_engine_facade" not in wiring.orchestrators:
 >           raise RuntimeError(
@@ -1463,17 +1463,17 @@ self = <test_coordinator_context_compression.TestNodeExecutionOutputCompression 
             ContextSnapshotManager,
         )
         from src.domain.services.event_bus import EventBus
-    
+
         event_bus = EventBus()
         coordinator = CoordinatorAgent(
             event_bus=event_bus,
             context_compressor=ContextCompressor(),
             snapshot_manager=ContextSnapshotManager(),
         )
-    
+
         coordinator.start_context_compression()
         coordinator.start_monitoring()
-    
+
         # 工作流开始（会设置 _current_workflow_id）
         start_event = WorkflowExecutionStartedEvent(
             source="workflow_agent",
@@ -1481,7 +1481,7 @@ self = <test_coordinator_context_compression.TestNodeExecutionOutputCompression 
             node_count=3,
         )
         await event_bus.publish(start_event)
-    
+
         # 节点完成（使用 _current_workflow_id 关联）
         node_event = NodeExecutionEvent(
             source="workflow_agent",
@@ -1490,7 +1490,7 @@ self = <test_coordinator_context_compression.TestNodeExecutionOutputCompression 
             result={"output": "分析结果"},
         )
         await event_bus.publish(node_event)
-    
+
         # 验证快照包含节点信息
         snapshot = coordinator.snapshot_manager.get_latest_snapshot("wf_001")
         assert snapshot is not None
@@ -1520,17 +1520,17 @@ self = <test_coordinator_context_compression.TestNodeExecutionOutputCompression 
             ContextSnapshotManager,
         )
         from src.domain.services.event_bus import EventBus
-    
+
         event_bus = EventBus()
         coordinator = CoordinatorAgent(
             event_bus=event_bus,
             context_compressor=ContextCompressor(),
             snapshot_manager=ContextSnapshotManager(),
         )
-    
+
         coordinator.start_context_compression()
         coordinator.start_monitoring()
-    
+
         # 工作流开始
         await event_bus.publish(
             WorkflowExecutionStartedEvent(
@@ -1539,7 +1539,7 @@ self = <test_coordinator_context_compression.TestNodeExecutionOutputCompression 
                 node_count=2,
             )
         )
-    
+
         # 节点失败（使用 _current_workflow_id 关联）
         await event_bus.publish(
             NodeExecutionEvent(
@@ -1549,7 +1549,7 @@ self = <test_coordinator_context_compression.TestNodeExecutionOutputCompression 
                 error="Connection timeout",
             )
         )
-    
+
         # 验证快照包含错误
         snapshot = coordinator.snapshot_manager.get_latest_snapshot("wf_001")
         assert snapshot is not None
@@ -1581,19 +1581,19 @@ self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x
             ContextSnapshotManager,
         )
         from src.domain.services.event_bus import EventBus
-    
+
         event_bus = EventBus()
         coordinator = CoordinatorAgent(
             event_bus=event_bus,
             context_compressor=ContextCompressor(),
             snapshot_manager=ContextSnapshotManager(),
         )
-    
+
         # 启动所有监听（先启用压缩，再启动监控）
         coordinator.start_context_compression()
         coordinator.start_monitoring()
         coordinator.start_reflection_listening()
-    
+
         # 1. 工作流开始
         await event_bus.publish(
             WorkflowExecutionStartedEvent(
@@ -1602,7 +1602,7 @@ self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x
                 node_count=3,
             )
         )
-    
+
         # 2. 节点执行（使用 _current_workflow_id 关联）
         for i in range(3):
             await event_bus.publish(
@@ -1613,7 +1613,7 @@ self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x
                     result={"output": f"result_{i}"},
                 )
             )
-    
+
         # 3. 工作流完成
         await event_bus.publish(
             WorkflowExecutionCompletedEvent(
@@ -1623,7 +1623,7 @@ self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x
                 result={"final": "success"},
             )
         )
-    
+
         # 4. 反思
         await event_bus.publish(
             WorkflowReflectionCompletedEvent(
@@ -1633,10 +1633,10 @@ self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x
                 confidence=0.95,
             )
         )
-    
+
         # 验证最终上下文
         context = coordinator.get_compressed_context("wf_complete")
-    
+
         assert context is not None
 >       assert len(context.node_summary) == 3
 E       AssertionError: assert 0 == 3
@@ -1665,18 +1665,18 @@ self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x
             ContextSnapshotManager,
         )
         from src.domain.services.event_bus import EventBus
-    
+
         event_bus = EventBus()
         coordinator = CoordinatorAgent(
             event_bus=event_bus,
             context_compressor=ContextCompressor(),
             snapshot_manager=ContextSnapshotManager(),
         )
-    
+
         coordinator.start_context_compression()
         coordinator.start_monitoring()
         coordinator.start_reflection_listening()
-    
+
         # 工作流开始
         await event_bus.publish(
             WorkflowExecutionStartedEvent(
@@ -1685,7 +1685,7 @@ self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x
                 node_count=2,
             )
         )
-    
+
         # 节点失败（使用 _current_workflow_id 关联）
         await event_bus.publish(
             NodeExecutionEvent(
@@ -1695,7 +1695,7 @@ self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x
                 error="API timeout",
             )
         )
-    
+
         # 反思建议重试
         await event_bus.publish(
             WorkflowReflectionCompletedEvent(
@@ -1706,10 +1706,10 @@ self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x
                 confidence=0.85,
             )
         )
-    
+
         # 验证上下文包含错误和重试建议
         context = coordinator.get_compressed_context("wf_error")
-    
+
         assert context is not None
 >       assert len(context.error_log) >= 1
 E       AssertionError: assert 0 >= 1
@@ -1730,7 +1730,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9DB0D470
     async def test_handles_node_running_event(self, coordinator, event_bus):
         """测试：处理节点开始运行事件"""
         coordinator.start_monitoring()
-    
+
         # 先启动工作流
         await event_bus.publish(
             WorkflowExecutionStartedEvent(
@@ -1739,7 +1739,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9DB0D470
                 node_count=2,
             )
         )
-    
+
         # 节点开始运行
         event = NodeExecutionEvent(
             source="workflow_agent",
@@ -1748,7 +1748,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9DB0D470
             status="running",
         )
         await event_bus.publish(event)
-    
+
         state = coordinator.workflow_states["wf_123"]
 >       assert "node_1" in state["running_nodes"]
 E       AssertionError: assert 'node_1' in []
@@ -1768,7 +1768,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E593540
     async def test_handles_node_completed_event(self, coordinator, event_bus):
         """测试：处理节点完成事件"""
         coordinator.start_monitoring()
-    
+
         # 启动工作流
         await event_bus.publish(
             WorkflowExecutionStartedEvent(
@@ -1777,7 +1777,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E593540
                 node_count=2,
             )
         )
-    
+
         # 节点开始运行
         await event_bus.publish(
             NodeExecutionEvent(
@@ -1787,7 +1787,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E593540
                 status="running",
             )
         )
-    
+
         # 节点完成
         event = NodeExecutionEvent(
             source="workflow_agent",
@@ -1797,7 +1797,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E593540
             result={"output": "result_data"},
         )
         await event_bus.publish(event)
-    
+
         state = coordinator.workflow_states["wf_123"]
         assert "node_1" not in state["running_nodes"]
 >       assert "node_1" in state["executed_nodes"]
@@ -1818,7 +1818,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E592CF0
     async def test_handles_node_failed_event(self, coordinator, event_bus):
         """测试：处理节点失败事件"""
         coordinator.start_monitoring()
-    
+
         # 启动工作流
         await event_bus.publish(
             WorkflowExecutionStartedEvent(
@@ -1827,7 +1827,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E592CF0
                 node_count=2,
             )
         )
-    
+
         # 节点运行然后失败
         await event_bus.publish(
             NodeExecutionEvent(
@@ -1837,7 +1837,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E592CF0
                 status="running",
             )
         )
-    
+
         event = NodeExecutionEvent(
             source="workflow_agent",
             node_id="node_1",
@@ -1846,7 +1846,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E592CF0
             error="执行错误",
         )
         await event_bus.publish(event)
-    
+
         state = coordinator.workflow_states["wf_123"]
         assert "node_1" not in state["running_nodes"]
 >       assert "node_1" in state["failed_nodes"]
@@ -1867,7 +1867,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E566CF0
     async def test_get_workflow_state_returns_snapshot(self, coordinator, event_bus):
         """测试：获取工作流状态返回快照"""
         coordinator.start_monitoring()
-    
+
         # 启动工作流
         await event_bus.publish(
             WorkflowExecutionStartedEvent(
@@ -1876,7 +1876,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E566CF0
                 node_count=2,
             )
         )
-    
+
         # 节点完成
         await event_bus.publish(
             NodeExecutionEvent(
@@ -1887,10 +1887,10 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E566CF0
                 result={"data": "value"},
             )
         )
-    
+
         # 查询状态
         snapshot = coordinator.get_workflow_state("wf_123")
-    
+
         assert snapshot is not None
         assert snapshot["workflow_id"] == "wf_123"
         assert snapshot["status"] == "running"
@@ -1912,7 +1912,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E567690
     async def test_tracks_node_inputs_from_event(self, coordinator, event_bus):
         """测试：从事件中跟踪节点输入"""
         coordinator.start_monitoring()
-    
+
         # 启动工作流
         await event_bus.publish(
             WorkflowExecutionStartedEvent(
@@ -1921,7 +1921,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E567690
                 node_count=1,
             )
         )
-    
+
         # 发布带输入的节点事件（需要扩展 NodeExecutionEvent）
         # 这里假设我们扩展了事件来包含 inputs
         event = NodeExecutionEvent(
@@ -1933,7 +1933,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E567690
         # 模拟添加 inputs 属性
         event.inputs = {"prompt": "分析数据"}
         await event_bus.publish(event)
-    
+
         state = coordinator.get_workflow_state("wf_123")
         # 如果事件包含 inputs，应该被记录
         if hasattr(event, "inputs"):
@@ -1957,7 +1957,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E567460
     async def test_get_active_nodes_count(self, coordinator, event_bus):
         """测试：获取活跃节点数"""
         coordinator.start_monitoring()
-    
+
         await event_bus.publish(
             WorkflowExecutionStartedEvent(
                 source="workflow_agent",
@@ -1965,7 +1965,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E567460
                 node_count=3,
             )
         )
-    
+
         # 两个节点在运行
         await event_bus.publish(
             NodeExecutionEvent(
@@ -1983,7 +1983,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E567460
                 status="running",
             )
         )
-    
+
         system_status = coordinator.get_system_status()
 >       assert system_status["active_nodes"] == 2
 E       assert 0 == 2
@@ -2002,14 +2002,14 @@ coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x
     async def test_abort_strategy_stops_workflow(self, coordinator):
         """测试：ABORT 策略应停止工作流"""
         from src.domain.services.execution_result import ErrorCode
-    
+
         result = await coordinator.handle_node_failure(
             workflow_id="wf_1",
             node_id="node_1",
             error_code=ErrorCode.INTERNAL_ERROR,
             error_message="Fatal error",
         )
-    
+
         assert result.success is False
 >       assert result.aborted is True
 E       AssertionError: assert False is True
@@ -2033,21 +2033,21 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE04670
         """测试：ABORT 策略应发布工作流终止事件"""
         from src.domain.agents.coordinator_agent import WorkflowAbortedEvent
         from src.domain.services.execution_result import ErrorCode
-    
+
         events_received = []
-    
+
         async def capture_event(event):
             events_received.append(event)
-    
+
         event_bus.subscribe(WorkflowAbortedEvent, capture_event)
-    
+
         await coordinator.handle_node_failure(
             workflow_id="wf_1",
             node_id="node_1",
             error_code=ErrorCode.INTERNAL_ERROR,
             error_message="Fatal error",
         )
-    
+
 >       assert len(events_received) == 1
 E       assert 0 == 1
 E        +  where 0 = len([])
@@ -2070,21 +2070,21 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EC21780
         """测试：REPLAN 策略应发布 WorkflowAdjustmentRequestedEvent"""
         from src.domain.agents.coordinator_agent import WorkflowAdjustmentRequestedEvent
         from src.domain.services.execution_result import ErrorCode
-    
+
         events_received = []
-    
+
         async def capture_event(event):
             events_received.append(event)
-    
+
         event_bus.subscribe(WorkflowAdjustmentRequestedEvent, capture_event)
-    
+
         await coordinator.handle_node_failure(
             workflow_id="wf_1",
             node_id="node_1",
             error_code=ErrorCode.DEPENDENCY_FAILED,
             error_message="Upstream failed",
         )
-    
+
 >       assert len(events_received) == 1
 E       assert 0 == 1
 E        +  where 0 = len([])
@@ -2107,7 +2107,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE05240
         """测试：REPLAN 事件应包含执行上下文"""
         from src.domain.agents.coordinator_agent import WorkflowAdjustmentRequestedEvent
         from src.domain.services.execution_result import ErrorCode
-    
+
         # 先设置一些执行上下文
         coordinator.workflow_states["wf_1"] = {
             "workflow_id": "wf_1",
@@ -2115,21 +2115,21 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE05240
             "executed_nodes": ["node_0"],
             "node_outputs": {"node_0": {"result": "step1_done"}},
         }
-    
+
         events_received = []
-    
+
         async def capture_event(event):
             events_received.append(event)
-    
+
         event_bus.subscribe(WorkflowAdjustmentRequestedEvent, capture_event)
-    
+
         await coordinator.handle_node_failure(
             workflow_id="wf_1",
             node_id="node_1",
             error_code=ErrorCode.DEPENDENCY_FAILED,
             error_message="Upstream failed",
         )
-    
+
 >       event = events_received[0]
                 ^^^^^^^^^^^^^^^^^^
 E       IndexError: list index out of range
@@ -2155,14 +2155,14 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE05320
             WorkflowAdjustmentRequestedEvent,
         )
         from src.domain.services.execution_result import ErrorCode
-    
+
         config = {
             "default_strategy": FailureHandlingStrategy.REPLAN,
             "max_retries": 1,
         }
-    
+
         coordinator = CoordinatorAgent(event_bus=event_bus, failure_strategy_config=config)
-    
+
         # 设置执行上下文
         coordinator.workflow_states["wf_data"] = {
             "workflow_id": "wf_data",
@@ -2173,14 +2173,14 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE05320
                 "transform_data": {"processed": 95},
             },
         }
-    
+
         events_received = []
-    
+
         async def capture_event(event):
             events_received.append(event)
-    
+
         event_bus.subscribe(WorkflowAdjustmentRequestedEvent, capture_event)
-    
+
         # 校验节点失败
         await coordinator.handle_node_failure(
             workflow_id="wf_data",
@@ -2188,7 +2188,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE05320
             error_code=ErrorCode.VALIDATION_FAILED,
             error_message="Data quality check failed: 5 rows have null values",
         )
-    
+
         # 验证发布了重新规划事件
 >       assert len(events_received) == 1
 E       assert 0 == 1
@@ -2214,21 +2214,21 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE06430
             WorkflowAbortedEvent,
         )
         from src.domain.services.execution_result import ErrorCode
-    
+
         config = {
             "default_strategy": FailureHandlingStrategy.ABORT,
             "max_retries": 0,
         }
-    
+
         coordinator = CoordinatorAgent(event_bus=event_bus, failure_strategy_config=config)
-    
+
         events_received = []
-    
+
         async def capture_event(event):
             events_received.append(event)
-    
+
         event_bus.subscribe(WorkflowAbortedEvent, capture_event)
-    
+
         # 严重错误
         result = await coordinator.handle_node_failure(
             workflow_id="wf_critical",
@@ -2236,7 +2236,7 @@ event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE06430
             error_code=ErrorCode.INTERNAL_ERROR,
             error_message="Authentication service unavailable",
         )
-    
+
         assert result.success is False
 >       assert result.aborted is True
 E       AssertionError: assert False is True
@@ -2265,29 +2265,29 @@ mock_event_bus = <MagicMock id='2394957965568'>
             ConversationAgentState,
         )
         from src.domain.agents.coordinator_agent import SubAgentCompletedEvent
-    
+
         agent = ConversationAgent(
             session_context=mock_session_context,
             llm=mock_llm,
             event_bus=mock_event_bus,
         )
-    
+
         # 设置等待状态
         agent.transition_to(ConversationAgentState.PROCESSING)
-    
+
         # Give asyncio.create_task() a chance to run
         import asyncio
-    
+
         await asyncio.sleep(0.01)  # Allow task to complete
-    
+
         agent.wait_for_subagent(
             subagent_id="subagent_001",
             task_id="task_001",
             context={"step": 3},
         )
-    
+
         assert agent.state == ConversationAgentState.WAITING_FOR_SUBAGENT
-    
+
         # 创建完成事件
         event = SubAgentCompletedEvent(
             subagent_id="subagent_001",
@@ -2296,14 +2296,14 @@ mock_event_bus = <MagicMock id='2394957965568'>
             success=True,
             result={"data": "搜索结果"},
         )
-    
+
         # 处理事件
         agent.handle_subagent_completed(event)
-    
+
         # 应恢复到处理状态
 >       assert agent.state == ConversationAgentState.PROCESSING
 E       AssertionError: assert <Conversation...for_subagent'> == <Conversation... 'processing'>
-E         
+E
 E         - processing
 E         + waiting_for_subagent
 
@@ -2325,26 +2325,26 @@ mock_event_bus = <MagicMock id='2394966584896'>
             ConversationAgentState,
         )
         from src.domain.agents.coordinator_agent import SubAgentCompletedEvent
-    
+
         agent = ConversationAgent(
             session_context=mock_session_context,
             llm=mock_llm,
             event_bus=mock_event_bus,
         )
-    
+
         agent.transition_to(ConversationAgentState.PROCESSING)
-    
+
         # Give asyncio.create_task() a chance to run
         import asyncio
-    
+
         await asyncio.sleep(0.01)  # Allow task to complete
-    
+
         agent.wait_for_subagent(
             subagent_id="subagent_001",
             task_id="task_001",
             context={"step": 3},
         )
-    
+
         event = SubAgentCompletedEvent(
             subagent_id="subagent_001",
             subagent_type="search",
@@ -2352,9 +2352,9 @@ mock_event_bus = <MagicMock id='2394966584896'>
             success=True,
             result={"data": "搜索结果"},
         )
-    
+
         agent.handle_subagent_completed(event)
-    
+
         # 应存储最近的子Agent结果
 >       assert agent.last_subagent_result is not None
 E       assert None is not None
@@ -2376,35 +2376,35 @@ mock_event_bus = <MagicMock id='2394954607856'>
             ConversationAgentState,
         )
         from src.domain.agents.coordinator_agent import SubAgentCompletedEvent
-    
+
         agent = ConversationAgent(
             session_context=mock_session_context,
             llm=mock_llm,
             event_bus=mock_event_bus,
         )
-    
+
         agent.transition_to(ConversationAgentState.PROCESSING)
-    
+
         # Give asyncio.create_task() a chance to run
         import asyncio
-    
+
         await asyncio.sleep(0.01)  # Allow task to complete
-    
+
         agent.wait_for_subagent(
             subagent_id="subagent_001",
             task_id="task_001",
             context={},
         )
-    
+
         event = SubAgentCompletedEvent(
             subagent_id="subagent_001",
             subagent_type="search",
             success=True,
             result={"data": "result1"},
         )
-    
+
         agent.handle_subagent_completed(event)
-    
+
 >       assert len(agent.subagent_result_history) == 1
 E       assert 0 == 1
 E        +  where 0 = len([])

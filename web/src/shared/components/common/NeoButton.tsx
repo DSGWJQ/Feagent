@@ -17,7 +17,7 @@ export interface NeoButtonProps extends Omit<AntButtonProps, 'variant'> {
 
 /**
  * NeoButton - The Primary Action Component
- * 
+ *
  * Improvements:
  * - Uses semantic design tokens
  * - Guaranteed contrast ratio > 7:1 (Primary is > 18:1)

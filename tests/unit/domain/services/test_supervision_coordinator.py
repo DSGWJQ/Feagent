@@ -12,8 +12,8 @@ from datetime import datetime
 
 import pytest
 
-from src.domain.services.supervision.coordinator import SupervisionCoordinator
 from src.domain.services.supervision.conversation import ConversationSupervisionModule
+from src.domain.services.supervision.coordinator import SupervisionCoordinator
 from src.domain.services.supervision.efficiency import WorkflowEfficiencyMonitor
 from src.domain.services.supervision.events import (
     InterventionEvent,
@@ -37,9 +37,7 @@ class TestInit:
     def test_init_constructs_submodules_and_empty_event_lists(self, coordinator):
         """测试初始化创建子模块和空事件列表"""
         # 验证子模块类型
-        assert isinstance(
-            coordinator.conversation_supervision, ConversationSupervisionModule
-        )
+        assert isinstance(coordinator.conversation_supervision, ConversationSupervisionModule)
         assert isinstance(coordinator.efficiency_monitor, WorkflowEfficiencyMonitor)
         assert isinstance(coordinator.strategy_repository, StrategyRepository)
 
@@ -54,9 +52,7 @@ class TestInit:
 class TestInitiateTermination:
     """测试任务终止"""
 
-    def test_initiate_termination_graceful_creates_event_and_returns_result(
-        self, coordinator
-    ):
+    def test_initiate_termination_graceful_creates_event_and_returns_result(self, coordinator):
         """测试优雅终止创建事件并返回结果"""
         result = coordinator.initiate_termination(
             task_id="task123",
@@ -89,9 +85,7 @@ class TestInitiateTermination:
         assert event.event_type == "task_termination"
         assert isinstance(event.timestamp, datetime)
 
-    def test_initiate_termination_immediate_creates_event_and_returns_result(
-        self, coordinator
-    ):
+    def test_initiate_termination_immediate_creates_event_and_returns_result(self, coordinator):
         """测试立即终止创建事件并返回结果"""
         result = coordinator.initiate_termination(
             task_id="task456",
@@ -241,9 +235,7 @@ class TestEdgeCases:
     def test_multiple_interventions_all_recorded(self, coordinator):
         """测试多次干预调用都被记录"""
         for i in range(5):
-            coordinator.record_intervention(
-                f"type{i}", f"reason{i}", f"source{i}", f"target{i}"
-            )
+            coordinator.record_intervention(f"type{i}", f"reason{i}", f"source{i}", f"target{i}")
 
         events = coordinator.get_intervention_events()
         assert len(events) == 5

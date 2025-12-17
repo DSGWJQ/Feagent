@@ -9,10 +9,10 @@ interface DeviceFrameProps {
 
 /**
  * DeviceFrame
- * 
+ *
  * A component that visually simulates a mobile device.
  * Used for testing ease and presenting mobile-first designs in a desktop environment.
- * 
+ *
  * 1. Simulates a generic modern smartphone (approx 390x844).
  * 2. Enforces independent scrolling context (overflow: auto).
  * 3. Adds visual flair (bevels, shadows, notch hint).

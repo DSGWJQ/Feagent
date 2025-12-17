@@ -22,6 +22,4 @@ class SchedulerRepository(Protocol):
     def delete(self, scheduled_workflow_id: str) -> None: ...
 
 
-SchedulerRepositoryProvider: TypeAlias = Callable[
-    [], AbstractContextManager[SchedulerRepository]
-]
+SchedulerRepositoryProvider: TypeAlias = Callable[[], AbstractContextManager[SchedulerRepository]]

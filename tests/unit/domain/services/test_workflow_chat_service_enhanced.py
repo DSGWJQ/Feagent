@@ -21,10 +21,10 @@ from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.services.workflow_chat_service_enhanced import (
     EnhancedWorkflowChatService,
-    ModificationResult,
 )
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
+from src.domain.value_objects.workflow_modification_result import ModificationResult
 
 
 class MockChatMessageRepository:
@@ -130,9 +130,12 @@ def test_chat_service_maintains_history(mock_llm, mock_repository, sample_workfl
     )
 
     # 模拟 LLM 返回值
-    mock_llm.invoke.return_value = Mock(
-        content='{"action": "add_node", "nodes_to_add": [], "ai_message": "我理解你了", "intent": "ask_clarification"}'
-    )
+    mock_llm.generate_modifications.return_value = {
+        "action": "add_node",
+        "nodes_to_add": [],
+        "ai_message": "我理解你了",
+        "intent": "ask_clarification",
+    }
 
     # 第一轮对话
     message1 = "添加一个节点"
@@ -164,9 +167,20 @@ def test_chat_service_maintains_conversation_context(mock_llm, mock_repository, 
 
 def test_modification_result_contains_detailed_info(mock_llm, mock_repository, sample_workflow):
     """测试：修改结果应该包含详细的修改信息"""
-    mock_llm.invoke.return_value = Mock(
-        content='{"action": "add_node", "nodes_to_add": [{"type": "python", "name": "处理数据", "config": {"code": "result = input1"}, "position": {"x": 350, "y": 100}}], "ai_message": "已添加 Python 节点", "intent": "add_node", "confidence": 0.95}'
-    )
+    mock_llm.generate_modifications.return_value = {
+        "action": "add_node",
+        "nodes_to_add": [
+            {
+                "type": "python",
+                "name": "处理数据",
+                "config": {"code": "result = input1"},
+                "position": {"x": 350, "y": 100},
+            }
+        ],
+        "ai_message": "已添加 Python 节点",
+        "intent": "add_node",
+        "confidence": 0.95,
+    }
 
     service = EnhancedWorkflowChatService(
         workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
@@ -183,9 +197,13 @@ def test_modification_result_contains_detailed_info(mock_llm, mock_repository, s
 def test_chat_service_identifies_intent_correctly(mock_llm, mock_repository, sample_workflow):
     """测试：服务应该正确识别用户意图"""
     # 模拟 LLM 识别意图
-    mock_llm.invoke.return_value = Mock(
-        content='{"action": "add_node", "intent": "add_node", "confidence": 0.98, "nodes_to_add": [], "ai_message": "我会添加节点"}'
-    )
+    mock_llm.generate_modifications.return_value = {
+        "action": "add_node",
+        "intent": "add_node",
+        "confidence": 0.98,
+        "nodes_to_add": [],
+        "ai_message": "我会添加节点",
+    }
 
     service = EnhancedWorkflowChatService(
         workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
@@ -213,9 +231,12 @@ def test_chat_service_provides_suggestions(mock_llm, mock_repository, sample_wor
 def test_chat_service_provides_error_details(mock_llm, mock_repository, sample_workflow):
     """测试：当修改失败时应该提供详细的错误信息"""
     # 模拟 LLM 返回无效的修改
-    mock_llm.invoke.return_value = Mock(
-        content='{"action": "add_edge", "edges_to_add": [{"source": "invalid_node", "target": "node_1"}], "ai_message": "已添加边", "intent": "add_edge"}'
-    )
+    mock_llm.generate_modifications.return_value = {
+        "action": "add_edge",
+        "edges_to_add": [{"source": "invalid_node", "target": "node_1"}],
+        "ai_message": "已添加边",
+        "intent": "add_edge",
+    }
 
     service = EnhancedWorkflowChatService(
         workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
@@ -268,9 +289,19 @@ def test_chat_service_clears_history(mock_llm, mock_repository):
 def test_modification_validation_detailed(mock_llm, mock_repository, sample_workflow):
     """测试：修改验证应该检查所有约束"""
     # 模拟 LLM 返回包含多个修改的请求
-    mock_llm.invoke.return_value = Mock(
-        content='{"action": "modify_multiple", "nodes_to_add": [{"type": "database", "name": "查询数据库", "config": {}, "position": {"x": 400, "y": 200}}], "edges_to_add": [], "ai_message": "已完成修改"}'
-    )
+    mock_llm.generate_modifications.return_value = {
+        "action": "modify_multiple",
+        "nodes_to_add": [
+            {
+                "type": "database",
+                "name": "查询数据库",
+                "config": {},
+                "position": {"x": 400, "y": 200},
+            }
+        ],
+        "edges_to_add": [],
+        "ai_message": "已完成修改",
+    }
 
     service = EnhancedWorkflowChatService(
         workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
@@ -283,9 +314,11 @@ def test_modification_validation_detailed(mock_llm, mock_repository, sample_work
 
 def test_chat_service_with_context_awareness(mock_llm, mock_repository, sample_workflow):
     """测试：服务应该根据对话历史调整行为"""
-    mock_llm.invoke.return_value = Mock(
-        content='{"action": "modify_node", "intent": "context_aware", "ai_message": "基于之前的请求进行修改"}'
-    )
+    mock_llm.generate_modifications.return_value = {
+        "action": "modify_node",
+        "intent": "context_aware",
+        "ai_message": "基于之前的请求进行修改",
+    }
 
     service = EnhancedWorkflowChatService(
         workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
@@ -304,9 +337,11 @@ def test_chat_service_with_context_awareness(mock_llm, mock_repository, sample_w
 
 def test_modification_result_with_rollback_info(mock_llm, mock_repository, sample_workflow):
     """测试：修改结果应该包含回滚信息"""
-    mock_llm.invoke.return_value = Mock(
-        content='{"action": "add_node", "nodes_to_add": [], "ai_message": "已修改"}'
-    )
+    mock_llm.generate_modifications.return_value = {
+        "action": "add_node",
+        "nodes_to_add": [],
+        "ai_message": "已修改",
+    }
 
     service = EnhancedWorkflowChatService(
         workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
@@ -611,9 +646,11 @@ def test_chat_history_compression_maintains_message_order(mock_llm, mock_reposit
 
 def test_chat_service_uses_compressed_history_in_prompt(mock_llm, mock_repository, sample_workflow):
     """测试：服务应该在构建提示词时使用压缩后的历史"""
-    mock_llm.invoke.return_value = Mock(
-        content='{"action": "add_node", "nodes_to_add": [], "ai_message": "已处理"}'
-    )
+    mock_llm.generate_modifications.return_value = {
+        "action": "add_node",
+        "nodes_to_add": [],
+        "ai_message": "已处理",
+    }
 
     service = EnhancedWorkflowChatService(
         workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository

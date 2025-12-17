@@ -579,6 +579,7 @@ class TestSystemRecoveryManager:
 
         # Monkeypatch record_node_creation 让它在 state 已修改后抛异常
         original_record = manager._metrics.record_node_creation
+
         def failing_record(name, success):
             if success:  # 只在成功时抛异常
                 raise RuntimeError("Simulated metric recording failure")
@@ -618,9 +619,9 @@ class TestSystemRecoveryManager:
         from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
 
         manager = SystemRecoveryManager()
-        manager.set_workflow_state("wf-1", {
-            "nodes": [{"id": "node-1", "name": "test", "status": "pending"}]
-        })
+        manager.set_workflow_state(
+            "wf-1", {"nodes": [{"id": "node-1", "name": "test", "status": "pending"}]}
+        )
 
         code = "print('success')"
         result = await manager.execute_with_recovery("wf-1", "node-1", code)
@@ -643,9 +644,9 @@ class TestSystemRecoveryManager:
 
         manager = SystemRecoveryManager()
         original_status = "pending"
-        manager.set_workflow_state("wf-1", {
-            "nodes": [{"id": "node-1", "name": "test", "status": original_status}]
-        })
+        manager.set_workflow_state(
+            "wf-1", {"nodes": [{"id": "node-1", "name": "test", "status": original_status}]}
+        )
 
         # 触发失败的代码
         code = "raise Exception('execution error')"
@@ -669,9 +670,7 @@ class TestSystemRecoveryManager:
         from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
 
         manager = SystemRecoveryManager()
-        manager.set_workflow_state("wf-1", {
-            "nodes": [{"id": "node-1", "name": "test"}]
-        })
+        manager.set_workflow_state("wf-1", {"nodes": [{"id": "node-1", "name": "test"}]})
 
         await manager.execute_with_recovery("wf-1", "node-1", "print('test')")
 
@@ -691,13 +690,16 @@ class TestSystemRecoveryManager:
         from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
 
         manager = SystemRecoveryManager()
-        manager.set_workflow_state("wf-1", {
-            "nodes": [
-                {"id": "node-1", "name": "step1", "status": "pending"},
-                {"id": "node-2", "name": "step2", "status": "pending"},
-                {"id": "node-3", "name": "step3", "status": "pending"},
-            ]
-        })
+        manager.set_workflow_state(
+            "wf-1",
+            {
+                "nodes": [
+                    {"id": "node-1", "name": "step1", "status": "pending"},
+                    {"id": "node-2", "name": "step2", "status": "pending"},
+                    {"id": "node-3", "name": "step3", "status": "pending"},
+                ]
+            },
+        )
 
         result = await manager.execute_workflow_with_recovery("wf-1")
 
@@ -718,13 +720,16 @@ class TestSystemRecoveryManager:
         from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
 
         manager = SystemRecoveryManager()
-        manager.set_workflow_state("wf-1", {
-            "nodes": [
-                {"id": "node-1", "name": "step1", "status": "pending"},
-                {"id": "node-2", "name": "step2", "status": "pending"},
-                {"id": "node-3", "name": "step3", "status": "pending"},
-            ]
-        })
+        manager.set_workflow_state(
+            "wf-1",
+            {
+                "nodes": [
+                    {"id": "node-1", "name": "step1", "status": "pending"},
+                    {"id": "node-2", "name": "step2", "status": "pending"},
+                    {"id": "node-3", "name": "step3", "status": "pending"},
+                ]
+            },
+        )
 
         result = await manager.execute_workflow_with_recovery("wf-1", fail_at_node="node-2")
 
@@ -734,8 +739,8 @@ class TestSystemRecoveryManager:
         # 验证已执行的节点被标记为 rolled_back
         state = manager.get_workflow_state("wf-1")
         assert state["nodes"][0]["status"] == "rolled_back"  # node-1 executed then rolled back
-        assert state["nodes"][1]["status"] == "pending"      # node-2 never changed
-        assert state["nodes"][2]["status"] == "pending"      # node-3 never executed
+        assert state["nodes"][1]["status"] == "pending"  # node-2 never changed
+        assert state["nodes"][2]["status"] == "pending"  # node-3 never executed
 
         # 验证失败已记录
         stats = manager._metrics.get_statistics()
@@ -747,12 +752,15 @@ class TestSystemRecoveryManager:
         from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
 
         manager = SystemRecoveryManager()
-        manager.set_workflow_state("wf-1", {
-            "nodes": [
-                {"id": "node-1", "name": "step1"},
-                {"id": "node-2", "name": "step2"},
-            ]
-        })
+        manager.set_workflow_state(
+            "wf-1",
+            {
+                "nodes": [
+                    {"id": "node-1", "name": "step1"},
+                    {"id": "node-2", "name": "step2"},
+                ]
+            },
+        )
 
         await manager.execute_workflow_with_recovery("wf-1")
 

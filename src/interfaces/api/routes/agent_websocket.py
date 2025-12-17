@@ -40,7 +40,7 @@ from src.domain.agents.agent_channel import (
     AgentMessageHandler,
     AgentWebSocketChannel,
 )
-from src.interfaces.api.dependencies.agents import get_conversation_agent, get_workflow_agent
+from src.interfaces.api.dependencies.agents import get_conversation_agent
 
 logger = logging.getLogger(__name__)
 

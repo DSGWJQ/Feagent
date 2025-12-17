@@ -20,11 +20,8 @@ from typing import Any
 
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.ports.workflow_chat_service import WorkflowChatServicePort
 from src.domain.ports.workflow_repository import WorkflowRepository
-from src.domain.services.workflow_chat_service import WorkflowChatService
-from src.domain.services.workflow_chat_service_enhanced import (
-    EnhancedWorkflowChatService,
-)
 
 
 @dataclass
@@ -81,13 +78,13 @@ class UpdateWorkflowByChatUseCase:
     def __init__(
         self,
         workflow_repository: WorkflowRepository,
-        chat_service: WorkflowChatService | EnhancedWorkflowChatService,
+        chat_service: WorkflowChatServicePort,
     ):
         """初始化用例
 
         参数：
             workflow_repository: 工作流仓储
-            chat_service: 工作流对话服务（支持基础版和增强版）
+            chat_service: 工作流对话服务（Port接口）
         """
         self.workflow_repository = workflow_repository
         self.chat_service = chat_service
@@ -120,43 +117,26 @@ class UpdateWorkflowByChatUseCase:
             user_message=input_data.user_message,
         )
 
-        # 4. 处理返回结果（兼容基础服务和增强服务）
-        if isinstance(result, tuple):
-            # 基础服务返回 tuple[Workflow, str]
-            modified_workflow, ai_message = result
-            intent = ""
-            confidence = 0.0
-            modifications_count = 0
-            rag_sources = []
-            react_steps = []
-        else:
-            # 增强服务返回 ModificationResult
-            if not result.success:
-                raise DomainError(result.error_message or "修改工作流失败")
+        # 4. 检查处理结果
+        if not result.success:
+            raise DomainError(result.error_message or "修改工作流失败")
 
-            modified_workflow = result.modified_workflow
-            if modified_workflow is None:
-                raise DomainError("修改工作流失败：返回的工作流为空")
-
-            ai_message = result.ai_message
-            intent = result.intent
-            confidence = result.confidence
-            modifications_count = result.modifications_count
-            rag_sources = result.rag_sources
-            react_steps = result.react_steps
+        modified_workflow = result.modified_workflow
+        if modified_workflow is None:
+            raise DomainError("修改工作流失败：返回的工作流为空")
 
         # 5. 保存修改后的工作流
         self.workflow_repository.save(modified_workflow)
 
-        # 6. 返回增强结果
+        # 6. 返回结果
         return UpdateWorkflowByChatOutput(
             workflow=modified_workflow,
-            ai_message=ai_message,
-            intent=intent,
-            confidence=confidence,
-            modifications_count=modifications_count,
-            rag_sources=rag_sources,
-            react_steps=react_steps,
+            ai_message=result.ai_message,
+            intent=result.intent,
+            confidence=result.confidence,
+            modifications_count=result.modifications_count,
+            rag_sources=result.rag_sources,
+            react_steps=result.react_steps,
         )
 
     async def execute_streaming(
@@ -202,33 +182,16 @@ class UpdateWorkflowByChatUseCase:
             user_message=input_data.user_message,
         )
 
-        # 5. 处理返回结果（兼容基础服务和增强服务）
-        if isinstance(result, tuple):
-            # 基础服务返回 tuple[Workflow, str]
-            modified_workflow, ai_message = result
-            intent = ""
-            confidence = 0.0
-            modifications_count = 0
-            rag_sources = []
-            react_steps = []
-        else:
-            # 增强服务返回 ModificationResult
-            if not result.success:
-                raise DomainError(result.error_message or "修改工作流失败")
+        # 5. 检查处理结果
+        if not result.success:
+            raise DomainError(result.error_message or "修改工作流失败")
 
-            modified_workflow = result.modified_workflow
-            if modified_workflow is None:
-                raise DomainError("修改工作流失败：返回的工作流为空")
-
-            ai_message = result.ai_message
-            intent = result.intent
-            confidence = result.confidence
-            modifications_count = result.modifications_count
-            rag_sources = result.rag_sources
-            react_steps = result.react_steps
+        modified_workflow = result.modified_workflow
+        if modified_workflow is None:
+            raise DomainError("修改工作流失败：返回的工作流为空")
 
         # 6. 流式产生 react_step 事件
-        for react_step in react_steps:
+        for react_step in result.react_steps:
             yield {
                 "type": "react_step",
                 "step_number": react_step.get("step", 0),
@@ -241,9 +204,9 @@ class UpdateWorkflowByChatUseCase:
         # 7. 产生修改预览事件
         yield {
             "type": "modifications_preview",
-            "modifications_count": modifications_count,
-            "intent": intent,
-            "confidence": confidence,
+            "modifications_count": result.modifications_count,
+            "intent": result.intent,
+            "confidence": result.confidence,
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
@@ -279,7 +242,7 @@ class UpdateWorkflowByChatUseCase:
         yield {
             "type": "workflow_updated",
             "workflow": workflow_dict,
-            "ai_message": ai_message,
-            "rag_sources": rag_sources,
+            "ai_message": result.ai_message,
+            "rag_sources": result.rag_sources,
             "timestamp": datetime.now(UTC).isoformat(),
         }

@@ -16,10 +16,6 @@ from datetime import datetime
 import pytest
 
 from src.domain.services.supervision.conversation import ConversationSupervisionModule
-from src.domain.services.supervision.models import (
-    ComprehensiveCheckResult,
-    DetectionResult,
-)
 
 
 @pytest.fixture

@@ -218,9 +218,7 @@ class TestDelete:
 class TestEdgeCases:
     """测试边缘情况"""
 
-    def test_find_by_condition_duplicate_conditions_in_one_strategy_still_single_match(
-        self, repo
-    ):
+    def test_find_by_condition_duplicate_conditions_in_one_strategy_still_single_match(self, repo):
         """测试一个策略包含重复条件时仍只返回一次"""
         strategy_id = repo.register("dup", ["test", "test", "bias"], "warn")
 

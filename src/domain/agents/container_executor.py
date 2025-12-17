@@ -155,6 +155,7 @@ class ContainerExecutor:
             from src.infrastructure.executors.container_executor import (
                 ContainerExecutor as InfraContainerExecutor,
             )
+
             self._executor = InfraContainerExecutor()
         return self._executor
 
@@ -204,6 +205,7 @@ class MockContainerExecutor:
     ) -> ContainerExecutionResult:
         """同步执行"""
         import asyncio
+
         return asyncio.run(self.execute_async(code, config, inputs))
 
     async def execute_async(
@@ -274,6 +276,7 @@ class MockContainerExecutor:
 
         if event_bus:
             from src.domain.agents.container_events import ContainerExecutionStartedEvent
+
             start_event = ContainerExecutionStartedEvent(
                 source="mock_container_executor",
                 container_id=container_id,
@@ -288,6 +291,7 @@ class MockContainerExecutor:
 
         if event_bus:
             from src.domain.agents.container_events import ContainerExecutionCompletedEvent
+
             completed_event = ContainerExecutionCompletedEvent(
                 source="mock_container_executor",
                 container_id=container_id,

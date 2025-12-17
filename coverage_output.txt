@@ -73,7 +73,7 @@ agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent o
     def test_request_save_basic_usage(self, agent_with_event_bus):
         """测试：request_save基本使用"""
         agent = agent_with_event_bus
-    
+
         with patch.object(agent, "_create_tracked_task") as mock_tracked:
             with patch.object(agent.event_bus, "publish", new_callable=AsyncMock) as mock_publish:
                 request_id = agent.request_save(
@@ -81,7 +81,7 @@ agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent o
                     content="test content",
                     reason="测试原因",
                 )
-    
+
                 assert request_id is not None
                 # 验证使用了_create_tracked_task
 >               mock_tracked.assert_called_once()
@@ -113,9 +113,9 @@ agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent o
     def test_request_save_creates_request_with_all_fields(self, agent_with_event_bus):
         """测试：request_save创建完整的SaveRequest对象"""
         agent = agent_with_event_bus
-    
+
         from src.domain.services.save_request_channel import SaveRequestPriority
-    
+
         with patch.object(agent, "_create_tracked_task") as mock_tracked:
             with patch.object(agent.event_bus, "publish", new_callable=AsyncMock):
                 request_id = agent.request_save(
@@ -125,7 +125,7 @@ agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent o
                     priority=SaveRequestPriority.HIGH,
                     is_binary=False,
                 )
-    
+
                 assert request_id is not None
 >               mock_tracked.assert_called_once()
 E               AssertionError: Expected '_create_tracked_task' to have been called once. Called 0 times.

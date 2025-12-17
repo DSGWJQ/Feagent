@@ -193,6 +193,7 @@ class StreamingConfig:
                 raise ValueError(msg)
             else:
                 import warnings
+
                 warnings.warn(msg, UserWarning, stacklevel=3)
 
 

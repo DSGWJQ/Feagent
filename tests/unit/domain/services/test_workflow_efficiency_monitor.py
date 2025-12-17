@@ -127,9 +127,7 @@ class TestRecordResourceUsage:
 class TestLatency:
     """测试延迟记录"""
 
-    def test_record_latency_stores_seconds_and_get_node_latency_returns_value(
-        self, monitor
-    ):
+    def test_record_latency_stores_seconds_and_get_node_latency_returns_value(self, monitor):
         """测试记录延迟并通过 get_node_latency 获取"""
         start = datetime(2025, 1, 1, 12, 0, 0)
         end = datetime(2025, 1, 1, 12, 0, 45)  # 45秒后
@@ -230,7 +228,9 @@ class TestCheckThresholds:
         alerts = monitor.check_thresholds("wf1")
 
         # 查找总时长告警（不包含 node_id）
-        duration_alerts = [a for a in alerts if a["type"] == "slow_execution" and "node_id" not in a]
+        duration_alerts = [
+            a for a in alerts if a["type"] == "slow_execution" and "node_id" not in a
+        ]
         assert len(duration_alerts) == 1
 
         alert = duration_alerts[0]
@@ -242,9 +242,7 @@ class TestCheckThresholds:
 
     def test_check_thresholds_node_duration_violation_alert_includes_node_id(self):
         """测试单个节点时长超过阈值时生成告警（包含 node_id）"""
-        monitor = WorkflowEfficiencyMonitor(
-            thresholds={"max_node_duration_seconds": 50.0}
-        )
+        monitor = WorkflowEfficiencyMonitor(thresholds={"max_node_duration_seconds": 50.0})
         monitor.record_resource_usage("wf1", "node1", 512.0, 45.0, 60.0)
 
         alerts = monitor.check_thresholds("wf1")

@@ -20,10 +20,7 @@ from typing import Any
 
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError
-
-# FIXME (P1-3): Domain层不应直接依赖Infrastructure层
-# TODO: 创建 WorkflowOrchestratorPort 协议并通过依赖注入传入
-from src.infrastructure.lc_adapters.workflow.react_orchestrator import ReActEvent, ReActOrchestrator
+from src.domain.ports.react_orchestrator import ReActEvent, ReActOrchestratorPort
 
 
 class WorkflowChatReActService:
@@ -41,12 +38,12 @@ class WorkflowChatReActService:
 
     def __init__(
         self,
-        react_orchestrator: ReActOrchestrator,
+        react_orchestrator: ReActOrchestratorPort,
     ):
         """初始化服务
 
         参数：
-            react_orchestrator: ReAct 编排器实例
+            react_orchestrator: ReAct 编排器端口实现
         """
         self.react_orchestrator = react_orchestrator
 

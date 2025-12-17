@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """同步文档版本号 - 更新docs/中的版本信息"""
-from pathlib import Path
+
 from datetime import datetime
+from pathlib import Path
 
 PROJECT_ROOT = Path(r"D:\My_Project\agent_data")
+
 
 def update_readme():
     """更新docs/README.md"""
@@ -19,17 +21,10 @@ def update_readme():
 
         # 替换版本号
         content = content.replace(
-            "阶段：V2 (对话编辑+Coze集成)",
-            "阶段：Phase 8+ (Unified Definition System)"
+            "阶段：V2 (对话编辑+Coze集成)", "阶段：Phase 8+ (Unified Definition System)"
         )
-        content = content.replace(
-            "V2 (对话编辑+Coze集成)",
-            "Phase 8+ (Unified Definition System)"
-        )
-        content = content.replace(
-            "最后更新：2025-11-25",
-            "最后更新：2025-12-13"
-        )
+        content = content.replace("V2 (对话编辑+Coze集成)", "Phase 8+ (Unified Definition System)")
+        content = content.replace("最后更新：2025-11-25", "最后更新：2025-12-13")
 
         if content != original_content:
             readme.write_text(content, encoding="utf-8")
@@ -44,6 +39,7 @@ def update_readme():
         print(f"  [ERROR] Update failed: {e}")
         return False
 
+
 def update_current_agents():
     """更新current_agents.md"""
     doc = PROJECT_ROOT / "docs" / "architecture" / "current_agents.md"
@@ -57,13 +53,9 @@ def update_current_agents():
         original_content = content
 
         # 替换阶段描述
+        content = content.replace("状态：Phase 5完成", "状态：Phase 8+ 活跃开发中")
         content = content.replace(
-            "状态：Phase 5完成",
-            "状态：Phase 8+ 活跃开发中"
-        )
-        content = content.replace(
-            "Phase 5完成，知识库集成已实现",
-            "Phase 8+ 活跃开发中，多Agent协作系统完善"
+            "Phase 5完成，知识库集成已实现", "Phase 8+ 活跃开发中，多Agent协作系统完善"
         )
 
         if content != original_content:
@@ -77,6 +69,7 @@ def update_current_agents():
     except Exception as e:
         print(f"  [ERROR] Update failed: {e}")
         return False
+
 
 def update_api_doc():
     """更新API文档日期"""
@@ -110,6 +103,7 @@ def update_api_doc():
     except Exception as e:
         print(f"  [ERROR] Update failed: {e}")
         return False
+
 
 def main():
     """主函数"""
@@ -147,6 +141,7 @@ def main():
         print(f"[WARN] Some documents failed to update ({success_count}/{total_count})")
     print("=" * 60)
 
+
 if __name__ == "__main__":
     try:
         main()
@@ -155,4 +150,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n\n[ERROR] An error occurred: {e}")
         import traceback
+
         traceback.print_exc()

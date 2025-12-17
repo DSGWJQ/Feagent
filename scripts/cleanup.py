@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """项目文件清理脚本 - 删除临时文件和缓存"""
-import os
+
 import shutil
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 PROJECT_ROOT = Path(r"D:\My_Project\agent_data")
+
 
 def cleanup():
     """执行清理操作"""
@@ -39,7 +40,7 @@ def cleanup():
             try:
                 shutil.copy2(path, backup_dir / file)
                 path.unlink()
-                print(f"    [OK] Deleted (backed up)")
+                print("    [OK] Deleted (backed up)")
                 cleaned_files += 1
             except Exception as e:
                 print(f"    [ERROR] Failed to delete: {e}")
@@ -64,11 +65,11 @@ def cleanup():
         if path.exists():
             try:
                 # 计算目录大小
-                total_size = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
+                total_size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
                 size_mb = total_size / (1024 * 1024)
                 print(f"  Found: {dir_name}/ ({size_mb:.2f} MB)")
                 shutil.rmtree(path)
-                print(f"    [OK] Cleaned")
+                print("    [OK] Cleaned")
                 cleaned_dirs += 1
             except Exception as e:
                 print(f"    [ERROR] Failed to clean: {e}")
@@ -88,20 +89,21 @@ def cleanup():
             # 如果目标已存在，先备份
             if target.exists():
                 shutil.copy2(target, backup_dir / "watchfiles_old.py")
-                print(f"  Backed up old file: scripts/watchfiles.py")
+                print("  Backed up old file: scripts/watchfiles.py")
 
             shutil.move(str(watchfiles), str(target))
-            print(f"  [OK] Moved: watchfiles.py -> scripts/watchfiles.py")
+            print("  [OK] Moved: watchfiles.py -> scripts/watchfiles.py")
         except Exception as e:
             print(f"  [ERROR] Failed to move: {e}")
     else:
-        print(f"  Skip: watchfiles.py (not found)")
+        print("  Skip: watchfiles.py (not found)")
 
     print()
     print("=" * 60)
-    print(f"[SUCCESS] Cleanup completed!")
+    print("[SUCCESS] Cleanup completed!")
     print(f"[BACKUP] Backup location: {backup_dir}")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     try:
@@ -111,4 +113,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n\n[ERROR] An error occurred: {e}")
         import traceback
+
         traceback.print_exc()

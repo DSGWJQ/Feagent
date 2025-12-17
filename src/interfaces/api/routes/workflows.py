@@ -35,6 +35,7 @@ from src.application.use_cases.update_workflow_by_drag import (
 from src.config import settings
 from src.domain.exceptions import DomainError, NotFoundError
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
+from src.domain.ports.workflow_chat_service import WorkflowChatServicePort
 from src.domain.services.workflow_chat_service_enhanced import EnhancedWorkflowChatService
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.repositories.chat_message_repository import (
@@ -81,25 +82,6 @@ def get_chat_message_repository(
     return SQLAlchemyChatMessageRepository(db)
 
 
-def get_chat_openai():
-    """获取 ChatOpenAI 实例（用于增强服务）"""
-    from langchain_openai import ChatOpenAI
-    from pydantic import SecretStr
-
-    if not settings.openai_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OpenAI API key is not configured for workflow chat.",
-        )
-
-    return ChatOpenAI(
-        api_key=SecretStr(settings.openai_api_key),
-        model=settings.openai_model,
-        base_url=settings.openai_base_url,
-        temperature=0.0,
-    )
-
-
 def get_workflow_chat_llm() -> WorkflowChatLLM:
     """Resolve the LLM implementation used for workflow chat."""
 
@@ -125,11 +107,11 @@ def get_workflow_chat_llm() -> WorkflowChatLLM:
 
 def get_workflow_chat_service(
     workflow_id: str = "",  # 从路径参数传入
-    llm=Depends(get_chat_openai),
+    llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
     chat_message_repository: SQLAlchemyChatMessageRepository | None = Depends(
         get_chat_message_repository
     ),
-) -> EnhancedWorkflowChatService:
+) -> WorkflowChatServicePort:
     """构建增强版对话服务（使用新的 CompositeMemoryService）
 
     每个工作流的对话历史使用高性能内存系统（缓存 + 压缩 + 性能监控）
@@ -158,7 +140,7 @@ def get_update_workflow_by_chat_use_case(
     workflow_id: str,  # 从路径参数注入
     workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
     chat_message_repository: SQLAlchemyChatMessageRepository = Depends(get_chat_message_repository),
-    llm=Depends(get_chat_openai),
+    llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
     rag_service=Depends(get_rag_service),
 ) -> UpdateWorkflowByChatUseCase:
     """Assemble the chat update use case with its dependencies (using CompositeMemoryService)."""

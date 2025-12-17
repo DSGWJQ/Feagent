@@ -859,8 +859,8 @@ class TestScriptExecution:
         self, tmp_path, monkeypatch
     ):
         """Test: fallback to internal SandboxExecutor works correctly"""
-        from src.domain.services.workflow_dependency_graph import WorkflowDependencyExecutor
         import src.domain.services.sandbox_executor as sandbox_mod
+        from src.domain.services.workflow_dependency_graph import WorkflowDependencyExecutor
 
         script_path = tmp_path / "script.py"
         script_path.write_text("output = {'z': 3}\n", encoding="utf-8")

@@ -11,12 +11,8 @@ Domain 层：增强的工作流对话服务
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
-
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_openai import ChatOpenAI
 
 from src.domain.entities.chat_message import ChatMessage
 from src.domain.entities.edge import Edge
@@ -24,8 +20,10 @@ from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError
 from src.domain.ports.chat_message_repository import ChatMessageRepository
+from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
+from src.domain.value_objects.workflow_modification_result import ModificationResult
 
 
 @dataclass
@@ -207,27 +205,6 @@ class ChatHistory:
         return max(1, tokens)
 
 
-@dataclass
-class ModificationResult:
-    """修改结果"""
-
-    success: bool
-    ai_message: str
-    intent: str = ""
-    confidence: float = 0.0
-    modifications_count: int = 0
-    error_message: str = ""
-    error_details: list[str] = field(default_factory=list)
-    original_workflow: Workflow | None = None
-    modified_workflow: Workflow | None = None
-    rag_sources: list[dict] = field(default_factory=list)
-    react_steps: list[dict] = field(default_factory=list)
-
-    def has_errors(self) -> bool:
-        """是否有错误"""
-        return bool(self.error_message) or bool(self.error_details)
-
-
 class EnhancedWorkflowChatService:
     """增强版工作流对话服务（数据库持久化）
 
@@ -248,7 +225,7 @@ class EnhancedWorkflowChatService:
     def __init__(
         self,
         workflow_id: str,
-        llm: ChatOpenAI,
+        llm: WorkflowChatLLM,
         chat_message_repository: ChatMessageRepository,
         rag_service=None,
         memory_service=None,
@@ -257,14 +234,13 @@ class EnhancedWorkflowChatService:
 
         参数：
             workflow_id: 工作流 ID（用于关联对话历史）
-            llm: LangChain LLM 实例
+            llm: WorkflowChatLLM 实例（Domain Port）
             chat_message_repository: 对话消息仓储
             rag_service: RAG服务实例（可选）
             memory_service: CompositeMemoryService 实例（可选，优先使用）
         """
         self.workflow_id = workflow_id
         self.llm = llm
-        self.parser = JsonOutputParser()
 
         # 使用新的 CompositeMemoryService（如果提供）
         if memory_service is not None:
@@ -351,17 +327,7 @@ class EnhancedWorkflowChatService:
 
         # 2. 调用 LLM 解析用户意图
         try:
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt),
-            ]
-            response = self.llm.invoke(messages)
-            raw_content = response.content
-            if isinstance(raw_content, list):
-                content_str = json.dumps(raw_content, ensure_ascii=False)
-            else:
-                content_str = str(raw_content)
-            llm_result = self.parser.parse(content_str)
+            llm_result = self.llm.generate_modifications(system_prompt, user_prompt)
         except Exception as e:
             error_msg = f"LLM 调用失败: {str(e)}"
             return ModificationResult(

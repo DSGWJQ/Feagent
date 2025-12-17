@@ -13,7 +13,6 @@ Coverage focus (target ~70% for src/application/use_cases/update_workflow_by_cha
 from __future__ import annotations
 
 from datetime import datetime
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -27,6 +26,7 @@ from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError, NotFoundError
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
+from src.domain.value_objects.workflow_modification_result import ModificationResult
 
 
 @pytest.fixture()
@@ -60,17 +60,31 @@ def mock_repo():
 
 @pytest.fixture()
 def basic_chat_service(workflow):
-    """Mock basic WorkflowChatService returning tuple"""
+    """Mock basic WorkflowChatService returning ModificationResult"""
+    from src.domain.value_objects.workflow_modification_result import ModificationResult
+
     service = Mock()
-    service.process_message.return_value = (workflow, "AI response message")
+    service.process_message.return_value = ModificationResult(
+        success=True,
+        modified_workflow=workflow,
+        ai_message="AI response message",
+        intent="",
+        confidence=0.0,
+        modifications_count=0,
+        rag_sources=[],
+        react_steps=[],
+        error_message="",
+    )
     return service
 
 
 @pytest.fixture()
 def enhanced_chat_service(workflow):
-    """Mock enhanced WorkflowChatService returning ModificationResult-like object"""
+    """Mock enhanced WorkflowChatService returning ModificationResult"""
+    from src.domain.value_objects.workflow_modification_result import ModificationResult
+
     service = Mock()
-    service.process_message.return_value = SimpleNamespace(
+    service.process_message.return_value = ModificationResult(
         success=True,
         modified_workflow=workflow,
         ai_message="Enhanced AI response",
@@ -267,7 +281,7 @@ def test_execute_enhanced_service_success_false_raises_domain_error_and_does_not
 ):
     """Enhanced service with success=False should raise DomainError and skip save."""
     mock_repo.get_by_id.return_value = workflow
-    enhanced_chat_service.process_message.return_value = SimpleNamespace(
+    enhanced_chat_service.process_message.return_value = ModificationResult(
         success=False,
         error_message="Failed to parse user intent",
         modified_workflow=None,
@@ -295,7 +309,7 @@ def test_execute_enhanced_service_success_false_without_message_uses_default_err
 ):
     """Enhanced service with success=False and empty error_message should use default."""
     mock_repo.get_by_id.return_value = workflow
-    enhanced_chat_service.process_message.return_value = SimpleNamespace(
+    enhanced_chat_service.process_message.return_value = ModificationResult(
         success=False,
         error_message="",
         modified_workflow=None,
@@ -321,7 +335,7 @@ def test_execute_enhanced_service_modified_workflow_none_raises_domain_error(
 ):
     """Enhanced service with success=True but modified_workflow=None should raise DomainError."""
     mock_repo.get_by_id.return_value = workflow
-    enhanced_chat_service.process_message.return_value = SimpleNamespace(
+    enhanced_chat_service.process_message.return_value = ModificationResult(
         success=True,
         modified_workflow=None,
         ai_message="Processed",
@@ -425,7 +439,7 @@ async def test_execute_streaming_enhanced_service_yields_react_steps_then_previe
     mock_repo.get_by_id.return_value = workflow
 
     # Mock enhanced service with multiple react_steps
-    enhanced_chat_service.process_message.return_value = SimpleNamespace(
+    enhanced_chat_service.process_message.return_value = ModificationResult(
         success=True,
         modified_workflow=workflow,
         ai_message="Enhanced response",
@@ -484,7 +498,7 @@ async def test_execute_streaming_enhanced_modified_workflow_none_yields_started_
 ):
     """Streaming should yield processing_started before raising on modified_workflow=None."""
     mock_repo.get_by_id.return_value = workflow
-    enhanced_chat_service.process_message.return_value = SimpleNamespace(
+    enhanced_chat_service.process_message.return_value = ModificationResult(
         success=True,
         modified_workflow=None,
         ai_message="Processed",
@@ -517,7 +531,7 @@ async def test_execute_streaming_enhanced_failure_yields_started_then_raises_dom
 ):
     """Streaming should yield processing_started before raising DomainError on enhanced failure."""
     mock_repo.get_by_id.return_value = workflow
-    enhanced_chat_service.process_message.return_value = SimpleNamespace(
+    enhanced_chat_service.process_message.return_value = ModificationResult(
         success=False,
         error_message="Intent parsing failed",
         modified_workflow=None,

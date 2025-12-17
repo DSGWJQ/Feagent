@@ -62,11 +62,7 @@ class ModelMetadataAdapter:
 
         # 筛选特定提供商
         provider_lower = provider.lower()
-        return [
-            f"{p}:{m}"
-            for p, m in _MODEL_METADATA_REGISTRY.keys()
-            if p == provider_lower
-        ]
+        return [f"{p}:{m}" for p, m in _MODEL_METADATA_REGISTRY.keys() if p == provider_lower]
 
 
 def create_model_metadata_adapter() -> ModelMetadataPort:
