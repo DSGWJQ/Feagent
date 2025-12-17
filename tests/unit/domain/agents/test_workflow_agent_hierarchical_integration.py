@@ -470,6 +470,152 @@ class TestContainerEventIntegration:
         mock_event_bus.publish.assert_called()
 
 
+# =============================================================================
+# Gap-Filling Tests: create_grouped_nodes() & Hierarchy (Lines 2627-2765)
+# =============================================================================
+
+
+class TestCreateGroupedNodesEdgeCases:
+    """测试create_grouped_nodes()的边界情况和事件发布"""
+
+    @pytest.mark.asyncio
+    async def test_create_grouped_nodes_emits_child_added_events(self):
+        """测试create_grouped_nodes()为所有子节点发布ChildAddedEvent
+
+        目标行：workflow_agent.py lines 2651-2662
+        逻辑：For each child, publish ChildAddedEvent with parent_id, child_id, child_type
+        """
+        from src.domain.agents.workflow_agent import WorkflowAgent
+        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.event_bus import EventBus
+        from src.domain.services.node_hierarchy_service import ChildAddedEvent
+        from src.domain.services.node_registry import NodeFactory, NodeRegistry, NodeType
+
+        # 创建带event_bus的agent（hierarchy_service会自动创建）
+        event_bus = EventBus()
+        ctx = WorkflowContext(
+            workflow_id="test_wf",
+            session_context=SessionContext(
+                session_id="test_session",
+                global_context=GlobalContext(user_id="test_user"),
+            ),
+        )
+        factory = NodeFactory(NodeRegistry())
+
+        agent = WorkflowAgent(
+            workflow_context=ctx,
+            node_factory=factory,
+            event_bus=event_bus,
+        )
+
+        # 创建容器节点，包含3个子节点
+        steps = [
+            {"type": "generic", "config": {"name": "child1"}},
+            {"type": "generic", "config": {"name": "child2"}},
+            {"type": "generic", "config": {"name": "child3"}},
+        ]
+
+        parent = await agent.create_grouped_nodes(group_name="test_container", steps=steps)
+
+        # 验证：发布了3个ChildAddedEvent
+        child_added_events = [e for e in event_bus.event_log if isinstance(e, ChildAddedEvent)]
+        assert len(child_added_events) == 3
+
+        # 验证：所有事件包含正确的parent_id
+        for event in child_added_events:
+            assert event.parent_id == parent.id
+            assert event.child_id in [child.id for child in parent.children]
+            assert event.child_type == NodeType.GENERIC.value
+
+    @pytest.mark.asyncio
+    async def test_create_grouped_nodes_registers_all_nodes(self):
+        """测试create_grouped_nodes()将父节点和所有子节点注册到_nodes
+
+        目标行：workflow_agent.py lines 2645-2648
+        逻辑：self._nodes[parent.id] = parent; for child: self._nodes[child.id] = child
+        """
+        from src.domain.agents.workflow_agent import WorkflowAgent
+        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.node_registry import NodeFactory, NodeRegistry
+
+        # 创建agent（hierarchy_service会自动创建）
+        ctx = WorkflowContext(
+            workflow_id="test_wf",
+            session_context=SessionContext(
+                session_id="test_session",
+                global_context=GlobalContext(user_id="test_user"),
+            ),
+        )
+        factory = NodeFactory(NodeRegistry())
+
+        agent = WorkflowAgent(
+            workflow_context=ctx,
+            node_factory=factory,
+        )
+
+        # 初始状态：_nodes为空
+        assert len(agent._nodes) == 0
+
+        # 创建容器节点，包含2个子节点
+        steps = [
+            {"type": "generic", "config": {"name": "child1"}},
+            {"type": "generic", "config": {"name": "child2"}},
+        ]
+
+        parent = await agent.create_grouped_nodes(group_name="test_container", steps=steps)
+
+        # 验证：_nodes包含3个节点（1个父节点 + 2个子节点）
+        assert len(agent._nodes) == 3
+        assert parent.id in agent._nodes
+        for child in parent.children:
+            assert child.id in agent._nodes
+            assert agent._nodes[child.id] == child
+
+    @pytest.mark.asyncio
+    async def test_get_hierarchy_tree_nested_structure(self):
+        """测试get_hierarchy_tree()返回正确的嵌套结构
+
+        目标行：workflow_agent.py lines 2751-2765 (get_hierarchy_tree related)
+        验证：多层嵌套容器的树形结构正确
+        """
+        from src.domain.agents.workflow_agent import WorkflowAgent
+        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.node_registry import NodeFactory, NodeRegistry
+
+        # 创建agent（hierarchy_service会自动创建）
+        ctx = WorkflowContext(
+            workflow_id="test_wf",
+            session_context=SessionContext(
+                session_id="test_session",
+                global_context=GlobalContext(user_id="test_user"),
+            ),
+        )
+        factory = NodeFactory(NodeRegistry())
+
+        agent = WorkflowAgent(
+            workflow_context=ctx,
+            node_factory=factory,
+        )
+
+        # 创建嵌套结构：Container A -> [Container B -> [Node C, Node D], Node E]
+        # 首先创建Container B with C, D
+        container_b_steps = [
+            {"type": "generic", "config": {"name": "node_c"}},
+            {"type": "generic", "config": {"name": "node_d"}},
+        ]
+        container_b = await agent.create_grouped_nodes(
+            group_name="container_b", steps=container_b_steps
+        )
+
+        # 获取层级树（传递group_id）
+        tree = await agent.get_hierarchy_tree(container_b.id)
+
+        # 验证：tree是字典，包含节点信息
+        assert isinstance(tree, dict)
+        assert "children" in tree  # Tree根是container_b本身，包含children数组
+        assert len(tree["children"]) == 2  # Node C, Node D
+
+
 # 导出
 __all__ = [
     "TestNodeDefinitionToNode",
@@ -478,4 +624,5 @@ __all__ = [
     "TestHierarchicalNodeFactoryIntegration",
     "TestHierarchicalResultAggregation",
     "TestContainerEventIntegration",
+    "TestCreateGroupedNodesEdgeCases",
 ]

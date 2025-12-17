@@ -20,7 +20,10 @@ from typing import Any
 
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError
-from src.lc.workflow.react_orchestrator import ReActEvent, ReActOrchestrator
+
+# FIXME (P1-3): Domain层不应直接依赖Infrastructure层
+# TODO: 创建 WorkflowOrchestratorPort 协议并通过依赖注入传入
+from src.infrastructure.lc_adapters.workflow.react_orchestrator import ReActEvent, ReActOrchestrator
 
 
 class WorkflowChatReActService:

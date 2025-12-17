@@ -535,3 +535,352 @@ class TestHealthChecker:
 
         health = checker.check_health()
         assert health["status"] == "unhealthy"
+
+
+# ==================== P0-CRITICAL Tests: SystemRecoveryManager ====================
+
+
+class TestSystemRecoveryManager:
+    """SystemRecoveryManager P0-CRITICAL 测试（Codex识别的最大测试缺口）"""
+
+    @pytest.mark.asyncio
+    async def test_attempt_node_creation_success_creates_node_and_records_metric(self):
+        """测试成功创建节点并记录指标"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        manager.set_workflow_state("wf-1", {"nodes": []})
+
+        node_def = {"name": "test_node", "executor_type": "code"}
+        result = await manager.attempt_node_creation("wf-1", node_def)
+
+        assert result["success"] is True
+
+        # 验证节点已添加
+        state = manager.get_workflow_state("wf-1")
+        assert len(state["nodes"]) == 1
+        assert state["nodes"][0]["name"] == "test_node"
+
+        # 验证指标已记录
+        stats = manager._metrics.get_statistics()
+        assert stats["successful_creations"] == 1
+
+    @pytest.mark.asyncio
+    async def test_attempt_node_creation_failure_rolls_back_and_records_failure(self, monkeypatch):
+        """测试创建失败时回滚并记录失败指标（真正验证回滚机制）"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        initial_state = {"nodes": [{"id": "existing", "name": "old"}]}
+        manager.set_workflow_state("wf-1", initial_state)
+
+        # 有效节点定义，但在记录指标时抛出异常（模拟 state 修改后才失败）
+        valid_node_def = {"name": "new_node", "executor_type": "code"}
+
+        # Monkeypatch record_node_creation 让它在 state 已修改后抛异常
+        original_record = manager._metrics.record_node_creation
+        def failing_record(name, success):
+            if success:  # 只在成功时抛异常
+                raise RuntimeError("Simulated metric recording failure")
+            return original_record(name, success)
+
+        monkeypatch.setattr(manager._metrics, "record_node_creation", failing_record)
+
+        with pytest.raises(RuntimeError, match="Simulated metric recording failure"):
+            await manager.attempt_node_creation("wf-1", valid_node_def)
+
+        # 验证状态已回滚（应该只有原来的节点）
+        state = manager.get_workflow_state("wf-1")
+        assert len(state["nodes"]) == 1
+        assert state["nodes"][0]["name"] == "old"
+
+        # 验证快照被创建并回滚生效
+        assert manager._rollback.has_snapshot("wf-1") is False  # 回滚后快照被弹出
+
+    @pytest.mark.asyncio
+    async def test_attempt_node_creation_creates_snapshot_before_creation(self):
+        """测试创建节点前会创建快照"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        initial_state = {"nodes": [{"id": "existing", "name": "old"}]}
+        manager.set_workflow_state("wf-1", initial_state)
+
+        node_def = {"name": "new_node", "executor_type": "code"}
+        await manager.attempt_node_creation("wf-1", node_def)
+
+        # 验证快照已创建
+        assert manager._rollback.has_snapshot("wf-1") is True
+
+    @pytest.mark.asyncio
+    async def test_execute_with_recovery_success_updates_node_status_and_records_metric(self):
+        """测试执行成功时更新节点状态并记录指标"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        manager.set_workflow_state("wf-1", {
+            "nodes": [{"id": "node-1", "name": "test", "status": "pending"}]
+        })
+
+        code = "print('success')"
+        result = await manager.execute_with_recovery("wf-1", "node-1", code)
+
+        assert result["success"] is True
+        assert result["recovered"] is False
+
+        # 验证节点状态已更新
+        state = manager.get_workflow_state("wf-1")
+        assert state["nodes"][0]["status"] == "completed"
+
+        # 验证指标已记录
+        stats = manager._metrics.get_statistics()
+        assert stats["sandbox_successes"] == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_with_recovery_failure_recovers_state_and_returns_error(self):
+        """测试执行失败时恢复状态并返回错误信息"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        original_status = "pending"
+        manager.set_workflow_state("wf-1", {
+            "nodes": [{"id": "node-1", "name": "test", "status": original_status}]
+        })
+
+        # 触发失败的代码
+        code = "raise Exception('execution error')"
+        result = await manager.execute_with_recovery("wf-1", "node-1", code)
+
+        assert result["success"] is False
+        assert result["recovered"] is True
+        assert "execution error" in result["error"] or "Sandbox execution failed" in result["error"]
+
+        # 验证状态已恢复
+        state = manager.get_workflow_state("wf-1")
+        assert state["nodes"][0]["status"] == original_status
+
+        # 验证失败已记录
+        stats = manager._metrics.get_statistics()
+        assert stats["sandbox_failures"] == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_with_recovery_records_duration_metric(self):
+        """测试执行时记录持续时间指标（精确验证 duration_ms）"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        manager.set_workflow_state("wf-1", {
+            "nodes": [{"id": "node-1", "name": "test"}]
+        })
+
+        await manager.execute_with_recovery("wf-1", "node-1", "print('test')")
+
+        # 验证指标包含 duration_ms（精确断言）
+        stats = manager._metrics.get_statistics()
+        assert stats["sandbox_executions"] == 1
+
+        # 精确验证最后一条记录包含 duration_ms
+        last_record = manager._metrics._records[-1]
+        assert last_record.metric_type == "sandbox_execution"
+        assert last_record.duration_ms is not None
+        assert last_record.duration_ms >= 0
+
+    @pytest.mark.asyncio
+    async def test_execute_workflow_with_recovery_success_completes_all_nodes(self):
+        """测试工作流执行成功时完成所有节点"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        manager.set_workflow_state("wf-1", {
+            "nodes": [
+                {"id": "node-1", "name": "step1", "status": "pending"},
+                {"id": "node-2", "name": "step2", "status": "pending"},
+                {"id": "node-3", "name": "step3", "status": "pending"},
+            ]
+        })
+
+        result = await manager.execute_workflow_with_recovery("wf-1")
+
+        assert result["success"] is True
+
+        # 验证所有节点已完成
+        state = manager.get_workflow_state("wf-1")
+        for node in state["nodes"]:
+            assert node["status"] == "completed"
+
+        # 验证指标已记录
+        stats = manager._metrics.get_statistics()
+        assert stats["workflow_successes"] == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_workflow_with_recovery_fails_at_specific_node_and_rolls_back(self):
+        """测试工作流在指定节点失败时回滚"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        manager.set_workflow_state("wf-1", {
+            "nodes": [
+                {"id": "node-1", "name": "step1", "status": "pending"},
+                {"id": "node-2", "name": "step2", "status": "pending"},
+                {"id": "node-3", "name": "step3", "status": "pending"},
+            ]
+        })
+
+        result = await manager.execute_workflow_with_recovery("wf-1", fail_at_node="node-2")
+
+        assert result["success"] is False
+        assert "Execution failed at node node-2" in result["error"]
+
+        # 验证已执行的节点被标记为 rolled_back
+        state = manager.get_workflow_state("wf-1")
+        assert state["nodes"][0]["status"] == "rolled_back"  # node-1 executed then rolled back
+        assert state["nodes"][1]["status"] == "pending"      # node-2 never changed
+        assert state["nodes"][2]["status"] == "pending"      # node-3 never executed
+
+        # 验证失败已记录
+        stats = manager._metrics.get_statistics()
+        assert stats["workflow_failures"] == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_workflow_with_recovery_records_node_count_and_duration(self):
+        """测试工作流执行记录节点数量和持续时间（精确验证 node_count 和 duration_ms）"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        manager.set_workflow_state("wf-1", {
+            "nodes": [
+                {"id": "node-1", "name": "step1"},
+                {"id": "node-2", "name": "step2"},
+            ]
+        })
+
+        await manager.execute_workflow_with_recovery("wf-1")
+
+        # 验证指标记录了节点数量
+        stats = manager._metrics.get_statistics()
+        assert stats["workflow_executions"] == 1
+
+        # 精确验证最后一条记录包含 node_count 和 duration_ms
+        last_record = manager._metrics._records[-1]
+        assert last_record.metric_type == "workflow_execution"
+        assert last_record.duration_ms is not None
+        assert last_record.duration_ms >= 0
+        assert last_record.extra.get("node_count") == 2
+
+    def test_validate_node_valid_definition_returns_valid_true(self):
+        """测试验证有效节点定义返回 valid=True"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+
+        valid_node = {
+            "name": "test_node",
+            "executor_type": "code",
+        }
+
+        result = manager.validate_node(valid_node)
+
+        assert result["valid"] is True
+        assert "error" not in result
+
+    def test_validate_node_missing_name_returns_error(self):
+        """测试验证缺少 name 字段的节点返回错误"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+
+        invalid_node = {
+            "executor_type": "code",
+        }
+
+        result = manager.validate_node(invalid_node)
+
+        assert result["valid"] is False
+        assert "Missing required field: name" in result["error"]
+
+    def test_validate_node_invalid_executor_type_returns_error(self):
+        """测试验证无效 executor_type 返回错误"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+
+        invalid_node = {
+            "name": "test_node",
+            "executor_type": "invalid_type",
+        }
+
+        result = manager.validate_node(invalid_node)
+
+        assert result["valid"] is False
+        assert "Invalid executor_type: invalid_type" in result["error"]
+
+    def test_validate_node_multiple_errors_concatenates_messages(self):
+        """测试验证多个错误时合并错误消息"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+
+        invalid_node = {
+            "executor_type": "invalid_type",
+            # missing name
+        }
+
+        result = manager.validate_node(invalid_node)
+
+        assert result["valid"] is False
+        assert "Missing required field: name" in result["error"]
+        assert "Invalid executor_type" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_add_node_with_monitoring_valid_node_adds_to_workflow(self):
+        """测试添加有效节点到工作流"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        manager.set_workflow_state("wf-1", {"nodes": []})
+
+        node = {"name": "test_node", "executor_type": "code"}
+        result = await manager.add_node_with_monitoring("wf-1", node)
+
+        assert result["success"] is True
+
+        # 验证节点已添加
+        state = manager.get_workflow_state("wf-1")
+        assert len(state["nodes"]) == 1
+        assert state["nodes"][0]["name"] == "test_node"
+
+    @pytest.mark.asyncio
+    async def test_add_node_with_monitoring_invalid_node_returns_error(self):
+        """测试添加无效节点返回错误"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        manager.set_workflow_state("wf-1", {"nodes": []})
+
+        invalid_node = {"executor_type": "code"}  # missing name
+        result = await manager.add_node_with_monitoring("wf-1", invalid_node)
+
+        assert result["success"] is False
+        assert "Missing required field: name" in result["error"]
+
+        # 验证节点未添加
+        state = manager.get_workflow_state("wf-1")
+        assert len(state["nodes"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_add_node_with_monitoring_initializes_nodes_list_if_missing(self):
+        """测试当 nodes 列表不存在时自动初始化"""
+        from src.domain.services.dynamic_node_monitoring import SystemRecoveryManager
+
+        manager = SystemRecoveryManager()
+        manager.set_workflow_state("wf-1", {})  # no nodes key
+
+        node = {"name": "test_node", "executor_type": "code"}
+        result = await manager.add_node_with_monitoring("wf-1", node)
+
+        assert result["success"] is True
+
+        # 验证 nodes 列表已初始化
+        state = manager.get_workflow_state("wf-1")
+        assert "nodes" in state
+        assert len(state["nodes"]) == 1

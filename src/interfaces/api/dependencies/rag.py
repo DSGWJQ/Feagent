@@ -1,6 +1,10 @@
 """RAG相关依赖
 
 提供RAG服务的初始化和依赖注入
+通过 Ports and Adapters 模式解耦接口层与基础设施层
+
+Author: Claude Code (Updated)
+Date: 2025-12-17 (P1-1 Fix: Ports/Adapters Compliance)
 """
 
 import logging
@@ -10,6 +14,7 @@ from src.application.services.rag_service import RAGService
 from src.config import settings
 from src.domain.knowledge_base.entities.document_chunk import DocumentChunk
 from src.domain.knowledge_base.ports.retriever_service import RetrieverService
+from src.domain.ports.rag_service_port import RAGServicePort
 from src.infrastructure.knowledge_base.rag_config_manager import RAGConfigManager
 from src.infrastructure.knowledge_base.sqlite_knowledge_repository import SQLiteKnowledgeRepository
 
@@ -20,8 +25,8 @@ _rag_service: RAGService | None = None
 _initialized = False
 
 
-async def get_rag_service() -> AsyncGenerator[RAGService, None]:
-    """获取RAG服务实例（单例）"""
+async def _create_rag_service_impl() -> RAGService:
+    """创建RAG服务实现（内部工厂函数）"""
     global _rag_service, _initialized
 
     if not _initialized:
@@ -104,6 +109,29 @@ async def get_rag_service() -> AsyncGenerator[RAGService, None]:
     if service is None:
         raise RuntimeError("RAG服务未能正确初始化")
 
+    return service
+
+
+async def get_rag_service() -> AsyncGenerator[RAGServicePort, None]:
+    """
+    获取RAG服务（通过端口协议）
+
+    Returns:
+        RAGServicePort 实例
+
+    架构说明:
+        Interface Layer → RAGServicePort (Domain Port)
+                         ↑
+                 RAGService (Application Layer)
+
+    Example:
+        >>> from fastapi import Depends
+        >>> @app.get("/api/rag/test")
+        >>> async def test(rag: RAGServicePort = Depends(get_rag_service)):
+        ...     stats = await rag.get_document_stats()
+        ...     return stats
+    """
+    service = await _create_rag_service_impl()
     try:
         yield service
     finally:

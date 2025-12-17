@@ -13,12 +13,14 @@
  * - 创建成功后自动跳转到列表页
  */
 
-import { Button, App } from 'antd';
+import { App } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { CreateAgentForm } from '@/features/agents/components';
 import { PageShell } from '@/shared/components/layout/PageShell';
 import { NeoCard } from '@/shared/components/common/NeoCard';
+import { NeoButton } from '@/shared/components/common/NeoButton';
+
 import type { Agent } from '@/shared/types';
 // import styles from '../styles/agents.module.css'; // Unused
 
@@ -46,9 +48,10 @@ export const CreateAgentPage: React.FC = () => {
       title="创建 Agent"
       description="填写以下信息来创建一个新的 Agent。Agent 会根据您提供的起点和目的，自动生成执行计划并完成任务。"
       actions={
-        <Button icon={<ArrowLeftOutlined />} onClick={handleBack}>
+        <NeoButton variant="ghost" icon={<ArrowLeftOutlined />} onClick={handleBack}>
           返回列表
-        </Button>
+        </NeoButton>
+
       }
     >
       <div style={{ maxWidth: 800, margin: '0 auto' }}>

@@ -158,7 +158,7 @@ describe('工作流执行端到端测试', () => {
         }, index * 100);
       });
 
-      return () => {}; // cancel function
+      return () => { }; // cancel function
     });
 
     // Mock fetch for chat-stream
@@ -320,7 +320,7 @@ describe('工作流执行端到端测试', () => {
     // 尝试拖拽应该切换到画布模式
     const canvas = screen.getByTestId('react-flow');
     if (canvas) {
-      await userEvent.pointer({ target: canvas, keys: '[MouseLeft]'));
+      await userEvent.pointer({ target: canvas, keys: '[MouseLeft]' });
 
       await waitFor(() => {
         expect(screen.getByText('画布模式')).toBeInTheDocument();

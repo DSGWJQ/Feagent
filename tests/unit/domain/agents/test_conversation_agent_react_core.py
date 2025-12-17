@@ -350,6 +350,184 @@ class TestRunAsync:
         # Should flush after each iteration + final flush
         assert mock_agent._flush_staged_state.call_count == 3  # 2 iterations + final
 
+    # ==================== P0-3: run_async 初始化链路测试 ====================
+
+    @pytest.mark.asyncio
+    async def test_run_async_initializes_model_info_when_context_limit_zero(self, mock_agent):
+        """[P0-3] Test: run_async 在 context_limit==0 时调用 _initialize_model_info()"""
+        mock_agent.session_context.context_limit = 0
+        mock_agent.llm.think = AsyncMock(return_value="thinking")
+        mock_agent.llm.decide_action = AsyncMock(
+            return_value={"action_type": "respond", "response": "Done"}
+        )
+
+        await mock_agent.run_async("test input")
+
+        # 验证调用了 _initialize_model_info
+        mock_agent._initialize_model_info.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_async_skips_model_info_when_context_limit_nonzero(self, mock_agent):
+        """[P0-3] Test: run_async 在 context_limit!=0 时跳过 _initialize_model_info()"""
+        mock_agent.session_context.context_limit = 4096  # Non-zero
+        mock_agent.llm.think = AsyncMock(return_value="thinking")
+        mock_agent.llm.decide_action = AsyncMock(
+            return_value={"action_type": "respond", "response": "Done"}
+        )
+
+        await mock_agent.run_async("test input")
+
+        # 验证未调用 _initialize_model_info
+        mock_agent._initialize_model_info.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_async_gets_coordinator_context_success(self, mock_agent):
+        """[P0-3] Test: run_async 成功获取 coordinator context 并记录"""
+        from unittest.mock import AsyncMock, MagicMock
+
+        # 设置 coordinator
+        mock_coordinator = MagicMock()
+        mock_coordinator.get_context_async = AsyncMock(
+            return_value={"rules": ["rule1"], "knowledge": ["k1"]}
+        )
+        mock_agent.coordinator = mock_coordinator
+
+        mock_agent.llm.think = AsyncMock(return_value="thinking")
+        mock_agent.llm.decide_action = AsyncMock(
+            return_value={"action_type": "respond", "response": "Done"}
+        )
+
+        await mock_agent.run_async("test input")
+
+        # 验证调用了 get_context_async
+        mock_coordinator.get_context_async.assert_called_once_with("test input")
+
+        # 验证调用了 _log_coordinator_context
+        mock_agent._log_coordinator_context.assert_called_once_with(
+            {"rules": ["rule1"], "knowledge": ["k1"]}
+        )
+
+        # 验证 _coordinator_context 被缓存
+        assert mock_agent._coordinator_context == {"rules": ["rule1"], "knowledge": ["k1"]}
+
+    @pytest.mark.asyncio
+    async def test_run_async_handles_coordinator_context_exception(self, mock_agent, monkeypatch):
+        """[P0-3] Test: run_async 处理 coordinator context 异常并继续主流程"""
+        from unittest.mock import AsyncMock, MagicMock
+        import logging
+
+        # 设置 coordinator (不包含 circuit_breaker 属性以避免触发熔断检查)
+        mock_coordinator = MagicMock()
+        mock_coordinator.get_context_async = AsyncMock(
+            side_effect=RuntimeError("Coordinator error")
+        )
+        # 明确设置 circuit_breaker 不存在
+        del mock_coordinator.circuit_breaker
+        mock_agent.coordinator = mock_coordinator
+
+        # Mock logging.warning
+        mock_warning = MagicMock()
+        monkeypatch.setattr(logging, "warning", mock_warning)
+
+        mock_agent.llm.think = AsyncMock(return_value="thinking")
+        mock_agent.llm.decide_action = AsyncMock(
+            return_value={"action_type": "respond", "response": "Done"}
+        )
+
+        result = await mock_agent.run_async("test input")
+
+        # 验证调用了 get_context_async
+        mock_coordinator.get_context_async.assert_called_once()
+
+        # 验证记录了警告
+        mock_warning.assert_called_once()
+        assert "Failed to get coordinator context" in mock_warning.call_args[0][0]
+
+        # 验证主流程继续（结果正常）
+        assert result.completed is True
+        assert result.final_response == "Done"
+
+    @pytest.mark.asyncio
+    async def test_run_async_logs_context_warning_when_approaching_limit(self, mock_agent):
+        """[P0-3] Test: run_async 在接近上下文限制时调用 _log_context_warning()"""
+        mock_agent.llm.think = AsyncMock(return_value="thinking")
+        mock_agent.llm.decide_action = AsyncMock(
+            return_value={"action_type": "respond", "response": "Done"}
+        )
+        mock_agent.llm.get_token_usage = MagicMock(
+            return_value={"prompt_tokens": 50, "completion_tokens": 50}
+        )
+
+        # 设置 is_approaching_limit 返回 True
+        mock_agent.session_context.is_approaching_limit = MagicMock(return_value=True)
+
+        await mock_agent.run_async("test input")
+
+        # 验证调用了 _log_context_warning
+        mock_agent._log_context_warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_async_records_decision_for_request_clarification(self, mock_agent):
+        """[P0-3] Test: run_async 记录 request_clarification 决策并发布事件"""
+        mock_agent.llm.think = AsyncMock(return_value="thinking")
+        mock_agent.llm.decide_action = AsyncMock(
+            side_effect=[
+                {"action_type": "request_clarification", "question": "What do you mean?"},
+                {"action_type": "respond", "response": "Done"},
+            ]
+        )
+        mock_agent.llm.should_continue = AsyncMock(return_value=True)
+
+        await mock_agent.run_async("test input")
+
+        # 验证调用了 _stage_decision_record (至少一次为 request_clarification)
+        assert mock_agent._stage_decision_record.call_count >= 1
+
+        # 验证发布了事件
+        assert mock_agent.event_bus.publish.call_count >= 1
+
+        # 验证 flush 被调用（在 request_clarification 后立即 flush）
+        assert mock_agent._flush_staged_state.call_count >= 2
+
+    # ==================== P0-4: 异常退出一致性测试 ====================
+
+    @pytest.mark.asyncio
+    async def test_run_async_decide_action_exception_emits_error_and_completes(self, mock_agent):
+        """[P0-4] Test: run_async 在 decide_action 抛异常时 emit_error 并 complete"""
+        mock_agent.llm.think = AsyncMock(return_value="thinking")
+        mock_agent.llm.decide_action = AsyncMock(
+            side_effect=RuntimeError("decide_action failed")
+        )
+
+        with pytest.raises(RuntimeError, match="decide_action failed"):
+            await mock_agent.run_async("test input")
+
+        # 验证异常退出时调用了 emit_error 和 complete (P0-4 修复后)
+        mock_agent.emitter.emit_error.assert_called_once_with(
+            "decide_action failed", error_code="DECIDE_ACTION_ERROR"
+        )
+        mock_agent.emitter.complete.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_async_should_continue_exception_emits_error_and_completes(self, mock_agent):
+        """[P0-4] Test: run_async 在 should_continue 抛异常时 emit_error 并 complete"""
+        mock_agent.llm.think = AsyncMock(return_value="thinking")
+        mock_agent.llm.decide_action = AsyncMock(
+            return_value={"action_type": "continue"}
+        )
+        mock_agent.llm.should_continue = AsyncMock(
+            side_effect=RuntimeError("should_continue failed")
+        )
+
+        with pytest.raises(RuntimeError, match="should_continue failed"):
+            await mock_agent.run_async("test input")
+
+        # 验证异常退出时调用了 emit_error 和 complete (P0-4 修复后)
+        mock_agent.emitter.emit_error.assert_called_once_with(
+            "should_continue failed", error_code="SHOULD_CONTINUE_ERROR"
+        )
+        mock_agent.emitter.complete.assert_called_once()
+
 
 # =============================================================================
 # TestMakeDecision - Decision with Pydantic validation (4 tests)
@@ -540,6 +718,94 @@ class TestRunSync:
         # Verify _record_decision was called via session_context.add_decision
         mock_agent.session_context.add_decision.assert_called()
 
+    # ==================== P0-2: run() 三分支覆盖测试 ====================
+
+    def test_run_with_running_loop_calls_run_sync(self, mock_agent, monkeypatch):
+        """[P0-2] Test: run() 在已运行的事件循环中调用 _run_sync"""
+        import asyncio
+        from unittest.mock import Mock
+
+        # 模拟已运行的事件循环
+        mock_loop = Mock()
+        mock_loop.is_running = Mock(return_value=True)
+
+        monkeypatch.setattr(asyncio, "get_event_loop", lambda: mock_loop)
+
+        # 模拟 _run_sync 返回值
+        from src.domain.agents.conversation_agent_models import ReActResult
+        expected_result = ReActResult(completed=True, final_response="Sync result")
+        mock_agent._run_sync = Mock(return_value=expected_result)
+
+        result = mock_agent.run("test input")
+
+        # 验证调用了 _run_sync
+        mock_agent._run_sync.assert_called_once_with("test input")
+        assert result.final_response == "Sync result"
+
+        # 验证未调用 run_until_complete
+        mock_loop.run_until_complete.assert_not_called()
+
+    def test_run_with_stopped_loop_calls_run_until_complete(self, mock_agent, monkeypatch):
+        """[P0-2] Test: run() 在未运行的事件循环中调用 loop.run_until_complete(run_async)"""
+        import asyncio
+        from unittest.mock import Mock
+        from unittest.mock import sentinel
+
+        # 模拟未运行的事件循环
+        mock_loop = Mock()
+        mock_loop.is_running = Mock(return_value=False)
+
+        from src.domain.agents.conversation_agent_models import ReActResult
+        expected_result = ReActResult(completed=True, final_response="Async result")
+        mock_loop.run_until_complete = Mock(return_value=expected_result)
+
+        monkeypatch.setattr(asyncio, "get_event_loop", lambda: mock_loop)
+
+        # 模拟 run_async - 使用 sentinel 避免 coroutine 泄漏
+        mock_run_async_coro = sentinel.run_async_coro
+        mock_agent.run_async = Mock(return_value=mock_run_async_coro)
+
+        result = mock_agent.run("test input")
+
+        # 验证 run_async 被调用
+        mock_agent.run_async.assert_called_once_with("test input")
+
+        # 验证 run_until_complete 被调用，且传入了 run_async 的返回值
+        mock_loop.run_until_complete.assert_called_once_with(mock_run_async_coro)
+        assert result.final_response == "Async result"
+
+    def test_run_with_runtime_error_calls_asyncio_run(self, mock_agent, monkeypatch):
+        """[P0-2] Test: run() 在 get_event_loop 抛 RuntimeError 时调用 asyncio.run(run_async)"""
+        import asyncio
+        from unittest.mock import Mock
+        from unittest.mock import sentinel
+
+        # 模拟 get_event_loop 抛出 RuntimeError
+        def mock_get_loop():
+            raise RuntimeError("no running event loop")
+
+        monkeypatch.setattr(asyncio, "get_event_loop", mock_get_loop)
+
+        from src.domain.agents.conversation_agent_models import ReActResult
+        expected_result = ReActResult(completed=True, final_response="Asyncio.run result")
+
+        # 模拟 asyncio.run
+        mock_asyncio_run = Mock(return_value=expected_result)
+        monkeypatch.setattr(asyncio, "run", mock_asyncio_run)
+
+        # 模拟 run_async - 使用 sentinel 避免 coroutine 泄漏
+        mock_run_async_coro = sentinel.run_async_coro
+        mock_agent.run_async = Mock(return_value=mock_run_async_coro)
+
+        result = mock_agent.run("test input")
+
+        # 验证 run_async 被调用
+        mock_agent.run_async.assert_called_once_with("test input")
+
+        # 验证 asyncio.run 被调用，且传入了 run_async 的返回值
+        mock_asyncio_run.assert_called_once_with(mock_run_async_coro)
+        assert result.final_response == "Asyncio.run result"
+
 
 # =============================================================================
 # TestPublishDecision - EventBus publishing (1 test)
@@ -572,7 +838,7 @@ class TestPublishDecision:
 
 
 class TestExecuteStep:
-    """Test execute_step single ReAct step"""
+    """Test execute_step single ReAct step + P0-CRITICAL 事件循环边界测试"""
 
     def test_execute_step_returns_react_step(self, mock_agent):
         """Test: execute_step returns ReActStep with thought and action"""
@@ -584,3 +850,102 @@ class TestExecuteStep:
         assert hasattr(result, "thought")
         assert hasattr(result, "action")
         assert mock_agent._current_input == "test input"
+
+    # ==================== P0-1: Event Loop Boundary Tests ====================
+
+    def test_execute_step_with_stopped_loop_uses_run_until_complete(self, mock_agent, monkeypatch):
+        """[P0-1] Test: execute_step 在未运行的事件循环中使用 run_until_complete"""
+        import asyncio
+        from unittest.mock import MagicMock, Mock
+
+        # 模拟未运行的事件循环
+        mock_loop = MagicMock()
+        mock_loop.is_running = Mock(return_value=False)
+        mock_loop.run_until_complete = Mock(side_effect=[
+            "思考结果",  # think 的返回值
+            {"action_type": "respond"}  # decide_action 的返回值
+        ])
+
+        monkeypatch.setattr(asyncio, "get_event_loop", lambda: mock_loop)
+
+        result = mock_agent.execute_step("test input")
+
+        # 验证调用了 run_until_complete
+        assert mock_loop.run_until_complete.call_count == 2  # think + decide_action
+        assert result.thought == "思考结果"
+        assert result.action == {"action_type": "respond"}
+
+    def test_execute_step_with_running_loop_uses_fallback(self, mock_agent, monkeypatch):
+        """[P0-1] Test: execute_step 在已运行的事件循环中使用降级占位值"""
+        import asyncio
+        from unittest.mock import Mock
+
+        # 模拟已运行的事件循环
+        mock_loop = Mock()
+        mock_loop.is_running = Mock(return_value=True)
+
+        monkeypatch.setattr(asyncio, "get_event_loop", lambda: mock_loop)
+
+        result = mock_agent.execute_step("test input")
+
+        # 验证使用降级值
+        assert result.thought == "思考中..."
+        assert result.action == {"action_type": "continue"}
+
+        # 验证未调用 run_until_complete (因为循环已运行)
+        mock_loop.run_until_complete.assert_not_called()
+
+    def test_execute_step_with_runtime_error_uses_fallback(self, mock_agent, monkeypatch):
+        """[P0-1] Test: execute_step 在 get_event_loop 抛 RuntimeError 时使用降级值"""
+        import asyncio
+
+        # 模拟 get_event_loop 抛出 RuntimeError
+        def mock_get_loop():
+            raise RuntimeError("no running event loop")
+
+        monkeypatch.setattr(asyncio, "get_event_loop", mock_get_loop)
+
+        result = mock_agent.execute_step("test input")
+
+        # 验证使用降级值
+        assert result.thought == "思考中..."
+        assert result.action == {"action_type": "continue"}
+
+    def test_execute_step_think_exception_uses_fallback(self, mock_agent, monkeypatch):
+        """[P0-1] Test: execute_step 在 llm.think 异常时使用降级值"""
+        import asyncio
+        from unittest.mock import Mock
+
+        # 模拟未运行的循环，但 think 抛出异常
+        mock_loop = Mock()
+        mock_loop.is_running = Mock(return_value=False)
+        mock_loop.run_until_complete = Mock(side_effect=RuntimeError("think failed"))
+
+        monkeypatch.setattr(asyncio, "get_event_loop", lambda: mock_loop)
+
+        result = mock_agent.execute_step("test input")
+
+        # 验证异常被捕获，使用降级值
+        assert result.thought == "思考中..."
+        assert result.action == {"action_type": "continue"}
+
+    def test_execute_step_decide_action_exception_uses_fallback(self, mock_agent, monkeypatch):
+        """[P0-1] Test: execute_step 在 llm.decide_action 异常时使用降级值"""
+        import asyncio
+        from unittest.mock import Mock
+
+        # 模拟未运行的循环，think 成功但 decide_action 抛出异常
+        mock_loop = Mock()
+        mock_loop.is_running = Mock(return_value=False)
+        mock_loop.run_until_complete = Mock(side_effect=[
+            "思考结果",  # think 成功
+            RuntimeError("decide_action failed")  # decide_action 失败
+        ])
+
+        monkeypatch.setattr(asyncio, "get_event_loop", lambda: mock_loop)
+
+        result = mock_agent.execute_step("test input")
+
+        # 验证 think 成功，但 action 使用降级值
+        assert result.thought == "思考结果"
+        assert result.action == {"action_type": "continue"}

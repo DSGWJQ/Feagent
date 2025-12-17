@@ -40,8 +40,11 @@ from src.domain.entities.run import Run
 from src.domain.exceptions import DomainError
 from src.domain.ports.agent_repository import AgentRepository
 from src.domain.ports.run_repository import RunRepository
-from src.lc.agents.langgraph_task_executor import AgentState, create_langgraph_task_executor
-from src.lc.agents.task_executor_adapter import extract_final_answer
+from src.infrastructure.lc_adapters.agents.langgraph_task_executor import (
+    AgentState,
+    create_langgraph_task_executor,
+)
+from src.infrastructure.lc_adapters.agents.task_executor_adapter import extract_final_answer
 
 
 @dataclass

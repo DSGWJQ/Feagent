@@ -11,6 +11,325 @@
     position: fixed;
     top: 0;
     left: 0;
+    background-color: var(--color-bg-canvas);
+    z-index: 100;
+    overflow: hidden;
+    color: var(--color-text-primary);
+}
+
+.loadingContainer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    width: 100vw;
+    background: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+    font-family: var(--font-family-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ==================== Control Bar (Toolbar) ==================== */
+.controlBar {
+    height: 64px;
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    z-index: 10;
+}
+
+.logoArea {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.logoIcon {
+    font-size: 24px;
+    color: var(--color-text-primary);
+}
+
+.titleGroup {
+    display: flex;
+    flex-direction: column;
+}
+
+.title {
+    font-family: var(--font-family-base);
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-text-primary);
+    line-height: 1.2;
+    letter-spacing: 0.05em;
+}
+
+.subtitle {
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.actionsArea {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+/* Status Indicators - Engineering Dashboard Style */
+.statusIndicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 2px;
+    background: var(--color-bg-canvas);
+    border: 1px solid var(--color-border-subtle);
+    font-size: var(--font-caption-size);
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-mono);
+    text-transform: uppercase;
+}
+
+.statusConnected {
+    color: var(--color-action-primary-bg);
+    /* Use brand color instead of strict text */
+    border-color: var(--color-action-primary-bg);
+}
+
+.statusConnected::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    background: var(--color-action-primary-bg);
+    display: inline-block;
+    margin-right: 4px;
+}
+
+.statusDisconnected {
+    color: var(--color-signal-error);
+    border-color: var(--color-signal-error);
+}
+
+.statusDisconnected::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    background: var(--color-signal-error);
+    display: inline-block;
+    margin-right: 4px;
+}
+
+/* ==================== Drafting Table (Content) ==================== */
+.draftingTable {
+    flex: 1;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Palette (Left Panel) - Blueprint Drawer */
+.paletteContainer {
+    width: 280px;
+    background: var(--color-bg-surface);
+    border-right: 1px solid var(--color-border-subtle);
+    display: flex;
+    flex-direction: column;
+    z-index: 5;
+}
+
+/* Canvas Area - Dot Grid Engineering Workspace */
+.canvasArea {
+    flex: 1;
+    position: relative;
+    background-color: var(--color-bg-canvas);
+    /* Dot Matrix Grid Background */
+    background-image: radial-gradient(var(--color-border-subtle) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* ReactFlow Overrides - Industrial Controls */
+.canvasArea :global(.react-flow__renderer) {
+    /* Ensure flow takes full space */
+}
+
+.canvasArea :global(.react-flow__controls) {
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 2px;
+    box-shadow: 4px 4px 0 0 rgba(0, 0, 0, 0.1);
+}
+
+.canvasArea :global(.react-flow__controls button) {
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: var(--color-text-primary);
+    fill: var(--color-text-primary);
+    background: var(--color-bg-surface);
+    transition: all var(--duration-fast) var(--ease-mechanical);
+}
+
+.canvasArea :global(.react-flow__controls button:last-child) {
+    border-bottom: none;
+}
+
+.canvasArea :global(.react-flow__controls button:hover) {
+    background: var(--color-action-primary-bg);
+    color: var(--color-action-primary-text);
+    fill: var(--color-action-primary-text);
+}
+
+.canvasArea :global(.react-flow__controls button:active) {
+    transform: translate(2px, 2px);
+}
+
+/* Chat Panel (Right Panel) - Command Terminal */
+.chatPanel {
+    width: 400px;
+    background: var(--color-bg-surface);
+    border-left: 1px solid var(--color-border-subtle);
+    display: flex;
+    flex-direction: column;
+    transition: width var(--duration-normal) var(--ease-mechanical);
+    z-index: 5;
+}
+
+.chatPanelCollapsed {
+    width: 48px;
+}
+
+.chatHeader {
+    height: 48px;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-surface);
+}
+
+.chatTitle {
+    font-family: var(--font-family-mono);
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-text-primary);
+    margin: 0;
+    font-size: var(--font-caption-size);
+    letter-spacing: 0.05em;
+}
+
+.chatContent {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    background: var(--color-bg-canvas);
+}
+
+/* ==================== Floating Panels (Config) ==================== */
+/* Config Panel - Styled Drawer/NeoCard */
+.configDrawer {
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-action-primary-bg);
+    box-shadow: 8px 8px 0 0 rgba(0, 0, 0, 0.1);
+}
+
+.configDrawerHeader {
+    background: var(--color-action-primary-bg);
+    color: var(--color-action-primary-text);
+    padding: 16px 20px;
+    font-family: var(--font-family-mono);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: var(--font-caption-size);
+    border-bottom: 1px solid var(--color-action-primary-bg);
+}
+
+.configDrawerContent {
+    padding: 24px;
+    background: var(--color-bg-surface);
+}
+
+/* ==================== Responsive Behavior ==================== */
+@media (max-width: 1400px) {
+    .chatPanel {
+        width: 350px;
+    }
+
+    .paletteContainer {
+        width: 240px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .controlBar {
+        padding: 0 20px;
+    }
+
+    .chatPanel {
+        width: 300px;
+    }
+
+    .paletteContainer {
+        width: 220px;
+    }
+}
+
+@media (max-width: 768px) {
+    .controlBar {
+        height: 56px;
+        padding: 0 16px;
+    }
+
+    .title {
+        font-size: 0.9rem;
+    }
+
+    .subtitle {
+        display: none;
+    }
+
+    .chatPanel {
+        position: absolute;
+        right: 0;
+        top: 0;
+        height: 100%;
+        width: 320px;
+        transform: translateX(100%);
+        transition: transform 0.3s var(--ease-mechanical);
+    }
+
+    .chatPanel.active {
+        transform: translateX(0);
+    }
+
+    .paletteContainer {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 260px;
+        transform: translateX(-100%);
+        transition: transform 0.3s var(--ease-mechanical);
+    }
+
+    .paletteContainer.active {
+        transform: translateX(0);
+    }
+}
+
+.pageContainer {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
     background-color: var(--paper);
     z-index: 100;
     overflow: hidden;

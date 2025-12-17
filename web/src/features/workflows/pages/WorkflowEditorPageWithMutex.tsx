@@ -40,6 +40,7 @@ import NodeConfigPanel from '../components/NodeConfigPanel';
 import CodeExportModal from '../components/CodeExportModal';
 import WorkflowAIChatWithExecution from '@/shared/components/WorkflowAIChatWithExecution';
 import { useWorkflowInteraction } from '../contexts/WorkflowInteractionContext';
+import { NeoButton } from '@/shared/components/common/NeoButton';
 import {
   StartNode,
   EndNode,
@@ -60,9 +61,9 @@ import {
 } from '../components/nodes';
 import { ExecutionOverlay } from '../components/ExecutionOverlay';
 import { getDefaultNodeData } from '../utils/nodeUtils';
-import { ThemeToggle } from '@/shared/components/ThemeToggle';
 import { Divider } from 'antd';
-import styles from '../styles/drafting.module.css';
+import styles from '../styles/sim-editor.module.css';
+
 
 /**
  * 节点类型映射
@@ -197,8 +198,10 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     },
   });
 
+  const isDemo = workflowId === 'demo-draft';
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { workflowData, isLoadingWorkflow, workflowError } = useWorkflow(workflowId);
+  const { workflowData, isLoadingWorkflow, workflowError } = useWorkflow(isDemo ? '' : workflowId);
 
   /**
    * WebSocket 画布同步
@@ -270,7 +273,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     startExecution: wsStartExecution,
   } = useCanvasSync({
     workflowId,
-    enabled: !!workflowId && isInitialized,
+    enabled: !!workflowId && isInitialized && !isDemo,
     onNodesChange: handleRemoteNodesChange,
     onEdgesChange: handleRemoteEdgesChange,
     onExecutionStatus: handleExecutionStatus,
@@ -502,8 +505,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         sourceHandle: edge.sourceHandle || undefined,
         label: (edge.label as string | undefined) || null,
         condition: null,
-        label: (edge.label as string | undefined) || null,
-        condition: null,
       }));
 
       await updateWorkflow(workflowId, {
@@ -546,6 +547,11 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
   // 初始化时加载工作流
   useEffect(() => {
+    if (isDemo && !isInitialized) {
+      setIsInitialized(true);
+      return;
+    }
+
     if (workflowData && !isInitialized) {
       console.log('Loading workflow:', workflowData.id, workflowData.name);
 
@@ -589,11 +595,11 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       <div className={styles.controlBar}>
         <div className={styles.logoArea}>
           <div className={styles.logoIcon}>
-            <span>🏛️</span>
+            sim
           </div>
           <div className={styles.titleGroup}>
-            <span className={styles.title}>Drafting Room</span>
-            <span className={styles.subtitle}>Neoclassical Workflow Architect</span>
+            <span className={styles.title}>Workflow Studio</span>
+            <span className={styles.subtitle}>v1.0.0</span>
           </div>
         </div>
 
@@ -601,38 +607,27 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
           {/* Status Indicator */}
           <div className={`${styles.statusIndicator} ${wsConnected ? styles.statusConnected : styles.statusDisconnected}`}>
             {wsConnected ? <WifiOutlined /> : <DisconnectOutlined />}
-            {wsConnected ? 'SYNC ACTIVE' : 'OFFLINE'}
+            {wsConnected ? 'Connected' : 'Offline'}
           </div>
 
-          <Divider type="vertical" style={{ borderColor: 'var(--neo-border)', height: '24px' }} />
+          <Divider type="vertical" style={{ borderColor: '#e5e7eb', height: '20px' }} />
 
-          <Button
+          <NeoButton
+            variant="secondary"
             icon={<SaveOutlined />}
             onClick={handleSave}
             loading={isSaving}
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--neo-border)',
-              color: 'var(--neo-text)'
-            }}
           >
-            Save Blueprint
-          </Button>
-          <Button
-            type="primary"
+            Save
+          </NeoButton>
+          <NeoButton
+            variant="primary"
             icon={<PlayCircleOutlined />}
             onClick={handleExecute}
             loading={isExecuting}
-            style={{
-              background: 'var(--neo-gold)',
-              borderColor: 'var(--neo-gold)',
-              color: '#000',
-              fontWeight: 600
-            }}
           >
-            Execute Protocol
-          </Button>
-          <ThemeToggle showTooltip />
+            Run
+          </NeoButton>
         </div>
       </div>
 
@@ -701,13 +696,13 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         <div className={`${styles.chatPanel} ${chatPanelCollapsed ? styles.chatPanelCollapsed : ''}`}>
           <div className={styles.chatHeader}>
             {!chatPanelCollapsed && <h3 className={styles.chatTitle}>Architect's Log</h3>}
-            <Button
-              type="text"
+            <NeoButton
+              variant="ghost"
               size="small"
               icon={chatPanelCollapsed ? <RightOutlined /> : <LeftOutlined />}
               onClick={() => setChatPanelCollapsed(!chatPanelCollapsed)}
-              style={{ color: 'var(--neo-text-2)' }}
             />
+
           </div>
 
           {!chatPanelCollapsed && (

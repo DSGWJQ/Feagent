@@ -575,3 +575,93 @@ class TestEventBusErrorHandling:
 
         # Assert
         assert handler2_called is True, "正常处理器应该被调用"
+
+    def test_unsubscribe_nonexistent_event_type_should_return_false(self):
+        """测试：取消订阅不存在的事件类型应返回False
+
+        覆盖 event_bus.py:154-155 (event_type not in _subscribers)
+        """
+        from src.domain.services.event_bus import Event, EventBus
+
+        event_bus = EventBus()
+
+        @dataclass
+        class UnsubscribedEvent(Event):
+            pass
+
+        async def handler(event: Event):
+            pass
+
+        # Act: 尝试取消订阅从未订阅的事件类型
+        result = event_bus.unsubscribe(UnsubscribedEvent, handler)
+
+        # Assert
+        assert result is False, "取消订阅不存在的事件类型应返回False"
+
+    def test_unsubscribe_existing_handler_should_return_true(self):
+        """测试：取消订阅已存在的处理器应返回True
+
+        覆盖 event_bus.py:157-163 (handler in handlers, remove and return True)
+        """
+        from src.domain.services.event_bus import Event, EventBus
+
+        event_bus = EventBus()
+        handler_called = False
+
+        @dataclass
+        class TestEvent(Event):
+            pass
+
+        async def handler(event: Event):
+            nonlocal handler_called
+            handler_called = True
+
+        # Arrange: 先订阅
+        event_bus.subscribe(TestEvent, handler)
+
+        # Act: 取消订阅
+        result = event_bus.unsubscribe(TestEvent, handler)
+
+        # Assert
+        assert result is True, "取消订阅已存在的处理器应返回True"
+
+        # 验证：发布事件后处理器不应被调用
+        asyncio.run(event_bus.publish(TestEvent()))
+        assert handler_called is False, "取消订阅后处理器不应被调用"
+
+    def test_middleware_exception_should_block_event_propagation(self):
+        """测试：中间件抛出异常应阻止事件传播
+
+        覆盖 event_bus.py:244-247 (middleware exception handling)
+
+        业务场景：
+        - 协调者Agent的验证中间件抛出异常
+        - 事件不应该被记录到日志
+        - 订阅者不应该收到事件
+        """
+        from src.domain.services.event_bus import Event, EventBus
+
+        event_bus = EventBus()
+        handler_called = False
+
+        async def failing_middleware(event: Event):
+            raise RuntimeError("中间件验证失败")
+
+        async def handler(event: Event):
+            nonlocal handler_called
+            handler_called = True
+
+        @dataclass
+        class TestEvent(Event):
+            pass
+
+        # Arrange
+        event_bus.add_middleware(failing_middleware)
+        event_bus.subscribe(TestEvent, handler)
+
+        # Act
+        asyncio.run(event_bus.publish(TestEvent()))
+
+        # Assert
+        assert handler_called is False, "中间件异常应阻止事件到达订阅者"
+        assert len(event_bus.event_log) == 0, "中间件异常应阻止事件记录到日志"

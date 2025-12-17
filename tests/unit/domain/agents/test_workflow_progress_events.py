@@ -423,10 +423,120 @@ class TestProgressEventBusIntegration:
         assert len(subscriber2_events) > 0
 
 
+# =============================================================================
+# Gap-Filling Tests: get_progress_summary() Edge Cases (Lines 2273-2288)
+# =============================================================================
+
+
+class TestProgressSummaryEdgeCases:
+    """测试get_progress_summary()的边界情况"""
+
+    @pytest.mark.asyncio
+    async def test_progress_summary_with_total_nodes_zero(self):
+        """测试_total_nodes为0时的进度摘要计算
+
+        目标行：workflow_agent.py line 2280
+        逻辑：total = self._total_nodes if self._total_nodes > 0 else len(self._nodes)
+        """
+        from src.domain.agents.workflow_agent import WorkflowAgent
+        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.node_registry import NodeFactory, NodeRegistry, NodeType
+
+        # 创建agent
+        ctx = WorkflowContext(
+            workflow_id="test_wf",
+            session_context=SessionContext(
+                session_id="test_session",
+                global_context=GlobalContext(user_id="test_user"),
+            ),
+        )
+        factory = NodeFactory(NodeRegistry())
+        agent = WorkflowAgent(workflow_context=ctx, node_factory=factory)
+
+        # 添加5个节点
+        for i in range(5):
+            node = factory.create(NodeType.GENERIC, {"name": f"node_{i}"})
+            agent.add_node(node)
+
+        # 验证：_total_nodes默认为0
+        assert agent._total_nodes == 0
+
+        # 获取进度摘要
+        summary = agent.get_progress_summary()
+
+        # 验证：total_nodes应该等于len(self._nodes)=5
+        assert summary["total_nodes"] == 5
+        assert summary["completed_nodes"] == 0
+        assert summary["progress"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_progress_summary_metadata_structure(self):
+        """测试进度摘要的元数据结构正确性
+
+        目标行：workflow_agent.py lines 2282-2288
+        验证返回字典的所有必需键
+        """
+        from src.domain.agents.workflow_agent import ExecutionStatus, WorkflowAgent
+        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.node_registry import NodeFactory, NodeRegistry, NodeType
+
+        # 创建agent
+        ctx = WorkflowContext(
+            workflow_id="test_wf",
+            session_context=SessionContext(
+                session_id="test_session",
+                global_context=GlobalContext(user_id="test_user"),
+            ),
+        )
+        factory = NodeFactory(NodeRegistry())
+
+        from unittest.mock import AsyncMock, MagicMock
+        node_executor = MagicMock()
+        node_executor.execute = AsyncMock(return_value={"done": True})
+
+        agent = WorkflowAgent(
+            workflow_context=ctx,
+            node_factory=factory,
+            node_executor=node_executor
+        )
+
+        # 添加5个节点
+        nodes = []
+        for i in range(5):
+            node = factory.create(NodeType.GENERIC, {"name": f"node_{i}"})
+            agent.add_node(node)
+            nodes.append(node)
+
+        # 执行3个节点（使用execute_node_with_progress以填充_executed_nodes）
+        for node in nodes[:3]:
+            await agent.execute_node_with_progress(node.id)
+
+        # 设置执行状态
+        agent._execution_status = ExecutionStatus.RUNNING
+
+        # 获取进度摘要
+        summary = agent.get_progress_summary()
+
+        # 验证：包含所有必需字段
+        assert "total_nodes" in summary
+        assert "completed_nodes" in summary
+        assert "progress" in summary
+        assert "status" in summary
+        assert "executed_nodes" in summary
+
+        # 验证：值正确
+        assert summary["total_nodes"] == 5
+        assert summary["completed_nodes"] == 3
+        assert summary["progress"] == 0.6  # 3/5 = 0.6 (小数格式，非百分比)
+        assert summary["status"] == ExecutionStatus.RUNNING.value
+        assert len(summary["executed_nodes"]) == 3
+
+
 # 导出
 __all__ = [
     "TestExecutionProgressEventStructure",
     "TestProgressEventEmissionDuringExecution",
     "TestWorkflowProgressTracking",
     "TestProgressEventBusIntegration",
+    "TestProgressSummaryEdgeCases",
 ]

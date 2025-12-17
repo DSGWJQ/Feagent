@@ -2,7 +2,7 @@
 
 职责：
 1. 执行单个 Task
-2. 调用 LangChain Agent
+2. 调用 TaskRunner（端口）
 3. 处理工具调用
 4. 记录执行日志（TaskEvent）
 5. 超时控制
@@ -17,7 +17,7 @@
 
 为什么需要 TaskExecutor？
 - Task 执行逻辑复杂（调用 LLM、工具等）
-- 需要与 LangChain 集成
+- 需要与任务执行引擎集成（通过端口解耦）
 - 需要统一的错误处理
 - 需要支持上下文传递
 - 需要记录执行日志
@@ -29,6 +29,7 @@ import signal
 from typing import Any
 
 from src.domain.entities.task import Task
+from src.domain.ports.task_runner import TaskRunner
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -173,8 +174,10 @@ class TaskExecutor:
         异常：
             TaskExecutionTimeout: 执行超时
         """
+        # FIXME (P1-3): Domain层不应直接依赖Infrastructure层
+        # TODO: 创建 TaskExecutorPort 协议并通过依赖注入传入
         # 导入 LangChain Agent（延迟导入，避免循环依赖）
-        from src.lc.agents.task_executor import execute_task
+        from src.infrastructure.lc_adapters.agents.task_executor import execute_task
 
         # 注意：signal.alarm 在 Windows 上不可用
         # 这里使用简单的实现，实际生产环境应该使用 threading.Timer 或 asyncio.wait_for

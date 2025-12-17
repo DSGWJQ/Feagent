@@ -214,7 +214,10 @@ class ConversationAgentHelpersMixin:
         从 LLM 客户端或配置中获取模型信息，并设置到 SessionContext。
         """
         from src.config import settings
-        from src.lc.model_metadata import get_model_metadata
+
+        # FIXME (P1-3): Domain层不应直接依赖Infrastructure层
+        # TODO: 创建 ModelMetadataPort 协议并通过依赖注入传入
+        from src.infrastructure.lc_adapters.model_metadata import get_model_metadata
 
         logger = logging.getLogger(__name__)
 

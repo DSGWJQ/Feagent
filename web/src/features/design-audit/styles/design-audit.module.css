@@ -1,0 +1,241 @@
+/* DesignAuditPage.module.css - Master Edition */
+
+.container {
+    min-height: 100vh;
+    background: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+    display: flex;
+    flex-direction: column;
+    /* Subtle gradient mesh background hint */
+    background-image: radial-gradient(circle at 15% 50%, rgba(15, 118, 110, 0.08), transparent 25%),
+        radial-gradient(circle at 85% 30%, rgba(255, 255, 255, 0.03), transparent 25%);
+}
+
+/* Glassmorphism Header */
+.header {
+    padding: var(--space-lg) var(--space-xl);
+    border-bottom: 1px solid var(--color-border-glass);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    background: var(--color-bg-glass);
+    backdrop-filter: var(--glass-blur) var(--glass-saturation);
+    -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
+
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.title {
+    margin: 0;
+    font-family: var(--font-family-base);
+    /* Switch to base for cleaner look, or mono if preferred */
+    font-size: var(--font-h1-size);
+    font-weight: var(--font-h1-weight);
+    letter-spacing: var(--font-h1-tracking);
+    color: var(--color-text-primary);
+}
+
+.controls {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.grid {
+    display: flex;
+    flex: 1;
+    max-width: 1600px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.panel {
+    flex: 1;
+    padding: var(--space-xl);
+    overflow-y: auto;
+    /* Use a spacer instead of border-right for cleaner look */
+}
+
+.panelHeader {
+    margin-bottom: 3rem;
+    /* More breathing room */
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.panelTitle {
+    font-family: var(--font-family-mono);
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--color-brand-accent);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.panelTitle::after {
+    content: '';
+    height: 1px;
+    flex: 1;
+    background: var(--color-border-subtle);
+    margin-left: var(--space-md);
+}
+
+/* Sections */
+.section {
+    margin-bottom: 5rem;
+    opacity: 0;
+    /* Animated entry */
+    animation: fadeInSlideUp var(--duration-normal) var(--ease-mechanical) forwards;
+}
+
+/* Stagger animations */
+.section:nth-child(1) {
+    animation-delay: 0.1s;
+}
+
+.section:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.section:nth-child(3) {
+    animation-delay: 0.3s;
+}
+
+.section:nth-child(4) {
+    animation-delay: 0.4s;
+}
+
+.section:nth-child(5) {
+    animation-delay: 0.5s;
+}
+
+@keyframes fadeInSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.sectionTitle {
+    font-size: var(--font-d1-size);
+    font-weight: var(--font-d1-weight);
+    letter-spacing: var(--font-d1-tracking);
+    margin: 0 0 var(--space-lg) 0;
+    color: var(--color-text-primary);
+    line-height: var(--font-d1-line-height);
+}
+
+.sectionBody {
+    font-size: var(--font-body-size);
+    line-height: var(--font-body-line-height);
+    color: var(--color-text-secondary);
+    max-width: 60ch;
+    /* Optimum reading width */
+    margin-bottom: var(--space-xl);
+}
+
+.componentRow {
+    display: flex;
+    gap: var(--space-lg);
+    /* Larger gaps */
+    margin-bottom: var(--space-lg);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* Typography Scale Visualizer */
+.typeRow {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: var(--space-lg);
+    align-items: baseline;
+    padding: var(--space-md) 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.typeMeta {
+    font-family: var(--font-family-mono);
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+}
+
+/* Color Chips - Premium Cards */
+.colorGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: var(--space-lg);
+    margin-top: var(--space-lg);
+}
+
+.colorChip {
+    height: 120px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: var(--space-md);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--duration-fast) var(--ease-spring), box-shadow var(--duration-fast) var(--ease-mechanical);
+    cursor: default;
+}
+
+.colorChip:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.colorName {
+    font-family: var(--font-family-mono);
+    font-size: 0.75rem;
+    color: inherit;
+    /* Contrasting color handled inline or via mix-blend-mode if complex */
+    opacity: 0.9;
+    font-weight: 600;
+}
+
+.colorValue {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.checkMark {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    color: black;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Mobile Preview Section */
+.mobilePeviewContainer {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-xl);
+    align-items: flex-start;
+    padding: var(--space-xl);
+    background: var(--color-bg-surface-active);
+    /* Contrast background */
+    border-radius: 24px;
+    margin-top: var(--space-xl);
+}
+
+.mobilePreviewText {
+    flex: 1;
+    padding-top: var(--space-lg);
+}

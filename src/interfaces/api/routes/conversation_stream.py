@@ -19,13 +19,12 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.domain.services.conversation_flow_emitter import (
-    ConversationFlowEmitter,
-)
+from src.domain.agents.conversation_agent import ConversationAgent
+from src.interfaces.api.dependencies.agents import get_conversation_agent
 from src.interfaces.api.services.sse_emitter_handler import (
     get_session_manager,
 )
@@ -57,6 +56,7 @@ class SessionStatusResponse(BaseModel):
 async def stream_conversation(
     request: Request,
     body: ConversationStreamRequest,
+    conversation_agent: ConversationAgent = Depends(get_conversation_agent),
 ) -> StreamingResponse:
     """流式对话端点
 
@@ -96,57 +96,24 @@ async def stream_conversation(
     )
 
     async def run_conversation():
-        """运行对话逻辑"""
+        """运行对话逻辑（使用真实的ConversationAgent）"""
         try:
             # 发送开始事件
             await emitter.emit_thinking(f"收到消息：{body.message[:50]}...")
 
-            # TODO: 这里将集成真实的 ConversationAgent
-            # 目前使用模拟的 ReAct 循环
-            await simulate_react_loop(emitter, body.message, body.workflow_id)
+            # 使用真实的 ConversationAgent 处理消息
+            # 注意：ConversationAgent需要进一步集成emitter来实时发送事件
+            # 当前简化实现：直接调用agent并在完成后发送最终结果
+            result = await conversation_agent.run_async(body.message)
+
+            # 发送最终响应
+            await emitter.emit_final_response(result.get("response", "处理完成"))
+            await emitter.complete()
 
         except Exception as e:
             logger.error(f"Conversation error: {e}")
             await emitter.emit_error(str(e), error_code="CONVERSATION_ERROR")
             await emitter.complete()
-
-    async def simulate_react_loop(
-        emitter: ConversationFlowEmitter,
-        message: str,
-        workflow_id: str | None,
-    ):
-        """模拟 ReAct 循环（用于测试）
-
-        实际实现将调用 ConversationAgent.run_async()
-        """
-        # 模拟思考
-        await asyncio.sleep(0.1)
-        await emitter.emit_thinking("正在分析您的请求...")
-
-        # 模拟工具调用（如果涉及工作流）
-        if workflow_id:
-            await asyncio.sleep(0.1)
-            await emitter.emit_tool_call(
-                tool_name="workflow_query",
-                tool_id="wf_query_1",
-                arguments={"workflow_id": workflow_id, "action": "analyze"},
-            )
-
-            await asyncio.sleep(0.1)
-            await emitter.emit_tool_result(
-                tool_id="wf_query_1",
-                result={"status": "success", "nodes_count": 5},
-                success=True,
-            )
-
-        # 模拟最终响应
-        await asyncio.sleep(0.1)
-        await emitter.emit_final_response(
-            f"已处理您的请求：{message[:100]}。"
-            + (f" 工作流 {workflow_id} 包含 5 个节点。" if workflow_id else "")
-        )
-
-        await emitter.complete()
 
     # 启动对话任务
     asyncio.create_task(run_conversation())

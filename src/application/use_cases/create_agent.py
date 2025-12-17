@@ -32,7 +32,7 @@ from src.domain.ports.agent_repository import AgentRepository
 from src.domain.ports.task_repository import TaskRepository
 from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.services.agent_to_workflow_converter import AgentToWorkflowConverter
-from src.lc.chains.plan_generator import create_plan_generator_chain
+from src.infrastructure.lc_adapters.chains.plan_generator import create_plan_generator_chain
 
 
 @dataclass

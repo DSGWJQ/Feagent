@@ -13,6 +13,300 @@
 .container {
     position: relative;
     min-height: 100vh;
+    background-color: var(--color-bg-canvas);
+    /* Warm white / stone */
+    overflow-x: hidden;
+    color: var(--color-text-primary);
+}
+
+/* Pseudo-element for Stone Texture (Noise) */
+.container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    /* Subtle noise for stone effect */
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 0;
+    mix-blend-mode: multiply;
+}
+
+/* ========== The Lintel (Header) - Gemini's Scanner Design ========== */
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    /* Gemini's spec: 64px */
+    z-index: 100;
+    background: var(--color-bg-surface);
+    /* White background, not black */
+    backdrop-filter: none;
+
+    /* Structural border */
+    border-bottom: 1px solid var(--color-border-subtle);
+    box-shadow: none;
+
+    display: flex;
+    justify-content: center;
+}
+
+.headerContent {
+    width: 100%;
+    max-width: 1400px;
+    padding: 0 var(--space-xl);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    color: var(--color-text-primary);
+    /* Black text on white background */
+    font-size: 1.125rem;
+    font-family: var(--font-family-base);
+    /* Sans-serif */
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+.logoText {
+    color: var(--color-text-primary);
+    text-shadow: none;
+}
+
+.nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+/* Gemini's Nav Buttons - "The Scanner" Instant Inversion */
+.navBtn {
+    background: var(--color-bg-surface) !important;
+    /* White background */
+    color: var(--color-text-primary) !important;
+    /* Black text */
+    font-family: var(--font-family-base) !important;
+    font-weight: 500 !important;
+    font-size: 0.9rem !important;
+    padding: 0 24px !important;
+    height: 100% !important;
+    /* Full height of nav */
+    border-radius: 2px !important;
+    /* No rounding - sharp edges */
+    border: 1px solid var(--color-border-subtle) !important;
+    border-left: 1px solid var(--color-border-subtle) !important;
+    border-right: 1px solid var(--color-border-subtle) !important;
+    transition: all var(--duration-fast) ease !important;
+}
+
+.navBtn:hover {
+    /* Instant digital switching - no fade */
+    color: var(--color-action-primary-text) !important;
+    /* White text */
+    background: var(--color-action-primary-bg) !important;
+    /* Black background */
+    border-color: var(--color-action-primary-bg) !important;
+}
+
+/* ========== The Inscription (Hero) ========== */
+.hero {
+    position: relative;
+    z-index: 1;
+    min-height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding-top: 120px;
+    padding-bottom: 120px;
+
+    /* Gemini's Dot Matrix Grid (Blueprint/Schematic Style) */
+    background-image: radial-gradient(var(--color-border-subtle) 1px, transparent 1px);
+    background-size: 20px 20px;
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.heroContent {
+    max-width: 900px;
+    padding: 0 var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.betaPill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-text-primary);
+    /* Black border */
+    color: var(--color-text-primary);
+    /* Black text */
+    font-family: var(--font-family-base);
+    /* Sans-serif for industrial look */
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: var(--space-xl);
+    box-shadow: none;
+    /* Flat design */
+}
+
+.betaDot {
+    width: 6px;
+    height: 6px;
+    background: var(--color-text-primary);
+    /* Black dot */
+    border-radius: 50%;
+}
+
+.title {
+    font-family: var(--font-family-serif);
+    font-size: clamp(3.5rem, 5vw, 5rem);
+    line-height: 1.1;
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-xl);
+    letter-spacing: -0.03em;
+    font-weight: 700;
+}
+
+.titleItalic {
+    /* Gemini's Technical Monospace Treatment */
+    font-family: var(--font-family-mono);
+    font-style: italic;
+    font-weight: 400;
+    color: var(--color-text-secondary);
+    /* #404040 */
+    position: relative;
+    display: inline-block;
+}
+
+/* Gemini's Blinking Cursor Effect - "Live System Waiting for Input" */
+.titleItalic::after {
+    content: '_';
+    animation: blink 1s step-end infinite;
+    color: var(--color-text-primary);
+    font-style: normal;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+.subtitle {
+    font-size: 1.35rem;
+    color: var(--color-text-secondary);
+    max-width: 640px;
+    margin-bottom: var(--space-2xl);
+    line-height: 1.6;
+    font-family: var(--font-family-base);
+    font-weight: 300;
+}
+
+/* Gemini's "Hard" CTA Button - Mechanical Switch Effect */
+.ctaBtn {
+    appearance: none;
+    height: auto !important;
+    padding: 18px 42px !important;
+    font-family: var(--font-family-mono) !important;
+    /* Technical monospace */
+    font-weight: 600 !important;
+    font-size: 1rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 2px !important;
+    /* Sharp corners */
+
+    /* Idle state */
+    background: var(--color-action-primary-bg) !important;
+    /* Near-black */
+    color: var(--color-action-primary-text) !important;
+    /* White */
+    border: 2px solid var(--color-action-primary-bg) !important;
+    box-shadow: 0 0 0 0 var(--color-action-primary-bg) !important;
+
+    cursor: pointer;
+    position: relative;
+    transition: all var(--duration-fast) cubic-bezier(0.25, 1, 0.5, 1) !important;
+    /* Snappy, mechanical */
+}
+
+.ctaBtn:hover {
+    /* Color inversion + Tactical displacement */
+    background: var(--color-bg-surface) !important;
+    color: var(--color-action-primary-bg) !important;
+    transform: translate(-4px, -4px) !important;
+    box-shadow: 4px 4px 0 0 var(--color-action-primary-bg) !important;
+    /* Hard shadow */
+}
+
+.ctaBtn:active {
+    /* Mechanical click - snap back */
+    transform: translate(0, 0) !important;
+    box-shadow: 0 0 0 0 var(--color-action-primary-bg) !important;
+}
+
+/* ========== Features Section (The Reliefs) ========== */
+.section {
+    position: relative;
+    z-index: 1;
+    padding: var(--space-3xl) 0;
+    background: var(--color-bg-surface);
+    /* Top border as a separation line */
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+.sectionContent {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+}
+
+.sectionTitle {
+    text-align: center;
+    font-family: var(--font-family-serif);
+    font-size: 3rem;
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-2xl);
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+/* Decorative line under title */
+.sectionTitle::after {
+    content: '';
+    display: block;
+    width: 60px;
+    height: 2px;
+    background: var(--color-text-primary);
+    /* Black accent line */
+    margin: var(--space-md) auto 0;
+}
+
+.featureGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: var(--space-xl);
+}
+
+/* ========== The Foundation (Background) ========== */
+.container {
+    position: relative;
+    min-height: 100vh;
     background-color: var(--neo-bg);
     /* Warm white / stone */
     overflow-x: hidden;

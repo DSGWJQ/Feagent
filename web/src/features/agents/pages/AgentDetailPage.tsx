@@ -13,12 +13,13 @@
  * - 用户点击 Agent 列表中的某个 Agent 进入此页面
  */
 
-import { Button, Spin, Alert, Descriptions, List, Tag, Space } from 'antd';
+import { Spin, Alert, Descriptions, List, Tag, Space } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAgent } from '@/shared/hooks';
 import { PageShell } from '@/shared/components/layout/PageShell';
 import { NeoCard } from '@/shared/components/common/NeoCard';
+import { NeoButton } from '@/shared/components/common/NeoButton';
 import type { AgentTask } from '@/shared/types';
 import styles from '../styles/agents.module.css';
 
@@ -60,10 +61,11 @@ export const AgentDetailPage: React.FC = () => {
           type="error"
           showIcon
           action={
-            <Button size="small" onClick={handleBack}>
+            <NeoButton size="small" onClick={handleBack}>
               返回列表
-            </Button>
+            </NeoButton>
           }
+
         />
       </div>
     );
@@ -127,13 +129,15 @@ export const AgentDetailPage: React.FC = () => {
       title={agent.name}
       description={`ID: ${agent.id}`}
       actions={
-        <Button
+        <NeoButton
+          variant="ghost"
           icon={<ArrowLeftOutlined />}
           onClick={handleBack}
         >
           返回列表
-        </Button>
+        </NeoButton>
       }
+
     >
       <Space direction="vertical" size="large" className={styles.spaceFullWidth}>
         {/* Agent 基本信息 - 石碑铭文风 */}

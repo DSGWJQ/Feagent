@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.domain.value_objects.task_type import TaskType
-from src.lc.prompts.task_classification import get_classification_prompt
+from src.infrastructure.lc_adapters.prompts.task_classification import get_classification_prompt
 
 
 @dataclass

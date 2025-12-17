@@ -625,3 +625,26 @@ class TestCreatePayloadFromDict:
                     # 缺少必填字段
                 },
             )
+
+
+# ========================================
+# NodeConfig 子类验证器测试
+# ========================================
+
+
+class TestNodeConfigValidators:
+    """测试各种 NodeConfig 子类的 Pydantic 验证器"""
+
+    def test_llm_node_config_missing_both_prompt_and_messages_should_fail(self):
+        """测试：LLMNodeConfig 缺少 prompt 和 messages 应该失败 (lines 166-168)"""
+        from src.domain.agents.decision_payload import LLMNodeConfig
+
+        with pytest.raises(ValidationError) as exc_info:
+            LLMNodeConfig(
+                model="gpt-4",
+                temperature=0.7,
+                max_tokens=1000,
+                # 故意不提供 prompt 和 messages
+            )
+
+        assert "prompt 或 messages 必须提供其中之一" in str(exc_info.value)

@@ -9,14 +9,16 @@
  * 这是一个临时测试页面，后续会被 V0 生成的正式页面替换
  */
 
-import { Button, Spin, Alert, Space, Descriptions, Tag } from 'antd';
+import { Spin, Alert, Space, Descriptions, Tag } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAgents, useCreateAgent, useDeleteAgent } from '@/shared/hooks';
 import { PageShell } from '@/shared/components/layout/PageShell';
 import { NeoCard } from '@/shared/components/common/NeoCard';
+import { NeoButton } from '@/shared/components/common/NeoButton';
 import type { CreateAgentDto } from '@/shared/types';
 import styles from '../styles/agents.module.css';
+
 
 export default function AgentListTest() {
   const navigate = useNavigate();
@@ -59,29 +61,31 @@ export default function AgentListTest() {
       description="管理您的智能代理，查看状态与任务执行情况"
       actions={
         <Space>
-          <Button
-            type="primary"
+          <NeoButton
+            variant="primary"
             icon={<PlusOutlined />}
             onClick={() => navigate('/agents/create')}
           >
             创建 Agent
-          </Button>
-          <Button
-            type="default"
+          </NeoButton>
+          <NeoButton
+            variant="secondary"
             icon={<PlusOutlined />}
             onClick={handleCreateTest}
             loading={createAgent.isPending}
           >
             创建测试 Agent
-          </Button>
-          <Button
+          </NeoButton>
+          <NeoButton
+            variant="ghost"
             icon={<ReloadOutlined />}
             onClick={() => refetch()}
             loading={isLoading}
           >
             刷新
-          </Button>
+          </NeoButton>
         </Space>
+
       }
     >
       {/* 加载状态 */}
@@ -147,17 +151,18 @@ export default function AgentListTest() {
                       </Descriptions.Item>
                     </Descriptions>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--neo-border)', paddingTop: 'var(--space-3)' }}>
-                    <Button
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--color-border-subtle)', paddingTop: 'var(--space-md)' }}>
+                    <NeoButton
                       danger
+                      variant="ghost"
                       size="small"
                       onClick={(e) => handleDelete(e, agent.id)}
                       loading={deleteAgent.isPending}
-                      type="text"
                     >
                       删除
-                    </Button>
+                    </NeoButton>
                   </div>
+
                 </NeoCard>
               ))}
             </div>

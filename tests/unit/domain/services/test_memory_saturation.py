@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.domain.services.context_manager import (
+from src.domain.entities.session_context import (
     GlobalContext,
     SessionContext,
     ShortTermSaturatedEvent,

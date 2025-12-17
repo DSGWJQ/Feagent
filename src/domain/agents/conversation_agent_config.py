@@ -174,6 +174,27 @@ class StreamingConfig:
     enable_sse: bool = False
     enable_save_request_channel: bool = False
 
+    def validate(self, event_bus: Any | None, *, strict: bool = False) -> None:
+        """验证流式输出配置
+
+        参数：
+            event_bus: EventBus 实例（来自 ConversationAgentConfig）
+            strict: 是否严格模式（True=启用时必须有event_bus，False=仅警告）
+
+        异常：
+            ValueError: 如果 strict=True 且 enable_save_request_channel=True 但 event_bus 为 None
+        """
+        if self.enable_save_request_channel and event_bus is None:
+            msg = (
+                "enable_save_request_channel=True requires event_bus to be configured. "
+                "SaveRequest feature will not work without EventBus."
+            )
+            if strict:
+                raise ValueError(msg)
+            else:
+                import warnings
+                warnings.warn(msg, UserWarning, stacklevel=3)
+
 
 # =============================================================================
 # 资源限制配置
@@ -305,6 +326,10 @@ class ConversationAgentConfig:
         # 如果启用进度事件，必须提供 event_bus
         if self.workflow.enable_progress_events and self.event_bus is None:
             logger.warning("Progress events enabled but event_bus not provided")
+
+        # 流式输出配置验证（P2迭代3：SaveRequest系统改进）
+        if self.streaming:
+            self.streaming.validate(event_bus=self.event_bus, strict=False)  # 默认非严格
 
         logger.info("ConversationAgentConfig validation passed")
 

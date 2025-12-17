@@ -672,6 +672,239 @@ class TestSummaryGeneration:
 # === 测试：对话 Agent 可引用 ===
 
 
+class TestDataClassSerialization:
+    """数据类序列化测试"""
+
+    def test_subtask_error_to_dict(self):
+        """测试：SubtaskError.to_dict() 完整序列化"""
+        from src.domain.services.power_compressor import SubtaskError
+
+        error = SubtaskError(
+            subtask_id="sub_test",
+            error_type="NETWORK_ERROR",
+            error_message="连接失败",
+            occurred_at=datetime(2024, 1, 1, 12, 0, 0),
+            retryable=True,
+            source_document={"doc_id": "doc_123", "title": "网络错误处理"},
+        )
+
+        result = error.to_dict()
+
+        assert result["subtask_id"] == "sub_test"
+        assert result["error_type"] == "NETWORK_ERROR"
+        assert result["error_message"] == "连接失败"
+        assert result["occurred_at"] == "2024-01-01T12:00:00"
+        assert result["retryable"] is True
+        assert result["source_document"]["doc_id"] == "doc_123"
+
+    def test_unresolved_issue_to_dict(self):
+        """测试：UnresolvedIssue.to_dict() 完整序列化"""
+        from src.domain.services.power_compressor import UnresolvedIssue
+
+        issue = UnresolvedIssue(
+            issue_id="issue_abc",
+            description="数据不完整",
+            severity="critical",
+            blocked_nodes=["node_1", "node_2"],
+            suggested_actions=["补充数据", "验证完整性"],
+            related_knowledge={"kb_id": "kb_001", "title": "数据完整性规范"},
+        )
+
+        result = issue.to_dict()
+
+        assert result["issue_id"] == "issue_abc"
+        assert result["description"] == "数据不完整"
+        assert result["severity"] == "critical"
+        assert result["blocked_nodes"] == ["node_1", "node_2"]
+        assert result["suggested_actions"] == ["补充数据", "验证完整性"]
+        assert result["related_knowledge"]["kb_id"] == "kb_001"
+
+    def test_next_plan_item_to_dict(self):
+        """测试：NextPlanItem.to_dict() 完整序列化"""
+        from src.domain.services.power_compressor import NextPlanItem
+
+        plan = NextPlanItem(
+            action="重试失败节点",
+            priority=1,
+            rationale="节点可重试",
+            estimated_effort="low",
+            dependencies=["验证环境"],
+            knowledge_ref={"ref_id": "ref_001", "title": "重试策略"},
+        )
+
+        result = plan.to_dict()
+
+        assert result["action"] == "重试失败节点"
+        assert result["priority"] == 1
+        assert result["rationale"] == "节点可重试"
+        assert result["estimated_effort"] == "low"
+        assert result["dependencies"] == ["验证环境"]
+        assert result["knowledge_ref"]["ref_id"] == "ref_001"
+
+    def test_knowledge_source_to_dict(self):
+        """测试：KnowledgeSource.to_dict() 完整序列化"""
+        from src.domain.services.power_compressor import KnowledgeSource
+
+        source = KnowledgeSource(
+            source_id="ks_001",
+            title="API调用最佳实践",
+            source_type="document",
+            relevance_score=0.92,
+            applied_to_segments=["task_goal", "next_plan"],
+            content_preview="本文档介绍API调用的最佳实践...",
+        )
+
+        result = source.to_dict()
+
+        assert result["source_id"] == "ks_001"
+        assert result["title"] == "API调用最佳实践"
+        assert result["source_type"] == "document"
+        assert result["relevance_score"] == 0.92
+        assert result["applied_to_segments"] == ["task_goal", "next_plan"]
+        assert result["content_preview"] == "本文档介绍API调用的最佳实践..."
+
+
+class TestEdgeCaseCoverage:
+    """边界情况覆盖测试"""
+
+    def test_compress_summary_with_alternative_error_attributes(self):
+        """测试：compress_summary() 兼容不同错误属性名"""
+        from src.domain.services.power_compressor import PowerCompressor
+
+        compressor = PowerCompressor()
+
+        # 创建 mock 对象，使用替代属性名
+        class MockError:
+            def __init__(self):
+                self.node_id = "node_alt"
+                self.error_code = "ALT_ERROR"  # 使用 error_code 而非 error_type
+                self.message = "替代错误消息"  # 使用 message 而非 error_message
+                self.timestamp = datetime(2024, 1, 1, 10, 0, 0)  # 使用 timestamp 而非 occurred_at
+                self.retryable = True
+
+        class MockSummary:
+            def __init__(self):
+                self.workflow_id = "wf_alt"
+                self.session_id = "sess_alt"
+                self.errors = [MockError()]
+                self.success = False
+
+        summary = MockSummary()
+        result = compressor.compress_summary(summary)
+
+        assert result.workflow_id == "wf_alt"
+        assert result.session_id == "sess_alt"
+        assert len(result.subtask_errors) == 1
+        assert result.subtask_errors[0].error_type == "ALT_ERROR"
+        assert result.subtask_errors[0].error_message == "替代错误消息"
+
+    def test_link_knowledge_with_all_segments_present(self):
+        """测试：link_knowledge_to_segments() 所有段都存在时的链接"""
+        from src.domain.services.power_compressor import (
+            NextPlanItem,
+            PowerCompressedContext,
+            PowerCompressor,
+            SubtaskError,
+            UnresolvedIssue,
+        )
+
+        compressor = PowerCompressor()
+
+        # 创建包含所有段的上下文
+        ctx = PowerCompressedContext(
+            workflow_id="wf_full",
+            session_id="sess_full",
+            task_goal="完整任务",
+            subtask_errors=[
+                SubtaskError(
+                    subtask_id="s1",
+                    error_type="ERR",
+                    error_message="错误",
+                    occurred_at=datetime.now(),
+                )
+            ],
+            unresolved_issues=[
+                UnresolvedIssue(
+                    issue_id="i1",
+                    description="问题",
+                    severity="low",
+                )
+            ],
+            next_plan=[
+                NextPlanItem(
+                    action="计划",
+                    priority=1,
+                    rationale="原因",
+                )
+            ],
+        )
+
+        knowledge = [
+            {
+                "source_id": "kb_full",
+                "title": "全面知识",
+                "source_type": "knowledge_base",
+                "relevance_score": 0.9,
+            }
+        ]
+
+        result = compressor.link_knowledge_to_segments(ctx, knowledge)
+
+        assert len(result.knowledge_sources) == 1
+        # 应该链接到所有四个段
+        applied = result.knowledge_sources[0].applied_to_segments
+        assert "task_goal" in applied
+        assert "subtask_errors" in applied
+        assert "unresolved_issues" in applied
+        assert "next_plan" in applied
+
+    def test_eight_segment_summary_with_source_documents(self):
+        """测试：to_eight_segment_summary() 包含 source_document 的错误"""
+        from src.domain.services.power_compressor import (
+            PowerCompressedContext,
+            SubtaskError,
+        )
+
+        ctx = PowerCompressedContext(
+            workflow_id="wf_doc",
+            session_id="sess_doc",
+            task_goal="测试任务",
+            subtask_errors=[
+                SubtaskError(
+                    subtask_id="s1",
+                    error_type="HTTP_ERROR",
+                    error_message="HTTP请求失败",
+                    occurred_at=datetime.now(),
+                    retryable=True,
+                    source_document={"title": "HTTP错误处理指南", "url": "http://..."},
+                )
+            ],
+        )
+
+        summary = ctx.to_eight_segment_summary()
+
+        assert "HTTP_ERROR" in summary
+        assert "HTTP请求失败" in summary
+        assert "参考: HTTP错误处理指南" in summary  # 测试行 243
+
+    def test_eight_segment_summary_with_no_errors(self):
+        """测试：to_eight_segment_summary() 无错误时显示"无错误" """
+        from src.domain.services.power_compressor import PowerCompressedContext
+
+        ctx = PowerCompressedContext(
+            workflow_id="wf_clean",
+            session_id="sess_clean",
+            task_goal="无错误任务",
+            execution_status={"status": "completed", "progress": 1.0},
+            subtask_errors=[],  # 空错误列表
+        )
+
+        summary = ctx.to_eight_segment_summary()
+
+        assert "[4.子任务错误]" in summary
+        assert "  无错误" in summary  # 测试行 245
+
+
 class TestConversationAgentUsage:
     """对话 Agent 使用测试"""
 
@@ -748,5 +981,7 @@ __all__ = [
     "TestCoordinatorIntegration",
     "TestKnowledgeIntegration",
     "TestSummaryGeneration",
+    "TestDataClassSerialization",
+    "TestEdgeCaseCoverage",
     "TestConversationAgentUsage",
 ]

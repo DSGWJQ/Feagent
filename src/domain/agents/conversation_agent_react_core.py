@@ -360,7 +360,14 @@ class ConversationAgentReActCoreMixin:
                 raise
 
             # 决定行动
-            action = await self.llm.decide_action(context)
+            try:
+                action = await self.llm.decide_action(context)
+            except Exception as e:
+                # P0-4 Fix: 捕获 decide_action 异常，emit_error 并 complete
+                if self.emitter:
+                    await self.emitter.emit_error(str(e), error_code="DECIDE_ACTION_ERROR")
+                    await self.emitter.complete()
+                raise
 
             # 阶段5：累计 token 和成本
             # Step 1: 记录每轮的 token 使用情况
@@ -433,7 +440,15 @@ class ConversationAgentReActCoreMixin:
                     await self.publish_decision(decision)
 
             # 判断是否继续
-            should_continue = await self.llm.should_continue(context)
+            try:
+                should_continue = await self.llm.should_continue(context)
+            except Exception as e:
+                # P0-4 Fix: 捕获 should_continue 异常，emit_error 并 complete
+                if self.emitter:
+                    await self.emitter.emit_error(str(e), error_code="SHOULD_CONTINUE_ERROR")
+                    await self.emitter.complete()
+                raise
+
             if not should_continue:
                 result.completed = True
                 result.final_response = action.get("response", "任务完成")

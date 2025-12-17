@@ -74,9 +74,9 @@ export const HomePage = () => {
       <header className={styles.header}>
         <div className={styles.headerContent}>
           {/* Logo */}
+          {/* Logo */}
           <div className={styles.logo}>
-            <RocketOutlined style={{ fontSize: '20px', color: 'var(--ink-primary)' }} />
-            <span className={styles.logoText}>AI Agent Platform</span>
+            {/* Logo text removed as per user request */}
           </div>
 
           {/* 主导航菜单 */}

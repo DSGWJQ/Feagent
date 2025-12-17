@@ -1,0 +1,87 @@
+/* NeoButton.module.css */
+
+.neoButton {
+    /* Reset Ant Design defaults */
+    height: auto !important;
+    padding: var(--space-sm) var(--space-lg) !important;
+    border-radius: 2px !important;
+    /* Slight rounding for industrial feel */
+    font-family: var(--font-family-mono) !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+    transition: all var(--duration-fast) var(--ease-mechanical) !important;
+    box-shadow: none !important;
+
+    /* Layout */
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: var(--space-sm) !important;
+
+    /* Font size from token (Body size usually 14-16px for buttons) */
+    font-size: 0.875rem !important;
+}
+
+/* Primary Variant */
+.primary {
+    background: var(--color-action-primary-bg) !important;
+    color: var(--color-action-primary-text) !important;
+    border: 2px solid transparent !important;
+}
+
+.primary:hover:not(:disabled) {
+    background: var(--color-action-primary-hover) !important;
+    transform: translateY(-2px);
+    box-shadow: 4px 4px 0 0 rgba(0, 0, 0, 0.1) !important;
+}
+
+.primary:active:not(:disabled) {
+    transform: scale(0.98) translateY(0) !important;
+    box-shadow: none !important;
+}
+
+/* Secondary Variant */
+.secondary {
+    background: transparent !important;
+    color: var(--color-text-primary) !important;
+    border: 1px solid var(--color-border-strong) !important;
+}
+
+.secondary:hover:not(:disabled) {
+    background: var(--color-bg-surface-hover) !important;
+    border-color: var(--color-text-primary) !important;
+}
+
+.secondary:active:not(:disabled) {
+    background: var(--color-bg-surface-active) !important;
+    transform: scale(0.98) !important;
+}
+
+/* Ghost Variant */
+.ghost {
+    background: transparent !important;
+    color: var(--color-text-secondary) !important;
+    /* Slightly softer */
+    border: 1px solid transparent !important;
+}
+
+.ghost:hover:not(:disabled) {
+    color: var(--color-text-primary) !important;
+    background: var(--color-bg-surface-hover) !important;
+}
+
+/* Disabled State */
+.neoButton:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+    background: var(--primitive-stone-200) !important;
+    color: var(--primitive-stone-500) !important;
+}
+
+/* Focus State Overrides - Accessibility */
+.neoButton:focus-visible {
+    box-shadow: var(--focus-ring) !important;
+    z-index: 10;
+}

@@ -5,13 +5,13 @@
 
 /* ========== Page Container ========== */
 .pageContainer {
-  padding: 40px;
+  padding: var(--space-xl);
   max-width: 800px;
   margin: 0 auto;
 }
 
 .pageContainerWide {
-  padding: 40px;
+  padding: var(--space-xl);
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -27,10 +27,10 @@
 }
 
 .loadingText {
-  margin-top: 24px;
-  color: var(--ink-secondary);
+  margin-top: var(--space-lg);
+  color: var(--color-text-secondary);
   font-family: var(--font-family-mono);
-  font-size: 0.85rem;
+  font-size: var(--font-caption-size);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -39,17 +39,17 @@
 .emptyContainer {
   text-align: center;
   padding: 80px 40px;
-  color: var(--stone-dark);
-  background: var(--paper);
-  border: 1px solid var(--stone-light);
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
   margin: 40px 0;
 }
 
 .emptyText {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-md);
   font-family: var(--font-family-base);
-  font-size: 1rem;
-  color: var(--ink-secondary);
+  font-size: var(--font-body-size);
+  color: var(--color-text-secondary);
 }
 
 /* ========== Spacing Utilities ========== */
@@ -58,32 +58,32 @@
 }
 
 .marginTop {
-  margin-top: 24px;
+  margin-top: var(--space-lg);
 }
 
 .marginBottom {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-lg);
 }
 
 /* ========== Text Colors ========== */
 .textSecondary {
-  color: var(--ink-secondary);
+  color: var(--color-text-secondary);
   font-family: var(--font-family-base);
 }
 
 .textTertiary {
-  color: var(--stone-dark);
+  color: var(--color-text-tertiary);
   font-family: var(--font-family-mono);
-  font-size: 0.8rem;
+  font-size: var(--font-caption-size);
 }
 
 /* ========== Agent Card List ========== */
 .agentCard {
-  background: var(--paper);
-  border: 1px solid var(--stone-light);
-  padding: 24px;
-  margin-bottom: 16px;
-  transition: all 0.2s var(--ease-mechanical);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-md);
+  transition: all var(--duration-normal) var(--ease-mechanical);
   position: relative;
   overflow: hidden;
 }
@@ -96,7 +96,7 @@
   left: 0;
   width: 100%;
   height: 3px;
-  background: var(--ink-primary);
+  background: var(--color-action-primary-bg);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
@@ -107,8 +107,8 @@
 }
 
 .agentCard:hover {
-  background: var(--paper-off);
-  border-color: var(--ink-secondary);
+  background: var(--color-bg-surface-hover);
+  border-color: var(--color-action-primary-hover);
 }
 
 /* ========== Agent Header ========== */
@@ -116,16 +116,16 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--stone-light);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .agentTitle {
   font-family: var(--font-family-base);
-  font-size: 1.125rem;
+  font-size: var(--font-h1-size);
   font-weight: 700;
-  color: var(--ink-primary);
+  color: var(--color-text-primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0;
@@ -133,7 +133,7 @@
 
 .agentMeta {
   display: flex;
-  gap: 12px;
+  gap: var(--space-sm);
   align-items: center;
 }
 
@@ -142,38 +142,38 @@
   display: inline-block;
   padding: 4px 12px;
   font-family: var(--font-family-mono);
-  font-size: 0.7rem;
+  font-size: var(--font-caption-size);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border: 1px solid var(--ink-primary);
+  border: 1px solid var(--color-text-primary);
   background: transparent;
-  color: var(--ink-primary);
+  color: var(--color-text-primary);
 }
 
 .statusBadge.active {
-  border-color: var(--ink-primary);
-  background: var(--ink-primary);
-  color: var(--paper);
+  border-color: var(--color-action-primary-bg);
+  background: var(--color-action-primary-bg);
+  color: var(--color-action-primary-text);
 }
 
 .statusBadge.inactive {
-  border-color: var(--stone-dark);
-  color: var(--stone-dark);
+  border-color: var(--color-text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 /* ========== Agent Description ========== */
 .agentDescription {
-  color: var(--ink-secondary);
-  line-height: 1.6;
-  margin-bottom: 16px;
+  color: var(--color-text-secondary);
+  line-height: var(--font-body-line-height);
+  margin-bottom: var(--space-md);
   font-family: var(--font-family-base);
-  font-size: 0.95rem;
+  font-size: var(--font-body-size);
 }
 
 /* ========== Agent Actions ========== */
 .agentActions {
   display: flex;
-  gap: 12px;
+  gap: var(--space-sm);
   justify-content: flex-end;
 }
 
@@ -182,106 +182,106 @@
   padding: 8px 20px;
   font-family: var(--font-family-mono);
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: var(--font-caption-size);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-radius: 0;
-  background: var(--paper);
-  color: var(--ink-primary);
-  border: 1px solid var(--ink-secondary);
+  border-radius: 2px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-strong);
   cursor: pointer;
-  transition: all 0.2s var(--ease-mechanical);
+  transition: all var(--duration-fast) var(--ease-mechanical);
 }
 
 .actionBtn:hover {
-  background: var(--ink-primary);
-  color: var(--paper);
-  border-color: var(--ink-primary);
+  background: var(--color-action-primary-bg);
+  color: var(--color-action-primary-text);
+  border-color: var(--color-action-primary-bg);
   transform: translate(-2px, -2px);
-  box-shadow: 2px 2px 0 0 var(--ink-primary);
+  box-shadow: 2px 2px 0 0 var(--color-action-primary-bg);
 }
 
 .actionBtn:active {
   transform: translate(0, 0);
-  box-shadow: 0 0 0 0 var(--ink-primary);
+  box-shadow: 0 0 0 0 var(--color-action-primary-bg);
 }
 
 .actionBtnDanger {
-  border-color: var(--signal-error);
-  color: var(--signal-error);
+  border-color: var(--color-signal-error);
+  color: var(--color-signal-error);
 }
 
 .actionBtnDanger:hover {
-  background: var(--signal-error);
-  color: var(--paper);
-  border-color: var(--signal-error);
-  box-shadow: 2px 2px 0 0 var(--signal-error);
+  background: var(--color-signal-error);
+  color: white;
+  border-color: var(--color-signal-error);
+  box-shadow: 2px 2px 0 0 var(--color-signal-error);
 }
 
 /* ========== Form Elements ========== */
 .formGroup {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-lg);
 }
 
 .formLabel {
   display: block;
   font-family: var(--font-family-mono);
-  font-size: 0.75rem;
+  font-size: var(--font-caption-size);
   text-transform: uppercase;
-  color: var(--stone-dark);
-  margin-bottom: 8px;
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-xs);
   letter-spacing: 0.05em;
 }
 
 .formInput {
   width: 100%;
-  background: var(--paper);
-  border: 1px solid var(--stone-light);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
   padding: 12px 16px;
   font-family: var(--font-family-base);
-  font-size: 0.95rem;
-  color: var(--ink-primary);
+  font-size: var(--font-body-size);
+  color: var(--color-text-primary);
   outline: none;
   transition: border-width 0.1s ease;
-  border-radius: 0;
+  border-radius: 2px;
 }
 
 .formInput:focus {
-  border: 2px solid var(--ink-primary);
+  border: 2px solid var(--color-action-primary-bg);
   padding: 11px 15px;
 }
 
 .formInput::placeholder {
-  color: var(--stone-dark);
+  color: var(--color-text-tertiary);
   font-family: var(--font-family-mono);
-  font-size: 0.85rem;
+  font-size: var(--font-caption-size);
 }
 
 /* ========== Agent Type Selector ========== */
 .typeSelector {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
 }
 
 .typeOption {
-  background: var(--paper);
-  border: 1px solid var(--stone-light);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
   padding: 20px;
   cursor: pointer;
-  transition: all 0.2s var(--ease-mechanical);
+  transition: all var(--duration-normal) var(--ease-mechanical);
   position: relative;
 }
 
 .typeOption:hover {
-  border-color: var(--ink-secondary);
-  background: var(--paper-off);
+  border-color: var(--color-action-primary-hover);
+  background: var(--color-bg-surface-hover);
 }
 
 .typeOption.selected {
-  border: 2px solid var(--ink-primary);
-  background: var(--paper);
+  border: 2px solid var(--color-action-primary-bg);
+  background: var(--color-bg-surface);
 }
 
 .typeOption.selected::before {
@@ -291,8 +291,8 @@
   right: 8px;
   width: 20px;
   height: 20px;
-  background: var(--ink-primary);
-  color: var(--paper);
+  background: var(--color-action-primary-bg);
+  color: var(--color-action-primary-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -302,34 +302,35 @@
 
 .typeName {
   font-family: var(--font-family-mono);
-  font-size: 0.85rem;
+  font-size: var(--font-caption-size);
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--ink-primary);
-  margin-bottom: 8px;
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-xs);
 }
 
 .typeDescription {
   font-family: var(--font-family-base);
-  font-size: 0.85rem;
-  color: var(--ink-secondary);
+  font-size: var(--font-caption-size);
+  color: var(--color-text-secondary);
   line-height: 1.5;
 }
 
 /* ========== Responsive ========== */
 @media (max-width: 768px) {
+
   .pageContainer,
   .pageContainerWide {
-    padding: 20px;
+    padding: var(--space-md);
   }
 
   .agentCard {
-    padding: 16px;
+    padding: var(--space-md);
   }
 
   .agentHeader {
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-sm);
   }
 
   .agentActions {

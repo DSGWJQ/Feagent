@@ -92,7 +92,14 @@
       "Bash(Select-String \"llm_executor\")",
       "Bash(Select-String -Pattern \"workflow_repository\")",
       "Bash(Select-String \"(test_|PASSED|FAILED|llm_executor)\")",
-      "Bash(Select-String \"file_executor\")"
+      "Bash(Select-String \"file_executor\")",
+      "Bash(Select-String -Pattern \"(Local:|Network:|error|ERROR)\")",
+      "Bash(Select-Object -First 5)",
+      "Bash(Select-String -Pattern \"supervision\")",
+      "Bash(Select-String \"conversation.py\")",
+      "Bash(Select-String -Pattern \"(src/domain/services|TOTAL)\")",
+      "Bash(Select-Object -First 50)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []

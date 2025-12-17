@@ -133,9 +133,8 @@ export default function MainLayout() {
         onCollapse={setCollapsed}
         width={256}
         theme={theme === 'dark' ? 'dark' : 'light'}
-        className={`${styles.sider} neoStone`}
+        className={styles.sider}
         trigger={null}
-        style={{ background: 'var(--neo-surface)' }}
       >
         {/* Logo 区域 */}
         <div className={styles.logoContainer} onClick={() => setCollapsed(!collapsed)} style={{ cursor: 'pointer' }}>

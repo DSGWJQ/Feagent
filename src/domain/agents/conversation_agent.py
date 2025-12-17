@@ -1,17 +1,17 @@
 """对话Agent (ConversationAgent) - 多Agent协作系统的"大脑"
 
-业务定义：
+业务定义:
 - 对话Agent是用户交互的主入口
 - 基于ReAct（Reasoning + Acting）循环进行推理和决策
 - 负责理解用户意图、分解目标、生成决策
 
-设计原则：
-- ReAct循环：Thought → Action → Observation → Thought...
-- 目标分解：将复杂目标分解为可执行的子目标
-- 决策驱动：所有行动都通过决策事件发布
-- 上下文感知：利用会话上下文进行推理
+设计原则:
+- ReAct循环:Thought → Action → Observation → Thought...
+- 目标分解:将复杂目标分解为可执行的子目标
+- 决策驱动:所有行动都通过决策事件发布
+- 上下文感知:利用会话上下文进行推理
 
-核心能力：
+核心能力:
 - 理解用户意图
 - 分解复杂目标
 - 生成节点创建决策
@@ -87,6 +87,7 @@ if TYPE_CHECKING:
     from src.domain.agents.conversation_agent_config import (
         ConversationAgentConfig,
     )
+    from src.domain.services.save_request_channel import SaveRequestPriority
 
 
 class ConversationAgentLLM(Protocol):
@@ -114,11 +115,11 @@ class ConversationAgentLLM(Protocol):
     async def plan_workflow(self, goal: str, context: dict[str, Any]) -> dict[str, Any]:
         """规划工作流结构（Phase 8 新增）
 
-        参数：
+        参数:
             goal: 用户目标
             context: 上下文信息
 
-        返回：
+        返回:
             工作流规划字典，包含 nodes 和 edges
         """
         ...
@@ -126,10 +127,10 @@ class ConversationAgentLLM(Protocol):
     async def decompose_to_nodes(self, goal: str) -> list[dict[str, Any]]:
         """将目标分解为节点定义列表（Phase 8 新增）
 
-        参数：
+        参数:
             goal: 用户目标
 
-        返回：
+        返回:
             节点定义字典列表
         """
         ...
@@ -143,13 +144,13 @@ class ConversationAgentLLM(Protocol):
     ) -> dict[str, Any]:
         """重新规划工作流（Phase 13 新增）
 
-        参数：
+        参数:
             goal: 原始目标
             failed_node_id: 失败的节点ID
             failure_reason: 失败原因
             execution_context: 执行上下文
 
-        返回：
+        返回:
             重新规划的工作流字典
         """
         ...
@@ -157,12 +158,12 @@ class ConversationAgentLLM(Protocol):
     async def classify_intent(self, user_input: str, context: dict[str, Any]) -> dict[str, Any]:
         """分类用户意图（Phase 14 新增）
 
-        参数：
+        参数:
             user_input: 用户输入
             context: 上下文信息
 
-        返回：
-            意图分类结果字典，包含：
+        返回:
+            意图分类结果字典，包含:
             - intent: 意图类型 (conversation, workflow_modification, workflow_query, etc.)
             - confidence: 置信度 (0-1)
             - reasoning: 分类理由
@@ -175,11 +176,11 @@ class ConversationAgentLLM(Protocol):
 
         用于普通对话场景，跳过 ReAct 循环直接生成回复。
 
-        参数：
+        参数:
             user_input: 用户输入
             context: 上下文信息
 
-        返回：
+        返回:
             回复文本
         """
         ...
@@ -196,13 +197,13 @@ class ConversationAgent(
 ):
     """对话Agent
 
-    职责：
+    职责:
     1. 执行ReAct循环进行推理
     2. 分解复杂目标
     3. 生成决策并发布事件
     4. 管理对话上下文
 
-    使用示例：
+    使用示例:
         agent = ConversationAgent(
             session_context=session_ctx,
             llm=llm,
@@ -230,7 +231,7 @@ class ConversationAgent(
     ):
         """初始化对话Agent
 
-        参数：
+        参数:
             session_context: 会话上下文
             llm: LLM接口
             event_bus: 事件总线（可选）
@@ -245,6 +246,9 @@ class ConversationAgent(
             stream_emitter: 流式输出器实例（Phase 8.4，可选）
             config: ConversationAgentConfig 实例（P1-4新增，可选）
         """
+        # P1-4: Config兼容性 - 初始化流式配置为None
+        _streaming_config = None
+
         # P1-4: Config兼容性 - 解析配置
         if config is not None or any(
             param is not _LEGACY_UNSET
@@ -291,6 +295,8 @@ class ConversationAgent(
             intent_confidence_threshold = final_config.intent.intent_confidence_threshold  # type: ignore[assignment]
             emitter = final_config.streaming.emitter
             stream_emitter = final_config.streaming.stream_emitter
+            # 保存 streaming 配置中的 enable_save_request_channel 标志
+            _streaming_config = final_config.streaming
         else:
             # P1-4: 无参构造不合法（Critical修复）
             raise ValueError(
@@ -302,7 +308,7 @@ class ConversationAgent(
         self.llm = llm  # type: ignore[assignment]
         self.event_bus = event_bus
         self.max_iterations = max_iterations
-        # 阶段5新增：循环控制配置
+        # 阶段5新增:循环控制配置
         self.timeout_seconds = timeout_seconds
         self.max_tokens = max_tokens
         self.max_cost = max_cost
@@ -335,8 +341,12 @@ class ConversationAgent(
         self.progress_events: list[Any] = []  # 存储进度事件历史
         self._is_listening_progress = False
 
-        # Phase 34: 保存请求通道
-        self._save_request_channel_enabled = False
+        # Phase 34: 保存请求通道 - 应用 streaming 配置
+        self._save_request_channel_enabled = (
+            _streaming_config.enable_save_request_channel
+            if _streaming_config is not None
+            else False
+        )
 
         # P0-2 Phase 2: Staged shared-state updates for batching (performance optimization)
         self._staged_prompt_tokens: int = 0
@@ -355,7 +365,7 @@ class ConversationAgent(
 
         用于批量提交，减少锁获取次数，提升高频路径性能。
 
-        参数：
+        参数:
             prompt_tokens: 提示token增量
             completion_tokens: 完成token增量
         """
@@ -367,7 +377,7 @@ class ConversationAgent(
 
         用于批量提交，减少锁获取次数。
 
-        参数：
+        参数:
             record: 决策记录字典
         """
         self._staged_decision_records.append(record)
@@ -377,18 +387,18 @@ class ConversationAgent(
 
         在_state_lock保护下批量提交token使用和决策记录。
 
-        性能优化：
+        性能优化:
         - 每轮迭代只获取一次锁
         - 锁内只做纯内存更新（无await）
         - 减少锁竞争和上下文切换开销
 
-        调用时机：
+        调用时机:
         - 每轮迭代末尾
         - 所有早退分支（respond/should_continue==False/limit）前
 
-        注意：锁内不允许await（除了获取锁本身）
+        注意:锁内不允许await（除了获取锁本身）
         """
-        # 快速路径：无暂存数据时直接返回
+        # 快速路径:无暂存数据时直接返回
         if (
             self._staged_prompt_tokens == 0
             and self._staged_completion_tokens == 0
@@ -431,66 +441,172 @@ class ConversationAgent(
     def is_save_request_channel_enabled(self) -> bool:
         """检查保存请求通道是否启用
 
-        返回：
+        返回:
             True 如果已启用
         """
         return self._save_request_channel_enabled
+
+    def send_save_request(
+        self,
+        target_path: str,
+        content: str | bytes,
+        reason: str | None = None,
+        priority: "SaveRequestPriority | None" = None,
+        is_binary: bool = False,
+    ) -> str | None:
+        """Send save request via EventBus.
+
+        此方法是 **异步安全** 的，可在以下两种上下文安全调用：
+
+        1. **无运行循环**（普通同步代码）: 使用 asyncio.run() 发布事件
+        2. **有运行循环**（async 函数内）: 使用 _create_tracked_task() 调度协程
+
+        参数:
+            target_path: 目标文件路径
+            content: 保存内容
+            reason: 保存原因（可选，默认为空字符串）
+            priority: 优先级（可选，默认为 NORMAL）
+            is_binary: 是否为二进制内容
+
+        返回:
+            request_id (str) if scheduled/published
+            None if disabled, no event_bus, or queue full
+
+        异常:
+            SaveRequestValidationError: 如果 target_path 或 session_id 为空
+
+        使用示例::
+
+            # 同步上下文（无 running loop）
+            request_id = agent.send_save_request(
+                target_path="/output/result.txt",
+                content="analysis result",
+                reason="保存分析结果",
+            )
+
+            # Async 上下文（有 running loop）
+            async def process_workflow():
+                request_id = agent.send_save_request(
+                    target_path="/output/result.txt",
+                    content="analysis result",
+                    reason="保存分析结果",
+                )
+                # 事件通过 _create_tracked_task 自动调度
+        """
+        if not self._save_request_channel_enabled:
+            return None
+        if self.event_bus is None:
+            return None
+
+        import asyncio
+        import logging
+
+        from src.domain.services.save_request_channel import (
+            SaveRequest,
+            SaveRequestPriority,
+            SaveRequestType,
+            SaveRequestValidationError,
+            SaveRequestQueueFullError,
+        )
+
+        logger_instance = logging.getLogger(__name__)
+        request_id = str(uuid4())
+        if priority is None:
+            priority = SaveRequestPriority.NORMAL
+
+        try:
+            event = SaveRequest(
+                request_id=request_id,
+                target_path=target_path,
+                content=content,
+                operation_type=SaveRequestType.FILE_WRITE,
+                session_id=self.session_context.session_id,
+                reason=reason or "",
+                priority=priority,
+                source_agent="ConversationAgent",
+                is_binary=is_binary,
+            )
+        except SaveRequestValidationError:
+            # ✅ Validation errors = programming errors, fail-fast
+            raise
+        except SaveRequestQueueFullError:
+            # ✅ Queue full = transient resource issue, graceful degradation
+            logger_instance.warning(f"SaveRequest queue full for request_id={request_id}")
+            return None
+
+        publish_coro = self.event_bus.publish(event)
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(publish_coro)
+        else:
+            self._create_tracked_task(publish_coro)
+
+        return request_id
 
     def request_save(
         self,
         target_path: str,
         content: str | bytes,
         reason: str,
-        priority: Any | None = None,
+        priority: "SaveRequestPriority | None" = None,
         is_binary: bool = False,
     ) -> str | None:
-        """发起保存请求
+        """发起保存请求（已弃用，请使用 send_save_request）
+
+        .. deprecated:: Phase-P2
+            使用 :meth:`send_save_request` 替代。
+            `request_save` 将在下一主版本移除。
 
         通过 EventBus 发布 SaveRequest 事件，而非直接写入文件。
-        需要先调用 enable_save_request_channel() 启用此功能。
+        需要先启用保存请求通道（通过 StreamingConfig.enable_save_request_channel=True）。
 
-        参数：
+        参数:
             target_path: 目标文件路径
             content: 保存内容
             reason: 保存原因说明
             priority: 优先级（可选）
             is_binary: 是否为二进制内容
 
-        返回：
+        返回:
             请求 ID，如果发送失败返回 None
+
+        异常:
+            SaveRequestValidationError: 如果 target_path 或 session_id 为空
+
+        迁移指南::
+
+            # 旧代码 (deprecated)
+            agent.request_save(
+                target_path="/output/result.txt",
+                content="data",
+                reason="保存结果",  # reason 参数必填
+            )
+
+            # 新代码 (recommended)
+            agent.send_save_request(
+                target_path="/output/result.txt",
+                content="data",
+                reason="保存结果",  # reason 参数现在可选
+            )
         """
-        if not self._save_request_channel_enabled:
-            return None
-
-        if not self.event_bus:
-            return None
-
-        from src.domain.services.save_request_channel import (
-            SaveRequest,
-            SaveRequestPriority,
-            SaveRequestType,
+        import warnings
+        warnings.warn(
+            "request_save() is deprecated, use send_save_request() instead. "
+            "request_save() will be removed in the next major version.",
+            DeprecationWarning,
+            stacklevel=2,
         )
 
-        # 设置默认优先级
-        if priority is None:
-            priority = SaveRequestPriority.NORMAL
-
-        # 创建保存请求
-        request = SaveRequest(
+        # ✅ 委托给 send_save_request（单一真实来源）
+        return self.send_save_request(
             target_path=target_path,
             content=content,
-            operation_type=SaveRequestType.FILE_WRITE,
-            session_id=self.session_context.session_id,
             reason=reason,
             priority=priority,
-            source_agent="ConversationAgent",
             is_binary=is_binary,
         )
-
-        # P1 Fix: 使用 _create_tracked_task 确保事件被发布（避免协程被丢弃）
-        self._create_tracked_task(self.event_bus.publish(request))
-
-        return request.request_id
 
     def is_waiting_for_subagent(self) -> bool:
         """检查是否正在等待子Agent"""
@@ -514,14 +630,14 @@ class ConversationAgent(
     ) -> Decision:
         """创建 spawn_subagent 决策
 
-        参数：
+        参数:
             subagent_type: 子Agent类型
             task_payload: 任务负载
             context_snapshot: 上下文快照（可选）
             priority: 优先级（默认0）
             confidence: 置信度（默认1.0）
 
-        返回：
+        返回:
             Decision 决策对象
         """
         return Decision(
@@ -545,17 +661,17 @@ class ConversationAgent(
     ) -> str:
         """请求生成子Agent（同步版本）
 
-        注意：同步版本无法await事件发布，仅适用于非关键路径。
+        注意:同步版本无法await事件发布，仅适用于非关键路径。
         在异步上下文中请使用request_subagent_spawn_async以保证关键事件顺序。
 
-        参数：
+        参数:
             subagent_type: 子Agent类型
             task_payload: 任务负载
             priority: 优先级（默认0）
             wait_for_result: 是否等待结果（默认True）
             context_snapshot: 上下文快照（可选）
 
-        返回：
+        返回:
             生成的子Agent ID
         """
 
@@ -594,18 +710,18 @@ class ConversationAgent(
     ) -> str:
         """请求生成子Agent（异步版本，P0-2 Fix）
 
-        关键保证：
+        关键保证:
         1. SpawnSubAgentEvent被await发布（协调者必须看到）
         2. 如果wait_for_result，状态转换发生在事件发布之后
 
-        参数：
+        参数:
             subagent_type: 子Agent类型
             task_payload: 任务负载
             priority: 优先级（默认0）
             wait_for_result: 是否等待结果（默认True）
             context_snapshot: 上下文快照（可选）
 
-        返回：
+        返回:
             生成的子Agent ID
         """
 
@@ -652,7 +768,7 @@ class ConversationAgent(
     async def _handle_progress_event_async(self, event: Any) -> None:
         """异步处理进度事件（EventBus 回调）
 
-        参数：
+        参数:
             event: ExecutionProgressEvent 实例
         """
         self.handle_progress_event(event)
@@ -664,7 +780,7 @@ class ConversationAgent(
     def handle_progress_event(self, event: Any) -> None:
         """处理进度事件并记录到历史
 
-        参数：
+        参数:
             event: ExecutionProgressEvent 实例
         """
         self.progress_events.append(event)
@@ -672,7 +788,7 @@ class ConversationAgent(
     async def forward_progress_event(self, event: Any) -> None:
         """转发进度事件到流式输出器
 
-        参数：
+        参数:
             event: ExecutionProgressEvent 实例
         """
         if not self.stream_emitter:
@@ -696,10 +812,10 @@ class ConversationAgent(
     def format_progress_message(self, event: Any) -> str:
         """格式化进度事件为用户可读消息
 
-        参数：
+        参数:
             event: ExecutionProgressEvent 实例
 
-        返回：
+        返回:
             格式化的消息字符串
         """
         status = event.status
@@ -722,10 +838,10 @@ class ConversationAgent(
     def format_progress_for_websocket(self, event: Any) -> dict[str, Any]:
         """格式化进度事件为 WebSocket 消息
 
-        参数：
+        参数:
             event: ExecutionProgressEvent 实例
 
-        返回：
+        返回:
             WebSocket 消息字典
         """
         return {
@@ -745,7 +861,7 @@ class ConversationAgent(
         参数:
             event: ExecutionProgressEvent 实例
 
-        返回：
+        返回:
             SSE 格式的消息字符串
         """
         import json
@@ -762,10 +878,10 @@ class ConversationAgent(
     def get_progress_events_by_workflow(self, workflow_id: str) -> list[Any]:
         """按工作流ID查询进度事件
 
-        参数：
+        参数:
             workflow_id: 工作流ID
 
-        返回：
+        返回:
             该工作流的进度事件列表
         """
         return [
@@ -782,10 +898,10 @@ class ConversationAgent(
         通过 WorkflowAgent 执行工作流，自动调用反思，
         不创建子 Agent，直接使用已注册的 WorkflowAgent。
 
-        参数：
+        参数:
             workflow: 工作流定义
 
-        返回：
+        返回:
             WorkflowExecutionResult 执行结果
         """
         if not self.workflow_agent:

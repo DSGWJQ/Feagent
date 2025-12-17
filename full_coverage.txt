@@ -1,0 +1,2963 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.3, pytest-8.4.1, pluggy-1.6.0
+rootdir: D:\My_Project\agent_data
+configfile: pyproject.toml
+plugins: anyio-4.10.0, langsmith-0.4.42, asyncio-1.3.0, cov-7.0.0, html-4.1.1, metadata-3.1.1, mock-3.15.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1488 items
+
+tests\unit\domain\agents\test_agent_channel.py ......................... [  1%]
+.                                                                        [  1%]
+tests\unit\domain\agents\test_auto_hierarchical_node_creation.py ....... [  2%]
+...........                                                              [  2%]
+tests\unit\domain\agents\test_container_execution_feedback.py .......... [  3%]
+....                                                                     [  3%]
+tests\unit\domain\agents\test_container_node_execution.py .............. [  4%]
+.........                                                                [  5%]
+tests\unit\domain\agents\test_conversation_agent.py .............        [  6%]
+tests\unit\domain\agents\test_conversation_agent_async_methods.py ...... [  6%]
+..........                                                               [  7%]
+tests\unit\domain\agents\test_conversation_agent_config_compat.py ...... [  7%]
+....                                                                     [  8%]
+tests\unit\domain\agents\test_conversation_agent_control_flow.py ....... [  8%]
+.....                                                                    [  8%]
+tests\unit\domain\agents\test_conversation_agent_coverage_boost.py ..... [  9%]
+......................                                                   [ 10%]
+tests\unit\domain\agents\test_conversation_agent_decision_record.py .... [ 10%]
+..                                                                       [ 11%]
+tests\unit\domain\agents\test_conversation_agent_emitter_integration.py . [ 11%]
+.............                                                            [ 12%]
+tests\unit\domain\agents\test_conversation_agent_enhanced.py ........... [ 12%]
+.                                                                        [ 12%]
+tests\unit\domain\agents\test_conversation_agent_p0_fixes.py ........... [ 13%]
+...                                                                      [ 13%]
+tests\unit\domain\agents\test_conversation_agent_parent_integration.py . [ 13%]
+...                                                                      [ 14%]
+tests\unit\domain\agents\test_conversation_agent_planning.py ..........  [ 14%]
+tests\unit\domain\agents\test_conversation_agent_progress_formatting.py . [ 14%]
+......                                                                   [ 15%]
+tests\unit\domain\agents\test_conversation_agent_react_core.py ......... [ 15%]
+...................................                                      [ 18%]
+tests\unit\domain\agents\test_conversation_agent_refactor_regression.py . [ 18%]
+.....                                                                    [ 18%]
+tests\unit\domain\agents\test_conversation_agent_save_request_full.py .. [ 18%]
+..........F.F....                                                        [ 19%]
+tests\unit\domain\agents\test_conversation_agent_seven_types.py ........ [ 20%]
+.......ssss                                                              [ 21%]
+tests\unit\domain\agents\test_conversation_agent_state.py .............. [ 22%]
+.........                                                                [ 22%]
+tests\unit\domain\agents\test_conversation_agent_state_machine.py ...... [ 23%]
+............                                                             [ 23%]
+tests\unit\domain\agents\test_conversation_agent_subagent_sync.py ...... [ 24%]
+                                                                         [ 24%]
+tests\unit\domain\agents\test_conversation_agent_token_staging.py ...... [ 24%]
+                                                                         [ 24%]
+tests\unit\domain\agents\test_conversation_agent_workflow.py ........... [ 25%]
+......                                                                   [ 25%]
+tests\unit\domain\agents\test_conversation_engine.py ................... [ 27%]
+.......                                                                  [ 27%]
+tests\unit\domain\agents\test_conversation_error_handling.py ........... [ 28%]
+........                                                                 [ 28%]
+tests\unit\domain\agents\test_conversation_feedback.py ................. [ 29%]
+...                                                                      [ 30%]
+tests\unit\domain\agents\test_conversation_progress_forwarding.py ...... [ 30%]
+...                                                                      [ 30%]
+tests\unit\domain\agents\test_coordinator_agent.py ..................... [ 32%]
+.                                                                        [ 32%]
+tests\unit\domain\agents\test_coordinator_agent_config.py .............. [ 33%]
+.................................                                        [ 35%]
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py FFFF..F [ 35%]
+F                                                                        [ 35%]
+tests\unit\domain\agents\test_coordinator_agent_seven_types.py ......... [ 36%]
+....................                                                     [ 37%]
+tests\unit\domain\agents\test_coordinator_context_compression.py .....FF [ 38%]
+......FF.                                                                [ 38%]
+tests\unit\domain\agents\test_coordinator_context_service.py ........... [ 39%]
+..........                                                               [ 40%]
+tests\unit\domain\agents\test_coordinator_dependency_validation.py XXXXX [ 40%]
+XXXXXxX                                                                  [ 41%]
+tests\unit\domain\agents\test_coordinator_payload_validation.py XXXXXXXX [ 41%]
+XxX                                                                      [ 41%]
+tests\unit\domain\agents\test_coordinator_state_monitor.py ....FFF..F... [ 42%]
+..F.F...                                                                 [ 43%]
+tests\unit\domain\agents\test_coordinator_subagent_lifecycle.py ........ [ 43%]
+.....                                                                    [ 44%]
+tests\unit\domain\agents\test_coordinator_workflow_events.py ........... [ 44%]
+....FFFF..FF....                                                         [ 46%]
+tests\unit\domain\agents\test_decision_payload.py ...................... [ 47%]
+.................                                                        [ 48%]
+tests\unit\domain\agents\test_error_classification.py .................. [ 49%]
+......                                                                   [ 50%]
+tests\unit\domain\agents\test_error_handling.py ........................ [ 51%]
+...................                                                      [ 53%]
+tests\unit\domain\agents\test_error_recovery_strategy.py ............... [ 54%]
+............                                                             [ 54%]
+tests\unit\domain\agents\test_execution_summary.py ..................... [ 56%]
+                                                                         [ 56%]
+tests\unit\domain\agents\test_gap_h02_default_error_strategy.py ........ [ 56%]
+....                                                                     [ 57%]
+tests\unit\domain\agents\test_gap_h03_container_executor_injection.py .. [ 57%]
+...........                                                              [ 58%]
+tests\unit\domain\agents\test_hierarchical_node_definition.py .......... [ 58%]
+...........                                                              [ 59%]
+tests\unit\domain\agents\test_input_classification.py .................. [ 60%]
+.......                                                                  [ 61%]
+tests\unit\domain\agents\test_node_definition.py ....................    [ 62%]
+tests\unit\domain\agents\test_node_definition_control_flow.py .......... [ 63%]
+......                                                                   [ 63%]
+tests\unit\domain\agents\test_node_definition_extended.py .............. [ 64%]
+.....................                                                    [ 65%]
+tests\unit\domain\agents\test_node_definition_p3.py .................... [ 67%]
+..........................                                               [ 69%]
+tests\unit\domain\agents\test_node_definition_parent.py ................ [ 70%]
+.........                                                                [ 70%]
+tests\unit\domain\agents\test_node_definition_parent_strategy.py ....... [ 71%]
+.............                                                            [ 72%]
+tests\unit\domain\agents\test_node_definition_seven_types.py ........... [ 72%]
+.......                                                                  [ 73%]
+tests\unit\domain\agents\test_node_definition_templates.py ............. [ 74%]
+....                                                                     [ 74%]
+tests\unit\domain\agents\test_node_yaml_schema.py ...................... [ 75%]
+..........                                                               [ 76%]
+tests\unit\domain\agents\test_phase16_extension.py ..............        [ 77%]
+tests\unit\domain\agents\test_progress_flow_integration.py .........     [ 78%]
+tests\unit\domain\agents\test_sales_analysis_workflow_integration.py ... [ 78%]
+......                                                                   [ 78%]
+tests\unit\domain\agents\test_save_channel_config.py ..                  [ 78%]
+tests\unit\domain\agents\test_self_describing_node_validation.py ....... [ 79%]
+............................                                             [ 81%]
+tests\unit\domain\agents\test_simple_message_event.py .................. [ 82%]
+                                                                         [ 82%]
+tests\unit\domain\agents\test_spawn_subagent.py ...........              [ 83%]
+tests\unit\domain\agents\test_subagent_result_handling.py .FF.F....      [ 83%]
+tests\unit\domain\agents\test_subtask_isolation.py ..................... [ 85%]
+                                                                         [ 85%]
+tests\unit\domain\agents\test_workflow_agent.py ...........              [ 85%]
+tests\unit\domain\agents\test_workflow_agent_batch.py ............       [ 86%]
+tests\unit\domain\agents\test_workflow_agent_dag_execution.py .......... [ 87%]
+.....                                                                    [ 87%]
+tests\unit\domain\agents\test_workflow_agent_enhanced.py ............... [ 88%]
+...                                                                      [ 88%]
+tests\unit\domain\agents\test_workflow_agent_execute.py ................ [ 89%]
+..........                                                               [ 90%]
+tests\unit\domain\agents\test_workflow_agent_feedback.py ...........     [ 91%]
+tests\unit\domain\agents\test_workflow_agent_hierarchical_integration.py . [ 91%]
+.............                                                            [ 92%]
+tests\unit\domain\agents\test_workflow_agent_node_execution.py ......... [ 92%]
+......                                                                   [ 93%]
+tests\unit\domain\agents\test_workflow_agent_seven_types.py ........s... [ 94%]
+.                                                                        [ 94%]
+tests\unit\domain\agents\test_workflow_collection_operations.py ........ [ 94%]
+.........                                                                [ 95%]
+tests\unit\domain\agents\test_workflow_conditional_execution.py .......s [ 95%]
+s......                                                                  [ 96%]
+tests\unit\domain\agents\test_workflow_conditional_multilayer_context.py . [ 96%]
+.......                                                                  [ 96%]
+tests\unit\domain\agents\test_workflow_plan.py ...................       [ 98%]
+tests\unit\domain\agents\test_workflow_progress_events.py ...........    [ 98%]
+tests\unit\domain\agents\test_workflow_state_monitor.py ................ [100%]
+
+================================== FAILURES ===================================
+_____________ TestRequestSaveMethod.test_request_save_basic_usage _____________
+
+self = <MagicMock name='_create_tracked_task' id='2394948892528'>
+
+    def assert_called_once(self):
+        """assert that the mock was called only once.
+        """
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to have been called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected '_create_tracked_task' to have been called once. Called 0 times.
+
+C:\Python313\Lib\unittest\mock.py:958: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_conversation_agent_save_request_full.TestRequestSaveMethod object at 0x0000022D9D8E34D0>
+agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent object at 0x0000022D9E259810>
+
+    def test_request_save_basic_usage(self, agent_with_event_bus):
+        """测试：request_save基本使用"""
+        agent = agent_with_event_bus
+    
+        with patch.object(agent, "_create_tracked_task") as mock_tracked:
+            with patch.object(agent.event_bus, "publish", new_callable=AsyncMock) as mock_publish:
+                request_id = agent.request_save(
+                    target_path="/test/file.txt",
+                    content="test content",
+                    reason="测试原因",
+                )
+    
+                assert request_id is not None
+                # 验证使用了_create_tracked_task
+>               mock_tracked.assert_called_once()
+E               AssertionError: Expected '_create_tracked_task' to have been called once. Called 0 times.
+
+tests\unit\domain\agents\test_conversation_agent_save_request_full.py:311: AssertionError
+___ TestRequestSaveMethod.test_request_save_creates_request_with_all_fields ___
+
+self = <MagicMock name='_create_tracked_task' id='2394952902240'>
+
+    def assert_called_once(self):
+        """assert that the mock was called only once.
+        """
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to have been called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected '_create_tracked_task' to have been called once. Called 0 times.
+
+C:\Python313\Lib\unittest\mock.py:958: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+self = <test_conversation_agent_save_request_full.TestRequestSaveMethod object at 0x0000022D9D823BB0>
+agent_with_event_bus = <src.domain.agents.conversation_agent.ConversationAgent object at 0x0000022D9E3D8B90>
+
+    def test_request_save_creates_request_with_all_fields(self, agent_with_event_bus):
+        """测试：request_save创建完整的SaveRequest对象"""
+        agent = agent_with_event_bus
+    
+        from src.domain.services.save_request_channel import SaveRequestPriority
+    
+        with patch.object(agent, "_create_tracked_task") as mock_tracked:
+            with patch.object(agent.event_bus, "publish", new_callable=AsyncMock):
+                request_id = agent.request_save(
+                    target_path="/output/result.txt",
+                    content="analysis result",
+                    reason="保存分析结果",
+                    priority=SaveRequestPriority.HIGH,
+                    is_binary=False,
+                )
+    
+                assert request_id is not None
+>               mock_tracked.assert_called_once()
+E               AssertionError: Expected '_create_tracked_task' to have been called once. Called 0 times.
+
+tests\unit\domain\agents\test_conversation_agent_save_request_full.py:345: AssertionError
+_______ TestLegacyUsageMinimal.test_no_arguments_creates_with_defaults ________
+
+self = <test_coordinator_agent_config_compat.TestLegacyUsageMinimal object at 0x0000022D9DA674D0>
+mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394963254912'>
+
+    @patch("src.domain.services.coordinator_bootstrap.CoordinatorBootstrap")
+    def test_no_arguments_creates_with_defaults(self, mock_bootstrap):
+        """无参数创建使用默认配置"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+    
+        # Mock Bootstrap to avoid actual initialization
+        mock_wiring = MagicMock()
+        mock_wiring.base_state = {
+            "_rules": [],
+            "_statistics": {"total": 0, "passed": 0, "rejected": 0},
+            "workflow_states": {},
+            "_is_monitoring": False,
+            "_node_failure_strategies": {},
+            "_workflow_agents": {},
+            "message_log": [],
+            "reflection_contexts": {},
+            "_compressed_contexts": {},
+            "_knowledge_cache": {},
+            "_is_listening_simple_messages": False,
+            "_is_listening_reflections": False,
+            "_is_compressing_context": False,
+        }
+        mock_wiring.log_collector = None
+        mock_wiring.aliases = {}
+        mock_wiring.orchestrators = {
+            "failure_orchestrator": MagicMock(),
+            "container_monitor": MagicMock(),
+            "log_integration": MagicMock(),
+            "knowledge_manager": MagicMock(),
+            "knowledge_retrieval_orchestrator": MagicMock(),
+            "summary_manager": MagicMock(),
+            "power_compressor_facade": MagicMock(),
+            "subagent_orchestrator": MagicMock(),
+            "supervision_coordinator": MagicMock(
+                conversation_supervision=MagicMock(),
+                efficiency_monitor=MagicMock(),
+                strategy_repository=MagicMock(),
+            ),
+            "prompt_facade": MagicMock(),
+            "experiment_orchestrator": MagicMock(),
+            "save_request_orchestrator": MagicMock(),
+            "context_injection_manager": MagicMock(),
+            "supervision_module": MagicMock(),
+            "supervision_facade": MagicMock(),
+            "intervention_coordinator": MagicMock(),
+            "workflow_modifier": MagicMock(),
+            "task_terminator": MagicMock(),
+            "safety_guard": MagicMock(),
+            "injection_logger": MagicMock(),
+            "supervision_logger": MagicMock(),
+            "intervention_logger": MagicMock(),
+        }
+        mock_bootstrap.return_value.assemble.return_value = mock_wiring
+    
+        # Create agent without arguments
+>       _ = CoordinatorAgent()
+            ^^^^^^^^^^^^^^^^^^
+
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:80: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3D9F90>
+event_bus = <object object at 0x0000022D996272E0>
+rejection_rate_threshold = <object object at 0x0000022D996272E0>
+circuit_breaker_config = <object object at 0x0000022D996272E0>
+context_bridge = <object object at 0x0000022D996272E0>
+failure_strategy_config = <object object at 0x0000022D996272E0>
+context_compressor = <object object at 0x0000022D996272E0>
+snapshot_manager = <object object at 0x0000022D996272E0>
+knowledge_retriever = <object object at 0x0000022D996272E0>
+
+    def __init__(
+        self,
+        event_bus: EventBus | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        rejection_rate_threshold: float = _LEGACY_UNSET,  # type: ignore[assignment]
+        circuit_breaker_config: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_bridge: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        failure_strategy_config: dict[str, Any] | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_compressor: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        snapshot_manager: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        knowledge_retriever: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        *,
+        config: CoordinatorAgentConfig | None = None,
+    ):
+        """初始化协调者Agent（P1-1: 支持新配置系统）
+    
+        参数（旧方式 - 保持向后兼容）：
+            event_bus: 事件总线（用于发布验证/拒绝事件）
+            rejection_rate_threshold: 拒绝率告警阈值
+            circuit_breaker_config: 熔断器配置（阶段5新增）
+            context_bridge: 上下文桥接器（阶段5新增）
+            failure_strategy_config: 失败处理策略配置（Phase 12）
+            context_compressor: 上下文压缩器（阶段2新增）
+            snapshot_manager: 快照管理器（阶段2新增）
+            knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
+    
+        参数（新方式 - P1-1）：
+            config: CoordinatorAgentConfig 配置对象
+    
+        注意：
+            - 旧参数和 config 参数可以共存，但不能冲突
+            - config 优先级高于旧参数
+            - 如果同时传入冲突的值，将抛出 ValueError
+        """
+        # P1-1: Convert legacy args to new config
+        agent_config = self._legacy_args_to_agent_config(
+            config=config,
+            event_bus=event_bus,
+            rejection_rate_threshold=rejection_rate_threshold,
+            circuit_breaker_config=circuit_breaker_config,
+            context_bridge=context_bridge,
+            failure_strategy_config=failure_strategy_config,
+            context_compressor=context_compressor,
+            snapshot_manager=snapshot_manager,
+            knowledge_retriever=knowledge_retriever,
+        )
+        from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+    
+        # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
+        # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
+        bootstrap = CoordinatorBootstrap(config=agent_config)
+        wiring = bootstrap.assemble()
+    
+        # 3. 解包装配结果：配置属性（从 agent_config 读取）
+        self.event_bus = agent_config.event_bus
+        self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
+    
+        # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
+        self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
+        self._rules: list[Rule] = wiring.base_state["_rules"]
+        # P1-1清理: 统计信息读写统一走 RuleEngineFacade，但保留 _statistics 作为向后兼容别名
+        # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
+        # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
+        self._statistics = wiring.base_state["_statistics"]
+    
+        # 5. 解包装配结果：工作流状态（共享bootstrap容器）
+        self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
+        self._is_monitoring = wiring.base_state["_is_monitoring"]
+        # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
+        # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
+    
+        # 6. 解包装配结果：共享组件（log_collector）
+        self.log_collector = wiring.log_collector
+    
+        # 7. 解包装配结果：所有别名
+        for alias_name, alias_value in wiring.aliases.items():
+            setattr(self, alias_name, alias_value)
+    
+        # 8. 解包装配结果：所有编排器
+        self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
+        self._container_monitor = wiring.orchestrators["container_monitor"]
+        self._log_integration = wiring.orchestrators["log_integration"]
+        self.knowledge_manager = wiring.orchestrators["knowledge_manager"]
+        self._knowledge_retrieval_orchestrator = wiring.orchestrators[
+            "knowledge_retrieval_orchestrator"
+        ]
+        self._summary_manager = wiring.orchestrators["summary_manager"]
+        self._power_compressor_facade = wiring.orchestrators["power_compressor_facade"]
+        self._subagent_orchestrator = wiring.orchestrators["subagent_orchestrator"]
+        self._supervision_coordinator = wiring.orchestrators["supervision_coordinator"]
+        self._prompt_facade = wiring.orchestrators["prompt_facade"]
+        self._experiment_orchestrator = wiring.orchestrators["experiment_orchestrator"]
+        self._save_request_orchestrator = wiring.orchestrators["save_request_orchestrator"]
+        self.injection_manager = wiring.orchestrators["context_injection_manager"]
+        self.supervision_module = wiring.orchestrators["supervision_module"]
+        self.supervision_facade = wiring.orchestrators["supervision_facade"]  # Phase 34.13
+        self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
+        self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
+        self.task_terminator = wiring.orchestrators["task_terminator"]
+    
+        # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
+        # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
+        self._safety_guard = wiring.orchestrators.get("safety_guard")
+    
+        # 可选组件
+        if "alert_rule_manager" in wiring.orchestrators:
+            self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
+        if "circuit_breaker" in wiring.orchestrators:
+            self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
+    
+        # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
+        if "rule_engine_facade" not in wiring.orchestrators:
+>           raise RuntimeError(
+                "RuleEngineFacade not configured in wiring. "
+                "Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators."
+            )
+E           RuntimeError: RuleEngineFacade not configured in wiring. Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators.
+
+src\domain\agents\coordinator_agent.py:549: RuntimeError
+_________ TestLegacyUsageSingleParam.test_single_event_bus_parameter __________
+
+self = <test_coordinator_agent_config_compat.TestLegacyUsageSingleParam object at 0x0000022D9DA67610>
+mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394955736672'>
+
+    @patch("src.domain.services.coordinator_bootstrap.CoordinatorBootstrap")
+    def test_single_event_bus_parameter(self, mock_bootstrap):
+        """传入单个event_bus参数"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+    
+        mock_event_bus = MagicMock()
+    
+        # Mock Bootstrap
+        mock_wiring = MagicMock()
+        mock_wiring.base_state = {
+            "_rules": [],
+            "_statistics": {"total": 0, "passed": 0, "rejected": 0},
+            "workflow_states": {},
+            "_is_monitoring": False,
+            "_node_failure_strategies": {},
+            "_workflow_agents": {},
+            "message_log": [],
+            "reflection_contexts": {},
+            "_compressed_contexts": {},
+            "_knowledge_cache": {},
+            "_is_listening_simple_messages": False,
+            "_is_listening_reflections": False,
+            "_is_compressing_context": False,
+        }
+        mock_wiring.log_collector = None
+        mock_wiring.aliases = {}
+        mock_wiring.orchestrators = {
+            "failure_orchestrator": MagicMock(),
+            "container_monitor": MagicMock(),
+            "log_integration": MagicMock(),
+            "knowledge_manager": MagicMock(),
+            "knowledge_retrieval_orchestrator": MagicMock(),
+            "summary_manager": MagicMock(),
+            "power_compressor_facade": MagicMock(),
+            "subagent_orchestrator": MagicMock(),
+            "supervision_coordinator": MagicMock(
+                conversation_supervision=MagicMock(),
+                efficiency_monitor=MagicMock(),
+                strategy_repository=MagicMock(),
+            ),
+            "prompt_facade": MagicMock(),
+            "experiment_orchestrator": MagicMock(),
+            "save_request_orchestrator": MagicMock(),
+            "context_injection_manager": MagicMock(),
+            "supervision_module": MagicMock(),
+            "supervision_facade": MagicMock(),
+            "intervention_coordinator": MagicMock(),
+            "workflow_modifier": MagicMock(),
+            "task_terminator": MagicMock(),
+            "safety_guard": MagicMock(),
+            "injection_logger": MagicMock(),
+            "supervision_logger": MagicMock(),
+            "intervention_logger": MagicMock(),
+        }
+        mock_bootstrap.return_value.assemble.return_value = mock_wiring
+    
+        # Create agent with event_bus
+>       _ = CoordinatorAgent(event_bus=mock_event_bus)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DA210>
+event_bus = <MagicMock id='2394955740032'>
+rejection_rate_threshold = <object object at 0x0000022D996272E0>
+circuit_breaker_config = <object object at 0x0000022D996272E0>
+context_bridge = <object object at 0x0000022D996272E0>
+failure_strategy_config = <object object at 0x0000022D996272E0>
+context_compressor = <object object at 0x0000022D996272E0>
+snapshot_manager = <object object at 0x0000022D996272E0>
+knowledge_retriever = <object object at 0x0000022D996272E0>
+
+    def __init__(
+        self,
+        event_bus: EventBus | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        rejection_rate_threshold: float = _LEGACY_UNSET,  # type: ignore[assignment]
+        circuit_breaker_config: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_bridge: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        failure_strategy_config: dict[str, Any] | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_compressor: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        snapshot_manager: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        knowledge_retriever: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        *,
+        config: CoordinatorAgentConfig | None = None,
+    ):
+        """初始化协调者Agent（P1-1: 支持新配置系统）
+    
+        参数（旧方式 - 保持向后兼容）：
+            event_bus: 事件总线（用于发布验证/拒绝事件）
+            rejection_rate_threshold: 拒绝率告警阈值
+            circuit_breaker_config: 熔断器配置（阶段5新增）
+            context_bridge: 上下文桥接器（阶段5新增）
+            failure_strategy_config: 失败处理策略配置（Phase 12）
+            context_compressor: 上下文压缩器（阶段2新增）
+            snapshot_manager: 快照管理器（阶段2新增）
+            knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
+    
+        参数（新方式 - P1-1）：
+            config: CoordinatorAgentConfig 配置对象
+    
+        注意：
+            - 旧参数和 config 参数可以共存，但不能冲突
+            - config 优先级高于旧参数
+            - 如果同时传入冲突的值，将抛出 ValueError
+        """
+        # P1-1: Convert legacy args to new config
+        agent_config = self._legacy_args_to_agent_config(
+            config=config,
+            event_bus=event_bus,
+            rejection_rate_threshold=rejection_rate_threshold,
+            circuit_breaker_config=circuit_breaker_config,
+            context_bridge=context_bridge,
+            failure_strategy_config=failure_strategy_config,
+            context_compressor=context_compressor,
+            snapshot_manager=snapshot_manager,
+            knowledge_retriever=knowledge_retriever,
+        )
+        from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+    
+        # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
+        # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
+        bootstrap = CoordinatorBootstrap(config=agent_config)
+        wiring = bootstrap.assemble()
+    
+        # 3. 解包装配结果：配置属性（从 agent_config 读取）
+        self.event_bus = agent_config.event_bus
+        self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
+    
+        # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
+        self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
+        self._rules: list[Rule] = wiring.base_state["_rules"]
+        # P1-1清理: 统计信息读写统一走 RuleEngineFacade，但保留 _statistics 作为向后兼容别名
+        # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
+        # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
+        self._statistics = wiring.base_state["_statistics"]
+    
+        # 5. 解包装配结果：工作流状态（共享bootstrap容器）
+        self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
+        self._is_monitoring = wiring.base_state["_is_monitoring"]
+        # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
+        # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
+    
+        # 6. 解包装配结果：共享组件（log_collector）
+        self.log_collector = wiring.log_collector
+    
+        # 7. 解包装配结果：所有别名
+        for alias_name, alias_value in wiring.aliases.items():
+            setattr(self, alias_name, alias_value)
+    
+        # 8. 解包装配结果：所有编排器
+        self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
+        self._container_monitor = wiring.orchestrators["container_monitor"]
+        self._log_integration = wiring.orchestrators["log_integration"]
+        self.knowledge_manager = wiring.orchestrators["knowledge_manager"]
+        self._knowledge_retrieval_orchestrator = wiring.orchestrators[
+            "knowledge_retrieval_orchestrator"
+        ]
+        self._summary_manager = wiring.orchestrators["summary_manager"]
+        self._power_compressor_facade = wiring.orchestrators["power_compressor_facade"]
+        self._subagent_orchestrator = wiring.orchestrators["subagent_orchestrator"]
+        self._supervision_coordinator = wiring.orchestrators["supervision_coordinator"]
+        self._prompt_facade = wiring.orchestrators["prompt_facade"]
+        self._experiment_orchestrator = wiring.orchestrators["experiment_orchestrator"]
+        self._save_request_orchestrator = wiring.orchestrators["save_request_orchestrator"]
+        self.injection_manager = wiring.orchestrators["context_injection_manager"]
+        self.supervision_module = wiring.orchestrators["supervision_module"]
+        self.supervision_facade = wiring.orchestrators["supervision_facade"]  # Phase 34.13
+        self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
+        self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
+        self.task_terminator = wiring.orchestrators["task_terminator"]
+    
+        # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
+        # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
+        self._safety_guard = wiring.orchestrators.get("safety_guard")
+    
+        # 可选组件
+        if "alert_rule_manager" in wiring.orchestrators:
+            self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
+        if "circuit_breaker" in wiring.orchestrators:
+            self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
+    
+        # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
+        if "rule_engine_facade" not in wiring.orchestrators:
+>           raise RuntimeError(
+                "RuleEngineFacade not configured in wiring. "
+                "Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators."
+            )
+E           RuntimeError: RuleEngineFacade not configured in wiring. Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators.
+
+src\domain\agents\coordinator_agent.py:549: RuntimeError
+________________ TestNewUsagePureConfig.test_pure_config_usage ________________
+
+self = <test_coordinator_agent_config_compat.TestNewUsagePureConfig object at 0x0000022D9DA67750>
+mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394957615456'>
+
+    @patch("src.domain.services.coordinator_bootstrap.CoordinatorBootstrap")
+    def test_pure_config_usage(self, mock_bootstrap):
+        """仅传入config参数"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+        from src.domain.agents.coordinator_agent_config import (
+            CoordinatorAgentConfig,
+            RuleEngineConfig,
+        )
+    
+        mock_event_bus = MagicMock()
+        config = CoordinatorAgentConfig(
+            event_bus=mock_event_bus,
+            rules=RuleEngineConfig(rejection_rate_threshold=0.7),
+        )
+    
+        # Mock Bootstrap
+        mock_wiring = MagicMock()
+        mock_wiring.base_state = {
+            "_rules": [],
+            "_statistics": {"total": 0, "passed": 0, "rejected": 0},
+            "workflow_states": {},
+            "_is_monitoring": False,
+            "_node_failure_strategies": {},
+            "_workflow_agents": {},
+            "message_log": [],
+            "reflection_contexts": {},
+            "_compressed_contexts": {},
+            "_knowledge_cache": {},
+            "_is_listening_simple_messages": False,
+            "_is_listening_reflections": False,
+            "_is_compressing_context": False,
+        }
+        mock_wiring.log_collector = None
+        mock_wiring.aliases = {}
+        mock_wiring.orchestrators = {
+            "failure_orchestrator": MagicMock(),
+            "container_monitor": MagicMock(),
+            "log_integration": MagicMock(),
+            "knowledge_manager": MagicMock(),
+            "knowledge_retrieval_orchestrator": MagicMock(),
+            "summary_manager": MagicMock(),
+            "power_compressor_facade": MagicMock(),
+            "subagent_orchestrator": MagicMock(),
+            "supervision_coordinator": MagicMock(
+                conversation_supervision=MagicMock(),
+                efficiency_monitor=MagicMock(),
+                strategy_repository=MagicMock(),
+            ),
+            "prompt_facade": MagicMock(),
+            "experiment_orchestrator": MagicMock(),
+            "save_request_orchestrator": MagicMock(),
+            "context_injection_manager": MagicMock(),
+            "supervision_module": MagicMock(),
+            "supervision_facade": MagicMock(),
+            "intervention_coordinator": MagicMock(),
+            "workflow_modifier": MagicMock(),
+            "task_terminator": MagicMock(),
+            "safety_guard": MagicMock(),
+            "injection_logger": MagicMock(),
+            "supervision_logger": MagicMock(),
+            "intervention_logger": MagicMock(),
+        }
+        mock_bootstrap.return_value.assemble.return_value = mock_wiring
+    
+        # Create agent with config only
+>       _ = CoordinatorAgent(config=config)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:225: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DAC10>
+event_bus = <object object at 0x0000022D996272E0>
+rejection_rate_threshold = <object object at 0x0000022D996272E0>
+circuit_breaker_config = <object object at 0x0000022D996272E0>
+context_bridge = <object object at 0x0000022D996272E0>
+failure_strategy_config = <object object at 0x0000022D996272E0>
+context_compressor = <object object at 0x0000022D996272E0>
+snapshot_manager = <object object at 0x0000022D996272E0>
+knowledge_retriever = <object object at 0x0000022D996272E0>
+
+    def __init__(
+        self,
+        event_bus: EventBus | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        rejection_rate_threshold: float = _LEGACY_UNSET,  # type: ignore[assignment]
+        circuit_breaker_config: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_bridge: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        failure_strategy_config: dict[str, Any] | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_compressor: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        snapshot_manager: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        knowledge_retriever: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        *,
+        config: CoordinatorAgentConfig | None = None,
+    ):
+        """初始化协调者Agent（P1-1: 支持新配置系统）
+    
+        参数（旧方式 - 保持向后兼容）：
+            event_bus: 事件总线（用于发布验证/拒绝事件）
+            rejection_rate_threshold: 拒绝率告警阈值
+            circuit_breaker_config: 熔断器配置（阶段5新增）
+            context_bridge: 上下文桥接器（阶段5新增）
+            failure_strategy_config: 失败处理策略配置（Phase 12）
+            context_compressor: 上下文压缩器（阶段2新增）
+            snapshot_manager: 快照管理器（阶段2新增）
+            knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
+    
+        参数（新方式 - P1-1）：
+            config: CoordinatorAgentConfig 配置对象
+    
+        注意：
+            - 旧参数和 config 参数可以共存，但不能冲突
+            - config 优先级高于旧参数
+            - 如果同时传入冲突的值，将抛出 ValueError
+        """
+        # P1-1: Convert legacy args to new config
+        agent_config = self._legacy_args_to_agent_config(
+            config=config,
+            event_bus=event_bus,
+            rejection_rate_threshold=rejection_rate_threshold,
+            circuit_breaker_config=circuit_breaker_config,
+            context_bridge=context_bridge,
+            failure_strategy_config=failure_strategy_config,
+            context_compressor=context_compressor,
+            snapshot_manager=snapshot_manager,
+            knowledge_retriever=knowledge_retriever,
+        )
+        from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+    
+        # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
+        # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
+        bootstrap = CoordinatorBootstrap(config=agent_config)
+        wiring = bootstrap.assemble()
+    
+        # 3. 解包装配结果：配置属性（从 agent_config 读取）
+        self.event_bus = agent_config.event_bus
+        self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
+    
+        # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
+        self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
+        self._rules: list[Rule] = wiring.base_state["_rules"]
+        # P1-1清理: 统计信息读写统一走 RuleEngineFacade，但保留 _statistics 作为向后兼容别名
+        # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
+        # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
+        self._statistics = wiring.base_state["_statistics"]
+    
+        # 5. 解包装配结果：工作流状态（共享bootstrap容器）
+        self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
+        self._is_monitoring = wiring.base_state["_is_monitoring"]
+        # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
+        # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
+    
+        # 6. 解包装配结果：共享组件（log_collector）
+        self.log_collector = wiring.log_collector
+    
+        # 7. 解包装配结果：所有别名
+        for alias_name, alias_value in wiring.aliases.items():
+            setattr(self, alias_name, alias_value)
+    
+        # 8. 解包装配结果：所有编排器
+        self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
+        self._container_monitor = wiring.orchestrators["container_monitor"]
+        self._log_integration = wiring.orchestrators["log_integration"]
+        self.knowledge_manager = wiring.orchestrators["knowledge_manager"]
+        self._knowledge_retrieval_orchestrator = wiring.orchestrators[
+            "knowledge_retrieval_orchestrator"
+        ]
+        self._summary_manager = wiring.orchestrators["summary_manager"]
+        self._power_compressor_facade = wiring.orchestrators["power_compressor_facade"]
+        self._subagent_orchestrator = wiring.orchestrators["subagent_orchestrator"]
+        self._supervision_coordinator = wiring.orchestrators["supervision_coordinator"]
+        self._prompt_facade = wiring.orchestrators["prompt_facade"]
+        self._experiment_orchestrator = wiring.orchestrators["experiment_orchestrator"]
+        self._save_request_orchestrator = wiring.orchestrators["save_request_orchestrator"]
+        self.injection_manager = wiring.orchestrators["context_injection_manager"]
+        self.supervision_module = wiring.orchestrators["supervision_module"]
+        self.supervision_facade = wiring.orchestrators["supervision_facade"]  # Phase 34.13
+        self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
+        self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
+        self.task_terminator = wiring.orchestrators["task_terminator"]
+    
+        # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
+        # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
+        self._safety_guard = wiring.orchestrators.get("safety_guard")
+    
+        # 可选组件
+        if "alert_rule_manager" in wiring.orchestrators:
+            self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
+        if "circuit_breaker" in wiring.orchestrators:
+            self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
+    
+        # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
+        if "rule_engine_facade" not in wiring.orchestrators:
+>           raise RuntimeError(
+                "RuleEngineFacade not configured in wiring. "
+                "Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators."
+            )
+E           RuntimeError: RuleEngineFacade not configured in wiring. Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators.
+
+src\domain\agents\coordinator_agent.py:549: RuntimeError
+____________ TestMixedUsageConsistent.test_consistent_mixed_usage _____________
+
+self = <test_coordinator_agent_config_compat.TestMixedUsageConsistent object at 0x0000022D9DA67890>
+mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394962356480'>
+
+    @patch("src.domain.services.coordinator_bootstrap.CoordinatorBootstrap")
+    def test_consistent_mixed_usage(self, mock_bootstrap):
+        """旧参数与config值一致，不抛出错误"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+        from src.domain.agents.coordinator_agent_config import (
+            CoordinatorAgentConfig,
+            RuleEngineConfig,
+        )
+    
+        mock_event_bus = MagicMock()
+        config = CoordinatorAgentConfig(
+            event_bus=mock_event_bus,
+            rules=RuleEngineConfig(rejection_rate_threshold=0.7),
+        )
+    
+        # Mock Bootstrap
+        mock_wiring = MagicMock()
+        mock_wiring.base_state = {
+            "_rules": [],
+            "_statistics": {"total": 0, "passed": 0, "rejected": 0},
+            "workflow_states": {},
+            "_is_monitoring": False,
+            "_node_failure_strategies": {},
+            "_workflow_agents": {},
+            "message_log": [],
+            "reflection_contexts": {},
+            "_compressed_contexts": {},
+            "_knowledge_cache": {},
+            "_is_listening_simple_messages": False,
+            "_is_listening_reflections": False,
+            "_is_compressing_context": False,
+        }
+        mock_wiring.log_collector = None
+        mock_wiring.aliases = {}
+        mock_wiring.orchestrators = {
+            "failure_orchestrator": MagicMock(),
+            "container_monitor": MagicMock(),
+            "log_integration": MagicMock(),
+            "knowledge_manager": MagicMock(),
+            "knowledge_retrieval_orchestrator": MagicMock(),
+            "summary_manager": MagicMock(),
+            "power_compressor_facade": MagicMock(),
+            "subagent_orchestrator": MagicMock(),
+            "supervision_coordinator": MagicMock(
+                conversation_supervision=MagicMock(),
+                efficiency_monitor=MagicMock(),
+                strategy_repository=MagicMock(),
+            ),
+            "prompt_facade": MagicMock(),
+            "experiment_orchestrator": MagicMock(),
+            "save_request_orchestrator": MagicMock(),
+            "context_injection_manager": MagicMock(),
+            "supervision_module": MagicMock(),
+            "supervision_facade": MagicMock(),
+            "intervention_coordinator": MagicMock(),
+            "workflow_modifier": MagicMock(),
+            "task_terminator": MagicMock(),
+            "safety_guard": MagicMock(),
+            "injection_logger": MagicMock(),
+            "supervision_logger": MagicMock(),
+            "intervention_logger": MagicMock(),
+        }
+        mock_bootstrap.return_value.assemble.return_value = mock_wiring
+    
+        # Pass consistent values: event_bus matches config.event_bus
+>       agent = CoordinatorAgent(event_bus=mock_event_bus, config=config)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:302: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DA990>
+event_bus = <MagicMock id='2394962360512'>
+rejection_rate_threshold = <object object at 0x0000022D996272E0>
+circuit_breaker_config = <object object at 0x0000022D996272E0>
+context_bridge = <object object at 0x0000022D996272E0>
+failure_strategy_config = <object object at 0x0000022D996272E0>
+context_compressor = <object object at 0x0000022D996272E0>
+snapshot_manager = <object object at 0x0000022D996272E0>
+knowledge_retriever = <object object at 0x0000022D996272E0>
+
+    def __init__(
+        self,
+        event_bus: EventBus | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        rejection_rate_threshold: float = _LEGACY_UNSET,  # type: ignore[assignment]
+        circuit_breaker_config: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_bridge: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        failure_strategy_config: dict[str, Any] | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_compressor: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        snapshot_manager: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        knowledge_retriever: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        *,
+        config: CoordinatorAgentConfig | None = None,
+    ):
+        """初始化协调者Agent（P1-1: 支持新配置系统）
+    
+        参数（旧方式 - 保持向后兼容）：
+            event_bus: 事件总线（用于发布验证/拒绝事件）
+            rejection_rate_threshold: 拒绝率告警阈值
+            circuit_breaker_config: 熔断器配置（阶段5新增）
+            context_bridge: 上下文桥接器（阶段5新增）
+            failure_strategy_config: 失败处理策略配置（Phase 12）
+            context_compressor: 上下文压缩器（阶段2新增）
+            snapshot_manager: 快照管理器（阶段2新增）
+            knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
+    
+        参数（新方式 - P1-1）：
+            config: CoordinatorAgentConfig 配置对象
+    
+        注意：
+            - 旧参数和 config 参数可以共存，但不能冲突
+            - config 优先级高于旧参数
+            - 如果同时传入冲突的值，将抛出 ValueError
+        """
+        # P1-1: Convert legacy args to new config
+        agent_config = self._legacy_args_to_agent_config(
+            config=config,
+            event_bus=event_bus,
+            rejection_rate_threshold=rejection_rate_threshold,
+            circuit_breaker_config=circuit_breaker_config,
+            context_bridge=context_bridge,
+            failure_strategy_config=failure_strategy_config,
+            context_compressor=context_compressor,
+            snapshot_manager=snapshot_manager,
+            knowledge_retriever=knowledge_retriever,
+        )
+        from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+    
+        # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
+        # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
+        bootstrap = CoordinatorBootstrap(config=agent_config)
+        wiring = bootstrap.assemble()
+    
+        # 3. 解包装配结果：配置属性（从 agent_config 读取）
+        self.event_bus = agent_config.event_bus
+        self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
+    
+        # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
+        self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
+        self._rules: list[Rule] = wiring.base_state["_rules"]
+        # P1-1清理: 统计信息读写统一走 RuleEngineFacade，但保留 _statistics 作为向后兼容别名
+        # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
+        # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
+        self._statistics = wiring.base_state["_statistics"]
+    
+        # 5. 解包装配结果：工作流状态（共享bootstrap容器）
+        self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
+        self._is_monitoring = wiring.base_state["_is_monitoring"]
+        # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
+        # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
+    
+        # 6. 解包装配结果：共享组件（log_collector）
+        self.log_collector = wiring.log_collector
+    
+        # 7. 解包装配结果：所有别名
+        for alias_name, alias_value in wiring.aliases.items():
+            setattr(self, alias_name, alias_value)
+    
+        # 8. 解包装配结果：所有编排器
+        self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
+        self._container_monitor = wiring.orchestrators["container_monitor"]
+        self._log_integration = wiring.orchestrators["log_integration"]
+        self.knowledge_manager = wiring.orchestrators["knowledge_manager"]
+        self._knowledge_retrieval_orchestrator = wiring.orchestrators[
+            "knowledge_retrieval_orchestrator"
+        ]
+        self._summary_manager = wiring.orchestrators["summary_manager"]
+        self._power_compressor_facade = wiring.orchestrators["power_compressor_facade"]
+        self._subagent_orchestrator = wiring.orchestrators["subagent_orchestrator"]
+        self._supervision_coordinator = wiring.orchestrators["supervision_coordinator"]
+        self._prompt_facade = wiring.orchestrators["prompt_facade"]
+        self._experiment_orchestrator = wiring.orchestrators["experiment_orchestrator"]
+        self._save_request_orchestrator = wiring.orchestrators["save_request_orchestrator"]
+        self.injection_manager = wiring.orchestrators["context_injection_manager"]
+        self.supervision_module = wiring.orchestrators["supervision_module"]
+        self.supervision_facade = wiring.orchestrators["supervision_facade"]  # Phase 34.13
+        self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
+        self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
+        self.task_terminator = wiring.orchestrators["task_terminator"]
+    
+        # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
+        # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
+        self._safety_guard = wiring.orchestrators.get("safety_guard")
+    
+        # 可选组件
+        if "alert_rule_manager" in wiring.orchestrators:
+            self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
+        if "circuit_breaker" in wiring.orchestrators:
+            self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
+    
+        # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
+        if "rule_engine_facade" not in wiring.orchestrators:
+>           raise RuntimeError(
+                "RuleEngineFacade not configured in wiring. "
+                "Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators."
+            )
+E           RuntimeError: RuleEngineFacade not configured in wiring. Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators.
+
+src\domain\agents\coordinator_agent.py:549: RuntimeError
+________ TestDefaultValueHandling.test_default_values_do_not_conflict _________
+
+self = <test_coordinator_agent_config_compat.TestDefaultValueHandling object at 0x0000022D9DA67C50>
+mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394961104912'>
+
+    @patch("src.domain.services.coordinator_bootstrap.CoordinatorBootstrap")
+    def test_default_values_do_not_conflict(self, mock_bootstrap):
+        """未传入的默认值不导致冲突"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+        from src.domain.agents.coordinator_agent_config import (
+            CoordinatorAgentConfig,
+            RuleEngineConfig,
+        )
+    
+        # Create config with non-default rejection_rate
+        config = CoordinatorAgentConfig(
+            rules=RuleEngineConfig(rejection_rate_threshold=0.7),
+        )
+    
+        # Mock Bootstrap
+        mock_wiring = MagicMock()
+        mock_wiring.base_state = {
+            "_rules": [],
+            "_statistics": {"total": 0, "passed": 0, "rejected": 0},
+            "workflow_states": {},
+            "_is_monitoring": False,
+            "_node_failure_strategies": {},
+            "_workflow_agents": {},
+            "message_log": [],
+            "reflection_contexts": {},
+            "_compressed_contexts": {},
+            "_knowledge_cache": {},
+            "_is_listening_simple_messages": False,
+            "_is_listening_reflections": False,
+            "_is_compressing_context": False,
+        }
+        mock_wiring.log_collector = None
+        mock_wiring.aliases = {}
+        mock_wiring.orchestrators = {
+            "failure_orchestrator": MagicMock(),
+            "container_monitor": MagicMock(),
+            "log_integration": MagicMock(),
+            "knowledge_manager": MagicMock(),
+            "knowledge_retrieval_orchestrator": MagicMock(),
+            "summary_manager": MagicMock(),
+            "power_compressor_facade": MagicMock(),
+            "subagent_orchestrator": MagicMock(),
+            "supervision_coordinator": MagicMock(
+                conversation_supervision=MagicMock(),
+                efficiency_monitor=MagicMock(),
+                strategy_repository=MagicMock(),
+            ),
+            "prompt_facade": MagicMock(),
+            "experiment_orchestrator": MagicMock(),
+            "save_request_orchestrator": MagicMock(),
+            "context_injection_manager": MagicMock(),
+            "supervision_module": MagicMock(),
+            "supervision_facade": MagicMock(),
+            "intervention_coordinator": MagicMock(),
+            "workflow_modifier": MagicMock(),
+            "task_terminator": MagicMock(),
+            "safety_guard": MagicMock(),
+            "injection_logger": MagicMock(),
+            "supervision_logger": MagicMock(),
+            "intervention_logger": MagicMock(),
+        }
+        mock_bootstrap.return_value.assemble.return_value = mock_wiring
+    
+        # Do not pass rejection_rate_threshold explicitly - should use sentinel
+        # and not conflict with config
+>       _ = CoordinatorAgent(config=config)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:408: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E259810>
+event_bus = <object object at 0x0000022D996272E0>
+rejection_rate_threshold = <object object at 0x0000022D996272E0>
+circuit_breaker_config = <object object at 0x0000022D996272E0>
+context_bridge = <object object at 0x0000022D996272E0>
+failure_strategy_config = <object object at 0x0000022D996272E0>
+context_compressor = <object object at 0x0000022D996272E0>
+snapshot_manager = <object object at 0x0000022D996272E0>
+knowledge_retriever = <object object at 0x0000022D996272E0>
+
+    def __init__(
+        self,
+        event_bus: EventBus | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        rejection_rate_threshold: float = _LEGACY_UNSET,  # type: ignore[assignment]
+        circuit_breaker_config: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_bridge: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        failure_strategy_config: dict[str, Any] | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_compressor: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        snapshot_manager: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        knowledge_retriever: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        *,
+        config: CoordinatorAgentConfig | None = None,
+    ):
+        """初始化协调者Agent（P1-1: 支持新配置系统）
+    
+        参数（旧方式 - 保持向后兼容）：
+            event_bus: 事件总线（用于发布验证/拒绝事件）
+            rejection_rate_threshold: 拒绝率告警阈值
+            circuit_breaker_config: 熔断器配置（阶段5新增）
+            context_bridge: 上下文桥接器（阶段5新增）
+            failure_strategy_config: 失败处理策略配置（Phase 12）
+            context_compressor: 上下文压缩器（阶段2新增）
+            snapshot_manager: 快照管理器（阶段2新增）
+            knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
+    
+        参数（新方式 - P1-1）：
+            config: CoordinatorAgentConfig 配置对象
+    
+        注意：
+            - 旧参数和 config 参数可以共存，但不能冲突
+            - config 优先级高于旧参数
+            - 如果同时传入冲突的值，将抛出 ValueError
+        """
+        # P1-1: Convert legacy args to new config
+        agent_config = self._legacy_args_to_agent_config(
+            config=config,
+            event_bus=event_bus,
+            rejection_rate_threshold=rejection_rate_threshold,
+            circuit_breaker_config=circuit_breaker_config,
+            context_bridge=context_bridge,
+            failure_strategy_config=failure_strategy_config,
+            context_compressor=context_compressor,
+            snapshot_manager=snapshot_manager,
+            knowledge_retriever=knowledge_retriever,
+        )
+        from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+    
+        # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
+        # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
+        bootstrap = CoordinatorBootstrap(config=agent_config)
+        wiring = bootstrap.assemble()
+    
+        # 3. 解包装配结果：配置属性（从 agent_config 读取）
+        self.event_bus = agent_config.event_bus
+        self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
+    
+        # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
+        self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
+        self._rules: list[Rule] = wiring.base_state["_rules"]
+        # P1-1清理: 统计信息读写统一走 RuleEngineFacade，但保留 _statistics 作为向后兼容别名
+        # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
+        # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
+        self._statistics = wiring.base_state["_statistics"]
+    
+        # 5. 解包装配结果：工作流状态（共享bootstrap容器）
+        self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
+        self._is_monitoring = wiring.base_state["_is_monitoring"]
+        # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
+        # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
+    
+        # 6. 解包装配结果：共享组件（log_collector）
+        self.log_collector = wiring.log_collector
+    
+        # 7. 解包装配结果：所有别名
+        for alias_name, alias_value in wiring.aliases.items():
+            setattr(self, alias_name, alias_value)
+    
+        # 8. 解包装配结果：所有编排器
+        self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
+        self._container_monitor = wiring.orchestrators["container_monitor"]
+        self._log_integration = wiring.orchestrators["log_integration"]
+        self.knowledge_manager = wiring.orchestrators["knowledge_manager"]
+        self._knowledge_retrieval_orchestrator = wiring.orchestrators[
+            "knowledge_retrieval_orchestrator"
+        ]
+        self._summary_manager = wiring.orchestrators["summary_manager"]
+        self._power_compressor_facade = wiring.orchestrators["power_compressor_facade"]
+        self._subagent_orchestrator = wiring.orchestrators["subagent_orchestrator"]
+        self._supervision_coordinator = wiring.orchestrators["supervision_coordinator"]
+        self._prompt_facade = wiring.orchestrators["prompt_facade"]
+        self._experiment_orchestrator = wiring.orchestrators["experiment_orchestrator"]
+        self._save_request_orchestrator = wiring.orchestrators["save_request_orchestrator"]
+        self.injection_manager = wiring.orchestrators["context_injection_manager"]
+        self.supervision_module = wiring.orchestrators["supervision_module"]
+        self.supervision_facade = wiring.orchestrators["supervision_facade"]  # Phase 34.13
+        self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
+        self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
+        self.task_terminator = wiring.orchestrators["task_terminator"]
+    
+        # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
+        # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
+        self._safety_guard = wiring.orchestrators.get("safety_guard")
+    
+        # 可选组件
+        if "alert_rule_manager" in wiring.orchestrators:
+            self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
+        if "circuit_breaker" in wiring.orchestrators:
+            self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
+    
+        # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
+        if "rule_engine_facade" not in wiring.orchestrators:
+>           raise RuntimeError(
+                "RuleEngineFacade not configured in wiring. "
+                "Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators."
+            )
+E           RuntimeError: RuleEngineFacade not configured in wiring. Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators.
+
+src\domain\agents\coordinator_agent.py:549: RuntimeError
+_______ TestComplexFieldConversion.test_failure_strategy_dict_to_config _______
+
+self = <test_coordinator_agent_config_compat.TestComplexFieldConversion object at 0x0000022D9DA67D90>
+mock_bootstrap = <MagicMock name='CoordinatorBootstrap' id='2394953609440'>
+
+    @patch("src.domain.services.coordinator_bootstrap.CoordinatorBootstrap")
+    def test_failure_strategy_dict_to_config(self, mock_bootstrap):
+        """failure_strategy_config dict → Bootstrap schema 映射（Critical Fix-1）"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+        from src.domain.services.workflow_failure_orchestrator import (
+            FailureHandlingStrategy,
+        )
+    
+        failure_dict = {
+            "max_retry_attempts": 5,
+            "retry_delay_seconds": 2.0,
+            "enable_auto_recovery": False,
+        }
+    
+        # Mock Bootstrap
+        mock_wiring = MagicMock()
+        mock_wiring.base_state = {
+            "_rules": [],
+            "_statistics": {"total": 0, "passed": 0, "rejected": 0},
+            "workflow_states": {},
+            "_is_monitoring": False,
+            "_node_failure_strategies": {},
+            "_workflow_agents": {},
+            "message_log": [],
+            "reflection_contexts": {},
+            "_compressed_contexts": {},
+            "_knowledge_cache": {},
+            "_is_listening_simple_messages": False,
+            "_is_listening_reflections": False,
+            "_is_compressing_context": False,
+        }
+        mock_wiring.log_collector = None
+        mock_wiring.aliases = {}
+        mock_wiring.orchestrators = {
+            "failure_orchestrator": MagicMock(),
+            "container_monitor": MagicMock(),
+            "log_integration": MagicMock(),
+            "knowledge_manager": MagicMock(),
+            "knowledge_retrieval_orchestrator": MagicMock(),
+            "summary_manager": MagicMock(),
+            "power_compressor_facade": MagicMock(),
+            "subagent_orchestrator": MagicMock(),
+            "supervision_coordinator": MagicMock(
+                conversation_supervision=MagicMock(),
+                efficiency_monitor=MagicMock(),
+                strategy_repository=MagicMock(),
+            ),
+            "prompt_facade": MagicMock(),
+            "experiment_orchestrator": MagicMock(),
+            "save_request_orchestrator": MagicMock(),
+            "context_injection_manager": MagicMock(),
+            "supervision_module": MagicMock(),
+            "supervision_facade": MagicMock(),
+            "intervention_coordinator": MagicMock(),
+            "workflow_modifier": MagicMock(),
+            "task_terminator": MagicMock(),
+            "safety_guard": MagicMock(),
+            "injection_logger": MagicMock(),
+            "supervision_logger": MagicMock(),
+            "intervention_logger": MagicMock(),
+        }
+        mock_bootstrap.return_value.assemble.return_value = mock_wiring
+    
+        # Create agent with failure_strategy_config dict
+>       _ = CoordinatorAgent(failure_strategy_config=failure_dict)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\domain\agents\test_coordinator_agent_config_compat.py:483: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DB390>
+event_bus = <object object at 0x0000022D996272E0>
+rejection_rate_threshold = <object object at 0x0000022D996272E0>
+circuit_breaker_config = <object object at 0x0000022D996272E0>
+context_bridge = <object object at 0x0000022D996272E0>
+failure_strategy_config = {'enable_auto_recovery': False, 'max_retry_attempts': 5, 'retry_delay_seconds': 2.0}
+context_compressor = <object object at 0x0000022D996272E0>
+snapshot_manager = <object object at 0x0000022D996272E0>
+knowledge_retriever = <object object at 0x0000022D996272E0>
+
+    def __init__(
+        self,
+        event_bus: EventBus | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        rejection_rate_threshold: float = _LEGACY_UNSET,  # type: ignore[assignment]
+        circuit_breaker_config: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_bridge: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        failure_strategy_config: dict[str, Any] | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        context_compressor: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        snapshot_manager: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        knowledge_retriever: Any | None = _LEGACY_UNSET,  # type: ignore[assignment]
+        *,
+        config: CoordinatorAgentConfig | None = None,
+    ):
+        """初始化协调者Agent（P1-1: 支持新配置系统）
+    
+        参数（旧方式 - 保持向后兼容）：
+            event_bus: 事件总线（用于发布验证/拒绝事件）
+            rejection_rate_threshold: 拒绝率告警阈值
+            circuit_breaker_config: 熔断器配置（阶段5新增）
+            context_bridge: 上下文桥接器（阶段5新增）
+            failure_strategy_config: 失败处理策略配置（Phase 12）
+            context_compressor: 上下文压缩器（阶段2新增）
+            snapshot_manager: 快照管理器（阶段2新增）
+            knowledge_retriever: 知识检索器（Phase 5 阶段2新增）
+    
+        参数（新方式 - P1-1）：
+            config: CoordinatorAgentConfig 配置对象
+    
+        注意：
+            - 旧参数和 config 参数可以共存，但不能冲突
+            - config 优先级高于旧参数
+            - 如果同时传入冲突的值，将抛出 ValueError
+        """
+        # P1-1: Convert legacy args to new config
+        agent_config = self._legacy_args_to_agent_config(
+            config=config,
+            event_bus=event_bus,
+            rejection_rate_threshold=rejection_rate_threshold,
+            circuit_breaker_config=circuit_breaker_config,
+            context_bridge=context_bridge,
+            failure_strategy_config=failure_strategy_config,
+            context_compressor=context_compressor,
+            snapshot_manager=snapshot_manager,
+            knowledge_retriever=knowledge_retriever,
+        )
+        from src.domain.services.coordinator_bootstrap import CoordinatorBootstrap
+    
+        # P1-1 Step 2: 直接传递 agent_config 给 Bootstrap
+        # Bootstrap 内部会处理 CoordinatorAgentConfig → CoordinatorConfig 的映射
+        bootstrap = CoordinatorBootstrap(config=agent_config)
+        wiring = bootstrap.assemble()
+    
+        # 3. 解包装配结果：配置属性（从 agent_config 读取）
+        self.event_bus = agent_config.event_bus
+        self.rejection_rate_threshold = agent_config.rules.rejection_rate_threshold
+    
+        # 4. 解包装配结果：基础状态（使用bootstrap创建的容器，确保状态共享）
+        self._base_state = wiring.base_state  # Phase 35.5.1: 保存引用以便写回状态
+        self._rules: list[Rule] = wiring.base_state["_rules"]
+        # P1-1清理: 统计信息读写统一走 RuleEngineFacade，但保留 _statistics 作为向后兼容别名
+        # - tests/unit/domain/services/test_coordinator_extensions.py 等会直接访问 coordinator._statistics
+        # - 该 alias 仅用于兼容；业务逻辑请通过 Facade 获取统计信息
+        self._statistics = wiring.base_state["_statistics"]
+    
+        # 5. 解包装配结果：工作流状态（共享bootstrap容器）
+        self.workflow_states: dict[str, dict[str, Any]] = wiring.base_state["workflow_states"]
+        self._is_monitoring = wiring.base_state["_is_monitoring"]
+        # Phase 35.5: _current_workflow_id 已移除（并发bug源头，改为强制从事件读取）
+        # self._current_workflow_id: str | None = wiring.base_state["_current_workflow_id"]
+    
+        # 6. 解包装配结果：共享组件（log_collector）
+        self.log_collector = wiring.log_collector
+    
+        # 7. 解包装配结果：所有别名
+        for alias_name, alias_value in wiring.aliases.items():
+            setattr(self, alias_name, alias_value)
+    
+        # 8. 解包装配结果：所有编排器
+        self._failure_orchestrator = wiring.orchestrators["failure_orchestrator"]
+        self._container_monitor = wiring.orchestrators["container_monitor"]
+        self._log_integration = wiring.orchestrators["log_integration"]
+        self.knowledge_manager = wiring.orchestrators["knowledge_manager"]
+        self._knowledge_retrieval_orchestrator = wiring.orchestrators[
+            "knowledge_retrieval_orchestrator"
+        ]
+        self._summary_manager = wiring.orchestrators["summary_manager"]
+        self._power_compressor_facade = wiring.orchestrators["power_compressor_facade"]
+        self._subagent_orchestrator = wiring.orchestrators["subagent_orchestrator"]
+        self._supervision_coordinator = wiring.orchestrators["supervision_coordinator"]
+        self._prompt_facade = wiring.orchestrators["prompt_facade"]
+        self._experiment_orchestrator = wiring.orchestrators["experiment_orchestrator"]
+        self._save_request_orchestrator = wiring.orchestrators["save_request_orchestrator"]
+        self.injection_manager = wiring.orchestrators["context_injection_manager"]
+        self.supervision_module = wiring.orchestrators["supervision_module"]
+        self.supervision_facade = wiring.orchestrators["supervision_facade"]  # Phase 34.13
+        self.intervention_coordinator = wiring.orchestrators["intervention_coordinator"]
+        self.workflow_modifier = wiring.orchestrators["workflow_modifier"]
+        self.task_terminator = wiring.orchestrators["task_terminator"]
+    
+        # P1-1清理: SafetyGuard 能力统一通过 RuleEngineFacade 访问，但保留 _safety_guard 作为向后兼容别名
+        # 说明：注入的 wiring 可能不包含该 key（自定义 wiring 场景），因此使用 get()
+        self._safety_guard = wiring.orchestrators.get("safety_guard")
+    
+        # 可选组件
+        if "alert_rule_manager" in wiring.orchestrators:
+            self.alert_rule_manager = wiring.orchestrators["alert_rule_manager"]
+        if "circuit_breaker" in wiring.orchestrators:
+            self.circuit_breaker = wiring.orchestrators["circuit_breaker"]
+    
+        # P1-1 Step 3: Extract RuleEngineFacade for gradual migration (with validation)
+        if "rule_engine_facade" not in wiring.orchestrators:
+>           raise RuntimeError(
+                "RuleEngineFacade not configured in wiring. "
+                "Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators."
+            )
+E           RuntimeError: RuleEngineFacade not configured in wiring. Please ensure CoordinatorBootstrap includes rule_engine_facade in orchestrators.
+
+src\domain\agents\coordinator_agent.py:549: RuntimeError
+_ TestNodeExecutionOutputCompression.test_node_completion_triggers_compression _
+
+self = <test_coordinator_context_compression.TestNodeExecutionOutputCompression object at 0x0000022D9DAF56D0>
+
+    @pytest.mark.asyncio
+    async def test_node_completion_triggers_compression(self):
+        """节点完成应触发上下文压缩"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+        from src.domain.agents.workflow_agent import (
+            NodeExecutionEvent,
+            WorkflowExecutionStartedEvent,
+        )
+        from src.domain.services.context_compressor import (
+            ContextCompressor,
+            ContextSnapshotManager,
+        )
+        from src.domain.services.event_bus import EventBus
+    
+        event_bus = EventBus()
+        coordinator = CoordinatorAgent(
+            event_bus=event_bus,
+            context_compressor=ContextCompressor(),
+            snapshot_manager=ContextSnapshotManager(),
+        )
+    
+        coordinator.start_context_compression()
+        coordinator.start_monitoring()
+    
+        # 工作流开始（会设置 _current_workflow_id）
+        start_event = WorkflowExecutionStartedEvent(
+            source="workflow_agent",
+            workflow_id="wf_001",
+            node_count=3,
+        )
+        await event_bus.publish(start_event)
+    
+        # 节点完成（使用 _current_workflow_id 关联）
+        node_event = NodeExecutionEvent(
+            source="workflow_agent",
+            node_id="node_1",
+            status="completed",
+            result={"output": "分析结果"},
+        )
+        await event_bus.publish(node_event)
+    
+        # 验证快照包含节点信息
+        snapshot = coordinator.snapshot_manager.get_latest_snapshot("wf_001")
+        assert snapshot is not None
+>       assert len(snapshot.node_summary) >= 1
+E       AssertionError: assert 0 >= 1
+E        +  where 0 = len([])
+E        +    where [] = CompressedContext(workflow_id='wf_001', task_goal='', execution_status={'status': 'running'}, node_summary=[], decisio..., knowledge_references=[], created_at=datetime.datetime(2025, 12, 17, 12, 38, 39, 679368), version=1, evidence_refs=[]).node_summary
+
+tests\unit\domain\agents\test_coordinator_context_compression.py:225: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+_ TestNodeExecutionOutputCompression.test_node_failure_triggers_compression_with_error _
+
+self = <test_coordinator_context_compression.TestNodeExecutionOutputCompression object at 0x0000022D9DAF5810>
+
+    @pytest.mark.asyncio
+    async def test_node_failure_triggers_compression_with_error(self):
+        """节点失败应触发压缩并记录错误"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+        from src.domain.agents.workflow_agent import (
+            NodeExecutionEvent,
+            WorkflowExecutionStartedEvent,
+        )
+        from src.domain.services.context_compressor import (
+            ContextCompressor,
+            ContextSnapshotManager,
+        )
+        from src.domain.services.event_bus import EventBus
+    
+        event_bus = EventBus()
+        coordinator = CoordinatorAgent(
+            event_bus=event_bus,
+            context_compressor=ContextCompressor(),
+            snapshot_manager=ContextSnapshotManager(),
+        )
+    
+        coordinator.start_context_compression()
+        coordinator.start_monitoring()
+    
+        # 工作流开始
+        await event_bus.publish(
+            WorkflowExecutionStartedEvent(
+                source="workflow_agent",
+                workflow_id="wf_001",
+                node_count=2,
+            )
+        )
+    
+        # 节点失败（使用 _current_workflow_id 关联）
+        await event_bus.publish(
+            NodeExecutionEvent(
+                source="workflow_agent",
+                node_id="node_1",
+                status="failed",
+                error="Connection timeout",
+            )
+        )
+    
+        # 验证快照包含错误
+        snapshot = coordinator.snapshot_manager.get_latest_snapshot("wf_001")
+        assert snapshot is not None
+>       assert len(snapshot.error_log) >= 1
+E       AssertionError: assert 0 >= 1
+E        +  where 0 = len([])
+E        +    where [] = CompressedContext(workflow_id='wf_001', task_goal='', execution_status={'status': 'running'}, node_summary=[], decisio..., knowledge_references=[], created_at=datetime.datetime(2025, 12, 17, 12, 38, 39, 693803), version=1, evidence_refs=[]).error_log
+
+tests\unit\domain\agents\test_coordinator_context_compression.py:273: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+_______ TestRealWorldScenarios.test_complete_workflow_compression_flow ________
+
+self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x0000022D9DAF5F90>
+
+    @pytest.mark.asyncio
+    async def test_complete_workflow_compression_flow(self):
+        """完整的工作流压缩流程"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+        from src.domain.agents.workflow_agent import (
+            NodeExecutionEvent,
+            WorkflowExecutionCompletedEvent,
+            WorkflowExecutionStartedEvent,
+            WorkflowReflectionCompletedEvent,
+        )
+        from src.domain.services.context_compressor import (
+            ContextCompressor,
+            ContextSnapshotManager,
+        )
+        from src.domain.services.event_bus import EventBus
+    
+        event_bus = EventBus()
+        coordinator = CoordinatorAgent(
+            event_bus=event_bus,
+            context_compressor=ContextCompressor(),
+            snapshot_manager=ContextSnapshotManager(),
+        )
+    
+        # 启动所有监听（先启用压缩，再启动监控）
+        coordinator.start_context_compression()
+        coordinator.start_monitoring()
+        coordinator.start_reflection_listening()
+    
+        # 1. 工作流开始
+        await event_bus.publish(
+            WorkflowExecutionStartedEvent(
+                source="workflow_agent",
+                workflow_id="wf_complete",
+                node_count=3,
+            )
+        )
+    
+        # 2. 节点执行（使用 _current_workflow_id 关联）
+        for i in range(3):
+            await event_bus.publish(
+                NodeExecutionEvent(
+                    source="workflow_agent",
+                    node_id=f"node_{i}",
+                    status="completed",
+                    result={"output": f"result_{i}"},
+                )
+            )
+    
+        # 3. 工作流完成
+        await event_bus.publish(
+            WorkflowExecutionCompletedEvent(
+                source="workflow_agent",
+                workflow_id="wf_complete",
+                status="completed",
+                result={"final": "success"},
+            )
+        )
+    
+        # 4. 反思
+        await event_bus.publish(
+            WorkflowReflectionCompletedEvent(
+                source="workflow_agent",
+                workflow_id="wf_complete",
+                assessment="工作流执行成功，所有节点正常完成",
+                confidence=0.95,
+            )
+        )
+    
+        # 验证最终上下文
+        context = coordinator.get_compressed_context("wf_complete")
+    
+        assert context is not None
+>       assert len(context.node_summary) == 3
+E       AssertionError: assert 0 == 3
+E        +  where 0 = len([])
+E        +    where [] = CompressedContext(workflow_id='wf_complete', task_goal='', execution_status={'status': 'running'}, node_summary=[], de..., knowledge_references=[], created_at=datetime.datetime(2025, 12, 17, 12, 38, 39, 744747), version=2, evidence_refs=[]).node_summary
+
+tests\unit\domain\agents\test_coordinator_context_compression.py:606: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+_________ TestRealWorldScenarios.test_error_recovery_compression_flow _________
+
+self = <test_coordinator_context_compression.TestRealWorldScenarios object at 0x0000022D9DAF60D0>
+
+    @pytest.mark.asyncio
+    async def test_error_recovery_compression_flow(self):
+        """错误恢复场景的压缩流程"""
+        from src.domain.agents.coordinator_agent import CoordinatorAgent
+        from src.domain.agents.workflow_agent import (
+            NodeExecutionEvent,
+            WorkflowExecutionStartedEvent,
+            WorkflowReflectionCompletedEvent,
+        )
+        from src.domain.services.context_compressor import (
+            ContextCompressor,
+            ContextSnapshotManager,
+        )
+        from src.domain.services.event_bus import EventBus
+    
+        event_bus = EventBus()
+        coordinator = CoordinatorAgent(
+            event_bus=event_bus,
+            context_compressor=ContextCompressor(),
+            snapshot_manager=ContextSnapshotManager(),
+        )
+    
+        coordinator.start_context_compression()
+        coordinator.start_monitoring()
+        coordinator.start_reflection_listening()
+    
+        # 工作流开始
+        await event_bus.publish(
+            WorkflowExecutionStartedEvent(
+                source="workflow_agent",
+                workflow_id="wf_error",
+                node_count=2,
+            )
+        )
+    
+        # 节点失败（使用 _current_workflow_id 关联）
+        await event_bus.publish(
+            NodeExecutionEvent(
+                source="workflow_agent",
+                node_id="node_0",
+                status="failed",
+                error="API timeout",
+            )
+        )
+    
+        # 反思建议重试
+        await event_bus.publish(
+            WorkflowReflectionCompletedEvent(
+                source="workflow_agent",
+                workflow_id="wf_error",
+                assessment="节点失败，建议重试",
+                should_retry=True,
+                confidence=0.85,
+            )
+        )
+    
+        # 验证上下文包含错误和重试建议
+        context = coordinator.get_compressed_context("wf_error")
+    
+        assert context is not None
+>       assert len(context.error_log) >= 1
+E       AssertionError: assert 0 >= 1
+E        +  where 0 = len([])
+E        +    where [] = CompressedContext(workflow_id='wf_error', task_goal='', execution_status={'status': 'running'}, node_summary=[], decis..., knowledge_references=[], created_at=datetime.datetime(2025, 12, 17, 12, 38, 39, 759892), version=2, evidence_refs=[]).error_log
+
+tests\unit\domain\agents\test_coordinator_context_compression.py:674: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+_________ TestCoordinatorStateMonitor.test_handles_node_running_event _________
+
+self = <test_coordinator_state_monitor.TestCoordinatorStateMonitor object at 0x0000022D9DB62450>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DBC50>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9DB0D470>
+
+    @pytest.mark.asyncio
+    async def test_handles_node_running_event(self, coordinator, event_bus):
+        """测试：处理节点开始运行事件"""
+        coordinator.start_monitoring()
+    
+        # 先启动工作流
+        await event_bus.publish(
+            WorkflowExecutionStartedEvent(
+                source="workflow_agent",
+                workflow_id="wf_123",
+                node_count=2,
+            )
+        )
+    
+        # 节点开始运行
+        event = NodeExecutionEvent(
+            source="workflow_agent",
+            node_id="node_1",
+            node_type="llm",
+            status="running",
+        )
+        await event_bus.publish(event)
+    
+        state = coordinator.workflow_states["wf_123"]
+>       assert "node_1" in state["running_nodes"]
+E       AssertionError: assert 'node_1' in []
+
+tests\unit\domain\agents\test_coordinator_state_monitor.py:118: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+________ TestCoordinatorStateMonitor.test_handles_node_completed_event ________
+
+self = <test_coordinator_state_monitor.TestCoordinatorStateMonitor object at 0x0000022D9DAF3020>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9ECE0050>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E593540>
+
+    @pytest.mark.asyncio
+    async def test_handles_node_completed_event(self, coordinator, event_bus):
+        """测试：处理节点完成事件"""
+        coordinator.start_monitoring()
+    
+        # 启动工作流
+        await event_bus.publish(
+            WorkflowExecutionStartedEvent(
+                source="workflow_agent",
+                workflow_id="wf_123",
+                node_count=2,
+            )
+        )
+    
+        # 节点开始运行
+        await event_bus.publish(
+            NodeExecutionEvent(
+                source="workflow_agent",
+                node_id="node_1",
+                node_type="llm",
+                status="running",
+            )
+        )
+    
+        # 节点完成
+        event = NodeExecutionEvent(
+            source="workflow_agent",
+            node_id="node_1",
+            node_type="llm",
+            status="completed",
+            result={"output": "result_data"},
+        )
+        await event_bus.publish(event)
+    
+        state = coordinator.workflow_states["wf_123"]
+        assert "node_1" not in state["running_nodes"]
+>       assert "node_1" in state["executed_nodes"]
+E       AssertionError: assert 'node_1' in []
+
+tests\unit\domain\agents\test_coordinator_state_monitor.py:157: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+_________ TestCoordinatorStateMonitor.test_handles_node_failed_event __________
+
+self = <test_coordinator_state_monitor.TestCoordinatorStateMonitor object at 0x0000022D9DAF3130>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DAAD0>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E592CF0>
+
+    @pytest.mark.asyncio
+    async def test_handles_node_failed_event(self, coordinator, event_bus):
+        """测试：处理节点失败事件"""
+        coordinator.start_monitoring()
+    
+        # 启动工作流
+        await event_bus.publish(
+            WorkflowExecutionStartedEvent(
+                source="workflow_agent",
+                workflow_id="wf_123",
+                node_count=2,
+            )
+        )
+    
+        # 节点运行然后失败
+        await event_bus.publish(
+            NodeExecutionEvent(
+                source="workflow_agent",
+                node_id="node_1",
+                node_type="llm",
+                status="running",
+            )
+        )
+    
+        event = NodeExecutionEvent(
+            source="workflow_agent",
+            node_id="node_1",
+            node_type="llm",
+            status="failed",
+            error="执行错误",
+        )
+        await event_bus.publish(event)
+    
+        state = coordinator.workflow_states["wf_123"]
+        assert "node_1" not in state["running_nodes"]
+>       assert "node_1" in state["failed_nodes"]
+E       AssertionError: assert 'node_1' in []
+
+tests\unit\domain\agents\test_coordinator_state_monitor.py:195: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+____ TestCoordinatorStateMonitor.test_get_workflow_state_returns_snapshot _____
+
+self = <test_coordinator_state_monitor.TestCoordinatorStateMonitor object at 0x0000022D9DAD16D0>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9ECE0F50>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E566CF0>
+
+    @pytest.mark.asyncio
+    async def test_get_workflow_state_returns_snapshot(self, coordinator, event_bus):
+        """测试：获取工作流状态返回快照"""
+        coordinator.start_monitoring()
+    
+        # 启动工作流
+        await event_bus.publish(
+            WorkflowExecutionStartedEvent(
+                source="workflow_agent",
+                workflow_id="wf_123",
+                node_count=2,
+            )
+        )
+    
+        # 节点完成
+        await event_bus.publish(
+            NodeExecutionEvent(
+                source="workflow_agent",
+                node_id="node_1",
+                node_type="llm",
+                status="completed",
+                result={"data": "value"},
+            )
+        )
+    
+        # 查询状态
+        snapshot = coordinator.get_workflow_state("wf_123")
+    
+        assert snapshot is not None
+        assert snapshot["workflow_id"] == "wf_123"
+        assert snapshot["status"] == "running"
+>       assert "node_1" in snapshot["executed_nodes"]
+E       AssertionError: assert 'node_1' in []
+
+tests\unit\domain\agents\test_coordinator_state_monitor.py:287: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+_____ TestCoordinatorNodeInputTracking.test_tracks_node_inputs_from_event _____
+
+self = <test_coordinator_state_monitor.TestCoordinatorNodeInputTracking object at 0x0000022D9DB68F50>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9ECE11D0>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E567690>
+
+    @pytest.mark.asyncio
+    async def test_tracks_node_inputs_from_event(self, coordinator, event_bus):
+        """测试：从事件中跟踪节点输入"""
+        coordinator.start_monitoring()
+    
+        # 启动工作流
+        await event_bus.publish(
+            WorkflowExecutionStartedEvent(
+                source="workflow_agent",
+                workflow_id="wf_123",
+                node_count=1,
+            )
+        )
+    
+        # 发布带输入的节点事件（需要扩展 NodeExecutionEvent）
+        # 这里假设我们扩展了事件来包含 inputs
+        event = NodeExecutionEvent(
+            source="workflow_agent",
+            node_id="node_1",
+            node_type="llm",
+            status="running",
+        )
+        # 模拟添加 inputs 属性
+        event.inputs = {"prompt": "分析数据"}
+        await event_bus.publish(event)
+    
+        state = coordinator.get_workflow_state("wf_123")
+        # 如果事件包含 inputs，应该被记录
+        if hasattr(event, "inputs"):
+>           assert "node_1" in state.get("node_inputs", {})
+E           AssertionError: assert 'node_1' in {}
+E            +  where {} = <built-in method get of dict object at 0x0000022D9EFE9280>('node_inputs', {})
+E            +    where <built-in method get of dict object at 0x0000022D9EFE9280> = {'completed_at': None, 'executed_nodes': [], 'failed_nodes': [], 'node_count': 1, ...}.get
+
+tests\unit\domain\agents\test_coordinator_state_monitor.py:480: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+___________ TestCoordinatorSystemStatus.test_get_active_nodes_count ___________
+
+self = <test_coordinator_state_monitor.TestCoordinatorSystemStatus object at 0x0000022D9DB691D0>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DAAD0>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9E567460>
+
+    @pytest.mark.asyncio
+    async def test_get_active_nodes_count(self, coordinator, event_bus):
+        """测试：获取活跃节点数"""
+        coordinator.start_monitoring()
+    
+        await event_bus.publish(
+            WorkflowExecutionStartedEvent(
+                source="workflow_agent",
+                workflow_id="wf_123",
+                node_count=3,
+            )
+        )
+    
+        # 两个节点在运行
+        await event_bus.publish(
+            NodeExecutionEvent(
+                source="workflow_agent",
+                node_id="node_1",
+                node_type="llm",
+                status="running",
+            )
+        )
+        await event_bus.publish(
+            NodeExecutionEvent(
+                source="workflow_agent",
+                node_id="node_2",
+                node_type="http",
+                status="running",
+            )
+        )
+    
+        system_status = coordinator.get_system_status()
+>       assert system_status["active_nodes"] == 2
+E       assert 0 == 2
+
+tests\unit\domain\agents\test_coordinator_state_monitor.py:559: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+_________ TestSkipAndAbortStrategy.test_abort_strategy_stops_workflow _________
+
+self = <test_coordinator_workflow_events.TestSkipAndAbortStrategy object at 0x0000022D9DB6B9D0>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9E3DBC50>
+
+    @pytest.mark.asyncio
+    async def test_abort_strategy_stops_workflow(self, coordinator):
+        """测试：ABORT 策略应停止工作流"""
+        from src.domain.services.execution_result import ErrorCode
+    
+        result = await coordinator.handle_node_failure(
+            workflow_id="wf_1",
+            node_id="node_1",
+            error_code=ErrorCode.INTERNAL_ERROR,
+            error_message="Fatal error",
+        )
+    
+        assert result.success is False
+>       assert result.aborted is True
+E       AssertionError: assert False is True
+E        +  where False = FailureHandlingResult(success=False, skipped=False, aborted=False, retry_count=0, output={}, error_message='Non-retryable error: Fatal error').aborted
+
+tests\unit\domain\agents\test_coordinator_workflow_events.py:308: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.services.workflow_failure_orchestrator:workflow_failure_orchestrator.py:293 Non-retryable error for node node_1: Fatal error
+____ TestSkipAndAbortStrategy.test_abort_publishes_workflow_aborted_event _____
+
+self = <test_coordinator_workflow_events.TestSkipAndAbortStrategy object at 0x0000022D9DB563F0>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9ECE1310>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE04670>
+
+    @pytest.mark.asyncio
+    async def test_abort_publishes_workflow_aborted_event(self, coordinator, event_bus):
+        """测试：ABORT 策略应发布工作流终止事件"""
+        from src.domain.agents.coordinator_agent import WorkflowAbortedEvent
+        from src.domain.services.execution_result import ErrorCode
+    
+        events_received = []
+    
+        async def capture_event(event):
+            events_received.append(event)
+    
+        event_bus.subscribe(WorkflowAbortedEvent, capture_event)
+    
+        await coordinator.handle_node_failure(
+            workflow_id="wf_1",
+            node_id="node_1",
+            error_code=ErrorCode.INTERNAL_ERROR,
+            error_message="Fatal error",
+        )
+    
+>       assert len(events_received) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\unit\domain\agents\test_coordinator_workflow_events.py:330: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.services.workflow_failure_orchestrator:workflow_failure_orchestrator.py:293 Non-retryable error for node node_1: Fatal error
+__________ TestReplanStrategy.test_replan_publishes_adjustment_event __________
+
+self = <test_coordinator_workflow_events.TestReplanStrategy object at 0x0000022D9DB6BB10>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9ECE1090>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EC21780>
+
+    @pytest.mark.asyncio
+    async def test_replan_publishes_adjustment_event(self, coordinator, event_bus):
+        """测试：REPLAN 策略应发布 WorkflowAdjustmentRequestedEvent"""
+        from src.domain.agents.coordinator_agent import WorkflowAdjustmentRequestedEvent
+        from src.domain.services.execution_result import ErrorCode
+    
+        events_received = []
+    
+        async def capture_event(event):
+            events_received.append(event)
+    
+        event_bus.subscribe(WorkflowAdjustmentRequestedEvent, capture_event)
+    
+        await coordinator.handle_node_failure(
+            workflow_id="wf_1",
+            node_id="node_1",
+            error_code=ErrorCode.DEPENDENCY_FAILED,
+            error_message="Upstream failed",
+        )
+    
+>       assert len(events_received) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\unit\domain\agents\test_coordinator_workflow_events.py:374: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.services.workflow_failure_orchestrator:workflow_failure_orchestrator.py:293 Non-retryable error for node node_1: Upstream failed
+__________ TestReplanStrategy.test_replan_includes_execution_context __________
+
+self = <test_coordinator_workflow_events.TestReplanStrategy object at 0x0000022D9DB6BC50>
+coordinator = <src.domain.agents.coordinator_agent.CoordinatorAgent object at 0x0000022D9ECE0A50>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE05240>
+
+    @pytest.mark.asyncio
+    async def test_replan_includes_execution_context(self, coordinator, event_bus):
+        """测试：REPLAN 事件应包含执行上下文"""
+        from src.domain.agents.coordinator_agent import WorkflowAdjustmentRequestedEvent
+        from src.domain.services.execution_result import ErrorCode
+    
+        # 先设置一些执行上下文
+        coordinator.workflow_states["wf_1"] = {
+            "workflow_id": "wf_1",
+            "status": "running",
+            "executed_nodes": ["node_0"],
+            "node_outputs": {"node_0": {"result": "step1_done"}},
+        }
+    
+        events_received = []
+    
+        async def capture_event(event):
+            events_received.append(event)
+    
+        event_bus.subscribe(WorkflowAdjustmentRequestedEvent, capture_event)
+    
+        await coordinator.handle_node_failure(
+            workflow_id="wf_1",
+            node_id="node_1",
+            error_code=ErrorCode.DEPENDENCY_FAILED,
+            error_message="Upstream failed",
+        )
+    
+>       event = events_received[0]
+                ^^^^^^^^^^^^^^^^^^
+E       IndexError: list index out of range
+
+tests\unit\domain\agents\test_coordinator_workflow_events.py:408: IndexError
+----------------------------- Captured log setup ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.services.workflow_failure_orchestrator:workflow_failure_orchestrator.py:293 Non-retryable error for node node_1: Upstream failed
+____ TestRealWorldScenarios.test_scenario_validation_error_triggers_replan ____
+
+self = <test_coordinator_workflow_events.TestRealWorldScenarios object at 0x0000022D9DBE8050>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE05320>
+
+    @pytest.mark.asyncio
+    async def test_scenario_validation_error_triggers_replan(self, event_bus):
+        """场景：校验错误触发重新规划"""
+        from src.domain.agents.coordinator_agent import (
+            CoordinatorAgent,
+            FailureHandlingStrategy,
+            WorkflowAdjustmentRequestedEvent,
+        )
+        from src.domain.services.execution_result import ErrorCode
+    
+        config = {
+            "default_strategy": FailureHandlingStrategy.REPLAN,
+            "max_retries": 1,
+        }
+    
+        coordinator = CoordinatorAgent(event_bus=event_bus, failure_strategy_config=config)
+    
+        # 设置执行上下文
+        coordinator.workflow_states["wf_data"] = {
+            "workflow_id": "wf_data",
+            "status": "running",
+            "executed_nodes": ["fetch_data", "transform_data"],
+            "node_outputs": {
+                "fetch_data": {"rows": 100},
+                "transform_data": {"processed": 95},
+            },
+        }
+    
+        events_received = []
+    
+        async def capture_event(event):
+            events_received.append(event)
+    
+        event_bus.subscribe(WorkflowAdjustmentRequestedEvent, capture_event)
+    
+        # 校验节点失败
+        await coordinator.handle_node_failure(
+            workflow_id="wf_data",
+            node_id="validate_data",
+            error_code=ErrorCode.VALIDATION_FAILED,
+            error_message="Data quality check failed: 5 rows have null values",
+        )
+    
+        # 验证发布了重新规划事件
+>       assert len(events_received) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\unit\domain\agents\test_coordinator_workflow_events.py:583: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+WARNING  src.domain.services.workflow_failure_orchestrator:workflow_failure_orchestrator.py:293 Non-retryable error for node validate_data: Data quality check failed: 5 rows have null values
+_____ TestRealWorldScenarios.test_scenario_critical_error_aborts_workflow _____
+
+self = <test_coordinator_workflow_events.TestRealWorldScenarios object at 0x0000022D9DB56520>
+event_bus = <src.domain.services.event_bus.EventBus object at 0x0000022D9EE06430>
+
+    @pytest.mark.asyncio
+    async def test_scenario_critical_error_aborts_workflow(self, event_bus):
+        """场景：严重错误终止工作流"""
+        from src.domain.agents.coordinator_agent import (
+            CoordinatorAgent,
+            FailureHandlingStrategy,
+            WorkflowAbortedEvent,
+        )
+        from src.domain.services.execution_result import ErrorCode
+    
+        config = {
+            "default_strategy": FailureHandlingStrategy.ABORT,
+            "max_retries": 0,
+        }
+    
+        coordinator = CoordinatorAgent(event_bus=event_bus, failure_strategy_config=config)
+    
+        events_received = []
+    
+        async def capture_event(event):
+            events_received.append(event)
+    
+        event_bus.subscribe(WorkflowAbortedEvent, capture_event)
+    
+        # 严重错误
+        result = await coordinator.handle_node_failure(
+            workflow_id="wf_critical",
+            node_id="auth_node",
+            error_code=ErrorCode.INTERNAL_ERROR,
+            error_message="Authentication service unavailable",
+        )
+    
+        assert result.success is False
+>       assert result.aborted is True
+E       AssertionError: assert False is True
+E        +  where False = FailureHandlingResult(success=False, skipped=False, aborted=False, retry_count=0, output={}, error_message='Non-retryable error: Authentication service unavailable').aborted
+
+tests\unit\domain\agents\test_coordinator_workflow_events.py:622: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:262 context_compression enabled but context_compressor not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:266 auto_recovery enabled but workflow_failure_orchestrator not provided
+WARNING  src.domain.agents.coordinator_agent_config:coordinator_agent_config.py:273 knowledge_retrieval enabled but knowledge_retrieval_orchestrator not provided
+WARNING  src.domain.services.workflow_failure_orchestrator:workflow_failure_orchestrator.py:293 Non-retryable error for node auth_node: Authentication service unavailable
+____ TestHandleSubAgentCompletedEvent.test_handle_completion_resumes_agent ____
+
+self = <test_subagent_result_handling.TestHandleSubAgentCompletedEvent object at 0x0000022D9DEE3C50>
+mock_session_context = SessionContext(session_id='test_session', global_context=<src.domain.entities.session_context.GlobalContext object at ...t=0, short_term_buffer=[], is_saturated=False, saturation_threshold=0.92, resource_constraints=None, canvas_state=None)
+mock_llm = <MagicMock id='2394957965904'>
+mock_event_bus = <MagicMock id='2394957965568'>
+
+    @pytest.mark.asyncio  # Added: Make test async
+    async def test_handle_completion_resumes_agent(
+        self, mock_session_context, mock_llm, mock_event_bus
+    ):
+        """处理完成事件应恢复Agent状态"""
+        from src.domain.agents.conversation_agent import (
+            ConversationAgent,
+            ConversationAgentState,
+        )
+        from src.domain.agents.coordinator_agent import SubAgentCompletedEvent
+    
+        agent = ConversationAgent(
+            session_context=mock_session_context,
+            llm=mock_llm,
+            event_bus=mock_event_bus,
+        )
+    
+        # 设置等待状态
+        agent.transition_to(ConversationAgentState.PROCESSING)
+    
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+    
+        await asyncio.sleep(0.01)  # Allow task to complete
+    
+        agent.wait_for_subagent(
+            subagent_id="subagent_001",
+            task_id="task_001",
+            context={"step": 3},
+        )
+    
+        assert agent.state == ConversationAgentState.WAITING_FOR_SUBAGENT
+    
+        # 创建完成事件
+        event = SubAgentCompletedEvent(
+            subagent_id="subagent_001",
+            subagent_type="search",
+            session_id=mock_session_context.session_id,
+            success=True,
+            result={"data": "搜索结果"},
+        )
+    
+        # 处理事件
+        agent.handle_subagent_completed(event)
+    
+        # 应恢复到处理状态
+>       assert agent.state == ConversationAgentState.PROCESSING
+E       AssertionError: assert <Conversation...for_subagent'> == <Conversation... 'processing'>
+E         
+E         - processing
+E         + waiting_for_subagent
+
+tests\unit\domain\agents\test_subagent_result_handling.py:150: AssertionError
+____ TestHandleSubAgentCompletedEvent.test_handle_completion_stores_result ____
+
+self = <test_subagent_result_handling.TestHandleSubAgentCompletedEvent object at 0x0000022D9DEE3D90>
+mock_session_context = SessionContext(session_id='test_session', global_context=<src.domain.entities.session_context.GlobalContext object at ...t=0, short_term_buffer=[], is_saturated=False, saturation_threshold=0.92, resource_constraints=None, canvas_state=None)
+mock_llm = <MagicMock id='2394966576832'>
+mock_event_bus = <MagicMock id='2394966584896'>
+
+    @pytest.mark.asyncio  # Added: Make test async
+    async def test_handle_completion_stores_result(
+        self, mock_session_context, mock_llm, mock_event_bus
+    ):
+        """处理完成事件应存储结果"""
+        from src.domain.agents.conversation_agent import (
+            ConversationAgent,
+            ConversationAgentState,
+        )
+        from src.domain.agents.coordinator_agent import SubAgentCompletedEvent
+    
+        agent = ConversationAgent(
+            session_context=mock_session_context,
+            llm=mock_llm,
+            event_bus=mock_event_bus,
+        )
+    
+        agent.transition_to(ConversationAgentState.PROCESSING)
+    
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+    
+        await asyncio.sleep(0.01)  # Allow task to complete
+    
+        agent.wait_for_subagent(
+            subagent_id="subagent_001",
+            task_id="task_001",
+            context={"step": 3},
+        )
+    
+        event = SubAgentCompletedEvent(
+            subagent_id="subagent_001",
+            subagent_type="search",
+            session_id=mock_session_context.session_id,
+            success=True,
+            result={"data": "搜索结果"},
+        )
+    
+        agent.handle_subagent_completed(event)
+    
+        # 应存储最近的子Agent结果
+>       assert agent.last_subagent_result is not None
+E       assert None is not None
+E        +  where None = <src.domain.agents.conversation_agent.ConversationAgent object at 0x0000022D9ECE1310>.last_subagent_result
+
+tests\unit\domain\agents\test_subagent_result_handling.py:193: AssertionError
+__________ TestSubAgentResultHistory.test_completion_adds_to_history __________
+
+self = <test_subagent_result_handling.TestSubAgentResultHistory object at 0x0000022D9DF68050>
+mock_session_context = SessionContext(session_id='test_session', global_context=<src.domain.entities.session_context.GlobalContext object at ...t=0, short_term_buffer=[], is_saturated=False, saturation_threshold=0.92, resource_constraints=None, canvas_state=None)
+mock_llm = <MagicMock id='2394957957168'>
+mock_event_bus = <MagicMock id='2394954607856'>
+
+    @pytest.mark.asyncio  # Added: Make test async
+    async def test_completion_adds_to_history(self, mock_session_context, mock_llm, mock_event_bus):
+        """完成事件应添加到历史"""
+        from src.domain.agents.conversation_agent import (
+            ConversationAgent,
+            ConversationAgentState,
+        )
+        from src.domain.agents.coordinator_agent import SubAgentCompletedEvent
+    
+        agent = ConversationAgent(
+            session_context=mock_session_context,
+            llm=mock_llm,
+            event_bus=mock_event_bus,
+        )
+    
+        agent.transition_to(ConversationAgentState.PROCESSING)
+    
+        # Give asyncio.create_task() a chance to run
+        import asyncio
+    
+        await asyncio.sleep(0.01)  # Allow task to complete
+    
+        agent.wait_for_subagent(
+            subagent_id="subagent_001",
+            task_id="task_001",
+            context={},
+        )
+    
+        event = SubAgentCompletedEvent(
+            subagent_id="subagent_001",
+            subagent_type="search",
+            success=True,
+            result={"data": "result1"},
+        )
+    
+        agent.handle_subagent_completed(event)
+    
+>       assert len(agent.subagent_result_history) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = <src.domain.agents.conversation_agent.ConversationAgent object at 0x0000022D9ECE0E10>.subagent_result_history
+
+tests\unit\domain\agents\test_subagent_result_handling.py:280: AssertionError
+============================== warnings summary ===============================
+C:\Users\23225\AppData\Roaming\Python\Python313\site-packages\pydantic\_internal\_config.py:323: 11 warnings
+  C:\Users\23225\AppData\Roaming\Python\Python313\site-packages\pydantic\_internal\_config.py:323: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+C:\Users\23225\AppData\Roaming\Python\Python313\site-packages\pydantic\_internal\_generate_schema.py:298
+C:\Users\23225\AppData\Roaming\Python\Python313\site-packages\pydantic\_internal\_generate_schema.py:298
+  C:\Users\23225\AppData\Roaming\Python\Python313\site-packages\pydantic\_internal\_generate_schema.py:298: PydanticDeprecatedSince20: `json_encoders` is deprecated. See https://docs.pydantic.dev/2.11/concepts/serialization/#custom-serializers for alternatives. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.11/migration/
+    warnings.warn(
+
+tests/unit/domain/agents/test_conversation_agent.py::TestConversationAgentReActLoop::test_react_loop_max_iterations_limit
+tests/unit/domain/agents/test_conversation_agent.py::TestConversationAgentRealWorldScenario::test_complete_workflow_creation_scenario
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_terminates_by_timeout
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_terminates_by_max_iterations
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_emits_tool_call_for_tool_call_action
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_records_decision_for_create_node_action
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_records_decision_for_execute_workflow_action
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_flushes_staged_state_each_iteration
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_records_decision_for_request_clarification
+  D:\My_Project\agent_data\src\domain\agents\conversation_agent_react_core.py:378: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    tokens = self.llm.get_token_usage()  # type: ignore[attr-defined]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent.py: 2 warnings
+tests/unit/domain/agents/test_conversation_agent_react_core.py: 8 warnings
+  D:\My_Project\agent_data\src\domain\agents\conversation_agent_react_core.py:390: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    cost = self.llm.get_cost()  # type: ignore[attr-defined]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent.py::TestConversationAgentReActLoop::test_react_loop_max_iterations_limit
+tests/unit/domain/agents/test_conversation_agent.py::TestConversationAgentReActLoop::test_react_loop_terminates_on_completion
+  C:\Python313\Lib\asyncio\events.py:89: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self._context.run(self._callback, *self._args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent.py::TestConversationAgentRealWorldScenario::test_complete_workflow_creation_scenario
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent.py:529: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    result = await agent.run_async("帮我创建一个获取天气并发送通知的工作流")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_completes_on_respond_action
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:97: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    result = await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_terminates_by_timeout
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:141: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    result = await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_terminates_by_token_limit
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:158: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    result = await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_terminates_by_max_iterations
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:192: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    result = await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_completes_on_should_continue_false
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:208: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    result = await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_emits_tool_call_for_tool_call_action
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:231: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    result = await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_records_decision_for_create_node_action
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:250: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_records_decision_for_execute_workflow_action
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:267: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_accumulates_token_usage
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:283: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    result = await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_emits_thinking_step
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:310: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_emits_final_response_and_completes
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:322: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_flushes_staged_state_each_iteration
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:348: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_initializes_model_info_when_context_limit_zero
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:364: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_skips_model_info_when_context_limit_nonzero
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:378: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_logs_context_warning_when_approaching_limit
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:464: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_records_decision_for_request_clarification
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRecordDecision::test_record_decision_adds_to_session_context
+tests/unit/domain/agents/test_conversation_agent_refactor_regression.py::test_type_annotations_valid
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_sets_default_priority
+  C:\Python313\Lib\unittest\mock.py:2193: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    setattr(_type, entry, MagicProxy(entry, self))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestRunAsync::test_run_async_records_decision_for_request_clarification
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_react_core.py:481: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await mock_agent.run_async("test input")
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_react_core.py::TestExecuteStep::test_execute_step_with_running_loop_uses_fallback
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestSaveRequestFullLifecycle::test_send_save_request_creates_event_with_all_fields
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestSaveRequestFullLifecycle::test_send_save_request_without_running_loop_uses_asyncio_run
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestSaveRequestFullLifecycle::test_send_save_request_with_running_loop_uses_tracked_task
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestSaveRequestFullLifecycle::test_send_save_request_with_binary_content
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestSaveRequestFullLifecycle::test_send_save_request_with_custom_priority
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestSaveRequestFullLifecycle::test_send_save_request_with_empty_reason
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestSaveRequestFullLifecycle::test_send_save_request_returns_request_id
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestSaveRequestEdgeCases::test_send_save_request_with_large_content
+  C:\Python313\Lib\unittest\mock.py:2247: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    def __init__(self, name, parent):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestSaveRequestEdgeCases::test_send_save_request_with_special_characters_in_path
+  C:\Python313\Lib\unittest\mock.py:463: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    def __init__(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_basic_usage
+  C:\Python313\Lib\unittest\mock.py:799: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    def __setattr__(self, name, value):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_basic_usage
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_save_request_full.py:303: DeprecationWarning: request_save() is deprecated, use send_save_request() instead. request_save() will be removed in the next major version.
+    request_id = agent.request_save(
+
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_sets_default_priority
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_save_request_full.py:319: DeprecationWarning: request_save() is deprecated, use send_save_request() instead. request_save() will be removed in the next major version.
+    request_id = agent.request_save(
+
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_creates_request_with_all_fields
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_save_request_full.py:336: DeprecationWarning: request_save() is deprecated, use send_save_request() instead. request_save() will be removed in the next major version.
+    request_id = agent.request_save(
+
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_with_binary_content
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_save_request_full.py:355: DeprecationWarning: request_save() is deprecated, use send_save_request() instead. request_save() will be removed in the next major version.
+    request_id = agent.request_save(
+
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_returns_request_id
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_save_request_full.py:370: DeprecationWarning: request_save() is deprecated, use send_save_request() instead. request_save() will be removed in the next major version.
+    request_id = agent.request_save(
+
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_disabled_returns_none
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_save_request_full.py:386: DeprecationWarning: request_save() is deprecated, use send_save_request() instead. request_save() will be removed in the next major version.
+    request_id = agent.request_save(
+
+tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_no_event_bus_returns_none
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_conversation_agent_save_request_full.py:403: DeprecationWarning: request_save() is deprecated, use send_save_request() instead. request_save() will be removed in the next major version.
+    request_id = agent.request_save(
+
+tests/unit/domain/agents/test_conversation_agent_state.py::TestSubagentListener::test_start_subagent_completion_listener_subscribes
+tests/unit/domain/agents/test_conversation_agent_state.py::TestSubagentListener::test_stop_subagent_completion_listener_unsubscribes
+tests/unit/domain/agents/test_conversation_agent_state.py::TestSubagentListener::test_start_listener_idempotent
+  D:\My_Project\agent_data\src\domain\agents\conversation_agent_state.py:504: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.event_bus.subscribe(SubAgentCompletedEvent, self._handle_subagent_completed_wrapper)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_conversation_agent_state.py::TestSubagentListener::test_stop_subagent_completion_listener_unsubscribes
+  D:\My_Project\agent_data\src\domain\agents\conversation_agent_state.py:517: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.event_bus.unsubscribe(SubAgentCompletedEvent, self._handle_subagent_completed_wrapper)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_add_rule_to_engine
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:62: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(rule)
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_add_rule_to_engine
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:65: DeprecationWarning: rules property is deprecated. Use _rule_engine_facade.list_decision_rules() instead.
+    assert len(agent.rules) == 1
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_add_rule_to_engine
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:66: DeprecationWarning: rules property is deprecated. Use _rule_engine_facade.list_decision_rules() instead.
+    assert agent.rules[0].name == "禁止创建危险节点"
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_rules_checked_by_priority
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:101: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(rule_low)
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_rules_checked_by_priority
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:102: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(rule_high)
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_rules_checked_by_priority
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:105: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    agent.validate_decision({"type": "test"})
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_remove_rule_from_engine
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:134: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(rule)
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_remove_rule_from_engine
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:135: DeprecationWarning: rules property is deprecated. Use _rule_engine_facade.list_decision_rules() instead.
+    assert len(agent.rules) == 1
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_remove_rule_from_engine
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:138: DeprecationWarning: remove_rule() is deprecated. Use _rule_engine_facade.remove_decision_rule() instead.
+    agent.remove_rule("rule_1")
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngine::test_remove_rule_from_engine
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:141: DeprecationWarning: rules property is deprecated. Use _rule_engine_facade.list_decision_rules() instead.
+    assert len(agent.rules) == 0
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentDecisionValidation::test_validate_valid_decision
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:170: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentDecisionValidation::test_validate_valid_decision
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:182: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = agent.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentDecisionValidation::test_validate_invalid_decision
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:206: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentDecisionValidation::test_validate_invalid_decision
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:222: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = agent.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentDecisionValidation::test_validate_decision_with_multiple_rules
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:245: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentDecisionValidation::test_validate_decision_with_multiple_rules
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:254: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentDecisionValidation::test_validate_decision_with_multiple_rules
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:267: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = agent.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMiddleware::test_middleware_passes_valid_decision
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:305: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(Rule(id="allow_all", name="允许所有", condition=lambda d: True))
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMiddleware::test_middleware_blocks_invalid_decision
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:346: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMiddleware::test_middleware_publishes_rejection_event
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:395: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_track_decision_statistics
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:447: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_track_decision_statistics
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:452: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    agent.validate_decision({"node_type": "LLM"})  # 通过
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_track_decision_statistics
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:453: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    agent.validate_decision({"node_type": "LLM"})  # 通过
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_track_decision_statistics
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:454: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    agent.validate_decision({"node_type": "API"})  # 拒绝
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_track_decision_statistics
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:457: DeprecationWarning: get_statistics() is deprecated. Use _rule_engine_facade.get_decision_statistics() instead.
+    stats = agent.get_statistics()
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:478: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:484: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    agent.validate_decision({"valid": True})
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:486: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    agent.validate_decision({"valid": False})
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:489: DeprecationWarning: is_rejection_rate_high() is deprecated. Use _rule_engine_facade.is_rejection_rate_high() instead.
+    assert agent.is_rejection_rate_high() is True
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentMonitoring::test_detect_high_rejection_rate
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:490: DeprecationWarning: get_statistics() is deprecated. Use _rule_engine_facade.get_decision_statistics() instead.
+    stats = agent.get_statistics()
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentDecisionCorrection::test_suggest_correction_for_invalid_decision
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:532: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentDecisionCorrection::test_suggest_correction_for_invalid_decision
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:549: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = agent.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRealWorldScenario::test_complete_decision_validation_flow
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:591: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRealWorldScenario::test_complete_decision_validation_flow
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:601: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRealWorldScenario::test_complete_decision_validation_flow
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:646: DeprecationWarning: get_statistics() is deprecated. Use _rule_engine_facade.get_decision_statistics() instead.
+    stats = agent.get_statistics()
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngineFacadeIntegration::test_deprecated_remove_rule_emits_warning
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:711: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(rule)
+
+tests/unit/domain/agents/test_coordinator_agent.py::TestCoordinatorAgentRuleEngineFacadeIntegration::test_rules_property_uses_facade
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_agent.py:826: DeprecationWarning: rules property is deprecated. Use _rule_engine_facade.list_decision_rules() instead.
+    rules = agent.rules
+
+tests/unit/domain/agents/test_coordinator_context_service.py: 21 warnings
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_context_service.py:179: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    agent.add_rule(rule)
+
+tests/unit/domain/agents/test_coordinator_context_service.py::TestConversationAgentIntegration::test_conversation_agent_can_get_context
+tests/unit/domain/agents/test_coordinator_context_service.py::TestConversationAgentIntegration::test_conversation_agent_logs_context
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_context_service.py:397: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    coordinator.add_rule(Rule(id="r1", name="安全规则", priority=1))
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestCircularDependencyDetection::test_detect_simple_circular_dependency
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:54: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestCircularDependencyDetection::test_detect_complex_circular_dependency
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:86: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestCircularDependencyDetection::test_acyclic_graph_should_pass
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:117: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestNodeReferenceValidation::test_edge_with_missing_source_node
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:149: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestNodeReferenceValidation::test_edge_with_missing_target_node
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:177: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestNodeReferenceValidation::test_all_node_references_valid_should_pass
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:209: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestNodeIdUniqueness::test_duplicate_node_ids_should_fail
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:239: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestNodeIdUniqueness::test_unique_node_ids_should_pass
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:267: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestTopologicalSortFeasibility::test_topological_sort_possible_for_valid_dag
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:301: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestTopologicalSortFeasibility::test_diamond_dependency_should_be_valid
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:336: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestDependencyValidationIntegration::test_multiple_violations_should_all_be_reported
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:370: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_dependency_validation.py::TestDependencyValidationIntegration::test_valid_complex_workflow_should_pass_all_checks
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_dependency_validation.py:409: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadRequiredFields::test_create_node_payload_should_have_node_type
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:50: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadRequiredFields::test_create_workflow_plan_payload_should_have_nodes
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:78: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadRequiredFields::test_execute_workflow_payload_should_have_workflow_id
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:103: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadFieldTypes::test_node_config_should_be_dict
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:134: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadFieldTypes::test_workflow_nodes_should_be_list
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:162: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadFieldTypes::test_timeout_should_be_numeric
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:190: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadValueRanges::test_timeout_should_be_positive
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:221: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadValueRanges::test_max_retries_should_have_limit
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:250: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadValueRanges::test_node_type_should_be_in_allowed_list
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:279: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadValidationIntegration::test_multiple_validation_rules_should_all_check
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:321: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_coordinator_payload_validation.py::TestPayloadValidationIntegration::test_valid_payload_should_pass_all_rules
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_coordinator_payload_validation.py:359: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_register_self_describing_node_rules
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_self_describing_node_validation.py:410: DeprecationWarning: rules property is deprecated. Use _rule_engine_facade.list_decision_rules() instead.
+    initial_rule_count = len(coordinator.rules)
+
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_register_self_describing_node_rules
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_validate_decision_with_self_describing_node
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_reject_invalid_self_describing_node
+  D:\My_Project\agent_data\src\domain\services\self_describing_node_validator.py:607: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    coordinator.add_rule(
+
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_register_self_describing_node_rules
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_validate_decision_with_self_describing_node
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_reject_invalid_self_describing_node
+  D:\My_Project\agent_data\src\domain\services\self_describing_node_validator.py:642: DeprecationWarning: add_rule() is deprecated. Use _rule_engine_facade.add_decision_rule() instead.
+    coordinator.add_rule(
+
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_register_self_describing_node_rules
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_self_describing_node_validation.py:413: DeprecationWarning: rules property is deprecated. Use _rule_engine_facade.list_decision_rules() instead.
+    assert len(coordinator.rules) > initial_rule_count
+
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_validate_decision_with_self_describing_node
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_self_describing_node_validation.py:434: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_self_describing_node_validation.py::TestCoordinatorRuleIntegration::test_reject_invalid_self_describing_node
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_self_describing_node_validation.py:456: DeprecationWarning: validate_decision() is deprecated. Use _rule_engine_facade.validate_decision() instead.
+    result = coordinator.validate_decision(decision)
+
+tests/unit/domain/agents/test_subagent_result_handling.py::TestHandleSubAgentCompletedEvent::test_handle_completion_resumes_agent
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_subagent_result_handling.py:147: RuntimeWarning: coroutine 'ConversationAgentStateMixin.handle_subagent_completed' was never awaited
+    agent.handle_subagent_completed(event)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_subagent_result_handling.py::TestHandleSubAgentCompletedEvent::test_handle_completion_stores_result
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_subagent_result_handling.py:190: RuntimeWarning: coroutine 'ConversationAgentStateMixin.handle_subagent_completed' was never awaited
+    agent.handle_subagent_completed(event)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/unit/domain/agents/test_subagent_result_handling.py::TestSubAgentResultHistory::test_completion_adds_to_history
+  D:\My_Project\agent_data\tests\unit\domain\agents\test_subagent_result_handling.py:278: RuntimeWarning: coroutine 'ConversationAgentStateMixin.handle_subagent_completed' was never awaited
+    agent.handle_subagent_completed(event)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_basic_usage
+FAILED tests/unit/domain/agents/test_conversation_agent_save_request_full.py::TestRequestSaveMethod::test_request_save_creates_request_with_all_fields
+FAILED tests/unit/domain/agents/test_coordinator_agent_config_compat.py::TestLegacyUsageMinimal::test_no_arguments_creates_with_defaults
+FAILED tests/unit/domain/agents/test_coordinator_agent_config_compat.py::TestLegacyUsageSingleParam::test_single_event_bus_parameter
+FAILED tests/unit/domain/agents/test_coordinator_agent_config_compat.py::TestNewUsagePureConfig::test_pure_config_usage
+FAILED tests/unit/domain/agents/test_coordinator_agent_config_compat.py::TestMixedUsageConsistent::test_consistent_mixed_usage
+FAILED tests/unit/domain/agents/test_coordinator_agent_config_compat.py::TestDefaultValueHandling::test_default_values_do_not_conflict
+FAILED tests/unit/domain/agents/test_coordinator_agent_config_compat.py::TestComplexFieldConversion::test_failure_strategy_dict_to_config
+FAILED tests/unit/domain/agents/test_coordinator_context_compression.py::TestNodeExecutionOutputCompression::test_node_completion_triggers_compression
+FAILED tests/unit/domain/agents/test_coordinator_context_compression.py::TestNodeExecutionOutputCompression::test_node_failure_triggers_compression_with_error
+FAILED tests/unit/domain/agents/test_coordinator_context_compression.py::TestRealWorldScenarios::test_complete_workflow_compression_flow
+FAILED tests/unit/domain/agents/test_coordinator_context_compression.py::TestRealWorldScenarios::test_error_recovery_compression_flow
+FAILED tests/unit/domain/agents/test_coordinator_state_monitor.py::TestCoordinatorStateMonitor::test_handles_node_running_event
+FAILED tests/unit/domain/agents/test_coordinator_state_monitor.py::TestCoordinatorStateMonitor::test_handles_node_completed_event
+FAILED tests/unit/domain/agents/test_coordinator_state_monitor.py::TestCoordinatorStateMonitor::test_handles_node_failed_event
+FAILED tests/unit/domain/agents/test_coordinator_state_monitor.py::TestCoordinatorStateMonitor::test_get_workflow_state_returns_snapshot
+FAILED tests/unit/domain/agents/test_coordinator_state_monitor.py::TestCoordinatorNodeInputTracking::test_tracks_node_inputs_from_event
+FAILED tests/unit/domain/agents/test_coordinator_state_monitor.py::TestCoordinatorSystemStatus::test_get_active_nodes_count
+FAILED tests/unit/domain/agents/test_coordinator_workflow_events.py::TestSkipAndAbortStrategy::test_abort_strategy_stops_workflow
+FAILED tests/unit/domain/agents/test_coordinator_workflow_events.py::TestSkipAndAbortStrategy::test_abort_publishes_workflow_aborted_event
+FAILED tests/unit/domain/agents/test_coordinator_workflow_events.py::TestReplanStrategy::test_replan_publishes_adjustment_event
+FAILED tests/unit/domain/agents/test_coordinator_workflow_events.py::TestReplanStrategy::test_replan_includes_execution_context
+FAILED tests/unit/domain/agents/test_coordinator_workflow_events.py::TestRealWorldScenarios::test_scenario_validation_error_triggers_replan
+FAILED tests/unit/domain/agents/test_coordinator_workflow_events.py::TestRealWorldScenarios::test_scenario_critical_error_aborts_workflow
+FAILED tests/unit/domain/agents/test_subagent_result_handling.py::TestHandleSubAgentCompletedEvent::test_handle_completion_resumes_agent
+FAILED tests/unit/domain/agents/test_subagent_result_handling.py::TestHandleSubAgentCompletedEvent::test_handle_completion_stores_result
+FAILED tests/unit/domain/agents/test_subagent_result_handling.py::TestSubAgentResultHistory::test_completion_adds_to_history
+= 27 failed, 1431 passed, 7 skipped, 2 xfailed, 21 xpassed, 181 warnings in 10.82s =

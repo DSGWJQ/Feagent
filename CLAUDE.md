@@ -262,6 +262,53 @@ execution:
 
 ---
 
+## SaveRequest 系统
+
+**主API**: `ConversationAgent.send_save_request()`
+- **状态**: ✅ 稳定，推荐使用
+- **异步安全**: 支持同步和异步两种上下文
+- **错误处理**: 抛 `SaveRequestValidationError`，队列满返回 `None`
+- **配置**: 需要启用 `StreamingConfig.enable_save_request_channel=True` + `event_bus`
+
+**已弃用API**: `ConversationAgent.request_save()`
+- **状态**: ⚠️ 已弃用（Phase-P2），使用 `send_save_request()` 替代
+- **计划移除**: v2.0 主版本
+
+**关键文件**:
+| 文件 | 用途 |
+|------|------|
+| `src/domain/agents/conversation_agent.py` | Agent API 集成 |
+| `src/domain/agents/conversation_agent_config.py` | 配置管理 |
+| `src/domain/services/save_request_channel.py` | 核心定义 |
+
+**使用示例**:
+```python
+# 启用 SaveRequest 通道
+config = ConversationAgentConfig(
+    streaming=StreamingConfig(enable_save_request_channel=True),
+    event_bus=event_bus,  # 必需！
+)
+agent = ConversationAgent(config=config)
+
+# 同步上下文
+request_id = agent.send_save_request(
+    target_path="/output/result.txt",
+    content="data",
+    reason="保存结果",
+)
+
+# Async 上下文
+async def process():
+    request_id = agent.send_save_request(
+        target_path="/output/result.txt",
+        content="data",
+    )
+```
+
+详见 `docs/architecture/SAVE_REQUEST_SYSTEM.md`
+
+---
+
 ## 开发模式示例
 
 ### 创建新功能流程

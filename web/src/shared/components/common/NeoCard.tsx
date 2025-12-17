@@ -1,6 +1,8 @@
 import React from 'react';
 import classNames from 'classnames';
 import styles from './NeoCard.module.css';
+import '@/shared/styles/design-tokens.css'; // Ensure tokens are loaded
+
 
 export interface NeoCardProps {
     /** 标题 */
