@@ -471,7 +471,8 @@ class TestContainerEventIntegration:
 
 
 # =============================================================================
-# Gap-Filling Tests: create_grouped_nodes() & Hierarchy (Lines 2627-2765)
+# Gap-Filling Tests: create_grouped_nodes() (Lines 2612-2665) & get_hierarchy_tree() (Lines 2790-2800)
+# P1-3 修正：行号注释与生产代码同步 ✅
 # =============================================================================
 
 
@@ -486,7 +487,11 @@ class TestCreateGroupedNodesEdgeCases:
         逻辑：For each child, publish ChildAddedEvent with parent_id, child_id, child_type
         """
         from src.domain.agents.workflow_agent import WorkflowAgent
-        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.context_manager import (
+            GlobalContext,
+            SessionContext,
+            WorkflowContext,
+        )
         from src.domain.services.event_bus import EventBus
         from src.domain.services.node_hierarchy_service import ChildAddedEvent
         from src.domain.services.node_registry import NodeFactory, NodeRegistry, NodeType
@@ -535,7 +540,11 @@ class TestCreateGroupedNodesEdgeCases:
         逻辑：self._nodes[parent.id] = parent; for child: self._nodes[child.id] = child
         """
         from src.domain.agents.workflow_agent import WorkflowAgent
-        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.context_manager import (
+            GlobalContext,
+            SessionContext,
+            WorkflowContext,
+        )
         from src.domain.services.node_registry import NodeFactory, NodeRegistry
 
         # 创建agent（hierarchy_service会自动创建）
@@ -579,7 +588,11 @@ class TestCreateGroupedNodesEdgeCases:
         验证：多层嵌套容器的树形结构正确
         """
         from src.domain.agents.workflow_agent import WorkflowAgent
-        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.context_manager import (
+            GlobalContext,
+            SessionContext,
+            WorkflowContext,
+        )
         from src.domain.services.node_registry import NodeFactory, NodeRegistry
 
         # 创建agent（hierarchy_service会自动创建）
@@ -614,6 +627,80 @@ class TestCreateGroupedNodesEdgeCases:
         assert isinstance(tree, dict)
         assert "children" in tree  # Tree根是container_b本身，包含children数组
         assert len(tree["children"]) == 2  # Node C, Node D
+
+    @pytest.mark.asyncio
+    async def test_get_hierarchy_tree_deeply_nested_3_layers(self):
+        """测试get_hierarchy_tree()处理3层+深度嵌套结构
+
+        目标行：workflow_agent.py lines 2790-2800 (get_hierarchy_tree)
+        验证：Container A -> Container B -> Leaf Nodes 的3层结构正确递归返回
+        P1-4 增强：真正的多层嵌套测试（推荐修复）
+        """
+        from src.domain.agents.workflow_agent import WorkflowAgent
+        from src.domain.services.context_manager import (
+            GlobalContext,
+            SessionContext,
+            WorkflowContext,
+        )
+        from src.domain.services.node_registry import NodeFactory, NodeRegistry
+
+        # 创建agent（hierarchy_service会自动创建）
+        ctx = WorkflowContext(
+            workflow_id="test_wf",
+            session_context=SessionContext(
+                session_id="test_session",
+                global_context=GlobalContext(user_id="test_user"),
+            ),
+        )
+        factory = NodeFactory(NodeRegistry())
+
+        agent = WorkflowAgent(
+            workflow_context=ctx,
+            node_factory=factory,
+        )
+
+        # 创建3层嵌套结构：
+        # Level 1: Container Root
+        # └── Level 2: Container Mid
+        #     └── Level 3: Leaf Node
+
+        # 首先创建 Level 3 叶子节点（通过 container_mid 创建）
+        leaf_steps = [
+            {"type": "generic", "config": {"name": "leaf_node"}},
+        ]
+        container_mid = await agent.create_grouped_nodes(
+            group_name="container_mid", steps=leaf_steps
+        )
+
+        # 然后创建 Level 2 容器（注意：这里需要手动添加 container_mid 到 container_root）
+        # 由于 create_grouped_nodes 只支持从 config 创建子节点，我们需要使用其他方式建立3层关系
+        # 这里我们手动调用 add_node_to_group 建立层次关系
+        container_root = await agent.create_grouped_nodes(group_name="container_root", steps=[])
+
+        # 将 container_mid 添加到 container_root
+        await agent.add_node_to_group(container_root.id, container_mid.id)
+
+        # 获取完整的3层层级树
+        tree = await agent.get_hierarchy_tree(container_root.id)
+
+        # 验证 Level 1: Root
+        assert isinstance(tree, dict)
+        assert tree["id"] == container_root.id
+        assert tree["name"] == "container_root"
+
+        # 验证 Level 2: Mid（Root 的子节点）
+        assert "children" in tree
+        assert len(tree["children"]) == 1
+        mid_tree = tree["children"][0]
+        assert mid_tree["id"] == container_mid.id
+        assert mid_tree["name"] == "container_mid"
+
+        # 验证 Level 3: Leaf（Mid 的子节点）
+        assert "children" in mid_tree
+        assert len(mid_tree["children"]) == 1
+        leaf_tree = mid_tree["children"][0]
+        assert leaf_tree["config"]["name"] == "leaf_node"
+        assert leaf_tree.get("children", []) == []  # 叶子节点无子节点
 
 
 # 导出

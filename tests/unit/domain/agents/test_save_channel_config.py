@@ -1,9 +1,14 @@
 """Test for enable_save_request_channel config application"""
-import pytest
+
 from unittest.mock import MagicMock
+
+import pytest
+
 from src.domain.agents.conversation_agent import ConversationAgent
 from src.domain.agents.conversation_agent_config import (
-    ConversationAgentConfig, LLMConfig, StreamingConfig
+    ConversationAgentConfig,
+    LLMConfig,
+    StreamingConfig,
 )
 from src.domain.services.context_manager import SessionContext
 

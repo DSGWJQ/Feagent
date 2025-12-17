@@ -9,8 +9,7 @@
 5. 边界条件
 """
 
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
-from uuid import uuid4
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -19,7 +18,6 @@ from src.domain.agents.conversation_agent_config import ConversationAgentConfig,
 from src.domain.agents.conversation_agent_state import ConversationAgentState
 from src.domain.entities.session_context import GlobalContext, SessionContext
 from src.domain.services.event_bus import EventBus
-
 
 # ============================================================================
 # Fixtures
@@ -33,9 +31,7 @@ def mock_llm():
     llm.think = AsyncMock(return_value="思考内容")
     llm.decide_action = AsyncMock(return_value={"action": "finish", "output": "完成"})
     llm.should_continue = AsyncMock(return_value=False)
-    llm.classify_intent = AsyncMock(
-        return_value={"intent": "conversation", "confidence": 0.9}
-    )
+    llm.classify_intent = AsyncMock(return_value={"intent": "conversation", "confidence": 0.9})
     llm.generate_response = AsyncMock(return_value="回复内容")
     return llm
 
@@ -428,7 +424,6 @@ class TestEdgeCasesAndErrorHandling:
 
     def test_save_request_with_none_priority_uses_default(self, agent_with_event_bus):
         """测试：优先级为None时使用默认值"""
-        from src.domain.services.save_request_channel import SaveRequestPriority
 
         agent = agent_with_event_bus
         agent._save_request_channel_enabled = True

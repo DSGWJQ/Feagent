@@ -23,7 +23,7 @@ from src.domain.agents.workflow_agent import (
 )
 from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
 from src.domain.services.event_bus import EventBus
-from src.domain.services.execution_result import ExecutionResult, ErrorCode
+from src.domain.services.execution_result import ErrorCode, ExecutionResult
 from src.domain.services.node_registry import NodeFactory, NodeRegistry, NodeType
 
 
@@ -105,19 +105,17 @@ class TestTopologicalSort:
         positions = _node_order_index(execution_order)
 
         # Verify all nodes returned exactly once (no duplicates, no missing nodes)
-        assert set(execution_order) == node_ids, (
-            f"Expected nodes {node_ids}, got {set(execution_order)}"
-        )
-        assert len(execution_order) == len(node_ids), (
-            f"Duplicate nodes detected in execution order"
-        )
+        assert (
+            set(execution_order) == node_ids
+        ), f"Expected nodes {node_ids}, got {set(execution_order)}"
+        assert len(execution_order) == len(node_ids), "Duplicate nodes detected in execution order"
 
         # Verify all dependencies are satisfied
         for source, target in must_precede:
             if source in positions and target in positions:
-                assert positions[source] < positions[target], (
-                    f"{source} must execute before {target}"
-                )
+                assert (
+                    positions[source] < positions[target]
+                ), f"{source} must execute before {target}"
 
     def test_topological_sort_handles_empty_graph(self):
         """Test: Empty graph returns empty execution order"""
@@ -188,8 +186,12 @@ class TestExecuteWorkflow:
         assert node1.id in result["results"]
         assert node2.id in result["results"]
 
-        started_events = [e for e in event_bus.event_log if isinstance(e, WorkflowExecutionStartedEvent)]
-        completed_events = [e for e in event_bus.event_log if isinstance(e, WorkflowExecutionCompletedEvent)]
+        started_events = [
+            e for e in event_bus.event_log if isinstance(e, WorkflowExecutionStartedEvent)
+        ]
+        completed_events = [
+            e for e in event_bus.event_log if isinstance(e, WorkflowExecutionCompletedEvent)
+        ]
 
         assert len(started_events) == 1
         assert len(completed_events) == 1
@@ -264,13 +266,14 @@ class TestExecuteWorkflowWithResults:
         agent = _make_test_agent()
 
         # Mock execute_node_with_result to control outcomes
-        agent.execute_node_with_result = AsyncMock(side_effect=[
-            ExecutionResult.ok(output={"node_a": "done"}),
-            ExecutionResult.failure(
-                error_code=ErrorCode.INTERNAL_ERROR,
-                error_message="Node B failed"
-            ),
-        ])
+        agent.execute_node_with_result = AsyncMock(
+            side_effect=[
+                ExecutionResult.ok(output={"node_a": "done"}),
+                ExecutionResult.failure(
+                    error_code=ErrorCode.INTERNAL_ERROR, error_message="Node B failed"
+                ),
+            ]
+        )
 
         agent.add_node("A", "generic", config={})
         agent.add_node("B", "generic", config={})
@@ -286,11 +289,13 @@ class TestExecuteWorkflowWithResults:
         """Test: pending_human_input in output triggers special handling"""
         agent = _make_test_agent()
 
-        agent.execute_node_with_result = AsyncMock(return_value=ExecutionResult.failure(
-            error_code=ErrorCode.DEPENDENCY_FAILED,
-            error_message="Awaiting human input",
-            output={"status": "pending_human_input"},
-        ))
+        agent.execute_node_with_result = AsyncMock(
+            return_value=ExecutionResult.failure(
+                error_code=ErrorCode.DEPENDENCY_FAILED,
+                error_message="Awaiting human input",
+                output={"status": "pending_human_input"},
+            )
+        )
 
         agent.add_node("A", "generic", config={})
 
@@ -304,10 +309,12 @@ class TestExecuteWorkflowWithResults:
         """Test: Successful workflow aggregates all node outputs"""
         agent = _make_test_agent()
 
-        agent.execute_node_with_result = AsyncMock(side_effect=[
-            ExecutionResult.ok(output={"a_result": 1}),
-            ExecutionResult.ok(output={"b_result": 2}),
-        ])
+        agent.execute_node_with_result = AsyncMock(
+            side_effect=[
+                ExecutionResult.ok(output={"a_result": 1}),
+                ExecutionResult.ok(output={"b_result": 2}),
+            ]
+        )
 
         agent.add_node("A", "generic", config={})
         agent.add_node("B", "generic", config={})

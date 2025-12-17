@@ -424,7 +424,8 @@ class TestProgressEventBusIntegration:
 
 
 # =============================================================================
-# Gap-Filling Tests: get_progress_summary() Edge Cases (Lines 2273-2288)
+# Gap-Filling Tests: get_progress_summary() Edge Cases (Lines 2273-2289)
+# P1-2 修正：行号注释与生产代码同步 (workflow_agent.py:2273-2289) ✅
 # =============================================================================
 
 
@@ -439,7 +440,11 @@ class TestProgressSummaryEdgeCases:
         逻辑：total = self._total_nodes if self._total_nodes > 0 else len(self._nodes)
         """
         from src.domain.agents.workflow_agent import WorkflowAgent
-        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.context_manager import (
+            GlobalContext,
+            SessionContext,
+            WorkflowContext,
+        )
         from src.domain.services.node_registry import NodeFactory, NodeRegistry, NodeType
 
         # 创建agent
@@ -477,7 +482,11 @@ class TestProgressSummaryEdgeCases:
         验证返回字典的所有必需键
         """
         from src.domain.agents.workflow_agent import ExecutionStatus, WorkflowAgent
-        from src.domain.services.context_manager import GlobalContext, SessionContext, WorkflowContext
+        from src.domain.services.context_manager import (
+            GlobalContext,
+            SessionContext,
+            WorkflowContext,
+        )
         from src.domain.services.node_registry import NodeFactory, NodeRegistry, NodeType
 
         # 创建agent
@@ -491,13 +500,12 @@ class TestProgressSummaryEdgeCases:
         factory = NodeFactory(NodeRegistry())
 
         from unittest.mock import AsyncMock, MagicMock
+
         node_executor = MagicMock()
         node_executor.execute = AsyncMock(return_value={"done": True})
 
         agent = WorkflowAgent(
-            workflow_context=ctx,
-            node_factory=factory,
-            node_executor=node_executor
+            workflow_context=ctx, node_factory=factory, node_executor=node_executor
         )
 
         # 添加5个节点

@@ -413,8 +413,8 @@ class TestRunAsync:
     @pytest.mark.asyncio
     async def test_run_async_handles_coordinator_context_exception(self, mock_agent, monkeypatch):
         """[P0-3] Test: run_async 处理 coordinator context 异常并继续主流程"""
-        from unittest.mock import AsyncMock, MagicMock
         import logging
+        from unittest.mock import AsyncMock, MagicMock
 
         # 设置 coordinator (不包含 circuit_breaker 属性以避免触发熔断检查)
         mock_coordinator = MagicMock()
@@ -495,9 +495,7 @@ class TestRunAsync:
     async def test_run_async_decide_action_exception_emits_error_and_completes(self, mock_agent):
         """[P0-4] Test: run_async 在 decide_action 抛异常时 emit_error 并 complete"""
         mock_agent.llm.think = AsyncMock(return_value="thinking")
-        mock_agent.llm.decide_action = AsyncMock(
-            side_effect=RuntimeError("decide_action failed")
-        )
+        mock_agent.llm.decide_action = AsyncMock(side_effect=RuntimeError("decide_action failed"))
 
         with pytest.raises(RuntimeError, match="decide_action failed"):
             await mock_agent.run_async("test input")
@@ -512,9 +510,7 @@ class TestRunAsync:
     async def test_run_async_should_continue_exception_emits_error_and_completes(self, mock_agent):
         """[P0-4] Test: run_async 在 should_continue 抛异常时 emit_error 并 complete"""
         mock_agent.llm.think = AsyncMock(return_value="thinking")
-        mock_agent.llm.decide_action = AsyncMock(
-            return_value={"action_type": "continue"}
-        )
+        mock_agent.llm.decide_action = AsyncMock(return_value={"action_type": "continue"})
         mock_agent.llm.should_continue = AsyncMock(
             side_effect=RuntimeError("should_continue failed")
         )
@@ -733,6 +729,7 @@ class TestRunSync:
 
         # 模拟 _run_sync 返回值
         from src.domain.agents.conversation_agent_models import ReActResult
+
         expected_result = ReActResult(completed=True, final_response="Sync result")
         mock_agent._run_sync = Mock(return_value=expected_result)
 
@@ -748,14 +745,14 @@ class TestRunSync:
     def test_run_with_stopped_loop_calls_run_until_complete(self, mock_agent, monkeypatch):
         """[P0-2] Test: run() 在未运行的事件循环中调用 loop.run_until_complete(run_async)"""
         import asyncio
-        from unittest.mock import Mock
-        from unittest.mock import sentinel
+        from unittest.mock import Mock, sentinel
 
         # 模拟未运行的事件循环
         mock_loop = Mock()
         mock_loop.is_running = Mock(return_value=False)
 
         from src.domain.agents.conversation_agent_models import ReActResult
+
         expected_result = ReActResult(completed=True, final_response="Async result")
         mock_loop.run_until_complete = Mock(return_value=expected_result)
 
@@ -777,8 +774,7 @@ class TestRunSync:
     def test_run_with_runtime_error_calls_asyncio_run(self, mock_agent, monkeypatch):
         """[P0-2] Test: run() 在 get_event_loop 抛 RuntimeError 时调用 asyncio.run(run_async)"""
         import asyncio
-        from unittest.mock import Mock
-        from unittest.mock import sentinel
+        from unittest.mock import Mock, sentinel
 
         # 模拟 get_event_loop 抛出 RuntimeError
         def mock_get_loop():
@@ -787,6 +783,7 @@ class TestRunSync:
         monkeypatch.setattr(asyncio, "get_event_loop", mock_get_loop)
 
         from src.domain.agents.conversation_agent_models import ReActResult
+
         expected_result = ReActResult(completed=True, final_response="Asyncio.run result")
 
         # 模拟 asyncio.run
@@ -861,10 +858,12 @@ class TestExecuteStep:
         # 模拟未运行的事件循环
         mock_loop = MagicMock()
         mock_loop.is_running = Mock(return_value=False)
-        mock_loop.run_until_complete = Mock(side_effect=[
-            "思考结果",  # think 的返回值
-            {"action_type": "respond"}  # decide_action 的返回值
-        ])
+        mock_loop.run_until_complete = Mock(
+            side_effect=[
+                "思考结果",  # think 的返回值
+                {"action_type": "respond"},  # decide_action 的返回值
+            ]
+        )
 
         monkeypatch.setattr(asyncio, "get_event_loop", lambda: mock_loop)
 
@@ -937,10 +936,12 @@ class TestExecuteStep:
         # 模拟未运行的循环，think 成功但 decide_action 抛出异常
         mock_loop = Mock()
         mock_loop.is_running = Mock(return_value=False)
-        mock_loop.run_until_complete = Mock(side_effect=[
-            "思考结果",  # think 成功
-            RuntimeError("decide_action failed")  # decide_action 失败
-        ])
+        mock_loop.run_until_complete = Mock(
+            side_effect=[
+                "思考结果",  # think 成功
+                RuntimeError("decide_action failed"),  # decide_action 失败
+            ]
+        )
 
         monkeypatch.setattr(asyncio, "get_event_loop", lambda: mock_loop)
 

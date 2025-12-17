@@ -6,7 +6,6 @@
 """
 
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
-from uuid import uuid4
 
 import pytest
 
@@ -158,6 +157,7 @@ class TestSaveRequestFullLifecycle:
                     call_args = mock_tracked.call_args[0][0]
                     # 验证是协程对象
                     import inspect
+
                     assert inspect.iscoroutine(call_args)
 
     def test_send_save_request_with_binary_content(self, agent_with_event_bus):

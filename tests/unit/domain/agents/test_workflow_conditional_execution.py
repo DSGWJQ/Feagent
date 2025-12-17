@@ -383,7 +383,7 @@ class TestConditionalBranchExecution:
 
 # =============================================================================
 # Gap-Filling Tests: _should_execute_node() Edge Cases (Lines 1444-1571)
-# P1-1 修正：行号与生产代码同步 (workflow_agent.py:1444-1571)
+# P1-1 修正：行号注释与生产代码同步 (workflow_agent.py:1444-1571) ✅
 # =============================================================================
 
 

@@ -7,8 +7,7 @@
 3. 异步决策生成
 """
 
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
-from uuid import uuid4
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 

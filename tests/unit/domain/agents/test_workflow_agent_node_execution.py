@@ -126,10 +126,12 @@ class TestExecuteNodeDispatcher:
             executor_class=CustomExecutor,
         )
 
-        node = agent.create_node({
-            "node_type": "custom_type",
-            "config": {"field": "value"},
-        })
+        node = agent.create_node(
+            {
+                "node_type": "custom_type",
+                "config": {"field": "value"},
+            }
+        )
         agent.add_node(node)
 
         output = await agent.execute_node(node.id)
