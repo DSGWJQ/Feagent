@@ -35,6 +35,8 @@ ENV/
 .DS_Store
 Thumbs.db
 Desktop.ini
+.obsidian/
+.augment/
 
 # Testing
 .pytest_cache/
