@@ -232,7 +232,7 @@ curl http://localhost:8000/api/health
 # 创建 Agent（应返回 workflow_id）
 curl -X POST http://localhost:8000/api/agents \
   -H "Content-Type: application/json" \
-  -d @test_create_agent.json
+  -d @data/test_data/test_create_agent.json
 
 # 预期响应
 {

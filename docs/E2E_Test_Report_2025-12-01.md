@@ -35,7 +35,7 @@
 ```bash
 curl -X POST http://localhost:8000/api/agents \
   -H "Content-Type: application/json" \
-  -d @test_create_agent.json
+  -d @data/test_data/test_create_agent.json
 ```
 
 **请求数据：**
