@@ -59,7 +59,21 @@ logs/
 
 # Local agent/CLI settings (may contain secrets)
 .claude/settings.local.json
-.claude/commands/
+.claude/commands/*test*.md
+.claude/commands/*real*.md
+.claude/commands/*.local.*
+.claude/commands/*_local*
+.claude/commands/*.tmp
+
+# Common secret/key material
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+id_rsa
+id_rsa.pub
 
 # Alembic
 alembic/versions/*.pyc
