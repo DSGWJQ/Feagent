@@ -33,6 +33,8 @@ ENV/
 *.swo
 *~
 .DS_Store
+Thumbs.db
+Desktop.ini
 
 # Testing
 .pytest_cache/
@@ -55,6 +57,10 @@ logs/
 .env.local
 .env.*.local
 
+# Local agent/CLI settings (may contain secrets)
+.claude/settings.local.json
+.claude/commands/
+
 # Alembic
 alembic/versions/*.pyc
 
@@ -75,3 +81,6 @@ __tmp_read.py
 workflows_restore.py
 .pre-commit-cache/
 nul
+backup/
+config/backup/
+uploads/
