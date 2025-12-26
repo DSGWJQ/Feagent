@@ -108,6 +108,11 @@ class UserModel(Base):
         "ToolModel", back_populates="user", cascade="all, delete-orphan"
     )
 
+    # 关系（一对多：一个User有多个Project）
+    projects: Mapped[list["ProjectModel"]] = relationship(
+        "ProjectModel", back_populates="owner", cascade="all, delete-orphan"
+    )
+
     # 索引
     __table_args__ = (
         Index("idx_users_github_id", "github_id", unique=True),  # 唯一索引
@@ -119,288 +124,6 @@ class UserModel(Base):
         return (
             f"<UserModel(id={self.id}, github_username={self.github_username}, email={self.email})>"
         )
-
-
-class AgentModel(Base):
-    """Agent ORM 模型
-
-    表名：agents
-
-    字段说明：
-    - id: 主键（UUID 字符串，36 字符）
-    - start: 任务起点描述（Text，无长度限制）
-    - goal: 任务目的描述（Text，无长度限制）
-    - status: Agent 状态（active/archived，20 字符）
-    - name: Agent 名称（255 字符）
-    - created_at: 创建时间（自动设置）
-
-    关系：
-    - runs: 一对多关系（一个 Agent 有多个 Run）
-
-    索引：
-    - idx_agents_status: status 字段索引（查询活跃 Agent）
-    - idx_agents_created_at: created_at 字段索引（按时间排序）
-
-    为什么使用 Mapped 和 mapped_column？
-    - SQLAlchemy 2.0 推荐的类型提示方式
-    - IDE 友好（自动补全、类型检查）
-    - 更清晰的字段定义
-    """
-
-    __tablename__ = "agents"
-
-    # 主键
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Agent ID（UUID）")
-
-    # 业务字段
-    start: Mapped[str] = mapped_column(Text, nullable=False, comment="任务起点描述")
-    goal: Mapped[str] = mapped_column(Text, nullable=False, comment="任务目的描述")
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="active", comment="Agent 状态"
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="Agent 名称")
-
-    # 时间戳
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.now, comment="创建时间"
-    )
-
-    # 关系（一对多：一个 Agent 有多个 Run）
-    # cascade="all, delete-orphan": 删除 Agent 时级联删除所有 Run
-    # back_populates: 双向关系（RunModel.agent）
-    runs: Mapped[list["RunModel"]] = relationship(
-        "RunModel", back_populates="agent", cascade="all, delete-orphan", lazy="selectin"
-    )
-
-    # 关系（一对多：一个 Agent 有多个 Task）
-    # cascade="all, delete-orphan": 删除 Agent 时级联删除所有 Task
-    # back_populates: 双向关系（TaskModel.agent）
-    tasks: Mapped[list["TaskModel"]] = relationship(
-        "TaskModel", back_populates="agent", cascade="all, delete-orphan", lazy="selectin"
-    )
-
-    # 索引
-    __table_args__ = (
-        Index("idx_agents_status", "status"),  # 查询活跃 Agent
-        Index("idx_agents_created_at", "created_at"),  # 按时间排序
-    )
-
-    def __repr__(self) -> str:
-        return f"<AgentModel(id={self.id}, name={self.name}, status={self.status})>"
-
-
-class RunModel(Base):
-    """Run ORM 模型
-
-    表名：runs
-
-    字段说明：
-    - id: 主键（UUID 字符串，36 字符）
-    - agent_id: 外键（关联 Agent，级联删除）
-    - status: Run 状态（pending/running/succeeded/failed，20 字符）
-    - created_at: 创建时间（自动设置）
-    - started_at: 开始执行时间（可选）
-    - finished_at: 完成时间（可选）
-    - error: 错误信息（可选，Text）
-
-    关系：
-    - agent: 多对一关系（多个 Run 属于一个 Agent）
-
-    索引：
-    - idx_runs_agent_id: agent_id 字段索引（查询 Agent 的所有 Run）
-    - idx_runs_status: status 字段索引（查询特定状态的 Run）
-    - idx_runs_created_at: created_at 字段索引（按时间排序）
-
-    外键约束：
-    - agent_id → agents.id（级联删除）
-    - 删除 Agent 时，自动删除所有关联的 Run
-    """
-
-    __tablename__ = "runs"
-
-    # 主键
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Run ID（UUID）")
-
-    # 外键
-    agent_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("agents.id", ondelete="CASCADE"),  # 级联删除
-        nullable=False,
-        comment="关联的 Agent ID",
-    )
-
-    # 业务字段
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending", comment="Run 状态"
-    )
-
-    # 时间戳
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.now, comment="创建时间"
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="开始执行时间"
-    )
-    finished_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="完成时间"
-    )
-
-    # 错误信息
-    error: Mapped[str | None] = mapped_column(Text, nullable=True, comment="错误信息")
-
-    # 关系（多对一：多个 Run 属于一个 Agent）
-    # back_populates: 双向关系（AgentModel.runs）
-    agent: Mapped["AgentModel"] = relationship("AgentModel", back_populates="runs")
-
-    # 关系（一对多：一个 Run 有多个 Task）
-    # cascade="all, delete-orphan": 删除 Run 时级联删除所有 Task
-    # back_populates: 双向关系（TaskModel.run）
-    tasks: Mapped[list["TaskModel"]] = relationship(
-        "TaskModel", back_populates="run", cascade="all, delete-orphan", lazy="selectin"
-    )
-
-    # 索引
-    __table_args__ = (
-        Index("idx_runs_agent_id", "agent_id"),  # 查询 Agent 的所有 Run
-        Index("idx_runs_status", "status"),  # 查询特定状态的 Run
-        Index("idx_runs_created_at", "created_at"),  # 按时间排序
-    )
-
-    def __repr__(self) -> str:
-        return f"<RunModel(id={self.id}, agent_id={self.agent_id}, status={self.status})>"
-
-
-class TaskModel(Base):
-    """Task ORM 模型
-
-    表名：tasks
-
-    字段说明：
-    - id: 主键（UUID 字符串，36 字符）
-    - agent_id: 外键（关联 Agent，级联删除）
-    - run_id: 外键（关联 Run，级联删除，可选）
-    - name: Task 名称（255 字符）
-    - description: Task 描述（Text，可选）
-    - input_data: 输入数据（JSON 格式）
-    - output_data: 输出数据（JSON 格式，可选）
-    - status: Task 状态（pending/running/succeeded/failed，20 字符）
-    - error: 错误信息（可选，Text）
-    - retry_count: 重试次数（整数，默认 0）
-    - created_at: 创建时间（自动设置）
-    - started_at: 开始执行时间（可选）
-    - finished_at: 完成时间（可选）
-    - events: TaskEvent 列表（JSON 格式，存储为 JSON 数组）
-
-    关系：
-    - agent: 多对一关系（多个 Task 属于一个 Agent）
-    - run: 多对一关系（多个 Task 属于一个 Run，可选）
-
-    索引：
-    - idx_tasks_agent_id: agent_id 字段索引（查询 Agent 的所有 Task）
-    - idx_tasks_run_id: run_id 字段索引（查询 Run 的所有 Task）
-    - idx_tasks_status: status 字段索引（查询特定状态的 Task）
-    - idx_tasks_created_at: created_at 字段索引（按时间排序）
-
-    外键约束：
-    - agent_id → agents.id（级联删除）
-    - run_id → runs.id（级联删除，可选）
-    - 删除 Agent 时，自动删除所有关联的 Task
-    - 删除 Run 时，自动删除所有关联的 Task
-
-    TaskEvent 的持久化：
-    - TaskEvent 是值对象，属于 Task 聚合
-    - 使用 JSON 字段存储 TaskEvent 列表
-    - 格式：[{"timestamp": "2025-11-16T10:00:00Z", "message": "事件消息"}, ...]
-    - 为什么用 JSON？
-      1. TaskEvent 是值对象，没有独立的生命周期
-      2. TaskEvent 总是和 Task 一起查询，不需要单独查询
-      3. 简化数据库设计，避免额外的表和 JOIN
-      4. 符合聚合的完整性（Task 和 TaskEvent 作为一个整体）
-
-    为什么添加 agent_id？
-    - Task 可以在创建 Agent 时生成（作为计划任务）
-    - Task 也可以在执行 Run 时创建（作为执行步骤）
-    - agent_id 表示这个 Task 属于哪个 Agent
-
-    为什么 run_id 改为可选？
-    - 创建 Agent 时生成的 Task，run_id 为 None（还没执行）
-    - 执行 Run 时，设置 run_id（表示在哪次执行中运行）
-
-    为什么添加 description？
-    - name 是简短的任务名称（如"读取 CSV 文件"）
-    - description 是详细的任务描述（如"使用 pandas 读取 CSV 文件到 DataFrame"）
-    - 提供更好的用户体验和可读性
-    """
-
-    __tablename__ = "tasks"
-
-    # 主键
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Task ID（UUID）")
-
-    # 外键
-    agent_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("agents.id", ondelete="CASCADE"),  # 级联删除
-        nullable=False,
-        comment="关联的 Agent ID",
-    )
-    run_id: Mapped[str | None] = mapped_column(
-        String(36),
-        ForeignKey("runs.id", ondelete="CASCADE"),  # 级联删除
-        nullable=True,  # 可选
-        comment="关联的 Run ID（可选）",
-    )
-
-    # 业务字段
-    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="Task 名称")
-    description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Task 描述")
-    input_data: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True, comment="输入数据（JSON 格式）"
-    )
-    output_data: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True, comment="输出数据（JSON 格式）"
-    )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending", comment="Task 状态"
-    )
-    error: Mapped[str | None] = mapped_column(Text, nullable=True, comment="错误信息")
-    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="重试次数")
-
-    # 时间戳
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.now, comment="创建时间"
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="开始执行时间"
-    )
-    finished_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, comment="完成时间"
-    )
-
-    # TaskEvent 列表（JSON 格式）
-    # 存储格式：[{"timestamp": "2025-11-16T10:00:00Z", "message": "事件消息"}, ...]
-    events: Mapped[list[dict] | None] = mapped_column(
-        JSON, nullable=True, default=list, comment="TaskEvent 列表（JSON 格式）"
-    )
-
-    # 关系（多对一：多个 Task 属于一个 Agent）
-    # back_populates: 双向关系（AgentModel.tasks）
-    agent: Mapped["AgentModel"] = relationship("AgentModel", back_populates="tasks")
-
-    # 关系（多对一：多个 Task 属于一个 Run，可选）
-    # back_populates: 双向关系（RunModel.tasks）
-    run: Mapped["RunModel"] = relationship("RunModel", back_populates="tasks")
-
-    # 索引
-    __table_args__ = (
-        Index("idx_tasks_agent_id", "agent_id"),  # 查询 Agent 的所有 Task
-        Index("idx_tasks_run_id", "run_id"),  # 查询 Run 的所有 Task
-        Index("idx_tasks_status", "status"),  # 查询特定状态的 Task
-        Index("idx_tasks_created_at", "created_at"),  # 按时间排序
-    )
-
-    def __repr__(self) -> str:
-        return f"<TaskModel(id={self.id}, run_id={self.run_id}, name={self.name}, status={self.status})>"
 
 
 class WorkflowModel(Base):
@@ -417,11 +140,14 @@ class WorkflowModel(Base):
     - updated_at: 更新时间（自动更新）
 
     关系：
+    - user: 多对一关系（多个 Workflow 属于一个 User）
+    - project: 多对一关系（多个 Workflow 属于一个 Project）
     - nodes: 一对多关系（一个 Workflow 有多个 Node）
     - edges: 一对多关系（一个 Workflow 有多个 Edge）
 
     索引：
     - idx_workflows_status: status 字段索引（查询特定状态的工作流）
+    - idx_workflows_project_id: project_id 字段索引（查询项目的所有工作流）
     - idx_workflows_created_at: created_at 字段索引（按时间排序）
     """
 
@@ -436,6 +162,14 @@ class WorkflowModel(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,  # 兼容现有数据和未登录用户
         comment="创建者ID",
+    )
+
+    # 外键（项目关联）
+    project_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,  # 兼容旧数据（无项目关联）
+        comment="关联的项目 ID",
     )
 
     # 业务字段
@@ -463,6 +197,9 @@ class WorkflowModel(Base):
     # 关系（多对一：多个Workflow属于一个User）
     user: Mapped["UserModel"] = relationship("UserModel", back_populates="workflows")
 
+    # 关系（多对一：多个Workflow属于一个Project）
+    project: Mapped["ProjectModel"] = relationship("ProjectModel", back_populates="workflows")
+
     # 关系（一对多：一个 Workflow 有多个 Node）
     # cascade="all, delete-orphan": 删除 Workflow 时级联删除所有 Node
     # back_populates: 双向关系（NodeModel.workflow）
@@ -487,6 +224,7 @@ class WorkflowModel(Base):
     # 索引
     __table_args__ = (
         Index("idx_workflows_status", "status"),  # 查询特定状态的工作流
+        Index("idx_workflows_project_id", "project_id"),  # 查询项目的所有工作流
         Index("idx_workflows_created_at", "created_at"),  # 按时间排序
     )
 
@@ -849,6 +587,86 @@ class ScheduledWorkflowModel(Base):
         return f"<ScheduledWorkflowModel(id={self.id}, workflow_id={self.workflow_id}, status={self.status})>"
 
 
+class ProjectModel(Base):
+    """Project ORM 模型
+
+    表名：projects
+
+    字段说明：
+    - id: 主键（UUID 字符串，36 字符）
+    - name: 项目名称（255 字符，必填）
+    - description: 项目描述（Text，默认空字符串）
+    - rules_text: 项目规则（Text，深度研究核心，默认空字符串）
+    - status: 项目状态（active/archived，20 字符，默认 active）
+    - owner_user_id: 创建者 ID（外键，可选）
+    - created_at: 创建时间（自动设置）
+    - updated_at: 更新时间（自动更新）
+
+    关系：
+    - owner: 多对一关系（多个 Project 属于一个 User）
+    - workflows: 一对多关系（一个 Project 有多个 Workflow）
+
+    索引：
+    - idx_projects_owner_user_id: owner_user_id 字段索引（按用户查询项目）
+    - idx_projects_status: status 字段索引（按状态过滤）
+    - idx_projects_created_at: created_at 字段索引（按时间排序）
+
+    深度研究场景：
+    - Project 是深度研究的入口实体，承载用户规则
+    - rules_text 用于约束：证据引用、输出结构、工具权限、成本上限
+    - 一个 Project 可以有多个 Workflow（主工作流 + 子工作流）
+    """
+
+    __tablename__ = "projects"
+
+    # 主键
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Project ID（UUID）")
+
+    # 业务字段
+    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="项目名称")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="", comment="项目描述")
+    rules_text: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", comment="项目规则（深度研究核心）"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", comment="项目状态（active/archived）"
+    )
+
+    # 外键（用户关联）
+    owner_user_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,  # 可选
+        comment="创建者ID",
+    )
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, onupdate=datetime.now, comment="更新时间"
+    )
+
+    # 关系（多对一：多个Project属于一个User）
+    owner: Mapped["UserModel"] = relationship("UserModel", back_populates="projects")
+
+    # 关系（一对多：一个Project有多个Workflow）
+    workflows: Mapped[list["WorkflowModel"]] = relationship(
+        "WorkflowModel", back_populates="project", lazy="selectin"
+    )
+
+    # 索引
+    __table_args__ = (
+        Index("idx_projects_owner_user_id", "owner_user_id"),  # 按用户查询项目
+        Index("idx_projects_status", "status"),  # 按状态过滤
+        Index("idx_projects_created_at", "created_at"),  # 按时间排序
+    )
+
+    def __repr__(self) -> str:
+        return f"<ProjectModel(id={self.id}, name={self.name}, status={self.status})>"
+
+
 class ChatMessageModel(Base):
     """ChatMessage ORM 模型
 
@@ -910,3 +728,152 @@ class ChatMessageModel(Base):
         role = "User" if self.is_user else "AI"
         preview = self.content[:50] + "..." if len(self.content) > 50 else self.content
         return f"<ChatMessageModel(id={self.id}, workflow_id={self.workflow_id}, role={role}, content='{preview}')>"
+
+
+class RunModel(Base):
+    """Run ORM 模型
+
+    表名: workflow_runs (使用此名称避免与历史 runs 表冲突)
+
+    字段说明:
+    - id: 主键 (UUID 字符串，run_ 前缀)
+    - project_id: 外键 (关联 Project)
+    - workflow_id: 外键 (关联 Workflow)
+    - status: 运行状态 (created/running/completed/failed)
+    - created_at: 创建时间
+    - finished_at: 结束时间 (可选)
+
+    关系:
+    - project: 多对一 (多个 Run 属于一个 Project)
+    - workflow: 多对一 (多个 Run 属于一个 Workflow)
+    - events: 一对多 (一个 Run 有多个 RunEvent)
+
+    索引:
+    - idx_workflow_runs_project_id: 按 project 查询
+    - idx_workflow_runs_workflow_id: 按 workflow 查询
+    - idx_workflow_runs_status: 按状态过滤
+    - idx_workflow_runs_created_at: 按时间排序
+    """
+
+    __tablename__ = "workflow_runs"
+
+    # 主键
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Run ID (run_ 前缀)")
+
+    # 外键
+    project_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Project ID",
+    )
+    workflow_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Workflow ID",
+    )
+
+    # 业务字段
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="created",
+        comment="Run status (created/running/completed/failed)",
+    )
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="结束时间"
+    )
+
+    # 关系
+    project: Mapped["ProjectModel"] = relationship("ProjectModel", lazy="selectin")
+    workflow: Mapped["WorkflowModel"] = relationship("WorkflowModel", lazy="selectin")
+
+    # 一对多: 一个 Run 有多个 RunEvent
+    events: Mapped[list["RunEventModel"]] = relationship(
+        "RunEventModel",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    # 索引
+    __table_args__ = (
+        Index("idx_workflow_runs_project_id", "project_id"),
+        Index("idx_workflow_runs_workflow_id", "workflow_id"),
+        Index("idx_workflow_runs_status", "status"),
+        Index("idx_workflow_runs_created_at", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<RunModel(id={self.id}, workflow_id={self.workflow_id}, status={self.status})>"
+
+
+class RunEventModel(Base):
+    """RunEvent ORM 模型
+
+    表名: run_events
+
+    字段说明:
+    - id: 主键 (自增整数，用于 cursor 分页)
+    - run_id: 外键 (关联 RunModel)
+    - type: 事件类型 (node_start/workflow_complete 等)
+    - channel: 事件通道 (execution/planning 等)
+    - payload: 事件负载 (JSON)
+    - created_at: 创建时间
+    - sequence: 可选序号 (用于兼容外部事件序列)
+
+    关系:
+    - run: 多对一 (多个 RunEvent 属于一个 Run)
+
+    索引:
+    - idx_run_events_run_id: 按 run 查询
+    - idx_run_events_run_id_id: 复合索引 (cursor 分页优化)
+    """
+
+    __tablename__ = "run_events"
+
+    # 主键 (自增整数，用于高效 cursor 分页)
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True, comment="RunEvent ID (自增)"
+    )
+
+    # 外键
+    run_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("workflow_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Run ID",
+    )
+
+    # 业务字段
+    type: Mapped[str] = mapped_column(String(50), nullable=False, comment="事件类型")
+    channel: Mapped[str] = mapped_column(String(50), nullable=False, comment="事件通道")
+    payload: Mapped[dict] = mapped_column(
+        JSON, nullable=False, default=dict, comment="事件负载 (JSON)"
+    )
+
+    # 时间戳
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+
+    # 可选序号 (用于外部事件序列兼容)
+    sequence: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="可选序号")
+
+    # 关系
+    run: Mapped["RunModel"] = relationship("RunModel", back_populates="events")
+
+    # 索引
+    __table_args__ = (
+        Index("idx_run_events_run_id", "run_id"),
+        Index("idx_run_events_run_id_id", "run_id", "id"),  # cursor 分页优化
+    )
+
+    def __repr__(self) -> str:
+        return f"<RunEventModel(id={self.id}, run_id={self.run_id}, type={self.type}, channel={self.channel})>"

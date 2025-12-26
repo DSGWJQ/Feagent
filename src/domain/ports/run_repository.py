@@ -1,181 +1,166 @@
 """RunRepository Port - 定义 Run 实体的持久化接口
 
-为什么需要 RunRepository Port？
-1. 依赖倒置（DIP）：领域层定义接口，基础设施层实现接口
-2. 解耦：领域层不依赖具体的数据库技术（SQLAlchemy、MongoDB 等）
-3. 可测试性：Use Case 可以使用 Mock Repository 进行单元测试
-4. 灵活性：可以轻松切换不同的存储实现
+为什么需要 RunRepository Port?
+    1. 依赖倒置 (DIP): 领域层定义接口，基础设施层实现接口
+    2. 解耦: 领域层不依赖具体数据库技术 (SQLAlchemy、MongoDB 等)
+    3. 可测试性: UseCase 可以使用 Mock Repository 进行单元测试
+    4. 灵活性: 可替换不同存储实现
 
-设计原则：
-- 使用 Protocol（结构化子类型，不需要显式继承）
-- 只定义领域层需要的方法（不要过度设计）
-- 方法签名使用领域对象（Run 实体）
-- 不依赖任何框架（纯 Python）
+设计原则:
+    - 使用 Protocol (结构化子类型，不需要显式继承)
+    - 只定义领域层需要的方法 (不要过度设计)
+    - 方法签名使用领域对象 (Run 实体)
+    - Repository 不调用 commit()，事务由 UseCase 控制
 
-为什么使用 Protocol 而不是 ABC？
-1. 更灵活：不需要显式继承，只要实现了方法就符合接口
-2. 更 Pythonic：符合 Duck Typing 理念
-3. 更简洁：不需要 @abstractmethod 装饰器
-4. 类型检查友好：mypy 可以检查是否实现了所有方法
+Phase 1 事务规则:
+    - save/update/delete 只使用 flush()，不调用 commit()
+    - commit/rollback 由 UseCase 层的 TransactionManager 控制
 """
 
+from datetime import datetime
 from typing import Protocol
 
 from src.domain.entities.run import Run
+from src.domain.value_objects.run_status import RunStatus
 
 
 class RunRepository(Protocol):
     """Run 仓储接口
 
-    职责：
-    - 定义 Run 实体的持久化操作
-    - 不关心具体实现（内存、SQL、NoSQL 等）
-
-    方法命名规范：
-    - save(): 保存实体（新增或更新）
-    - get_by_id(): 根据 ID 获取实体（不存在抛异常）
-    - find_by_id(): 根据 ID 查找实体（不存在返回 None）
-    - find_by_agent_id(): 根据 Agent ID 查找所有 Run
-    - exists(): 检查实体是否存在
-    - delete(): 删除实体
-
-    为什么区分 get 和 find？
-    - get: 期望一定存在，不存在抛异常（用于业务逻辑）
-    - find: 可能不存在，返回 None（用于查询场景）
-
-    为什么没有 create/update？
-    - 统一使用 save()，由实现层判断是新增还是更新
-    - 符合 Repository 模式的最佳实践
+    实现要求:
+        - 所有写操作只 flush，不 commit
+        - 事务边界由 UseCase 控制
     """
 
     def save(self, run: Run) -> None:
-        """保存 Run 实体（新增或更新）
+        """保存 Run (新增)
 
-        业务语义：
-        - 如果 Run 不存在，则新增
-        - 如果 Run 已存在，则更新
-        - 由实现层判断是新增还是更新（通过 ID 查询）
+        语义:
+            - 创建新的 Run 记录
+            - Run.id 必须唯一
 
-        参数：
-            run: Run 实体
-
-        实现要求：
-        - 必须是原子操作（事务内完成）
-        - 保存失败应抛出异常
-
-        为什么返回 None？
-        - save() 是命令操作，不需要返回值
-        - 如果需要获取保存后的实体，调用 get_by_id()
+        实现要求:
+            - 原子操作 (事务内完成)
+            - 只 flush，不 commit
         """
         ...
 
     def get_by_id(self, run_id: str) -> Run:
-        """根据 ID 获取 Run 实体（不存在抛异常）
+        """按 ID 获取 Run (不存在抛异常)
 
-        业务语义：
-        - 期望 Run 一定存在
-        - 不存在时抛出异常（NotFoundError）
-        - 用于业务逻辑中需要确保实体存在的场景
-
-        参数：
+        Args:
             run_id: Run ID
 
-        返回：
+        Returns:
             Run 实体
 
-        抛出：
+        Raises:
             NotFoundError: 当 Run 不存在时
-
-        为什么不返回 None？
-        - get 语义表示"期望存在"
-        - 不存在是异常情况，应该抛异常
-        - 避免调用方忘记检查 None
         """
         ...
 
     def find_by_id(self, run_id: str) -> Run | None:
-        """根据 ID 查找 Run 实体（不存在返回 None）
+        """按 ID 查找 Run (不存在返回 None)
 
-        业务语义：
-        - Run 可能不存在
-        - 不存在时返回 None（不抛异常）
-        - 用于查询场景（如检查 Run 是否存在）
-
-        参数：
+        Args:
             run_id: Run ID
 
-        返回：
+        Returns:
             Run 实体或 None
-
-        为什么需要 find？
-        - 查询场景不应该抛异常
-        - 调用方可以根据返回值判断是否存在
         """
         ...
 
-    def find_by_agent_id(self, agent_id: str) -> list[Run]:
-        """根据 Agent ID 查找所有 Run
+    def list_by_workflow_id(
+        self,
+        workflow_id: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Run]:
+        """查询指定 Workflow 下的 Run 列表
 
-        业务语义：
-        - 查询某个 Agent 的所有执行记录
-        - 如果没有 Run，返回空列表（不抛异常）
-        - 按创建时间倒序排列（最新的在前）
+        Args:
+            workflow_id: Workflow ID
+            limit: 返回数量上限
+            offset: 偏移量
 
-        参数：
-            agent_id: Agent ID
-
-        返回：
-            Run 列表（可能为空）
-
-        实现要求：
-        - 按 created_at 倒序排列
-        - 返回所有状态的 Run（不过滤）
-
-        为什么返回 list 而不是 Iterator？
-        - 简单场景下 list 更直观
-        - 如果数据量大，实现层可以使用分页
+        Returns:
+            Run 列表，按 created_at 倒序排列 (最新在前)
         """
         ...
 
-    def exists(self, run_id: str) -> bool:
-        """检查 Run 是否存在
+    def list_by_project_id(
+        self,
+        project_id: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Run]:
+        """查询指定 Project 下的 Run 列表
 
-        业务语义：
-        - 快速检查 Run 是否存在
-        - 不需要加载完整实体（性能优化）
+        Args:
+            project_id: Project ID
+            limit: 返回数量上限
+            offset: 偏移量
 
-        参数：
+        Returns:
+            Run 列表，按 created_at 倒序排列 (最新在前)
+        """
+        ...
+
+    def update(self, run: Run) -> None:
+        """更新 Run (必须已存在)
+
+        语义:
+            - Run 必须存在，否则抛 NotFoundError
+            - 用于更新 status/finished_at 等字段
+
+        实现要求:
+            - 原子操作 (事务内完成)
+            - 只 flush，不 commit
+
+        Raises:
+            NotFoundError: 当 Run 不存在时
+        """
+        ...
+
+    def count_by_workflow_id(self, workflow_id: str) -> int:
+        """统计指定 Workflow 下的 Run 数量
+
+        Args:
+            workflow_id: Workflow ID
+
+        Returns:
+            Run 数量
+        """
+        ...
+
+    def update_status_if_current(
+        self,
+        run_id: str,
+        *,
+        current_status: RunStatus,
+        target_status: RunStatus,
+        finished_at: datetime | None = None,
+    ) -> bool:
+        """条件更新状态 (乐观并发控制 / Compare-And-Swap)
+
+        仅当当前数据库中的状态等于 current_status 时，才更新为 target_status。
+        用于解决并发场景下的状态竞态问题 (TOCTOU)。
+
+        Args:
             run_id: Run ID
+            current_status: 期望的当前状态
+            target_status: 目标状态
+            finished_at: 结束时间 (终态时设置，UTC aware)
 
-        返回：
-            True 表示存在，False 表示不存在
+        Returns:
+            True 表示成功更新 1 行；False 表示状态不匹配（已被其他事务更新）
 
-        实现建议：
-        - 使用 COUNT 或 EXISTS 查询（不加载实体）
-        - 比 find_by_id() 更高效
-        """
-        ...
-
-    def delete(self, run_id: str) -> None:
-        """删除 Run 实体
-
-        业务语义：
-        - 物理删除 Run（不是软删除）
-        - 如果 Run 不存在，不抛异常（幂等操作）
-
-        参数：
-            run_id: Run ID
-
-        实现要求：
-        - 必须是原子操作（事务内完成）
-        - 幂等：多次删除同一个 Run 不报错
-
-        为什么幂等？
-        - 删除操作应该是幂等的（多次删除结果一致）
-        - 避免调用方需要先检查是否存在
-
-        注意：
-        - 如果需要软删除，应该在 Run 实体中添加 deleted_at 字段
-        - 然后通过 save() 更新状态，而不是调用 delete()
+        示例:
+            # 尝试 created → running，只有一个事务能成功
+            success = repo.update_status_if_current(
+                run_id,
+                current_status=RunStatus.CREATED,
+                target_status=RunStatus.RUNNING,
+            )
         """
         ...

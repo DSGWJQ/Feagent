@@ -70,6 +70,7 @@ def get_sync_engine() -> Engine:
     - pool_size: 连接池大小
     - max_overflow: 最大溢出连接数
     - pool_pre_ping: 连接前检查
+    - check_same_thread: SQLite 跨线程支持（用于 asyncio.to_thread）
 
     返回：
         Engine: 同步数据库引擎
@@ -78,12 +79,19 @@ def get_sync_engine() -> Engine:
     # sqlite+aiosqlite:///... → sqlite:///...
     sync_url = settings.database_url.replace("+aiosqlite", "")
 
+    # SQLite 特殊配置：允许跨线程使用连接
+    # 用于 asyncio.to_thread() 在后台线程执行 DB 操作
+    connect_args = {}
+    if sync_url.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
+
     return create_engine(
         sync_url,
         echo=settings.debug,
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
+        connect_args=connect_args,
     )
 
 
@@ -114,9 +122,9 @@ def get_db_session() -> Generator[Session, None, None]:
     - 确保 Session 总是被关闭
 
     使用示例：
-    >>> @app.get("/api/agents")
-    >>> def list_agents(session: Session = Depends(get_db_session)):
-    >>>     repo = SQLAlchemyAgentRepository(session)
+    >>> @app.get("/api/workflows")
+    >>> def list_workflows(session: Session = Depends(get_db_session)):
+    >>>     repo = SQLAlchemyWorkflowRepository(session)
     >>>     return repo.find_all()
 
     生命周期：

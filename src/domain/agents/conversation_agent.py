@@ -843,6 +843,10 @@ class ConversationAgent(
     def format_progress_for_websocket(self, event: Any) -> dict[str, Any]:
         """格式化进度事件为 WebSocket 消息
 
+        .. deprecated:: Step 1.5
+            WebSocket 已被移除，请使用 format_progress_for_sse() 替代。
+            此方法将在未来版本中删除。
+
         参数:
             event: ExecutionProgressEvent 实例
 
@@ -896,29 +900,51 @@ class ConversationAgent(
         ]
 
     # === Phase 16: 新执行链路 ===
+    # === Phase 4: 执行职责分离 ===
 
     async def execute_workflow(self, workflow: dict[str, Any]) -> Any:
-        """执行工作流并返回结果（Phase 16 新执行链路）
+        """执行工作流 - 已禁用，职责分离
 
-        通过 WorkflowAgent 执行工作流，自动调用反思，
-        不创建子 Agent，直接使用已注册的 WorkflowAgent。
+        Phase 4 重构：ConversationAgent 不再直接执行工作流。
+        执行职责已分离到 WorkflowAgent/WorkflowExecutionFacade。
+
+        正确用法：
+        1. 创建 DecisionType.EXECUTE_WORKFLOW 决策
+        2. 通过 EventBus 发布 DecisionMadeEvent
+        3. CoordinatorAgent 接收并调度 WorkflowAgent 执行
+
+        示例代码：
+            from src.domain.agents.conversation_agent_models import Decision, DecisionType
+            from src.domain.agents.conversation_agent_events import DecisionMadeEvent
+
+            decision = Decision(
+                type=DecisionType.EXECUTE_WORKFLOW,
+                payload={"workflow": workflow},
+                confidence=0.95
+            )
+            event = DecisionMadeEvent(
+                source="conversation_agent",
+                decision_type=decision.type.value,
+                decision_id=decision.id,
+                payload=decision.payload,
+                confidence=decision.confidence
+            )
+            await self.event_bus.publish(event)
 
         参数:
-            workflow: 工作流定义
+            workflow: 工作流定义（不再使用）
 
-        返回:
-            WorkflowExecutionResult 执行结果
+        异常:
+            NotImplementedError: 始终抛出，引导使用正确的事件发布方式
+
+        .. deprecated:: Phase 4
+            直接执行已禁用。使用 DecisionType.EXECUTE_WORKFLOW 事件替代。
         """
-        if not self.workflow_agent:
-            raise ValueError("WorkflowAgent not registered. Set workflow_agent first.")
-
-        # 执行工作流
-        result = await self.workflow_agent.execute(workflow)
-
-        # 自动调用反思
-        await self.workflow_agent.reflect(result)
-
-        return result
+        raise NotImplementedError(
+            "Direct execution not allowed. ConversationAgent execution is separated from WorkflowAgent. "
+            "Use DecisionType.EXECUTE_WORKFLOW decision and publish via EventBus instead. "
+            "See docstring for correct usage example."
+        )
 
     # =========================================================================
     # P1-4: Config兼容性支持方法
@@ -1007,14 +1033,13 @@ class ConversationAgent(
                     f"legacy={type(legacy_val).__name__})"
                 )
 
-        # 检查llm（必选参数，config.llm.llm必然有值）
-        if "llm" in legacy_params:
+        # 检查llm（config.llm可能为None）
+        if "llm" in legacy_params and config.llm is not None:
             legacy_val = legacy_params["llm"]
             config_val = config.llm.llm
             if config_val is not legacy_val:
                 conflicts.append(
-                    f"llm (config={type(config_val).__name__}, "
-                    f"legacy={type(legacy_val).__name__})"
+                    f"llm (config={type(config_val).__name__}, legacy={type(legacy_val).__name__})"
                 )
 
         # 检查event_bus（仅当两边都非None且不同时冲突）

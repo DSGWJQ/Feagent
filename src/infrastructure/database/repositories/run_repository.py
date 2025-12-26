@@ -1,199 +1,131 @@
 """SQLAlchemy Run Repository 实现
 
-第一性原理：Repository 是领域对象和数据存储之间的转换器
+第一性原理: Repository 是领域对象和数据存储之间的转换器
 
-职责：
-1. 转换（Translation）：领域实体 ⇄ ORM 模型
-2. 持久化（Persistence）：保存、查询、删除
-3. 异常转换（Exception Translation）：数据库异常 → 领域异常
+职责:
+    1. 转换 (Translation): 领域实体 ↔ ORM 模型
+    2. 持久化 (Persistence): 保存、查询、更新
+    3. 异常转换 (Exception Translation): 数据库异常 → 领域异常
 
-设计模式：
-- Adapter 模式：实现领域层定义的 Port 接口
-- Assembler 模式：负责对象转换（ORM ⇄ Entity）
-- Repository 模式：封装数据访问逻辑
-
-为什么需要 Assembler？
-- 关注点分离：转换逻辑独立于持久化逻辑
-- 可测试性：可以单独测试转换逻辑
-- 可维护性：转换逻辑集中管理
+事务边界规则 (Phase 1):
+    - Repository 不调用 session.commit()
+    - 只使用 add/merge/flush/delete
+    - 事务由 Application UseCase 控制
 """
 
-from sqlalchemy import select
+from datetime import UTC, datetime
+
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from src.domain.entities.run import Run, RunStatus
+from src.domain.entities.run import Run
 from src.domain.exceptions import NotFoundError
+from src.domain.value_objects.run_status import RunStatus
 from src.infrastructure.database.models import RunModel
 
 
 class SQLAlchemyRunRepository:
     """SQLAlchemy Run Repository 实现
 
-    实现领域层定义的 RunRepository Port 接口
-
-    依赖：
-    - Session: SQLAlchemy 同步会话（依赖注入）
-
-    为什么使用同步 Session？
-    - 当前实现是同步的（Use Case 是同步的）
-    - 简单易懂，易于调试
-    - 未来可以迁移到异步
-
-    为什么不显式继承 RunRepository？
-    - 使用 Protocol（结构化子类型）
-    - 只要方法签名匹配，就符合接口
-    - 更灵活，不需要显式继承
+    Implements:
+        RunRepository Protocol (src/domain/ports/run_repository.py)
     """
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         """初始化 Repository
 
-        参数：
-            session: SQLAlchemy 同步会话
-
-        为什么通过构造函数注入 session？
-        - 依赖注入：由外部管理 session 生命周期
-        - 事务控制：调用者控制事务边界
-        - 可测试性：测试时可以注入 Mock session
+        Args:
+            session: SQLAlchemy Session (由依赖注入提供)
         """
         self.session = session
 
     # ==================== Assembler 方法 ====================
-    # 职责：ORM 模型 ⇄ 领域实体转换
 
     def _to_entity(self, model: RunModel) -> Run:
-        """将 ORM 模型转换为领域实体
+        """ORM 模型 → 领域实体
 
-        为什么需要这个方法？
-        - ORM 模型是数据库表映射（Infrastructure 层）
-        - 领域实体是业务逻辑载体（Domain 层）
-        - 两者职责不同，需要转换
-
-        转换策略：
-        - 直接映射：字段名相同，直接赋值
-        - 类型转换：status 从字符串转换为 RunStatus 枚举
-        - 不加载关联对象：避免 N+1 查询问题
-
-        参数：
-            model: RunModel ORM 模型
-
-        返回：
-            Run 领域实体
+        时区处理:
+            - 数据库存储 naive datetime
+            - 领域层使用 UTC aware datetime
         """
+        # 时区转换: naive → UTC aware
+        created_at = (
+            model.created_at.replace(tzinfo=UTC)
+            if model.created_at.tzinfo is None
+            else model.created_at
+        )
+
+        finished_at = None
+        if model.finished_at is not None:
+            finished_at = (
+                model.finished_at.replace(tzinfo=UTC)
+                if model.finished_at.tzinfo is None
+                else model.finished_at
+            )
+
         return Run(
             id=model.id,
-            agent_id=model.agent_id,
-            status=RunStatus(model.status),  # 字符串 → 枚举
-            created_at=model.created_at,
-            started_at=model.started_at,
-            finished_at=model.finished_at,
-            error=model.error,
+            project_id=model.project_id,
+            workflow_id=model.workflow_id,
+            status=RunStatus(model.status),
+            created_at=created_at,
+            finished_at=finished_at,
         )
 
     def _to_model(self, entity: Run) -> RunModel:
-        """将领域实体转换为 ORM 模型
+        """领域实体 → ORM 模型
 
-        为什么需要这个方法？
-        - 保存实体到数据库时需要 ORM 模型
-        - 领域实体不应该知道数据库细节
-
-        转换策略：
-        - 直接映射：字段名相同，直接赋值
-        - 类型转换：status 从 RunStatus 枚举转换为字符串
-        - 不处理关联对象：agent 由 SQLAlchemy 管理
-
-        参数：
-            entity: Run 领域实体
-
-        返回：
-            RunModel ORM 模型
+        时区处理:
+            - 领域层使用 UTC aware datetime
+            - 数据库存储 naive datetime
         """
+        # 时区转换: UTC aware → naive
+        created_at = entity.created_at.replace(tzinfo=None)
+        finished_at = (
+            entity.finished_at.replace(tzinfo=None) if entity.finished_at is not None else None
+        )
+
         return RunModel(
             id=entity.id,
-            agent_id=entity.agent_id,
-            status=entity.status.value,  # 枚举 → 字符串
-            created_at=entity.created_at,
-            started_at=entity.started_at,
-            finished_at=entity.finished_at,
-            error=entity.error,
+            project_id=entity.project_id,
+            workflow_id=entity.workflow_id,
+            status=entity.status.value,
+            created_at=created_at,
+            finished_at=finished_at,
         )
 
     # ==================== Repository 方法 ====================
-    # 职责：实现 RunRepository Port 接口
 
     def save(self, run: Run) -> None:
-        """保存 Run 实体（新增或更新）
+        """保存 Run (新增)
 
-        第一性原理：save() 应该是幂等的
-        - 如果实体不存在，则新增（INSERT）
-        - 如果实体已存在，则更新（UPDATE）
+        语义: 创建新的 Run 记录
+        实现: 使用 add() 明确新增
 
-        实现策略：
-        1. 查询实体是否存在
-        2. 如果存在，更新所有字段
-        3. 如果不存在，新增实体
-        4. 提交事务
-
-        为什么不直接用 session.merge()？
-        - merge() 会触发额外的 SELECT 查询
-        - 手动判断更清晰，性能更好
-
-        为什么要 session.commit()？
-        - 确保数据持久化到数据库
-        - 事务提交后才能被其他会话看到
-
-        参数：
-            run: Run 领域实体
+        Phase 1 规则: 只 add，不 commit
         """
-        # 查询实体是否存在
-        result = self.session.execute(select(RunModel).where(RunModel.id == run.id))
-        existing_model = result.scalar_one_or_none()
+        model = self._to_model(run)
+        self.session.add(model)
 
-        if existing_model:
-            # 更新已存在的实体
-            # 为什么逐个字段赋值？确保所有字段都被更新
-            existing_model.agent_id = run.agent_id
-            existing_model.status = run.status.value  # 枚举 → 字符串
-            existing_model.created_at = run.created_at
-            existing_model.started_at = run.started_at
-            existing_model.finished_at = run.finished_at
-            existing_model.error = run.error
-        else:
-            # 新增实体
-            new_model = self._to_model(run)
-            self.session.add(new_model)
+    def update(self, run: Run) -> None:
+        """更新 Run (必须已存在)
 
-        # 提交事务
-        self.session.commit()
+        语义: 更新已存在的 Run 记录
+        实现: 使用 merge() 合并状态
+
+        Phase 1 规则: 只 merge，不 commit
+        """
+        model = self._to_model(run)
+        self.session.merge(model)
 
     def get_by_id(self, run_id: str) -> Run:
-        """根据 ID 获取 Run 实体（不存在抛异常）
+        """按 ID 获取 Run (不存在抛异常)
 
-        第一性原理：get 语义表示"期望存在"
-        - 如果不存在，应该立即失败（Fail Fast）
-        - 抛出 NotFoundError，让调用者知道出错了
-
-        实现策略：
-        1. 查询 ORM 模型
-        2. 如果不存在，抛出 NotFoundError
-        3. 如果存在，转换为领域实体
-
-        为什么用 scalar_one_or_none()？
-        - scalar_one(): 期望恰好一个结果，否则抛异常
-        - scalar_one_or_none(): 期望 0 或 1 个结果
-        - 我们需要区分"不存在"和"多个结果"
-
-        参数：
-            run_id: Run ID
-
-        返回：
-            Run 领域实体
-
-        抛出：
+        Raises:
             NotFoundError: 当 Run 不存在时
         """
-        result = self.session.execute(select(RunModel).where(RunModel.id == run_id))
-        model = result.scalar_one_or_none()
+        stmt = select(RunModel).where(RunModel.id == run_id)
+        model = self.session.scalars(stmt).first()
 
         if model is None:
             raise NotFoundError(entity_type="Run", entity_id=run_id)
@@ -201,121 +133,99 @@ class SQLAlchemyRunRepository:
         return self._to_entity(model)
 
     def find_by_id(self, run_id: str) -> Run | None:
-        """根据 ID 查找 Run 实体（不存在返回 None）
-
-        第一性原理：find 语义表示"可能不存在"
-        - 不存在是正常情况，返回 None
-        - 不抛异常，让调用者自己处理
-
-        实现策略：
-        1. 查询 ORM 模型
-        2. 如果不存在，返回 None
-        3. 如果存在，转换为领域实体
-
-        参数：
-            run_id: Run ID
-
-        返回：
-            Run 领域实体或 None
-        """
-        result = self.session.execute(select(RunModel).where(RunModel.id == run_id))
-        model = result.scalar_one_or_none()
+        """按 ID 查找 Run (不存在返回 None)"""
+        stmt = select(RunModel).where(RunModel.id == run_id)
+        model = self.session.scalars(stmt).first()
 
         if model is None:
             return None
 
         return self._to_entity(model)
 
-    def find_by_agent_id(self, agent_id: str) -> list[Run]:
-        """根据 Agent ID 查找所有 Run
+    def list_by_workflow_id(
+        self,
+        workflow_id: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Run]:
+        """查询指定 Workflow 下的 Run 列表
 
-        第一性原理：查询方法应该返回集合，即使为空
-        - 空集合用 []，不用 None
-        - 符合 Python 惯例
-
-        实现策略：
-        1. 查询所有匹配的 ORM 模型
-        2. 按创建时间倒序排列（最新的在前）
-        3. 转换为领域实体列表
-
-        为什么按 created_at 倒序？
-        - 用户通常关心最新的 Run
-        - 符合常见的 UI 展示习惯
-
-        为什么用 scalars().all()？
-        - scalars(): 返回标量结果（不是 Row 对象）
-        - all(): 返回所有结果（list）
-
-        参数：
-            agent_id: Agent ID
-
-        返回：
-            Run 列表（可能为空）
+        Returns:
+            Run 列表，按 created_at 倒序排列 (最新在前)
         """
-        result = self.session.execute(
+        stmt = (
             select(RunModel)
-            .where(RunModel.agent_id == agent_id)
+            .where(RunModel.workflow_id == workflow_id)
             .order_by(RunModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
-        models = result.scalars().all()
-
-        # 转换为领域实体列表
+        models = self.session.scalars(stmt).all()
         return [self._to_entity(model) for model in models]
 
-    def exists(self, run_id: str) -> bool:
-        """检查 Run 是否存在
+    def list_by_project_id(
+        self,
+        project_id: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Run]:
+        """查询指定 Project 下的 Run 列表
 
-        第一性原理：exists 只需要知道"是否存在"，不需要加载实体
-        - 性能优化：只查询 ID，不加载所有字段
-        - 使用 COUNT 或 EXISTS 查询
-
-        实现策略：
-        1. 查询 ID 是否存在
-        2. 返回布尔值
-
-        为什么不用 find_by_id() is not None？
-        - find_by_id() 会加载整个实体（浪费资源）
-        - exists() 只查询 ID（更高效）
-
-        SQL 对比：
-        - find_by_id(): SELECT * FROM runs WHERE id = ?
-        - exists(): SELECT 1 FROM runs WHERE id = ? LIMIT 1
-
-        参数：
-            run_id: Run ID
-
-        返回：
-            True 表示存在，False 表示不存在
+        Returns:
+            Run 列表，按 created_at 倒序排列 (最新在前)
         """
-        result = self.session.execute(select(RunModel.id).where(RunModel.id == run_id))
-        return result.scalar_one_or_none() is not None
+        stmt = (
+            select(RunModel)
+            .where(RunModel.project_id == project_id)
+            .order_by(RunModel.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        models = self.session.scalars(stmt).all()
+        return [self._to_entity(model) for model in models]
 
-    def delete(self, run_id: str) -> None:
-        """删除 Run 实体
+    def count_by_workflow_id(self, workflow_id: str) -> int:
+        """统计指定 Workflow 下的 Run 数量"""
+        stmt = select(func.count(RunModel.id)).where(RunModel.workflow_id == workflow_id)
+        return int(self.session.scalar(stmt) or 0)
 
-        第一性原理：delete 应该是幂等的
-        - 删除不存在的实体不应该抛异常
-        - 多次删除同一个实体结果相同
+    def update_status_if_current(
+        self,
+        run_id: str,
+        *,
+        current_status: RunStatus,
+        target_status: RunStatus,
+        finished_at: datetime | None = None,
+    ) -> bool:
+        """条件更新状态 (乐观并发控制 / Compare-And-Swap)
 
-        实现策略：
-        1. 查询实体是否存在
-        2. 如果存在，删除实体
-        3. 如果不存在，什么都不做（幂等）
-        4. 提交事务
+        使用 UPDATE ... WHERE status = current_status 实现原子条件更新。
+        只有当数据库中的状态等于 current_status 时，才会更新为 target_status。
 
-        为什么不直接 DELETE FROM runs WHERE id = ?？
-        - SQLAlchemy ORM 需要先加载对象才能删除
-        - 这样可以触发 ORM 级别的事件和钩子
-
-        参数：
+        Args:
             run_id: Run ID
-        """
-        # 查询实体是否存在
-        result = self.session.execute(select(RunModel).where(RunModel.id == run_id))
-        model = result.scalar_one_or_none()
+            current_status: 期望的当前状态
+            target_status: 目标状态
+            finished_at: 结束时间 (终态时设置，UTC aware)
 
-        # 如果存在，删除实体
-        if model is not None:
-            self.session.delete(model)
-            # 提交事务
-            self.session.commit()
+        Returns:
+            True 表示成功更新 1 行；False 表示状态不匹配
+        """
+        # 时区转换: UTC aware → naive (数据库存储格式)
+        finished_at_naive = None
+        if finished_at is not None:
+            finished_at_naive = finished_at.replace(tzinfo=None)
+
+        # 构建条件更新语句
+        stmt = (
+            update(RunModel)
+            .where(RunModel.id == run_id)
+            .where(RunModel.status == current_status.value)
+            .values(
+                status=target_status.value,
+                finished_at=finished_at_naive,
+            )
+        )
+
+        result = self.session.execute(stmt)
+        return bool(result.rowcount == 1)

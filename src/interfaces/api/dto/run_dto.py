@@ -1,119 +1,168 @@
-"""Run DTO（Data Transfer Objects）
+"""Run DTO (Data Transfer Objects)
 
-定义 Run 相关的请求和响应模型
+定义 Run / RunEvent 相关的请求和响应模型
+
+设计原则:
+    - 使用 Pydantic BaseModel 进行验证和序列化
+    - from_entity() 工厂方法封装实体到 DTO 的转换
+    - 支持 from_attributes=True 以便直接从 ORM 对象转换
 """
 
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from src.domain.entities.run import Run
+from src.domain.entities.run_event import RunEvent
 
 
-class ExecuteRunRequest(BaseModel):
-    """执行 Run 请求 DTO
+class CreateRunRequest(BaseModel):
+    """创建 Run 请求 DTO
 
-    业务场景：用户通过 API 触发 Agent 执行
-
-    字段：
-    - 当前简化实现：请求体为空
-    - agent_id 从 URL 路径参数获取
-
-    未来扩展：
-    - input_data: 运行时输入数据（可选）
-    - config: 运行时配置（可选）
-
-    为什么请求体为空？
-    1. 当前简化实现：Agent 执行不需要额外参数
-    2. agent_id 已经在 URL 路径中
-    3. 符合 RESTful 设计：POST /api/agents/{agent_id}/runs
-
-    示例：
-    >>> request = ExecuteRunRequest()
-    >>> # agent_id 从路径参数获取
+    说明:
+        - project_id / workflow_id 通常由路径参数提供
+        - 这里保留字段以支持从 body 传入 (或用于一致性校验)
     """
 
-    pass  # 当前为空，未来可以添加字段
+    project_id: str | None = Field(
+        default=None,
+        description="项目 ID (可选，与路径参数保持一致)",
+    )
+    workflow_id: str | None = Field(
+        default=None,
+        description="工作流 ID (可选，与路径参数保持一致)",
+    )
 
 
 class RunResponse(BaseModel):
-    """Run 响应 DTO
+    """Run 响应 DTO"""
 
-    业务场景：API 返回 Run 信息给前端
+    id: str = Field(..., description="Run ID (run_ 前缀)")
+    project_id: str = Field(..., description="Project ID")
+    workflow_id: str = Field(..., description="Workflow ID")
+    status: str = Field(
+        ...,
+        description="Run status (created/running/completed/failed)",
+    )
+    created_at: datetime = Field(..., description="创建时间 (UTC)")
+    finished_at: datetime | None = Field(
+        default=None,
+        description="结束时间 (仅终态有值)",
+    )
+    duration_seconds: float | None = Field(
+        default=None,
+        description="执行时长 (秒，仅终态有值)",
+    )
 
-    字段：
-    - id: Run ID
-    - agent_id: Agent ID
-    - status: Run 状态（pending/running/succeeded/failed）
-    - created_at: 创建时间
-    - started_at: 启动时间（可选）
-    - finished_at: 完成时间（可选）
-    - error: 错误信息（可选）
-
-    为什么需要单独的响应 DTO？
-    1. 关注点分离：响应结构可能与 Domain 实体不同
-    2. 版本兼容：可以添加/删除字段而不影响 Domain 层
-    3. 安全性：只暴露需要的字段
-    4. 文档生成：清晰的 API 文档
-
-    示例：
-    >>> from src.domain.entities import Run
-    >>> run = Run.create(agent_id="agent-123")
-    >>> response = RunResponse.from_entity(run)
-    >>> print(response.status)
-    pending
-    """
-
-    id: str
-    agent_id: str
-    status: str
-    created_at: datetime
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-    error: str | None = None
+    model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_entity(cls, run) -> "RunResponse":
-        """从 Domain 实体创建响应 DTO
+    def from_entity(cls, run: Run) -> "RunResponse":
+        """从 Run 实体创建 DTO
 
-        这是 Assembler 模式的实现：
-        - Domain Entity → DTO
-        - 负责数据转换和映射
+        Args:
+            run: Run 领域实体
 
-        为什么需要这个方法？
-        1. 封装转换逻辑：集中管理 Entity → DTO 的转换
-        2. 类型安全：明确的转换接口
-        3. 易于维护：转换逻辑集中在一处
-        4. 解耦：Domain 层不需要知道 DTO 的存在
-
-        注意：
-        - status 需要从 RunStatus 枚举转换为字符串
-        - 可选字段（started_at、finished_at、error）可能为 None
-
-        参数：
-            run: Run 实体
-
-        返回：
+        Returns:
             RunResponse DTO
-
-        示例：
-        >>> run = Run.create(agent_id="agent-123")
-        >>> response = RunResponse.from_entity(run)
-        >>> print(response.status)
-        pending
         """
         return cls(
             id=run.id,
-            agent_id=run.agent_id,
-            status=run.status.value,  # RunStatus 枚举转字符串
+            project_id=run.project_id,
+            workflow_id=run.workflow_id,
+            status=run.status.value,
             created_at=run.created_at,
-            started_at=run.started_at,
             finished_at=run.finished_at,
-            error=run.error,
+            duration_seconds=run.duration_seconds,
         )
 
-    # Pydantic v2 配置
-    # 注意：Pydantic v2 会自动将 datetime 序列化为 ISO 8601 格式
-    # 不需要手动配置 json_encoders
-    model_config = ConfigDict(
-        # 允许从 ORM 模型创建（未来可能需要）
-        from_attributes=True,
+    @classmethod
+    def from_entities(cls, runs: list[Run]) -> list["RunResponse"]:
+        """从 Run 实体列表创建 DTO 列表
+
+        Args:
+            runs: Run 领域实体列表
+
+        Returns:
+            RunResponse DTO 列表
+        """
+        return [cls.from_entity(run) for run in runs]
+
+
+class RunEventResponse(BaseModel):
+    """RunEvent 响应 DTO"""
+
+    id: int | str = Field(
+        ...,
+        description="事件 ID (自增 int 或 evt_ 前缀)",
     )
+    run_id: str = Field(..., description="Run ID")
+    type: str = Field(..., description="事件类型 (node_start/workflow_complete 等)")
+    channel: str = Field(..., description="事件通道 (execution/planning 等)")
+    payload: dict[str, Any] = Field(
+        default_factory=dict,
+        description="事件负载 (JSON)",
+    )
+    created_at: datetime = Field(..., description="创建时间 (UTC)")
+    sequence: int | None = Field(
+        default=None,
+        description="可选序号 (外部事件序列)",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_entity(cls, event: RunEvent) -> "RunEventResponse":
+        """从 RunEvent 实体创建 DTO
+
+        Args:
+            event: RunEvent 领域实体
+
+        Returns:
+            RunEventResponse DTO
+        """
+        return cls(
+            id=event.id,
+            run_id=event.run_id,
+            type=event.type,
+            channel=event.channel,
+            payload=event.payload,
+            created_at=event.created_at,
+            sequence=event.sequence,
+        )
+
+    @classmethod
+    def from_entities(cls, events: list[RunEvent]) -> list["RunEventResponse"]:
+        """从 RunEvent 实体列表创建 DTO 列表
+
+        Args:
+            events: RunEvent 领域实体列表
+
+        Returns:
+            RunEventResponse DTO 列表
+        """
+        return [cls.from_entity(event) for event in events]
+
+
+class RunListResponse(BaseModel):
+    """Run 列表响应 DTO"""
+
+    runs: list[RunResponse] = Field(default_factory=list, description="Run 列表")
+    total: int = Field(..., description="总数")
+
+    @classmethod
+    def from_entities(cls, runs: list[Run], total: int | None = None) -> "RunListResponse":
+        """从 Run 实体列表创建 DTO
+
+        Args:
+            runs: Run 领域实体列表
+            total: 总数 (可选，默认为列表长度)
+
+        Returns:
+            RunListResponse DTO
+        """
+        return cls(
+            runs=RunResponse.from_entities(runs),
+            total=total if total is not None else len(runs),
+        )

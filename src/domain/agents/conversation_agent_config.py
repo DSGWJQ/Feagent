@@ -170,8 +170,8 @@ class StreamingConfig:
 
     emitter: Any | None = None
     stream_emitter: Any | None = None
-    enable_websocket: bool = True
-    enable_sse: bool = False
+    enable_websocket: bool = False  # Step 1.5: SSE-only 架构，默认禁用 WebSocket
+    enable_sse: bool = True  # Step 1.5: 默认启用 SSE
     enable_save_request_channel: bool = False
 
     def validate(self, event_bus: Any | None, *, strict: bool = False) -> None:
@@ -272,8 +272,8 @@ class ConversationAgentConfig:
         resource: 资源限制配置
     """
 
-    session_context: Any  # SessionContext 实例（必选）
-    llm: LLMConfig  # LLM 配置（必选）
+    session_context: Any | None = None  # SessionContext 实例（可选，延迟注入）
+    llm: LLMConfig | None = None  # LLM 配置（可选，延迟注入）
     event_bus: Any | None = None  # EventBus 实例（可选）
     model_metadata_port: Any | None = None  # ModelMetadataPort 实例（可选，P1-1）
     react: ReActConfig = field(default_factory=ReActConfig)
@@ -298,12 +298,16 @@ class ConversationAgentConfig:
         异常：
             ValueError: 配置验证失败（仅在 strict=True 时）
         """
-        # 必选依赖检查
+        # 延迟注入检查（session_context 和 llm 可以延迟提供）
         if self.session_context is None:
-            raise ValueError("session_context is required")
+            if strict:
+                logger.warning(
+                    "ConversationAgentConfig: session_context is None (will use default)"
+                )
 
         if self.llm is None:
-            raise ValueError("llm config is required")
+            if strict:
+                logger.warning("ConversationAgentConfig: llm config is None (will use default)")
 
         # event_bus 可选（但生产环境推荐提供）
         if self.event_bus is None:
@@ -378,10 +382,10 @@ class ConversationAgentConfig:
             "event_bus_configured": self.event_bus is not None,
             "model_metadata_port_configured": self.model_metadata_port is not None,
             "llm": {
-                "llm_configured": self.llm.llm is not None,
-                "model": self.llm.model,
-                "temperature": self.llm.temperature,
-                "max_tokens": self.llm.max_tokens,
+                "llm_configured": self.llm is not None and self.llm.llm is not None,
+                "model": self.llm.model if self.llm else None,
+                "temperature": self.llm.temperature if self.llm else None,
+                "max_tokens": self.llm.max_tokens if self.llm else None,
             },
             "react": {
                 "max_iterations": self.react.max_iterations,

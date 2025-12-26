@@ -12,7 +12,7 @@ Updated: 2025-12-17 (P1-1 Fix: ModelMetadataPort Injection)
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from src.domain.agents.conversation_agent import ConversationAgent
 from src.domain.agents.conversation_agent_config import ConversationAgentConfig, StreamingConfig
@@ -20,22 +20,45 @@ from src.domain.agents.workflow_agent import WorkflowAgent
 from src.domain.services.event_bus import EventBus
 from src.infrastructure.adapters.model_metadata_adapter import create_model_metadata_adapter
 
-# 全局单例
-_event_bus: EventBus | None = None
+# 全局单例（Agent 实例缓存）
 _conversation_agent: ConversationAgent | None = None
 _workflow_agent: WorkflowAgent | None = None
+_fallback_event_bus: EventBus | None = None
 
 
-def get_event_bus() -> EventBus:
-    """获取全局EventBus单例
+def _get_fallback_event_bus() -> EventBus:
+    """内部 fallback：供非 Request 上下文使用"""
+    global _fallback_event_bus
+    if _fallback_event_bus is None:
+        _fallback_event_bus = EventBus()
+    return _fallback_event_bus
+
+
+def set_event_bus(event_bus: EventBus) -> None:
+    """设置全局 EventBus 单例（由 main.py lifespan 调用）
+
+    Args:
+        event_bus: 应用级 EventBus 实例
+    """
+    global _fallback_event_bus
+    _fallback_event_bus = event_bus
+
+
+def get_event_bus(request: Request) -> EventBus:
+    """获取 EventBus 单例（优先从 FastAPI app.state 获取）
+
+    Args:
+        request: FastAPI Request 对象（通过 Depends 自动注入）
 
     Returns:
         EventBus 实例
     """
-    global _event_bus
-    if _event_bus is None:
-        _event_bus = EventBus()
-    return _event_bus
+    bus = getattr(request.app.state, "event_bus", None)
+    if bus is None:
+        # Fallback：如果 app.state 未初始化，使用内部单例
+        bus = _get_fallback_event_bus()
+        request.app.state.event_bus = bus
+    return bus
 
 
 def get_conversation_agent(

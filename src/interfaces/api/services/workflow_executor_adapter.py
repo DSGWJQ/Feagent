@@ -1,21 +1,51 @@
-"""工作流执行器适配器"""
+"""工作流执行器适配器
 
-import asyncio
-from collections.abc import Callable, Iterator
+Step 3 重构：
+- 实现 WorkflowExecutorPort 接口
+- 内部使用 WorkflowExecutionFacade 执行
+- 每次执行创建独立 session（调度器场景）
+
+Step 6 重构：
+- 注入 LangGraphWorkflowExecutorAdapter 实现 LANGGRAPH 模式
+- Application 层（WorkflowExecutionFacade）不直接 import LangGraph
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncGenerator, Callable, Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.orm import Session
 
-from src.domain.services.workflow_executor import WorkflowExecutor
+from src.application.services.workflow_execution_facade import WorkflowExecutionFacade
 from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
 from src.infrastructure.executors import create_executor_registry
+from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
+    LangGraphWorkflowExecutorAdapter,
+)
+
+if TYPE_CHECKING:
+    pass
 
 
 class WorkflowExecutorAdapter:
-    """在调度/后台任务中执行工作流."""
+    """在调度/后台任务中执行工作流
+
+    实现协议: WorkflowExecutorPort
+        - 供 ScheduleWorkflowService 调用
+        - 每次执行创建独立 session 和 Facade
+
+    Step 3 重构：
+    - 统一使用 WorkflowExecutionFacade 执行
+    - 确保调度器执行与 API 执行产生相同格式的 SSE 事件
+
+    Step 6 重构：
+    - 注入 LangGraphWorkflowExecutorAdapter 实现 LANGGRAPH 模式
+    - Application 层不直接 import LangGraph（仅出现在 Infrastructure）
+    """
 
     def __init__(
         self,
@@ -28,35 +58,76 @@ class WorkflowExecutorAdapter:
         self.executor_registry = executor_registry
 
     @contextmanager
-    def _workflow_repo(self) -> Iterator[SQLAlchemyWorkflowRepository]:
+    def _create_facade(self) -> Iterator[WorkflowExecutionFacade]:
+        """为每次执行创建独立的 session 和 Facade
+
+        Step 6: 同时创建 LangGraphWorkflowExecutorAdapter 注入 Facade
+        """
         session = self._session_factory()
         repo = SQLAlchemyWorkflowRepository(session)
+
+        # Step 6: 创建 LangGraph 执行器（Infrastructure 层）
+        langgraph_executor = LangGraphWorkflowExecutorAdapter(
+            workflow_repository=repo,
+            executor_registry=self.executor_registry,
+        )
+
+        facade = WorkflowExecutionFacade(
+            workflow_repository=repo,
+            executor_registry=self.executor_registry,
+            langgraph_executor=langgraph_executor,
+        )
         try:
-            yield repo
+            yield facade
         finally:
             session.close()
 
-    def execute_workflow(self, workflow_id: str, input_data: dict) -> dict:
-        """同步执行（供调度器调用，内部启动新的事件循环）"""
-        return asyncio.run(self.execute_workflow_async(workflow_id, input_data))
+    async def execute(
+        self,
+        workflow_id: str,
+        input_data: Any = None,
+    ) -> dict[str, Any]:
+        """执行工作流（非流式）
 
-    async def execute_workflow_async(self, workflow_id: str, input_data: dict) -> dict:
-        """异步执行，供 API/后台协程调用。"""
-        with self._workflow_repo() as workflow_repository:
-            workflow = workflow_repository.find_by_id(workflow_id)
-            if not workflow:
-                return {
-                    "status": "failure",
-                    "workflow_id": workflow_id,
-                    "error": f"工作流未找到: {workflow_id}",
-                }
+        实现 WorkflowExecutorPort.execute 接口
+        """
+        with self._create_facade() as facade:
+            return await facade.execute(
+                workflow_id=workflow_id,
+                input_data=input_data,
+            )
 
-            executor = WorkflowExecutor(executor_registry=self.executor_registry)
-            result = await executor.execute(workflow, initial_input=input_data)
+    async def execute_streaming(
+        self,
+        workflow_id: str,
+        input_data: Any = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """执行工作流（流式）
 
-            return {
-                "status": "success",
-                "workflow_id": workflow_id,
-                "data": result,
-                "logs": executor.execution_log,
-            }
+        实现 WorkflowExecutorPort.execute_streaming 接口
+
+        注意：由于 session 生命周期需要跨越整个流式执行，
+        这里不使用 contextmanager，而是手动管理 session。
+        """
+        session = self._session_factory()
+        repo = SQLAlchemyWorkflowRepository(session)
+
+        # Step 6: 创建 LangGraph 执行器（Infrastructure 层）
+        langgraph_executor = LangGraphWorkflowExecutorAdapter(
+            workflow_repository=repo,
+            executor_registry=self.executor_registry,
+        )
+
+        facade = WorkflowExecutionFacade(
+            workflow_repository=repo,
+            executor_registry=self.executor_registry,
+            langgraph_executor=langgraph_executor,
+        )
+        try:
+            async for event in facade.execute_streaming(
+                workflow_id=workflow_id,
+                input_data=input_data,
+            ):
+                yield event
+        finally:
+            session.close()
