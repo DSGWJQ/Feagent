@@ -817,6 +817,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
   /**
    * MVP Step 1: 编译 Plan 到画布
+   * 强化：如果没有 run 则先创建，确保 compile 事件落库
    */
   const handleCompilePlan = useCallback(async () => {
     if (!researchPlan) {
@@ -824,8 +825,17 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       return;
     }
 
-    await compilePlan(researchPlan, lastRunId);
-  }, [researchPlan, compilePlan, lastRunId]);
+    // 确保有 run_id（如果没有则创建）
+    let runIdForCompile = lastRunId;
+    if (!runIdForCompile && effectiveProjectId) {
+      runIdForCompile = await createResearchRun();
+      if (runIdForCompile) {
+        setLastRunId(runIdForCompile);
+      }
+    }
+
+    await compilePlan(researchPlan, runIdForCompile);
+  }, [researchPlan, compilePlan, lastRunId, effectiveProjectId, createResearchRun]);
 
   /**
    * 执行工作流 (Step F.7: 创建 Run 后执行)
@@ -1015,6 +1025,24 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             >
               {isReplaying ? 'Stop' : 'Replay'}
             </NeoButton>
+          )}
+
+          {/* MVP Step 2: Run ID 显示 */}
+          {lastRunId && (
+            <span
+              style={{
+                fontSize: 11,
+                color: 'var(--neo-text-2)',
+                marginLeft: 8,
+                padding: '2px 6px',
+                background: 'var(--neo-surface-alt)',
+                borderRadius: 4,
+                fontFamily: 'monospace',
+              }}
+              title={`Current Run: ${lastRunId}`}
+            >
+              {lastRunId.slice(0, 12)}
+            </span>
           )}
         </div>
       </div>
