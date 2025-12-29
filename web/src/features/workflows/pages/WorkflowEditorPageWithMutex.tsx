@@ -809,6 +809,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       runIdForSession = await createResearchRun();
       if (runIdForSession) {
         setLastRunId(runIdForSession);
+        message.info(`Session started (${runIdForSession.slice(0, 8)}...)`);
       }
     }
 
@@ -831,6 +832,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       runIdForCompile = await createResearchRun();
       if (runIdForCompile) {
         setLastRunId(runIdForCompile);
+        message.info(`Session started (${runIdForCompile.slice(0, 8)}...)`);
       }
     }
 
@@ -876,6 +878,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
           const runData = await runRes.json();
           runId = runData.id;
           setLastRunId(runId ?? null);
+          message.info(`Session started (${runId?.slice(0, 8) ?? '?'}...)`);
         } else {
           const errData = await runRes.json().catch(() => ({}));
           console.warn('Failed to create run, proceeding without run_id:', {
@@ -992,6 +995,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             icon={<SaveOutlined />}
             onClick={handleSave}
             loading={isSaving}
+            disabled={isExecuting || isGenerating || isCompiling}
           >
             Save
           </NeoButton>
@@ -1000,6 +1004,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             icon={<PlayCircleOutlined />}
             onClick={handleExecute}
             loading={isExecuting}
+            disabled={isGenerating || isCompiling}
           >
             Run
           </NeoButton>
@@ -1014,18 +1019,17 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             Research
           </NeoButton>
 
-          {/* Step F.8: Replay 按钮 */}
-          {lastRunId && (
-            <NeoButton
-              variant="secondary"
-              icon={<HistoryOutlined />}
-              onClick={() => (isReplaying ? stopReplay() : startReplay())}
-              loading={isReplaying}
-              disabled={isExecuting}
-            >
-              {isReplaying ? 'Stop' : 'Replay'}
-            </NeoButton>
-          )}
+          {/* Step F.8: Replay 按钮 - 始终显示，无 run 时禁用 */}
+          <NeoButton
+            variant="secondary"
+            icon={<HistoryOutlined />}
+            onClick={() => (isReplaying ? stopReplay() : startReplay())}
+            loading={isReplaying}
+            disabled={!lastRunId || isExecuting || isGenerating || isCompiling}
+            title={!lastRunId ? 'No run session to replay' : `Replay run ${lastRunId.slice(0, 8)}`}
+          >
+            {isReplaying ? 'Stop' : 'Replay'}
+          </NeoButton>
 
           {/* MVP Step 2: Run ID 显示 */}
           {lastRunId && (
@@ -1268,6 +1272,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             setPlanDrawerOpen(false);
             resetResearchPlan();
             setResearchGoal('');
+            setCompileWarnings([]);
           }
         }}
         destroyOnClose={false}
