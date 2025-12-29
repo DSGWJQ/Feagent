@@ -24,16 +24,22 @@ import {
   type OnConnect,
   type ReactFlowInstance,
   type NodeDragHandler,
-  type NodeChange,
-  type EdgeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Button, message, Empty, Spin } from 'antd';
-import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined, WifiOutlined, DisconnectOutlined } from '@ant-design/icons';
+import { Button, message, Empty, Spin, Modal, Alert, Drawer, Input, Collapse, Typography } from 'antd';
+import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined, UndoOutlined, RedoOutlined, WarningOutlined, FileTextOutlined, HistoryOutlined, ExperimentOutlined, SearchOutlined } from '@ant-design/icons';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ResearchResultDisplay, type ResearchResult } from '@/components/ResearchResultDisplay';
+import { useRunReplay, type RunEvent } from '@/hooks/useRunReplay';
+import { useResearchPlan, type ResearchPlanDTO, type CompileResponse } from '@/hooks/useResearchPlan';
+import { API_BASE_URL } from '@/services/api';
+import { useWorkflowHistory } from '../hooks/useWorkflowHistory';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useConflictResolution, type Conflict } from '../hooks/useConflictResolution';
+import { wouldCreateCycle } from '../utils/graphUtils';
 import { updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
 import { useWorkflow } from '@/hooks/useWorkflow';
-import { useCanvasSync } from '../hooks/useCanvasSync';
 import type { WorkflowNode, WorkflowEdge } from '../types/workflow';
 import NodePalette from '../components/NodePalette';
 import NodeConfigPanel from '../components/NodeConfigPanel';
@@ -88,44 +94,11 @@ const nodeTypes = {
 };
 
 /**
- * 初始节点（示例）
+ * 初始节点（空白画布）
  */
-const initialNodes: Node[] = [
-  {
-    id: '1',
-    type: 'start',
-    position: { x: 50, y: 250 },
-    data: {},
-  },
-  {
-    id: '2',
-    type: 'httpRequest',
-    position: { x: 350, y: 250 },
-    data: {
-      url: 'https://api.example.com',
-      method: 'GET',
-    },
-  },
-  {
-    id: '3',
-    type: 'end',
-    position: { x: 650, y: 250 },
-    data: {},
-  },
-];
+const initialNodes: Node[] = [];
 
-const initialEdges: Edge[] = [
-  {
-    id: 'e1-2',
-    source: '1',
-    target: '2',
-  },
-  {
-    id: 'e2-3',
-    source: '2',
-    target: '3',
-  },
-];
+const initialEdges: Edge[] = [];
 
 interface WorkflowEditorPageWithMutexProps {
   workflowId: string;
@@ -139,6 +112,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   workflowId,
   onWorkflowUpdate,
 }) => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isCanvasMode } = useWorkflowInteraction();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_, setInteractionMode] = useState('idle');
@@ -153,11 +128,197 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   const [isSaving, setIsSaving] = useState(false);
   const [nodeIdCounter, setNodeIdCounter] = useState(4);
 
+  // Step F.7: ResearchResult 和 Run 状态
+  const [researchResult, setResearchResult] = useState<ResearchResult | null>(null);
+  const [resultDrawerOpen, setResultDrawerOpen] = useState(false);
+  const [lastRunId, setLastRunId] = useState<string | null>(null);
+
+  // MVP Step 2: workflowId 变化时重置 lastRunId，防止 stale run_id
+  useEffect(() => {
+    setLastRunId(null);
+  }, [workflowId]);
+
+  // MVP Step 1: Research Plan 状态
+  const [planDrawerOpen, setPlanDrawerOpen] = useState(false);
+  const [researchGoal, setResearchGoal] = useState('');
+  const [compileWarnings, setCompileWarnings] = useState<string[]>([]);
+
+  /**
+   * MVP Step 3: 统一 ResearchResult 提取函数
+   * 优先级：RESEARCH_END 输出 > research_result 字段 > result 字段 > 原始对象
+   * 用于执行完成回调和 Replay 事件处理
+   */
+  const extractResearchResult = useCallback((value: unknown): ResearchResult | null => {
+    if (!value || typeof value !== 'object') return null;
+    const obj = value as Record<string, unknown>;
+
+    // 构建候选列表（按优先级，覆盖常见字段名）
+    const candidates: unknown[] = [
+      obj.research_result,
+      typeof obj.result === 'object' ? (obj.result as Record<string, unknown>)?.research_result : null,
+      obj.result,
+      obj.final_result,
+      obj.output,
+      obj.data,
+      obj,
+    ];
+
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const rr = candidate as Record<string, unknown>;
+      // 验证 ResearchResult 结构
+      if (typeof rr.question === 'string' && Array.isArray(rr.claims)) {
+        return rr as unknown as ResearchResult;
+      }
+    }
+    return null;
+  }, []);
+
+  // Step F.8: Replay hook - MVP Step 3: 增强事件处理
+  // 使用 ref 防止 workflow_complete + RESEARCH_END 双重触发
+  const resultHandledRef = useRef(false);
+
+  const {
+    isReplaying,
+    startReplay,
+    stopReplay,
+  } = useRunReplay({
+    runId: lastRunId ?? '',
+    onEvent: (event: RunEvent) => {
+      // 处理成功完成事件（防止双重触发）
+      if ((event.event_type === 'workflow_complete' || event.event_type === 'RESEARCH_END') && !resultHandledRef.current) {
+        const rr = extractResearchResult(event.payload);
+        if (rr) {
+          resultHandledRef.current = true;
+          setResearchResult(rr);
+          setResultDrawerOpen(true);
+        }
+      }
+      // 处理失败事件 - 允许用户查看部分结果或错误
+      if (event.event_type === 'workflow_error') {
+        const rr = extractResearchResult(event.payload);
+        if (rr) {
+          setResearchResult(rr);
+          setResultDrawerOpen(true);
+          message.warning('Research completed with errors');
+        } else {
+          // 规范化错误消息
+          const errorMsg = typeof event.payload.error === 'string'
+            ? event.payload.error
+            : (event.payload.detail ?? event.payload.message ?? 'Unknown error');
+          message.error(`Workflow failed: ${errorMsg}`);
+        }
+      }
+    },
+    onComplete: () => {
+      message.success('Replay completed');
+      resultHandledRef.current = false; // 重置以便下次 replay
+    },
+    onError: (err) => {
+      message.error(`Replay failed: ${err.message}`);
+      resultHandledRef.current = false;
+    },
+  });
+
+  // MVP Step 1: Research Plan hook
+  const workflowProjectId =
+    workflowData &&
+    typeof (workflowData as Record<string, unknown>).project_id === 'string'
+      ? ((workflowData as Record<string, unknown>).project_id as string)
+      : undefined;
+  const effectiveProjectId = searchParams.get('projectId') ?? workflowProjectId ?? null;
+
+  const {
+    createRun: createResearchRun,
+    generatePlan,
+    compilePlan,
+    cancelGeneration,
+    reset: resetResearchPlan,
+    plan: researchPlan,
+    isGenerating,
+    isCompiling,
+    thinkingContent,
+    error: researchError,
+  } = useResearchPlan({
+    workflowId,
+    projectId: effectiveProjectId,
+    onPlanGenerated: (plan) => {
+      message.success('Research plan generated!');
+    },
+    onCompiled: (response) => {
+      // Update canvas with new nodes/edges
+      handleWorkflowUpdate({
+        id: response.id,
+        name: response.name,
+        description: response.description,
+        nodes: response.nodes,
+        edges: response.edges,
+      });
+      setCompileWarnings(response.warnings);
+      if (response.warnings.length > 0) {
+        message.warning(`Plan compiled with ${response.warnings.length} warning(s)`);
+      } else {
+        message.success('Plan compiled and applied to canvas!');
+      }
+      setPlanDrawerOpen(false);
+    },
+    onError: (err) => {
+      message.error(`Research plan error: ${err.message}`);
+    },
+  });
+
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
+  const pendingFitViewRef = useRef(false);
   const nodeIdCounterRef = useRef(4);
 
   const [executionStartTime, setExecutionStartTime] = useState<number | null>(null);
+
+  const requestFitView = useCallback(() => {
+    pendingFitViewRef.current = true;
+    requestAnimationFrame(() => {
+      const instance = reactFlowInstance.current;
+      if (!instance?.fitView) return;
+      instance.fitView({ padding: 0.2, duration: 300 });
+      pendingFitViewRef.current = false;
+    });
+  }, []);
+
+  // Refs for synchronous access to current state
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+
+  // Undo/Redo history management
+  const {
+    pushSnapshot,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    clearHistory,
+  } = useWorkflowHistory({ maxHistorySize: 50, debounceMs: 300 });
+
+  // Conflict resolution for concurrent editing
+  const {
+    conflicts,
+    hasConflicts,
+    detectConflict,
+    resolveConflict,
+    resolveAllConflicts,
+    clearConflicts,
+  } = useConflictResolution({
+    defaultStrategy: 'ask',
+    onConflictDetected: (conflict) => {
+      message.warning(`检测到冲突: ${conflict.elementType === 'node' ? '节点' : '连线'} ${conflict.elementId}`);
+    },
+  });
 
   const {
     execute,
@@ -190,6 +351,13 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         window.addExecutionSummary(summary);
       }
 
+      // Step F.7: 提取并显示 ResearchResult
+      const rr = extractResearchResult(finalResult);
+      if (rr) {
+        setResearchResult(rr);
+        setResultDrawerOpen(true);
+      }
+
       message.success(
         summary.success
           ? `工作流执行成功！共执行 ${totalNodes} 个节点`
@@ -198,47 +366,11 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     },
   });
 
-  const isDemo = workflowId === 'demo-draft';
+  // 本地草稿模式：不从后端加载数据
+  const isLocalDraft = workflowId === 'local-draft' || workflowId === 'demo-draft';
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { workflowData, isLoadingWorkflow, workflowError } = useWorkflow(isDemo ? '' : workflowId);
-
-  /**
-   * WebSocket 画布同步
-   */
-  const handleRemoteNodesChange = useCallback((changes: NodeChange[]) => {
-    setNodes((nds) => applyNodeChanges(changes, nds));
-  }, []);
-
-  const handleRemoteEdgesChange = useCallback((changes: EdgeChange[]) => {
-    setEdges((eds) => applyEdgeChanges(changes, eds));
-  }, []);
-
-  const handleExecutionStatus = useCallback((status: {
-    nodeId: string;
-    status: 'running' | 'completed' | 'error';
-    outputs: Record<string, any>;
-    error: string | null;
-  }) => {
-    // 执行状态由 WebSocket 实时同步
-    console.log('Execution status from WebSocket:', status);
-  }, []);
-
-  const handleWorkflowStarted = useCallback(() => {
-    console.log('Workflow started (WebSocket)');
-    setExecutionStartTime(Date.now());
-  }, []);
-
-  const handleWorkflowCompletedWS = useCallback((status: {
-    status: string;
-    outputs: Record<string, any>;
-  }) => {
-    console.log('Workflow completed (WebSocket):', status);
-  }, []);
-
-  const handleWSError = useCallback((error: string) => {
-    console.error('WebSocket error:', error);
-  }, []);
+  const { workflowData, isLoadingWorkflow, workflowError } = useWorkflow(isLocalDraft ? '' : workflowId);
 
   // Memoize edge options to avoid unnecessary re-renders
   const defaultEdgeOptions = useMemo(() => ({
@@ -253,35 +385,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     strokeWidth: 2,
   }), []);
 
-  const {
-    isConnected: wsConnected,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    error: wsError,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    createNode: wsCreateNode,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    updateNode: wsUpdateNode,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    deleteNode: wsDeleteNode,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    moveNode: wsMoveNode,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    createEdge: wsCreateEdge,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    deleteEdge: wsDeleteEdge,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    startExecution: wsStartExecution,
-  } = useCanvasSync({
-    workflowId,
-    enabled: !!workflowId && isInitialized && !isDemo,
-    onNodesChange: handleRemoteNodesChange,
-    onEdgesChange: handleRemoteEdgesChange,
-    onExecutionStatus: handleExecutionStatus,
-    onWorkflowStarted: handleWorkflowStarted,
-    onWorkflowCompleted: handleWorkflowCompletedWS,
-    onError: handleWSError,
-  });
-
   /**
    * 处理工作流更新（从AI聊天返回）
    */
@@ -293,7 +396,12 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       id: node.id,
       type: mapBackendNodeTypeToFrontend(node.type),
       position: { x: node.position.x, y: node.position.y },
-      data: node.data || {},
+      data: {
+        ...(node.data || {}),
+        // Ensure common fields exist for custom node renderers/config panels.
+        name: node.name ?? node.data?.name ?? '',
+        label: node.name ?? node.data?.label ?? node.data?.name ?? '',
+      },
     }));
 
     const newEdges: Edge[] = workflow.edges.map((edge: any) => ({
@@ -305,10 +413,13 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
     setNodes(newNodes);
     setEdges(newEdges);
+    clearHistory();
+    pushSnapshot(newNodes, newEdges, { immediate: true });
     onWorkflowUpdate(workflow);
 
     message.success('工作流已更新');
-  }, [onWorkflowUpdate]);
+    requestFitView();
+  }, [clearHistory, onWorkflowUpdate, pushSnapshot]);
 
   /**
    * 映射后端节点类型到前端节点类型
@@ -328,25 +439,167 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   };
 
   /**
-   * 节点变化处理
+   * 节点变化处理（带历史记录）
    */
   const onNodesChange: OnNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    []
+    (changes) => {
+      const shouldSnapshot = changes.some(
+        (c) => c.type === 'add' || c.type === 'remove' || c.type === 'position'
+      );
+      setNodes((nds) => {
+        const nextNodes = applyNodeChanges(changes, nds);
+        if (shouldSnapshot) {
+          pushSnapshot(nextNodes, edgesRef.current);
+        }
+        return nextNodes;
+      });
+    },
+    [pushSnapshot]
   );
 
   /**
-   * 边变化处理
+   * 边变化处理（带历史记录）
    */
   const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
-    []
+    (changes) => {
+      const shouldSnapshot = changes.some(
+        (c) => c.type === 'add' || c.type === 'remove'
+      );
+      setEdges((eds) => {
+        const nextEdges = applyEdgeChanges(changes, eds);
+        if (shouldSnapshot) {
+          pushSnapshot(nodesRef.current, nextEdges);
+        }
+        return nextEdges;
+      });
+    },
+    [pushSnapshot]
   );
 
   /**
-   * 连线处理
+   * 连线处理（带循环检测）
    */
-  const onConnect: OnConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), []);
+  const onConnect: OnConnect = useCallback(
+    (params) => {
+      const source = params.source;
+      const target = params.target;
+
+      if (!source || !target) return;
+
+      // Check for cycle using current edges
+      if (wouldCreateCycle(edgesRef.current, source, target)) {
+        message.error('无法创建连线：这将导致循环依赖');
+        return;
+      }
+
+      // Apply change and push snapshot after
+      setEdges((eds) => {
+        const nextEdges = addEdge(params, eds);
+        pushSnapshot(nodesRef.current, nextEdges);
+        return nextEdges;
+      });
+    },
+    [pushSnapshot]
+  );
+
+  /**
+   * Undo handler
+   */
+  const handleUndo = useCallback(() => {
+    const snapshot = undo();
+    if (snapshot) {
+      setNodes(snapshot.nodes);
+      setEdges(snapshot.edges);
+      message.info('已撤销');
+    }
+  }, [undo]);
+
+  /**
+   * Redo handler
+   */
+  const handleRedo = useCallback(() => {
+    const snapshot = redo();
+    if (snapshot) {
+      setNodes(snapshot.nodes);
+      setEdges(snapshot.edges);
+      message.info('已重做');
+    }
+  }, [redo]);
+
+  /**
+   * Delete selected elements handler (for keyboard shortcut)
+   * Returns true if something was deleted
+   */
+  const handleDeleteSelected = useCallback((): boolean => {
+    // Get selected nodes and edges using refs
+    const selectedNodes = nodesRef.current.filter((n) => n.selected);
+    const selectedEdges = edgesRef.current.filter((e) => e.selected);
+
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return false;
+
+    const nodeIds = new Set(selectedNodes.map((n) => n.id));
+    const edgeIds = new Set(selectedEdges.map((e) => e.id));
+
+    // Calculate next state
+    const nextNodes = nodesRef.current.filter((n) => !nodeIds.has(n.id));
+    const nextEdges = edgesRef.current.filter(
+      (e) =>
+        !edgeIds.has(e.id) &&
+        !nodeIds.has(e.source) &&
+        !nodeIds.has(e.target)
+    );
+
+    // Apply changes
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    pushSnapshot(nextNodes, nextEdges);
+    return true;
+  }, [pushSnapshot]);
+
+  /**
+   * Handle conflict resolution modal
+   */
+  const handleResolveConflict = useCallback(
+    (conflictId: string, strategy: 'local' | 'remote' | 'merge') => {
+      const conflict = conflicts.find((c) => c.id === conflictId);
+      const resolution = resolveConflict(conflictId, strategy);
+      if (!resolution || !conflict) return;
+
+      // Handle deletion case (result is null)
+      if (resolution.result == null) {
+        if (conflict.elementType === 'node') {
+          const nextNodes = nodesRef.current.filter((n) => n.id !== conflict.elementId);
+          const nextEdges = edgesRef.current.filter(
+            (e) => e.source !== conflict.elementId && e.target !== conflict.elementId
+          );
+          setNodes(nextNodes);
+          setEdges(nextEdges);
+          pushSnapshot(nextNodes, nextEdges);
+        } else {
+          const nextEdges = edgesRef.current.filter((e) => e.id !== conflict.elementId);
+          setEdges(nextEdges);
+          pushSnapshot(nodesRef.current, nextEdges);
+        }
+        message.success('冲突已解决（已删除）');
+        return;
+      }
+
+      // Apply the resolution (update case)
+      if (conflict.elementType === 'node') {
+        const resultNode = resolution.result as Node;
+        const nextNodes = nodesRef.current.map((n) => (n.id === resultNode.id ? resultNode : n));
+        setNodes(nextNodes);
+        pushSnapshot(nextNodes, edgesRef.current);
+      } else {
+        const resultEdge = resolution.result as Edge;
+        const nextEdges = edgesRef.current.map((e) => (e.id === resultEdge.id ? resultEdge : e));
+        setEdges(nextEdges);
+        pushSnapshot(nodesRef.current, nextEdges);
+      }
+      message.success('冲突已解决');
+    },
+    [conflicts, pushSnapshot, resolveConflict]
+  );
 
   /**
    * 节点选择处理
@@ -391,28 +644,30 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       data: getDefaultNodeData(type),
     };
 
-    setNodes((nds) => [...nds, newNode]);
-  }, [isCanvasMode, setInteractionMode]);
+    const nextNodes = nodesRef.current.concat(newNode);
+    setNodes(nextNodes);
+    pushSnapshot(nextNodes, edgesRef.current);
+  }, [isCanvasMode, pushSnapshot, setInteractionMode]);
 
   /**
    * 保存节点配置
    */
   const handleSaveNodeConfig = useCallback((nodeId: string, config: any) => {
-    setNodes((nds) =>
-      nds.map((node) =>
-        node.id === nodeId
-          ? {
-            ...node,
-            data: {
-              ...node.data,
-              ...config,
-            },
-          }
-          : node
-      )
+    const nextNodes = nodesRef.current.map((node) =>
+      node.id === nodeId
+        ? {
+          ...node,
+          data: {
+            ...node.data,
+            ...config,
+          },
+        }
+        : node
     );
+    setNodes(nextNodes);
+    pushSnapshot(nextNodes, edgesRef.current);
     setConfigPanelOpen(false);
-  }, []);
+  }, [pushSnapshot]);
 
   /**
    * 处理拖拽经过画布
@@ -468,19 +723,22 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         data: getDefaultNodeData(type),
       };
 
-      setNodes((nds) => nds.concat(newNode));
+      const nextNodes = nodesRef.current.concat(newNode);
+      setNodes(nextNodes);
+      pushSnapshot(nextNodes, edgesRef.current);
       setInteractionMode('canvas');
     },
-    [setInteractionMode]
+    [pushSnapshot, setInteractionMode]
   );
 
   /**
    * 保存工作流
+   * Returns true on success, false on failure
    */
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (): Promise<boolean> => {
     if (!workflowId) {
       message.error('工作流 ID 不存在');
-      return;
+      return false;
     }
 
     setIsSaving(true);
@@ -501,7 +759,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        target: edge.target,
         sourceHandle: edge.sourceHandle || undefined,
         label: (edge.label as string | undefined) || null,
         condition: null,
@@ -513,41 +770,124 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       });
 
       message.success('工作流保存成功');
+      return true;
     } catch (error: any) {
       console.error('Failed to save workflow:', error);
       message.error(`保存失败: ${error.message}`);
-      throw error;
+      return false;
     } finally {
       setIsSaving(false);
     }
   }, [workflowId, nodes, edges]);
 
+  // Keyboard shortcuts
+  useKeyboardShortcuts(
+    {
+      onSave: handleSave,
+      onUndo: handleUndo,
+      onRedo: handleRedo,
+      onDelete: handleDeleteSelected,
+    },
+    {
+      enabled: !isExecuting && isCanvasMode,
+      containerRef: reactFlowWrapper,
+    }
+  );
+
   /**
-   * 执行工作流
+   * MVP Step 1: 生成 Research Plan
    */
-  const handleExecute = useCallback(() => {
+  const handleGenerateResearchPlan = useCallback(async () => {
+    if (!researchGoal.trim()) {
+      message.warning('Please enter a research goal');
+      return;
+    }
+
+    // Create run for unified session tracking
+    let runIdForSession: string | null = null;
+    if (effectiveProjectId) {
+      runIdForSession = await createResearchRun();
+      if (runIdForSession) {
+        setLastRunId(runIdForSession);
+      }
+    }
+
+    await generatePlan(researchGoal, runIdForSession);
+  }, [researchGoal, effectiveProjectId, createResearchRun, generatePlan]);
+
+  /**
+   * MVP Step 1: 编译 Plan 到画布
+   */
+  const handleCompilePlan = useCallback(async () => {
+    if (!researchPlan) {
+      message.warning('No research plan to compile');
+      return;
+    }
+
+    await compilePlan(researchPlan, lastRunId);
+  }, [researchPlan, compilePlan, lastRunId]);
+
+  /**
+   * 执行工作流 (Step F.7: 创建 Run 后执行)
+   * MVP Step 2: 复用 lastRunId 保证 plan/compile/execute 全链路一致
+   */
+  const handleExecute = useCallback(async () => {
     if (!workflowId) {
       message.error('工作流 ID 不存在');
       return;
     }
 
     // 先保存工作流
-    handleSave().then(() => {
-      // 记录开始时间
-      setExecutionStartTime(Date.now());
+    const saveSuccess = await handleSave();
+    if (!saveSuccess) {
+      message.error('保存失败，无法执行');
+      return;
+    }
 
-      // 保存成功后执行
-      execute(workflowId, {
-        initial_input: { message: 'test' },
-      });
-    }).catch((error) => {
-      message.error(`保存失败，无法执行: ${error.message}`);
+    // 记录开始时间
+    setExecutionStartTime(Date.now());
+
+    // MVP Step 2: 优先复用 lastRunId (来自 plan/compile 流程)
+    let runId: string | undefined = lastRunId ?? undefined;
+
+    // 如果没有 lastRunId，尝试创建新的 Run
+    if (!runId && effectiveProjectId) {
+      try {
+        const token = localStorage.getItem('authToken');
+        const headers: HeadersInit = { 'Content-Type': 'application/json' };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const runRes = await fetch(
+          `${API_BASE_URL}/projects/${effectiveProjectId}/workflows/${workflowId}/runs`,
+          { method: 'POST', headers, body: JSON.stringify({}) }
+        );
+        if (runRes.ok) {
+          const runData = await runRes.json();
+          runId = runData.id;
+          setLastRunId(runId ?? null);
+        } else {
+          const errData = await runRes.json().catch(() => ({}));
+          console.warn('Failed to create run, proceeding without run_id:', {
+            status: runRes.status,
+            errData,
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to create run, proceeding without run_id:', err);
+      }
+    }
+
+    // 执行工作流
+    execute(workflowId, {
+      run_id: runId,
+      initial_input: { message: 'test' },
     });
-  }, [workflowId, execute, handleSave]);
+  }, [workflowId, execute, handleSave, effectiveProjectId, lastRunId]);
 
   // 初始化时加载工作流
   useEffect(() => {
-    if (isDemo && !isInitialized) {
+    if (isLocalDraft && !isInitialized) {
       setIsInitialized(true);
       return;
     }
@@ -560,7 +900,11 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         id: node.id,
         type: mapBackendNodeTypeToFrontend(node.type),
         position: { x: node.position.x, y: node.position.y },
-        data: node.data || {},
+        data: {
+          ...(node.data || {}),
+          name: node.name ?? node.data?.name ?? '',
+          label: node.name ?? node.data?.label ?? node.data?.name ?? '',
+        },
       }));
 
       const loadedEdges: Edge[] = workflowData.edges.map((edge: any) => ({
@@ -572,11 +916,14 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
       setNodes(loadedNodes);
       setEdges(loadedEdges);
+      clearHistory();
+      pushSnapshot(loadedNodes, loadedEdges, { immediate: true });
       setIsInitialized(true);
 
       console.log(`Workflow loaded: ${loadedNodes.length} nodes, ${loadedEdges.length} edges`);
+      requestFitView();
     }
-  }, [workflowData, isInitialized]);
+  }, [clearHistory, pushSnapshot, workflowData, isInitialized]);
 
   // 显示加载状态
   if (isLoadingWorkflow) {
@@ -604,11 +951,29 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         </div>
 
         <div className={styles.actionsArea}>
-          {/* Status Indicator */}
-          <div className={`${styles.statusIndicator} ${wsConnected ? styles.statusConnected : styles.statusDisconnected}`}>
-            {wsConnected ? <WifiOutlined /> : <DisconnectOutlined />}
-            {wsConnected ? 'Connected' : 'Offline'}
-          </div>
+          {/* Undo/Redo Buttons */}
+          <Button
+            type="text"
+            icon={<UndoOutlined />}
+            onClick={handleUndo}
+            disabled={!canUndo || isExecuting}
+            title="撤销 (Ctrl+Z)"
+          />
+          <Button
+            type="text"
+            icon={<RedoOutlined />}
+            onClick={handleRedo}
+            disabled={!canRedo || isExecuting}
+            title="重做 (Ctrl+Y)"
+          />
+
+          <Button
+            type="text"
+            icon={<FileTextOutlined />}
+            onClick={() => navigate('/project/rules')}
+            disabled={isExecuting}
+            title="项目规则"
+          />
 
           <Divider type="vertical" style={{ borderColor: '#e5e7eb', height: '20px' }} />
 
@@ -628,6 +993,29 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
           >
             Run
           </NeoButton>
+
+          {/* MVP Step 1: Research Plan 按钮 */}
+          <NeoButton
+            variant="secondary"
+            icon={<SearchOutlined />}
+            onClick={() => setPlanDrawerOpen(true)}
+            disabled={isExecuting || isGenerating || isCompiling}
+          >
+            Research
+          </NeoButton>
+
+          {/* Step F.8: Replay 按钮 */}
+          {lastRunId && (
+            <NeoButton
+              variant="secondary"
+              icon={<HistoryOutlined />}
+              onClick={() => (isReplaying ? stopReplay() : startReplay())}
+              loading={isReplaying}
+              disabled={isExecuting}
+            >
+              {isReplaying ? 'Stop' : 'Replay'}
+            </NeoButton>
+          )}
         </div>
       </div>
 
@@ -651,6 +1039,12 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             onDragOver={handleDragOver}
             onInit={(instance) => {
               reactFlowInstance.current = instance;
+              if (pendingFitViewRef.current) {
+                requestAnimationFrame(() => {
+                  reactFlowInstance.current?.fitView?.({ padding: 0.2, duration: 300 });
+                  pendingFitViewRef.current = false;
+                });
+              }
             }}
             // @ts-ignore - NodeType signature mismatch
             nodeTypes={nodeTypes}
@@ -740,6 +1134,300 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         edges={edges}
         onClose={() => setExportModalOpen(false)}
       />
+
+      {/* Conflict Resolution Modal */}
+      <Modal
+        title={
+          <span>
+            <WarningOutlined style={{ color: '#faad14', marginRight: 8 }} />
+            检测到编辑冲突
+          </span>
+        }
+        open={hasConflicts}
+        footer={null}
+        onCancel={() => resolveAllConflicts('local')}
+        width={500}
+      >
+        <Alert
+          message="其他用户同时编辑了相同的元素"
+          description="请选择如何解决冲突"
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+        {conflicts.map((conflict) => (
+          <div
+            key={conflict.id}
+            style={{
+              padding: 12,
+              marginBottom: 8,
+              border: '1px solid #d9d9d9',
+              borderRadius: 4,
+            }}
+          >
+            <div style={{ marginBottom: 8 }}>
+              <strong>
+                {conflict.elementType === 'node' ? '节点' : '连线'}:
+              </strong>{' '}
+              {conflict.elementId}
+              <span
+                style={{ marginLeft: 8, color: '#999', fontSize: 12 }}
+              >
+                ({conflict.type === 'node_modified' || conflict.type === 'edge_modified'
+                  ? '已修改'
+                  : '已删除'})
+              </span>
+            </div>
+            <Button.Group size="small">
+              <Button onClick={() => handleResolveConflict(conflict.id, 'local')}>
+                保留本地
+              </Button>
+              <Button onClick={() => handleResolveConflict(conflict.id, 'remote')}>
+                使用远程
+              </Button>
+              <Button
+                type="primary"
+                onClick={() => handleResolveConflict(conflict.id, 'merge')}
+              >
+                合并
+              </Button>
+            </Button.Group>
+          </div>
+        ))}
+        <div style={{ marginTop: 16, textAlign: 'right' }}>
+          <Button
+            onClick={() => resolveAllConflicts('local')}
+            style={{ marginRight: 8 }}
+          >
+            全部保留本地
+          </Button>
+          <Button type="primary" onClick={() => resolveAllConflicts('merge')}>
+            全部合并
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Step F.7: ResearchResult Drawer */}
+      <Drawer
+        title={
+          <span>
+            <ExperimentOutlined style={{ marginRight: 8 }} />
+            Research Results
+          </span>
+        }
+        placement="right"
+        width={600}
+        open={resultDrawerOpen}
+        onClose={() => setResultDrawerOpen(false)}
+        destroyOnClose
+      >
+        {researchResult && <ResearchResultDisplay result={researchResult} />}
+      </Drawer>
+
+      {/* MVP Step 1: Research Plan Drawer */}
+      <Drawer
+        title={
+          <span>
+            <SearchOutlined style={{ marginRight: 8 }} />
+            Generate Research Plan
+          </span>
+        }
+        placement="right"
+        width={600}
+        open={planDrawerOpen}
+        onClose={() => {
+          if (!isGenerating && !isCompiling) {
+            setPlanDrawerOpen(false);
+            resetResearchPlan();
+            setResearchGoal('');
+          }
+        }}
+        destroyOnClose={false}
+        extra={
+          isGenerating ? (
+            <Button size="small" onClick={cancelGeneration} danger>
+              Cancel
+            </Button>
+          ) : null
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Input Section */}
+          <div>
+            <Typography.Text strong>Research Goal</Typography.Text>
+            <Input.TextArea
+              value={researchGoal}
+              onChange={(e) => setResearchGoal(e.target.value)}
+              placeholder="Describe what you want to research... e.g., 'Analyze user authentication patterns in the codebase'"
+              rows={3}
+              disabled={isGenerating || isCompiling}
+              style={{ marginTop: 8 }}
+            />
+            <Button
+              type="primary"
+              onClick={handleGenerateResearchPlan}
+              loading={isGenerating}
+              disabled={!researchGoal.trim() || isCompiling}
+              style={{ marginTop: 12 }}
+              block
+            >
+              {isGenerating ? 'Generating...' : 'Generate Plan'}
+            </Button>
+          </div>
+
+          {/* Thinking Content (streaming) */}
+          {thinkingContent && (
+            <Collapse
+              items={[
+                {
+                  key: 'thinking',
+                  label: 'AI Thinking...',
+                  children: (
+                    <pre style={{
+                      whiteSpace: 'pre-wrap',
+                      fontSize: 12,
+                      maxHeight: 200,
+                      overflow: 'auto',
+                      background: '#f5f5f5',
+                      padding: 8,
+                      borderRadius: 4,
+                    }}>
+                      {thinkingContent}
+                    </pre>
+                  ),
+                },
+              ]}
+              defaultActiveKey={['thinking']}
+              size="small"
+            />
+          )}
+
+          {/* Error Display */}
+          {researchError && (
+            <Alert
+              type="error"
+              message="Generation Failed"
+              description={researchError.message}
+              showIcon
+            />
+          )}
+
+          {/* Plan Preview */}
+          {researchPlan && (
+            <div>
+              <Typography.Text strong>Generated Plan</Typography.Text>
+              <Collapse
+                style={{ marginTop: 8 }}
+                items={[
+                  {
+                    key: 'overview',
+                    label: `${researchPlan.tasks.length} Tasks`,
+                    children: (
+                      <div>
+                        {researchPlan.tasks.map((task, idx) => (
+                          <div
+                            key={task.id}
+                            style={{
+                              padding: '8px 12px',
+                              background: idx % 2 === 0 ? '#fafafa' : '#fff',
+                              borderRadius: 4,
+                              marginBottom: 4,
+                            }}
+                          >
+                            <Typography.Text strong>{task.id}</Typography.Text>
+                            <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+                              [{task.type}]
+                            </Typography.Text>
+                            {task.dependencies.length > 0 && (
+                              <div style={{ fontSize: 11, color: '#888' }}>
+                                Depends on: {task.dependencies.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'parallel',
+                    label: `Parallel Points (${researchPlan.parallel_points.length})`,
+                    children: (
+                      <ul style={{ margin: 0, paddingLeft: 20 }}>
+                        {researchPlan.parallel_points.map((p, i) => (
+                          <li key={i}>{p}</li>
+                        ))}
+                        {researchPlan.parallel_points.length === 0 && (
+                          <Typography.Text type="secondary">None</Typography.Text>
+                        )}
+                      </ul>
+                    ),
+                  },
+                  {
+                    key: 'risks',
+                    label: `Risk Points (${researchPlan.risk_points.length})`,
+                    children: (
+                      <ul style={{ margin: 0, paddingLeft: 20 }}>
+                        {researchPlan.risk_points.map((r, i) => (
+                          <li key={i} style={{ color: '#fa8c16' }}>{r}</li>
+                        ))}
+                        {researchPlan.risk_points.length === 0 && (
+                          <Typography.Text type="secondary">None identified</Typography.Text>
+                        )}
+                      </ul>
+                    ),
+                  },
+                  {
+                    key: 'raw',
+                    label: 'Raw JSON',
+                    children: (
+                      <pre style={{
+                        fontSize: 11,
+                        maxHeight: 200,
+                        overflow: 'auto',
+                        background: '#f5f5f5',
+                        padding: 8,
+                        borderRadius: 4,
+                      }}>
+                        {JSON.stringify(researchPlan, null, 2)}
+                      </pre>
+                    ),
+                  },
+                ]}
+                defaultActiveKey={['overview']}
+              />
+
+              {/* Compile Button */}
+              <Button
+                type="primary"
+                onClick={handleCompilePlan}
+                loading={isCompiling}
+                disabled={isGenerating}
+                style={{ marginTop: 16 }}
+                block
+                icon={<PlayCircleOutlined />}
+              >
+                {isCompiling ? 'Compiling...' : 'Apply to Canvas'}
+              </Button>
+            </div>
+          )}
+
+          {/* Compile Warnings */}
+          {compileWarnings.length > 0 && (
+            <Alert
+              type="warning"
+              message="Compile Warnings"
+              description={
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  {compileWarnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              }
+              showIcon
+            />
+          )}
+        </div>
+      </Drawer>
     </div>
   );
 };
