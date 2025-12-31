@@ -55,11 +55,13 @@ def _build_container(executor_registry: NodeExecutorRegistry, event_bus: EventBu
         ConversationTurnOrchestrator,
         NoopConversationTurnPolicy,
     )
+    from src.application.services.idempotency_coordinator import IdempotencyCoordinator
     from src.application.services.workflow_execution_facade import WorkflowExecutionFacade
     from src.application.services.workflow_execution_orchestrator import (
         NoopWorkflowExecutionPolicy,
         WorkflowExecutionOrchestrator,
     )
+    from src.infrastructure.adapters.in_memory_idempotency_store import InMemoryIdempotencyStore
     from src.infrastructure.adapters.model_metadata_adapter import create_model_metadata_adapter
 
     def user_repository(session: Session):
@@ -99,7 +101,10 @@ def _build_container(executor_registry: NodeExecutorRegistry, event_bus: EventBu
         return WorkflowExecutionOrchestrator(
             facade=facade,
             policies=[NoopWorkflowExecutionPolicy()],
+            idempotency=_idempotency,
         )
+
+    _idempotency = IdempotencyCoordinator(store=InMemoryIdempotencyStore())
 
     conversation_agent = create_conversation_agent(
         event_bus=event_bus,

@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, Iterable
 from typing import Any, Protocol
 
+from src.application.services.idempotency_coordinator import IdempotencyCoordinator
 from src.application.services.workflow_execution_facade import WorkflowExecutionFacade
 
 
@@ -33,16 +34,38 @@ class WorkflowExecutionOrchestrator:
         *,
         facade: WorkflowExecutionFacade,
         policies: Iterable[WorkflowExecutionPolicy] = (),
+        idempotency: IdempotencyCoordinator | None = None,
     ) -> None:
         self._facade = facade
         self._policies = list(policies)
+        self._idempotency = idempotency
 
-    async def execute(self, *, workflow_id: str, input_data: Any = None) -> dict[str, Any]:
+    async def execute(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
         for policy in self._policies:
             await policy.before_execute(workflow_id=workflow_id, input_data=input_data)
 
         try:
-            result = await self._facade.execute(workflow_id=workflow_id, input_data=input_data)
+            if idempotency_key is None:
+                result = await self._facade.execute(workflow_id=workflow_id, input_data=input_data)
+            else:
+                if self._idempotency is None:
+                    raise RuntimeError("Idempotency requested but IdempotencyCoordinator not set")
+
+                async def _work() -> dict[str, Any]:
+                    return await self._facade.execute(
+                        workflow_id=workflow_id, input_data=input_data
+                    )
+
+                result = await self._idempotency.run(
+                    idempotency_key=idempotency_key,
+                    work=_work,
+                )
         except Exception as exc:  # noqa: BLE001 - orchestrator is the central boundary
             for policy in self._policies:
                 await policy.on_error(workflow_id=workflow_id, input_data=input_data, error=exc)

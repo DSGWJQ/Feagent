@@ -8,7 +8,7 @@ import logging
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
@@ -333,6 +333,7 @@ class ExecuteWorkflowResponse(BaseModel):
 async def execute_workflow(
     workflow_id: str,
     request: ExecuteWorkflowRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
 ) -> ExecuteWorkflowResponse:
@@ -343,6 +344,7 @@ async def execute_workflow(
         result = await orchestrator.execute(
             workflow_id=workflow_id,
             input_data=request.initial_input,
+            idempotency_key=idempotency_key,
         )
         return ExecuteWorkflowResponse(
             execution_log=result["execution_log"],
