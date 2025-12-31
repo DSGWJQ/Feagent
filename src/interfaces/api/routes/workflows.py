@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-from collections.abc import AsyncGenerator
+import logging
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -49,6 +51,7 @@ from src.infrastructure.llm import LangChainWorkflowChatLLM
 from src.interfaces.api.dependencies.current_user import get_current_user_optional
 from src.interfaces.api.dependencies.rag import get_rag_service
 from src.interfaces.api.dto.workflow_dto import (
+    ChatCreateRequest,
     ChatRequest,
     ChatResponse,
     CreateWorkflowRequest,
@@ -64,6 +67,8 @@ _executor_registry = create_executor_registry(
     openai_api_key=settings.openai_api_key or None,
     anthropic_api_key=getattr(settings, "anthropic_api_key", None),
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_workflow_repository(
@@ -164,6 +169,37 @@ def get_update_workflow_by_chat_use_case(
         workflow_repository=workflow_repository,
         chat_service=chat_service,
     )
+
+
+def get_update_workflow_by_chat_use_case_factory(
+    workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
+    chat_message_repository: SQLAlchemyChatMessageRepository = Depends(get_chat_message_repository),
+    llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
+    rag_service=Depends(get_rag_service),
+) -> Callable[[str], UpdateWorkflowByChatUseCase]:
+    """Return a factory that can build UpdateWorkflowByChatUseCase for a given workflow_id.
+
+    用于需要“先创建 workflow 再开始对话”的场景（如 chat-create）。
+    """
+
+    from src.interfaces.api.dependencies.memory import get_composite_memory_service
+
+    memory_service = get_composite_memory_service(session=chat_message_repository.session)
+
+    def factory(workflow_id: str) -> UpdateWorkflowByChatUseCase:
+        chat_service = EnhancedWorkflowChatService(
+            workflow_id=workflow_id,
+            llm=llm,
+            chat_message_repository=chat_message_repository,
+            rag_service=rag_service,
+            memory_service=memory_service,
+        )
+        return UpdateWorkflowByChatUseCase(
+            workflow_repository=workflow_repository,
+            chat_service=chat_service,
+        )
+
+    return factory
 
 
 @router.post("", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
@@ -355,6 +391,152 @@ async def execute_workflow_streaming(
             "Connection": "keep-alive",
         },
     )
+
+
+@router.post("/chat-create/stream")
+async def chat_create_stream(
+    request: ChatCreateRequest,
+    http_request: Request,
+    db: Session = Depends(get_db_session),
+    current_user=Depends(get_current_user_optional),
+    use_case_factory: Callable[[str], UpdateWorkflowByChatUseCase] = Depends(
+        get_update_workflow_by_chat_use_case_factory
+    ),
+) -> StreamingResponse:
+    """Create a base workflow and stream the first chat planning session (SSE).
+
+    Contract:
+    - Ensures an early event contains `metadata.workflow_id` (<= 1st event).
+    - Uses SSEEmitterHandler so the payload is `data: <json>\\n\\n` (fetch-friendly).
+    """
+
+    from src.domain.entities.node import Node
+    from src.domain.entities.workflow import Workflow
+    from src.domain.services.conversation_flow_emitter import ConversationFlowEmitter
+    from src.domain.value_objects.node_type import NodeType
+    from src.domain.value_objects.position import Position
+    from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler
+
+    repository = SQLAlchemyWorkflowRepository(db)
+
+    try:
+        start_node = Node.create(
+            type=NodeType.START,
+            name="开始",
+            config={},
+            position=Position(x=100, y=100),
+        )
+        workflow = Workflow.create(
+            name="新建工作流",
+            description=request.message,
+            nodes=[start_node],
+            edges=[],
+            project_id=request.project_id,
+        )
+        if current_user:
+            workflow.user_id = current_user.id
+        repository.save(workflow)
+        db.commit()
+    except DomainError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    use_case = use_case_factory(workflow.id)
+
+    session_id = f"chat_create_{workflow.id}_{id(http_request)}"
+    emitter = ConversationFlowEmitter(session_id=session_id, timeout=30.0)
+    handler = SSEEmitterHandler(emitter, http_request)
+
+    base_metadata: dict[str, Any] = {"workflow_id": workflow.id}
+    if request.project_id:
+        base_metadata["project_id"] = request.project_id
+    if request.run_id:
+        base_metadata["run_id"] = request.run_id
+
+    # 1st event MUST include workflow_id (contract: <= 1 event)
+    await emitter.emit_thinking("AI is analyzing the request.", **base_metadata)
+
+    async def run_chat() -> None:
+        try:
+            input_data = UpdateWorkflowByChatInput(
+                workflow_id=workflow.id,
+                user_message=request.message,
+            )
+
+            async for event in use_case.execute_streaming(input_data):
+                if await http_request.is_disconnected():
+                    return
+
+                event_type = event.get("type", "")
+
+                if event_type == "react_step":
+                    if event.get("thought"):
+                        await emitter.emit_thinking(event["thought"], **base_metadata)
+
+                    action = event.get("action") or {}
+                    if action:
+                        tool_name = action.get("type", "unknown")
+                        tool_id = f"action_{event.get('step_number', 0)}"
+                        await emitter.emit_tool_call(
+                            tool_name=tool_name,
+                            tool_id=tool_id,
+                            arguments=action,
+                            **base_metadata,
+                        )
+
+                    if event.get("observation"):
+                        tool_id = f"action_{event.get('step_number', 0)}"
+                        await emitter.emit_tool_result(
+                            tool_id=tool_id,
+                            result={"observation": event["observation"]},
+                            success=True,
+                            **base_metadata,
+                        )
+
+                elif event_type == "modifications_preview":
+                    await emitter.emit_thinking(
+                        f"Planned modifications: {event.get('modifications_count', 0)}",
+                        **base_metadata,
+                    )
+
+                elif event_type == "workflow_updated":
+                    workflow_payload = event.get("workflow") or {}
+                    final_metadata = {
+                        **base_metadata,
+                        "workflow": workflow_payload,
+                    }
+                    await emitter.emit_final_response(
+                        event.get("ai_message", "Workflow created."),
+                        metadata=final_metadata,
+                    )
+                    db.commit()
+                    return
+
+        except DomainError as exc:
+            db.rollback()
+            await emitter.emit_error(
+                str(exc),
+                error_code="DOMAIN_ERROR",
+                recoverable=False,
+                **base_metadata,
+            )
+        except Exception:  # pragma: no cover - best-effort fallback
+            db.rollback()
+            logger.exception("chat-create streaming failed", extra=base_metadata)
+            await emitter.emit_error(
+                "Server error",
+                error_code="SERVER_ERROR",
+                recoverable=False,
+                **base_metadata,
+            )
+        finally:
+            await emitter.complete()
+
+    asyncio.create_task(run_chat())
+    return handler.create_response()
 
 
 @router.post("/{workflow_id}/chat", response_model=ChatResponse)

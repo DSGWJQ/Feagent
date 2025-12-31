@@ -122,6 +122,8 @@ class SQLAlchemyWorkflowRepository:
             status=WorkflowStatus(model.status),
             source=model.source,  # V2新增
             source_id=model.source_id,  # V2新增
+            user_id=model.user_id,
+            project_id=model.project_id,
             created_at=model.created_at.replace(tzinfo=UTC),
             updated_at=model.updated_at.replace(tzinfo=UTC),
         )
@@ -147,6 +149,8 @@ class SQLAlchemyWorkflowRepository:
         # 转换 Workflow
         model = WorkflowModel(
             id=entity.id,
+            user_id=entity.user_id,
+            project_id=entity.project_id,
             name=entity.name,
             description=entity.description,
             status=entity.status.value,

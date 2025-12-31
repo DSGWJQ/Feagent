@@ -253,6 +253,28 @@ class ChatRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ChatCreateRequest(BaseModel):
+    """对话创建请求 DTO（chat-create）
+
+    业务场景：
+    - 用户首次输入 message，后端先创建一个“基底 workflow”，再开始首次规划/生成。
+
+    字段：
+    - message: 用户消息（必填）
+    - project_id: 项目 ID（可选，用于将 workflow 归属到某个项目）
+    - run_id: 运行/链路追踪 ID（可选，用于幂等与可观测性）
+
+    验证规则：
+    - message 不能为空
+    """
+
+    message: str = Field(..., min_length=1, description="用户消息")
+    project_id: str | None = Field(default=None, description="项目 ID（可选）")
+    run_id: str | None = Field(default=None, description="运行 ID（可选）")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ChatResponse(BaseModel):
     """对话响应 DTO（增强版）
 

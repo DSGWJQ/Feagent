@@ -1,10 +1,7 @@
-"""接口层服务
+"""接口层服务（package init）
 
-提供适配器和辅助服务
+避免在包导入时加载重依赖模块；具体服务请显式从子模块导入，例如：
+- `from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler`
 """
 
-from src.interfaces.api.services.workflow_executor_adapter import (
-    WorkflowExecutorAdapter,
-)
-
-__all__ = ["WorkflowExecutorAdapter"]
+__all__: list[str] = []

@@ -60,6 +60,7 @@ class Workflow:
     source: str = "feagent"  # V2新增：工作流来源（feagent/coze/user）
     source_id: str | None = None  # V2新增：原始来源的ID（如Coze workflow_id）
     user_id: str | None = None  # 创建者ID（登录用户才有，非登录用户为None）
+    project_id: str | None = None  # 关联的项目 ID（可选）
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -72,6 +73,7 @@ class Workflow:
         edges: list[Edge],
         source: str = "feagent",
         source_id: str | None = None,
+        project_id: str | None = None,
     ) -> "Workflow":
         """创建 Workflow 的工厂方法
 
@@ -116,6 +118,7 @@ class Workflow:
             status=WorkflowStatus.DRAFT,
             source=source,
             source_id=source_id,
+            project_id=project_id,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         )

@@ -87,5 +87,12 @@ def get_memory_service() -> MemoryServicePort:
     return _create_memory_service_impl()
 
 
+# Backward-compatible helper used by some route wiring.
+def get_composite_memory_service(session=None) -> CompositeMemoryService:
+    """Return CompositeMemoryService instance (optionally bound to a given DB session)."""
+
+    return _create_memory_service_impl(session=session)
+
+
 # Type alias for FastAPI dependency injection
 MemoryServiceDep = Annotated[MemoryServicePort, Depends(get_memory_service)]

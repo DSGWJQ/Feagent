@@ -126,6 +126,111 @@ class UserModel(Base):
         )
 
 
+class AgentModel(Base):
+    """Agent ORM 模型
+
+    表名：agents
+
+    字段说明：
+    - id: 主键（UUID 字符串）
+    - start: 起点描述
+    - goal: 目的描述
+    - status: 状态（active/archived 等）
+    - name: 名称
+    - created_at: 创建时间
+    """
+
+    __tablename__ = "agents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Agent ID（UUID）")
+    start: Mapped[str] = mapped_column(Text, nullable=False, comment="起点描述")
+    goal: Mapped[str] = mapped_column(Text, nullable=False, comment="目的描述")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", comment="Agent 状态"
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="Agent 名称")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+
+    __table_args__ = (
+        Index("idx_agents_status", "status"),
+        Index("idx_agents_created_at", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AgentModel(id={self.id}, name={self.name}, status={self.status})>"
+
+
+class TaskModel(Base):
+    """Task ORM 模型
+
+    表名：tasks
+
+    说明：
+    - Task 作为 Run 执行步骤的聚合根，TaskEvent 以 JSON 数组存储在 events 字段中。
+    - run_id 可为空：支持“计划阶段”先创建 Task，执行时再关联 Run。
+    """
+
+    __tablename__ = "tasks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Task ID（UUID）")
+    agent_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("agents.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="关联的 Agent ID",
+    )
+    run_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workflow_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="关联的 Run ID（可选）",
+    )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="任务名称")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="任务描述")
+
+    input_data: Mapped[dict | None] = mapped_column(JSON, nullable=True, comment="输入数据（JSON）")
+    output_data: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, comment="输出数据（JSON）"
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="pending",
+        comment="任务状态（pending/running/succeeded/failed）",
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True, comment="错误信息（可选）")
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="重试次数")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.now, comment="创建时间"
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="开始时间")
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="结束时间"
+    )
+
+    events: Mapped[list[dict]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+        comment="TaskEvent 列表（JSON 数组）",
+    )
+
+    __table_args__ = (
+        Index("idx_tasks_agent_id", "agent_id"),
+        Index("idx_tasks_run_id", "run_id"),
+        Index("idx_tasks_status", "status"),
+        Index("idx_tasks_created_at", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<TaskModel(id={self.id}, agent_id={self.agent_id}, status={self.status})>"
+
+
 class WorkflowModel(Base):
     """Workflow ORM 模型
 
