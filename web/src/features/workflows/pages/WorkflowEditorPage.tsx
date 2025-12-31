@@ -97,21 +97,13 @@ export const WorkflowEditorPage: React.FC = () => {
       message.success('工作流已创建');
     } catch (error: any) {
       console.error('Failed to create workflow:', error);
-      const backendMsg =
-        error?.response?.data?.detail ??
-        error?.response?.data?.message ??
-        error.message;
-      console.error('Failed to create workflow:', error);
-      const backendMsg =
-        error?.response?.data?.detail ??
-        error?.response?.data?.message ??
-        error.message;
       message.error(`连不上后端，进入离线演示模式`);
       // Fallback to demo mode
       navigate(`/workflows/demo-draft/edit`, { replace: true });
+    } finally {
       setIsCreating(false);
     }
-  }, [isCreating, navigate]);
+  }, [isCreating, navigate, message]);
 
   /**
    * 初始化工作流

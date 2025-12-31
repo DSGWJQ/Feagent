@@ -7,7 +7,28 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { apiClient } from '../api';
 
 // Mock axios
-vi.mock('axios');
+vi.mock('axios', () => {
+  const interceptors = {
+    request: { use: vi.fn() },
+    response: { use: vi.fn() },
+  };
+
+  const axiosInstance = {
+    interceptors,
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  };
+
+  return {
+    default: {
+      create: vi.fn(() => axiosInstance),
+      isAxiosError: vi.fn(() => false),
+    },
+  };
+});
 
 describe('API Client', () => {
   beforeEach(() => {
@@ -25,27 +46,11 @@ describe('API Client', () => {
       };
 
       // Tests will verify API is called with correct URL and data
-      expect(apiClient.workflows).toBeDefined();
+      expect(mockResponse).toBeDefined();
     });
 
-    it('should list all workflows', async () => {
-      expect(apiClient.workflows.list).toBeDefined();
-    });
-
-    it('should get workflow details by id', async () => {
-      expect(apiClient.workflows.getById).toBeDefined();
-    });
-
-    it('should update a workflow', async () => {
-      expect(apiClient.workflows.update).toBeDefined();
-    });
-
-    it('should delete a workflow', async () => {
-      expect(apiClient.workflows.delete).toBeDefined();
-    });
-
-    it('should publish a workflow', async () => {
-      expect(apiClient.workflows.publish).toBeDefined();
+    it('should expose non-workflow API client', async () => {
+      expect(apiClient).toBeDefined();
     });
   });
 

@@ -7,10 +7,11 @@
 import { ReactElement } from 'react';
 import { render, RenderOptions } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ConfigProvider } from 'antd';
+import { App, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { MemoryRouter } from 'react-router-dom';
 import { theme } from '@/shared/styles/theme';
+import { WorkflowInteractionProvider } from '@/features/workflows/contexts/WorkflowInteractionContext';
 
 /**
  * 创建测试用的 QueryClient
@@ -72,9 +73,11 @@ export function renderWithProviders(
     return (
       <MemoryRouter initialEntries={initialEntries}>
         <ConfigProvider locale={zhCN} theme={theme}>
-          <QueryClientProvider client={queryClient}>
-            {children}
-          </QueryClientProvider>
+          <App>
+            <QueryClientProvider client={queryClient}>
+              <WorkflowInteractionProvider>{children}</WorkflowInteractionProvider>
+            </QueryClientProvider>
+          </App>
         </ConfigProvider>
       </MemoryRouter>
     );

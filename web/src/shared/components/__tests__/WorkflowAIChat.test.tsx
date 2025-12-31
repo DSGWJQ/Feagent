@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ChatMessage } from '@/shared/types/chat';
 import { WorkflowAIChat } from '../WorkflowAIChat';
+import { renderWithProviders } from '@/test/utils';
 
 const mockSendMessage = vi.fn();
 const mockConfirmPending = vi.fn();
+const mockStartChatStream = vi.fn();
 const mockUseWorkflowAI = vi.fn();
 
 vi.mock('@/hooks/useWorkflowAI', () => ({
@@ -16,8 +18,10 @@ const createDefaultHookReturn = () => ({
   messages: baseMessages,
   isProcessing: false,
   pendingWorkflow: null,
+  streamingMessage: null as string | null,
   sendMessage: mockSendMessage,
   confirmPendingWorkflow: mockConfirmPending,
+  startChatStream: mockStartChatStream,
   errorMessage: null as string | null,
 });
 
@@ -42,55 +46,65 @@ describe('WorkflowAIChat', () => {
   });
 
   it('renders chat UI and messages from hook', () => {
-    render(<WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />);
+    renderWithProviders(
+      <WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />
+    );
 
-    expect(screen.getByPlaceholderText(/ ‰»Îœ˚œ¢/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /∑¢ÀÕ/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/ËæìÂÖ•Ê∂àÊÅØ/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Âèë\s*ÈÄÅ/i })).toBeInTheDocument();
     expect(screen.getByText('hello')).toBeInTheDocument();
     expect(screen.getByText('hi there')).toBeInTheDocument();
   });
 
   it('sends message when user clicks button', async () => {
     const user = userEvent.setup();
-    mockSendMessage.mockResolvedValue(undefined);
+    mockStartChatStream.mockResolvedValue(undefined);
 
-    render(<WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />);
+    renderWithProviders(
+      <WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />
+    );
 
-    const input = screen.getByPlaceholderText(/ ‰»Îœ˚œ¢/i);
-    await user.type(input, 'ÃÌº”Ω⁄µ„');
-    await user.click(screen.getByRole('button', { name: /∑¢ÀÕ/i }));
+    const input = screen.getByPlaceholderText(/ËæìÂÖ•Ê∂àÊÅØ/i);
+    await user.type(input, 'Ê∑ªÂä†ËäÇÁÇπ');
+    await user.click(screen.getByRole('button', { name: /Âèë\s*ÈÄÅ/i }));
 
     await waitFor(() => {
-      expect(mockSendMessage).toHaveBeenCalledWith('ÃÌº”Ω⁄µ„');
+      expect(mockStartChatStream).toHaveBeenCalledWith('Ê∑ªÂä†ËäÇÁÇπ');
     });
   });
 
   it('disables input while processing', () => {
     setupHookReturn({ isProcessing: true });
 
-    render(<WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />);
+    renderWithProviders(
+      <WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />
+    );
 
-    expect(screen.getByPlaceholderText(/ ‰»Îœ˚œ¢/i)).toBeDisabled();
-    expect(screen.getByRole('button', { name: /∑¢ÀÕ/i })).toBeDisabled();
-    expect(screen.getByText(/AI’˝‘⁄Àºøº/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/ËæìÂÖ•Ê∂àÊÅØ/i)).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Âèë\s*ÈÄÅ/i })).toBeDisabled();
+    expect(screen.getByText(/AIÊ≠£Âú®ÊÄùËÄÉ/i)).toBeInTheDocument();
   });
 
   it('shows pending workflow confirmation CTA', async () => {
     const user = userEvent.setup();
     setupHookReturn({ pendingWorkflow: { id: workflowId } });
 
-    render(<WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />);
+    renderWithProviders(
+      <WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />
+    );
 
-    await user.click(screen.getByRole('button', { name: /Õ¨≤ΩµΩª≠≤º/i }));
+    await user.click(screen.getByRole('button', { name: /ÂêåÊ≠•Âà∞ÁîªÂ∏É/i }));
 
     expect(mockConfirmPending).toHaveBeenCalled();
   });
 
   it('displays error message from hook', () => {
-    setupHookReturn({ errorMessage: '«Î«Û ß∞‹', messages: [] });
+    setupHookReturn({ errorMessage: 'ËØ∑Ê±ÇÂ§±Ë¥•', messages: [] });
 
-    render(<WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />);
+    renderWithProviders(
+      <WorkflowAIChat workflowId={workflowId} onWorkflowUpdate={onWorkflowUpdate} />
+    );
 
-    expect(screen.getByText(/«Î«Û ß∞‹/)).toBeInTheDocument();
+    expect(screen.getByText(/ËØ∑Ê±ÇÂ§±Ë¥•/)).toBeInTheDocument();
   });
 });

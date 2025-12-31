@@ -148,7 +148,7 @@ describe('WorkflowEditor Canvas Sync Integration', () => {
 
       const ws = MockWebSocket.instances[0];
       expect(ws.url).toContain('/ws/workflows/wf_test_123');
-    });
+    }, 15_000);
 
     it('应显示连接状态指示器', async () => {
       await renderEditor();

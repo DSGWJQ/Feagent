@@ -71,8 +71,7 @@ export default function ScheduledWorkflowsPage() {
   const { data: availableWorkflows = [] } = useQuery({
     queryKey: ['workflows'],
     queryFn: async () => {
-      const response = await workflowsApi.listWorkflows();
-      return response.data;
+      return workflowsApi.listWorkflows();
     },
   });
 
@@ -173,6 +172,12 @@ export default function ScheduledWorkflowsPage() {
   };
 
   const columns = [
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: '15%',
+    },
     {
       title: 'Workflow ID',
       dataIndex: 'workflowId',
@@ -295,7 +300,9 @@ export default function ScheduledWorkflowsPage() {
         )}
 
         {isLoading ? (
-          <Spin size="large" />
+          <div role="progressbar" aria-label="loading">
+            <Spin size="large" />
+          </div>
         ) : (
           <Table
             columns={columns}
@@ -338,17 +345,21 @@ export default function ScheduledWorkflowsPage() {
             rules={[
               {
                 required: true,
-                message: 'Please select a workflow',
+                message: 'Please provide a workflow id',
               },
             ]}
           >
-            <Select placeholder="Select a workflow to schedule">
-              {availableWorkflows.map((wf: any) => (
-                <Select.Option key={wf.id} value={wf.id}>
-                  {wf.name || wf.id}
-                </Select.Option>
-              ))}
-            </Select>
+            {availableWorkflows.length > 0 ? (
+              <Select placeholder="Select a workflow to schedule">
+                {availableWorkflows.map((wf: any) => (
+                  <Select.Option key={wf.id} value={wf.id}>
+                    {wf.name || wf.id}
+                  </Select.Option>
+                ))}
+              </Select>
+            ) : (
+              <Input placeholder="Enter workflow id (e.g., wf_123...)" />
+            )}
           </Form.Item>
 
           <Form.Item

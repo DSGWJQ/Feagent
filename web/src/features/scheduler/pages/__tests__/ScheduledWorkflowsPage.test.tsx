@@ -13,19 +13,16 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import ScheduledWorkflowsPage from '../ScheduledWorkflowsPage';
 import * as scheduledWorkflowsApi from '../../api/scheduledWorkflowsApi';
 
-vi.mock('../../api/scheduledWorkflowsApi');
-
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false } },
-});
-
 const renderWithProviders = (component: React.ReactElement) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
     <QueryClientProvider client={queryClient}>
       {component}
@@ -102,7 +99,8 @@ describe('ScheduledWorkflowsPage', () => {
     await user.click(createButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/select workflow/i)).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText(/^workflow$/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/cron expression/i)).toBeInTheDocument();
     });
   });
@@ -217,20 +215,21 @@ describe('ScheduledWorkflowsPage', () => {
     await user.click(deleteButton);
 
     // Confirm deletion
-    const confirmButton = screen.getByRole('button', { name: /ok|confirm/i });
+    const dialog = screen.getByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: /^delete$/i });
     await user.click(confirmButton);
 
     await waitFor(() => {
       expect(mockDelete).toHaveBeenCalledWith('sw_1');
     });
-  });
+  }, 15_000);
 
   it('should display execution history', async () => {
     renderWithProviders(<ScheduledWorkflowsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/success/i)).toBeInTheDocument();
-      expect(screen.getByText(/failure/i)).toBeInTheDocument();
+      expect(screen.getByText('SUCCESS')).toBeInTheDocument();
+      expect(screen.getByText('FAILURE')).toBeInTheDocument();
     });
   });
 

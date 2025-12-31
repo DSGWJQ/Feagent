@@ -39,6 +39,7 @@ import { useConflictResolution, type Conflict } from '../hooks/useConflictResolu
 import { wouldCreateCycle } from '../utils/graphUtils';
 import { updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
+import { useCanvasSync } from '../hooks/useCanvasSync';
 import { useWorkflow } from '@/hooks/useWorkflow';
 import type { WorkflowNode, WorkflowEdge } from '../types/workflow';
 import NodePalette from '../components/NodePalette';
@@ -220,6 +221,13 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     },
   });
 
+  // 本地草稿模式：不从后端加载数据
+  const isLocalDraft = workflowId === 'local-draft' || workflowId === 'demo-draft';
+
+  const { workflowData, isLoadingWorkflow, workflowError } = useWorkflow(
+    isLocalDraft ? '' : workflowId
+  );
+
   // MVP Step 1: Research Plan hook
   const workflowProjectId =
     workflowData &&
@@ -295,6 +303,14 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     edgesRef.current = edges;
   }, [edges]);
 
+  // WebSocket canvas sync (enabled only in canvas mode + non-local drafts)
+  useCanvasSync({
+    workflowId,
+    enabled: !isLocalDraft,
+    onNodesChange: (changes) => setNodes((prev) => applyNodeChanges(changes, prev)),
+    onEdgesChange: (changes) => setEdges((prev) => applyEdgeChanges(changes, prev)),
+  });
+
   // Undo/Redo history management
   const {
     pushSnapshot,
@@ -365,12 +381,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       );
     },
   });
-
-  // 本地草稿模式：不从后端加载数据
-  const isLocalDraft = workflowId === 'local-draft' || workflowId === 'demo-draft';
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { workflowData, isLoadingWorkflow, workflowError } = useWorkflow(isLocalDraft ? '' : workflowId);
 
   // Memoize edge options to avoid unnecessary re-renders
   const defaultEdgeOptions = useMemo(() => ({

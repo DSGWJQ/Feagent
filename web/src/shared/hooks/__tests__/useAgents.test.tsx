@@ -32,6 +32,7 @@ vi.mock('antd', async () => {
     message: {
       success: vi.fn(),
       error: vi.fn(),
+      loading: vi.fn(() => vi.fn()),
     },
   };
 });

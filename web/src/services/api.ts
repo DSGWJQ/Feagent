@@ -16,7 +16,6 @@ import type {
   InternalAxiosRequestConfig,
 } from 'axios';
 import type {
-  Workflow,
   Task,
   Run,
   ClassificationResult,
@@ -26,33 +25,6 @@ import type {
   SchedulerStatus,
   SchedulerJobs,
 } from '@/types/workflow';
-
-export interface WorkflowChatResponse {
-  workflow: Workflow;
-  ai_message: string;
-  intent?: string;
-  confidence?: number;
-  modifications_count?: number;
-  rag_sources?: Array<{
-    document_id: string;
-    title: string;
-    source: string;
-    relevance_score: number;
-    preview: string;
-  }>;
-  react_steps?: Array<{
-    step: string;
-    thought?: string;
-    action?: string;
-    observation?: string;
-  }>;
-  memory_hits?: number;
-}
-
-export interface WorkflowExecutionEvent {
-  type: string;
-  [key: string]: unknown;
-}
 
 const DEFAULT_API_BASE_URL = '/api';
 const rawApiBase = (import.meta.env.VITE_API_URL ?? '').trim();
@@ -103,81 +75,6 @@ axiosInstance.interceptors.response.use(
 );
 
 // ==================== API Client Methods ====================
-
-// Workflow Management
-const workflows = {
-  create: (data: Partial<Workflow>) =>
-    axiosInstance.post<Workflow>('/workflows', data),
-  list: () =>
-    axiosInstance.get<Workflow[]>('/workflows'),
-  getById: (id: string) =>
-    axiosInstance.get<Workflow>(`/workflows/${id}`),
-  update: (id: string, data: Partial<Workflow>) =>
-    axiosInstance.put<Workflow>(`/workflows/${id}`, data),
-  delete: (id: string) =>
-    axiosInstance.delete(`/workflows/${id}`),
-  publish: (id: string) =>
-    axiosInstance.post<Workflow>(`/workflows/${id}/publish`, {}),
-  chat: (id: string, data: { message: string }) =>
-    axiosInstance.post<WorkflowChatResponse>(`/workflows/${id}/chat`, data),
-  streamExecution: async (
-    id: string,
-    payload: Record<string, unknown>,
-    onEvent: (event: WorkflowExecutionEvent) => void
-  ): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/workflows/${id}/execute/stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to stream workflow execution');
-    }
-
-    if (!response.body) {
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-
-      let boundary = buffer.indexOf('\n\n');
-      while (boundary !== -1) {
-        const chunk = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-        boundary = buffer.indexOf('\n\n');
-
-        if (!chunk.startsWith('data:')) {
-          continue;
-        }
-
-        const data = chunk.replace(/^data:\s*/, '');
-        if (!data) {
-          continue;
-        }
-
-        try {
-          const event = JSON.parse(data);
-          onEvent(event);
-        } catch (error) {
-          console.warn('Failed to parse workflow stream event', error);
-        }
-      }
-    }
-  },
-};
 
 // Task Classification
 const classification = {
@@ -389,7 +286,6 @@ const handleError = (error: unknown): string => {
 
 // Export API client
 export const apiClient = {
-  workflows,
   classification,
   scheduledWorkflows,
   scheduler,

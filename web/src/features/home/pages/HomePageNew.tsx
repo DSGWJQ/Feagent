@@ -62,8 +62,7 @@ export default function HomePageNew() {
   const { data: workflows = [] } = useQuery({
     queryKey: ['workflows'],
     queryFn: async () => {
-      const response = await workflowsApi.listWorkflows();
-      return response.data || [];
+      return workflowsApi.listWorkflows();
     },
   });
 

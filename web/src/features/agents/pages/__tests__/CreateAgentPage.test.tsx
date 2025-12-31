@@ -9,9 +9,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { App } from 'antd';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { CreateAgentPage } from '../CreateAgentPage';
 import { agentsApi } from '@/features/agents/api/agentsApi';
@@ -39,13 +40,15 @@ vi.mock('react-router-dom', async () => {
 const renderWithProviders = (ui: React.ReactElement) => {
   const queryClient = createTestQueryClient();
   return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/agents/create']}>
-        <Routes>
-          <Route path="/agents/create" element={ui} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>
+    <App>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/agents/create']}>
+          <Routes>
+            <Route path="/agents/create" element={ui} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </App>
   );
 };
 
@@ -96,7 +99,7 @@ describe('CreateAgentPage', () => {
     await user.click(backButton);
 
     // 应该调用 navigate('/agents')
-    expect(mockNavigate).toHaveBeenCalledWith('/agents');
+    expect(mockNavigate).toHaveBeenCalledWith('/app/agents');
   });
 
   it('创建成功后应该跳转到详情页', async () => {
@@ -105,10 +108,10 @@ describe('CreateAgentPage', () => {
 
     // 填写表单
     const startInput = screen.getByLabelText(/起点/i);
-    await user.type(startInput, '我有一个 CSV 文件，包含过去一年的销售数据');
+    fireEvent.change(startInput, { target: { value: '1234567890' } });
 
     const goalInput = screen.getByLabelText(/目的/i);
-    await user.type(goalInput, '分析销售数据，找出销售趋势和热门产品，生成可视化报告');
+    fireEvent.change(goalInput, { target: { value: 'abcdefghij' } });
 
     // 提交表单
     const submitButton = screen.getByRole('button', { name: /创建/i });
@@ -116,7 +119,7 @@ describe('CreateAgentPage', () => {
 
     // 应该跳转到详情页（包含 Agent ID）
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith(expect.stringMatching(/^\/agents\/.+$/));
+      expect(mockNavigate).toHaveBeenCalledWith(expect.stringMatching(/^\/app\/agents\/.+$/));
     });
   });
 

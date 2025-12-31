@@ -15,13 +15,13 @@ export function getStatusColor(
 ): string {
   switch (status) {
     case 'running':
-      return 'border-yellow-500 shadow-yellow-500/50';
+      return 'node-running border-yellow-500 shadow-yellow-500/50';
     case 'completed':
-      return 'border-green-500 shadow-green-500/50';
+      return 'node-completed border-green-500 shadow-green-500/50';
     case 'error':
-      return 'border-red-500 shadow-red-500/50';
+      return 'node-error border-red-500 shadow-red-500/50';
     default:
-      return selected ? 'border-primary shadow-lg' : 'border-border';
+      return selected ? 'selected border-primary shadow-lg' : 'border-border';
   }
 }
 

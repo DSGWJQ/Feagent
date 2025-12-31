@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import TaskClassificationPage from '../TaskClassificationPage';
@@ -20,13 +20,12 @@ import * as classificationApi from '../../api/classificationApi';
 // Mock the API
 vi.mock('../../api/classificationApi');
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: false },
-  },
-});
-
 const renderWithProviders = (component: React.ReactElement) => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
   return render(
     <QueryClientProvider client={queryClient}>
       {component}
@@ -57,7 +56,12 @@ describe('TaskClassificationPage', () => {
 
     // Should show validation errors
     await waitFor(() => {
-      expect(screen.getByText(/required/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Please describe the current state or starting point/i)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Please describe the goal or desired outcome/i)
+      ).toBeInTheDocument();
     });
   });
 
@@ -116,8 +120,8 @@ describe('TaskClassificationPage', () => {
     await user.click(classifyButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/data_analysis/i)).toBeInTheDocument();
-      expect(screen.getByText(/0.95/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Data Analysis/i).length).toBeGreaterThan(0);
+      expect(screen.getByText(/95\.00%/)).toBeInTheDocument();
       expect(screen.getByText(/This is a data analysis task/)).toBeInTheDocument();
     });
   });
@@ -147,8 +151,8 @@ describe('TaskClassificationPage', () => {
     const goalInput = screen.getByLabelText(/goal/i);
     const classifyButton = screen.getByRole('button', { name: /classify/i });
 
-    await user.type(startInput, 'Start');
-    await user.type(goalInput, 'Goal');
+    await user.type(startInput, 'Start1');
+    await user.type(goalInput, 'Goal1');
     await user.click(classifyButton);
 
     expect(screen.getByRole('button', { name: /classifying/i })).toBeInTheDocument();
@@ -165,12 +169,12 @@ describe('TaskClassificationPage', () => {
     const goalInput = screen.getByLabelText(/goal/i);
     const classifyButton = screen.getByRole('button', { name: /classify/i });
 
-    await user.type(startInput, 'Start');
-    await user.type(goalInput, 'Goal');
+    await user.type(startInput, 'Start1');
+    await user.type(goalInput, 'Goal1');
     await user.click(classifyButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/error|failed/i)).toBeInTheDocument();
+      expect(screen.getByText(/Classification Error/i)).toBeInTheDocument();
     });
   });
 
@@ -222,19 +226,19 @@ describe('TaskClassificationPage', () => {
     const goalInput = screen.getByLabelText(/goal/i);
     const classifyButton = screen.getByRole('button', { name: /classify/i });
 
-    await user.type(startInput, 'Start');
-    await user.type(goalInput, 'Goal');
+    await user.type(startInput, 'Start1');
+    await user.type(goalInput, 'Goal1');
     await user.click(classifyButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/data_analysis/i)).toBeInTheDocument();
+      expect(screen.getByText(/Data Analysis/i)).toBeInTheDocument();
     });
 
     const clearButton = screen.getByRole('button', { name: /clear|reset/i });
     await user.click(clearButton);
 
     await waitFor(() => {
-      expect(screen.queryByText(/data_analysis/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/Waiting for Input/i)).toBeInTheDocument();
     });
   });
 });

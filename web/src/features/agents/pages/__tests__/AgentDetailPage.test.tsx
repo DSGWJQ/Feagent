@@ -42,10 +42,10 @@ describe('AgentDetailPage', () => {
   const renderComponent = (agentId: string = 'agent-123') => {
     return render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[`/agents/${agentId}`]}>
+        <MemoryRouter initialEntries={[`/app/agents/${agentId}`]}>
           <Routes>
-            <Route path="/agents/:id" element={<AgentDetailPage />} />
-            <Route path="/agents" element={<div>Agent List</div>} />
+            <Route path="/app/agents/:id" element={<AgentDetailPage />} />
+            <Route path="/app/agents" element={<div>Agent List</div>} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -158,7 +158,7 @@ describe('AgentDetailPage', () => {
       expect(screen.getByText('计算销售总额、平均值等统计指标')).toBeInTheDocument();
 
       // 验证任务列表标题存在
-      expect(screen.getByText('任务列表')).toBeInTheDocument();
+      expect(screen.getByText('执行任务')).toBeInTheDocument();
     });
   });
 

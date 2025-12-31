@@ -1,7 +1,11 @@
 import { useCallback, useState } from 'react';
 
 import { apiClient } from '@/services/api';
-import type { Workflow } from '@/types/workflow';
+import {
+  chatWorkflowStreaming,
+  type PlanningSseEvent,
+} from '@/features/workflows/api/workflowsApi';
+import type { Workflow } from '@/features/workflows/types/workflow';
 import type { ChatMessage } from '@/shared/types/chat';
 
 interface UseWorkflowAIOptions {
@@ -28,12 +32,6 @@ const createMessage = (content: string, role: ChatMessage['role']): ChatMessage 
   timestamp: Date.now(),
 });
 
-const formatStreamEvent = (event: Record<string, unknown>): string => {
-  const { type = 'event', ...rest } = event;
-  const detail = Object.keys(rest).length ? JSON.stringify(rest) : '';
-  return `【${String(type)}】${detail}`;
-};
-
 export const useWorkflowAI = ({
   workflowId,
   onApplyWorkflow,
@@ -48,40 +46,6 @@ export const useWorkflowAI = ({
   const appendMessage = useCallback((message: ChatMessage) => {
     setMessages((prev) => [...prev, message]);
   }, []);
-
-  const sendMessage = useCallback(
-    async (rawContent: string) => {
-      const content = rawContent.trim();
-      if (!content || isProcessing) {
-        return;
-      }
-
-      appendMessage(createMessage(content, 'user'));
-      setIsProcessing(true);
-      setErrorMessage(null);
-
-      try {
-        const { data } = await apiClient.workflows.chat(workflowId, { message: content });
-        setPendingWorkflow(data.workflow as Workflow);
-        appendMessage(createMessage(data.ai_message, 'assistant'));
-
-        await apiClient.workflows.streamExecution(
-          workflowId,
-          { initial_input: { message: content } },
-          (event) => {
-            appendMessage(createMessage(formatStreamEvent(event), 'assistant'));
-          }
-        );
-      } catch (error) {
-        const friendlyMessage = apiClient.handleError(error);
-        setErrorMessage(friendlyMessage);
-        appendMessage(createMessage(`处理失败：${friendlyMessage}`, 'assistant'));
-      } finally {
-        setIsProcessing(false);
-      }
-    },
-    [appendMessage, isProcessing, workflowId]
-  );
 
   const confirmPendingWorkflow = useCallback(async () => {
     if (!pendingWorkflow) {
@@ -104,87 +68,59 @@ export const useWorkflowAI = ({
       setStreamingMessage(null);
 
       try {
-        const response = await fetch(`/api/workflows/${workflowId}/chat-stream`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ message: content }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        if (!response.body) {
-          throw new Error('No response body');
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.trim() || !line.startsWith('data: ')) continue;
-
-            try {
-              const data = JSON.parse(line.substring(6));
-
-              // Handle different event types
-              switch (data.event || data.type) {
-                case 'llm_thinking':
-                  setStreamingMessage(data.message);
-                  break;
-                case 'preview_changes':
-                  // Create workflow object from preview data
-                  const previewWorkflow: Workflow = {
-                    id: workflowId,
-                    name: 'Preview Workflow',
-                    nodes: data.nodes,
-                    edges: data.edges,
-                    status: 'draft' as any,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                  };
-                  setPendingWorkflow(previewWorkflow);
-                  onPreviewWorkflow?.(previewWorkflow, data.message);
-                  appendMessage(createMessage(data.message, 'assistant'));
-                  setStreamingMessage(null);
-                  break;
-                case 'workflow_updated':
-                  // Update final workflow
-                  const finalWorkflow: Workflow = {
-                    id: workflowId,
-                    name: data.workflow.name,
-                    nodes: data.workflow.nodes,
-                    edges: data.workflow.edges,
-                    status: 'draft' as any,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                  };
-                  setPendingWorkflow(finalWorkflow);
-                  appendMessage(createMessage(data.message, 'assistant'));
-                  setStreamingMessage(null);
-                  break;
-                case 'error':
-                  throw new Error(data.message);
+        await new Promise<void>((resolve, reject) => {
+          const cancel = chatWorkflowStreaming(
+            workflowId,
+            { message: content },
+            (event: PlanningSseEvent) => {
+              if (event.type === 'thinking') {
+                setStreamingMessage(event.content ?? null);
+                return;
               }
-            } catch (error) {
-              console.error('Failed to parse SSE event:', error);
+
+              if (event.type === 'patch') {
+                const previewWorkflow = event.metadata?.workflow as Workflow | undefined;
+                if (previewWorkflow) {
+                  setPendingWorkflow(previewWorkflow);
+                  onPreviewWorkflow?.(previewWorkflow, event.content ?? '');
+                }
+                if (event.content) {
+                  appendMessage(createMessage(event.content, 'assistant'));
+                }
+                setStreamingMessage(null);
+              }
+
+              if (event.type === 'final') {
+                const finalWorkflow = event.metadata?.workflow as Workflow | undefined;
+                if (finalWorkflow) {
+                  setPendingWorkflow(finalWorkflow);
+                }
+                if (event.content) {
+                  appendMessage(createMessage(event.content, 'assistant'));
+                }
+                setStreamingMessage(null);
+              }
+
+              if (event.type === 'error') {
+                setStreamingMessage(null);
+                reject(new Error(event.content || 'chat-stream failed'));
+                cancel();
+                return;
+              }
+
+              if (event.is_final) {
+                cancel();
+                resolve();
+              }
+            },
+            (error) => {
+              reject(error);
             }
-          }
-        }
+          );
+        });
       } catch (error) {
-        const friendlyMessage = error instanceof Error ? error.message : '处理失败';
+        const friendlyMessage =
+          error instanceof Error ? apiClient.handleError(error) : '处理失败';
         setErrorMessage(friendlyMessage);
         appendMessage(createMessage(`处理失败：${friendlyMessage}`, 'assistant'));
       } finally {
@@ -193,6 +129,13 @@ export const useWorkflowAI = ({
       }
     },
     [appendMessage, isProcessing, workflowId, onPreviewWorkflow]
+  );
+
+  const sendMessage = useCallback(
+    async (content: string) => {
+      await startChatStream(content);
+    },
+    [startChatStream]
   );
 
   return {

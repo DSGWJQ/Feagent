@@ -4,8 +4,8 @@
  */
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { apiClient } from '@/services/api';
-import type { Workflow } from '@/types/workflow';
+import { getWorkflow } from '@/features/workflows/api/workflowsApi';
+import type { Workflow } from '@/features/workflows/types/workflow';
 
 interface UseWorkflowResult {
   workflowData: Workflow | null;
@@ -21,8 +21,7 @@ export const useWorkflow = (workflowId?: string | null): UseWorkflowResult => {
       if (!workflowId) {
         return null;
       }
-      const response = await apiClient.workflows.getById(workflowId);
-      return response.data;
+      return getWorkflow(workflowId);
     },
     enabled: Boolean(workflowId),
     retry: 1,

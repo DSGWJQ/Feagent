@@ -11,7 +11,7 @@ import { RobotOutlined, UserOutlined, LoadingOutlined, CheckCircleOutlined, Play
 import { useWorkflowAI } from '@/hooks/useWorkflowAI';
 import { useWorkflowInteraction } from '@/features/workflows/contexts/WorkflowInteractionContext';
 import type { ChatMessage } from '@/shared/types/chat';
-import type { Workflow } from '@/types/workflow';
+import type { Workflow } from '@/features/workflows/types/workflow';
 import type { ExecutionLogEntry } from '@/features/workflows/types/workflow';
 import styles from './AIChat.module.css';
 

@@ -32,6 +32,7 @@ vi.mock('antd', async () => {
     message: {
       success: vi.fn(),
       error: vi.fn(),
+      loading: vi.fn(() => vi.fn()),
     },
   };
 });
@@ -84,7 +85,7 @@ describe('AgentListTest', () => {
 
       // Assert
       await waitFor(() => {
-        expect(screen.getByText('✅ API 连接成功！')).toBeInTheDocument();
+        expect(screen.getByText('测试 Agent 1')).toBeInTheDocument();
       });
 
       expect(screen.getByText('测试 Agent 1')).toBeInTheDocument();

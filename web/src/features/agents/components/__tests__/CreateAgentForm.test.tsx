@@ -9,9 +9,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { App } from 'antd';
 import { CreateAgentForm } from '../CreateAgentForm';
 import { agentsApi } from '@/features/agents/api/agentsApi';
 
@@ -28,7 +29,9 @@ const createTestQueryClient = () =>
 const renderWithQueryClient = (ui: React.ReactElement) => {
   const queryClient = createTestQueryClient();
   return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    <App>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </App>
   );
 };
 
@@ -130,13 +133,13 @@ describe('CreateAgentForm', () => {
 
     // 填写有效数据
     const startInput = screen.getByLabelText(/起点/i);
-    await user.type(startInput, '我有一个 CSV 文件，包含过去一年的销售数据');
+    fireEvent.change(startInput, { target: { value: '1234567890' } });
 
     const goalInput = screen.getByLabelText(/目的/i);
-    await user.type(goalInput, '分析销售数据，找出销售趋势和热门产品，生成可视化报告');
+    fireEvent.change(goalInput, { target: { value: 'abcdefghij' } });
 
     const nameInput = screen.getByLabelText(/名称/i);
-    await user.type(nameInput, '销售分析 Agent');
+    fireEvent.change(nameInput, { target: { value: 'Agent' } });
 
     // 点击提交按钮
     const submitButton = screen.getByRole('button', { name: /创建/i });
@@ -156,10 +159,10 @@ describe('CreateAgentForm', () => {
 
     // 只填写 start 和 goal，不填写 name
     const startInput = screen.getByLabelText(/起点/i);
-    await user.type(startInput, '我有一个 CSV 文件，包含过去一年的销售数据');
+    fireEvent.change(startInput, { target: { value: '1234567890' } });
 
     const goalInput = screen.getByLabelText(/目的/i);
-    await user.type(goalInput, '分析销售数据，找出销售趋势和热门产品，生成可视化报告');
+    fireEvent.change(goalInput, { target: { value: 'abcdefghij' } });
 
     // 点击提交按钮
     const submitButton = screen.getByRole('button', { name: /创建/i });
@@ -183,10 +186,10 @@ describe('CreateAgentForm', () => {
 
     // 填写有效数据
     const startInput = screen.getByLabelText(/起点/i);
-    await user.type(startInput, '我有一个 CSV 文件，包含过去一年的销售数据');
+    fireEvent.change(startInput, { target: { value: '1234567890' } });
 
     const goalInput = screen.getByLabelText(/目的/i);
-    await user.type(goalInput, '分析销售数据，找出销售趋势和热门产品，生成可视化报告');
+    fireEvent.change(goalInput, { target: { value: 'abcdefghij' } });
 
     // 点击提交按钮
     const submitButton = screen.getByRole('button', { name: /创建/i });
