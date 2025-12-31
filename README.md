@@ -101,6 +101,13 @@ pnpm install
 pnpm dev
 ```
 
+## Workflow 创建与对话（推荐链路）
+
+- **创建并首次规划（SSE）**：`POST /api/workflows/chat-create/stream`
+  - Body：`{ message: string, project_id?: string, run_id?: string }`
+  - 契约：SSE 前 1 个事件内包含 `metadata.workflow_id`（用于前端跳转到 `/workflows/{id}/edit`）
+- **增量修改（SSE）**：`POST /api/workflows/{workflow_id}/chat-stream`
+
 ## 项目结构
 
 ```

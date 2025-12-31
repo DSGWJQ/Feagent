@@ -4,7 +4,7 @@
 
 当前代码库并不存在“纯对话创建工作流”的闭环链路：对话链路（`chat-stream`）只能**在已存在的 workflow 上做增量修改**；而“表单/接口创建工作流”链路在前后端两侧又出现了**多套客户端/路由/默认值不一致**的问题，导致“创建→编辑→对话”经常需要依赖缺失的模板入口或传入不满足 Domain 规则的 payload。
 
-如果目标是“只保留对话创建工作流一条链路”，建议将“创建”收敛为一个新的后端入口：**Chat-Create**（创建基底 workflow + 立即走对话规划/补全），并在前端只暴露一个入口（输入目标 → 后端返回 workflow_id → 进入编辑器/继续对话）。
+当前已将“创建”收敛为一个后端入口：**Chat-Create**（创建基底 workflow + 立即走对话规划/补全），并在前端只暴露一个入口（输入目标 → 后端返回 workflow_id → 进入编辑器/继续对话）。
 
 ---
 
@@ -23,8 +23,7 @@
 - UseCase：`src/application/use_cases/update_workflow_by_chat.py:1`
 - Domain Service：`src/domain/services/workflow_chat_service_enhanced.py:1`
 
-3) **历史对话/搜索等（疑似遗留）**：`chat_workflows_complete.py`
-- 文件：`src/interfaces/api/routes/chat_workflows_complete.py:1`
+3) **历史对话/搜索等（遗留）**：`chat_workflows_complete.py`（已移除）
 - 现象：该文件定义了 `router = APIRouter(prefix="/api/workflows", ...)`，但主应用实际 include 的是 `chat_workflows.py`（见 `src/interfaces/api/main.py:196`），因此这份“Complete API”很可能**未被注册/不可达**，同时文件存在明显编码/注释乱码，属于维护风险源。
 
 ### 前端（React）
@@ -96,15 +95,15 @@
 - `WorkflowEditorPage` 根路由仍引用 `TemplateSelector`（文件不存在），导致“创建入口”在 UI 侧失效。
 
 5) **遗留/重复路由文件增加维护成本**
-- `chat_workflows_complete.py` 看起来是旧版“Complete API”，但未被 include_router；同时存在乱码与与现行 SSE Chat 路由重叠的风险。
+- `chat_workflows_complete.py` 为旧版“Complete API”，未被 include_router；已移除以避免维护误用。
 
 ---
 
-## 目标状态：只保留“对话创建工作流”一条链路（建议方案）
+## 目标状态：只保留“对话创建工作流”一条链路（当前实现）
 
 ### 方案建议（推荐）
 
-引入一个新的“Chat-Create”入口（后端负责创建基底 workflow，并立即走对话规划）：
+已引入“Chat-Create”入口（后端负责创建基底 workflow，并立即走对话规划）：
 
 **API（示例契约）**
 - `POST /api/workflows/chat-create/stream`
@@ -113,7 +112,7 @@
     - `project_id`: 可选；缺省表示“未绑定项目”
     - `run_id`: 可选；空字符串/全空白视为未提供；如提供需与后续创建的 workflow 关联用于事件落库/回放
   - 行为：
-     1) 在事务内创建一个“基底 workflow”（至少包含 1 个合法 node；建议 start/end + 位置默认值）
+     1) 在事务内创建一个“基底 workflow”（包含 start/end + 默认位置 + start->end 连接）
      2) 复用 `UpdateWorkflowByChatUseCase.execute_streaming_with_context(...)` 或等价路径，把 message 当作首次对话规划
      3) SSE 事件流中尽早返回 `workflow_id`（前端可立即路由跳转到 `/workflows/{id}/edit`）
         - 约束：第一条（或前 2 条）事件内必须包含 `metadata.workflow_id`
@@ -122,11 +121,10 @@
 - 首页只显示一个输入框：“描述你要的工作流”
 - 提交后调用 `chat-create/stream`，拿到 workflow_id 后跳转编辑器；编辑器内继续使用 `chat-stream` 做增量修改。
 
-### Domain 约束的处理策略
+### Domain 约束的处理策略（已采用）
 
 为了让“从 0 创建”自然成立，建议选择其一（需要全局一致）：
-- A) 保持 Domain 规则不变（nodes 必须非空），由 Chat-Create 在后端创建默认节点集；或
-- B) 放宽 Domain 规则允许空 workflow（会牵连执行/校验/编辑器很多假设，不推荐）。
+- A) 保持 Domain 规则不变（nodes 必须非空），由 Chat-Create 在后端创建默认节点集（已采用）。
 
 ---
 
