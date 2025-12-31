@@ -13,12 +13,12 @@ from sqlalchemy.orm import Session
 
 from src.application.use_cases.github_auth import GitHubAuthUseCase
 from src.config import settings
+from src.domain.ports.user_repository import UserRepository
 from src.infrastructure.auth.github_oauth_service import GitHubOAuthService
 from src.infrastructure.auth.jwt_service import JWTService
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories.user_repository import (
-    SQLAlchemyUserRepository,
-)
+from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.container import get_container
 
 
 def get_github_oauth_service() -> GitHubOAuthService:
@@ -45,21 +45,25 @@ def get_jwt_service() -> JWTService:
     return JWTService()
 
 
-def get_user_repository(db: Session = Depends(get_db_session)) -> SQLAlchemyUserRepository:
+def get_user_repository(
+    container: ApiContainer = Depends(get_container),
+    db: Session = Depends(get_db_session),
+) -> UserRepository:
     """获取用户仓储
 
     Args:
+        container: API 容器（composition root 实例）
         db: 数据库会话
 
     Returns:
-        SQLAlchemyUserRepository: 用户仓储实例
+        UserRepository: 用户仓储实例
     """
-    return SQLAlchemyUserRepository(db)
+    return container.user_repository(db)
 
 
 def get_github_auth_use_case(
     github_service: GitHubOAuthService = Depends(get_github_oauth_service),
-    user_repository: SQLAlchemyUserRepository = Depends(get_user_repository),
+    user_repository: UserRepository = Depends(get_user_repository),
     jwt_service: JWTService = Depends(get_jwt_service),
 ) -> GitHubAuthUseCase:
     """获取GitHub登录用例

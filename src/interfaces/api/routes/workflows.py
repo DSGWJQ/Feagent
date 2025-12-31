@@ -36,18 +36,16 @@ from src.application.use_cases.update_workflow_by_drag import (
 )
 from src.config import settings
 from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.ports.chat_message_repository import ChatMessageRepository
+from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.ports.workflow_chat_service import WorkflowChatServicePort
+from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.services.workflow_chat_service_enhanced import EnhancedWorkflowChatService
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories.chat_message_repository import (
-    SQLAlchemyChatMessageRepository,
-)
-from src.infrastructure.database.repositories.workflow_repository import (
-    SQLAlchemyWorkflowRepository,
-)
-from src.infrastructure.executors import create_executor_registry
 from src.infrastructure.llm import LangChainWorkflowChatLLM
+from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dependencies.current_user import get_current_user_optional
 from src.interfaces.api.dependencies.rag import get_rag_service
 from src.interfaces.api.dto.workflow_dto import (
@@ -63,28 +61,33 @@ from src.interfaces.api.dto.workflow_dto import (
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
-_executor_registry = create_executor_registry(
-    openai_api_key=settings.openai_api_key or None,
-    anthropic_api_key=getattr(settings, "anthropic_api_key", None),
-)
-
 logger = logging.getLogger(__name__)
 
 
 def get_workflow_repository(
+    container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
-) -> SQLAlchemyWorkflowRepository:
+) -> WorkflowRepository:
     """Return a repository bound to the current DB session."""
 
-    return SQLAlchemyWorkflowRepository(db)
+    return container.workflow_repository(db)
 
 
 def get_chat_message_repository(
+    container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
-) -> SQLAlchemyChatMessageRepository:
+) -> ChatMessageRepository:
     """Return a chat message repository bound to the current DB session."""
 
-    return SQLAlchemyChatMessageRepository(db)
+    return container.chat_message_repository(db)
+
+
+def get_executor_registry(
+    container: ApiContainer = Depends(get_container),
+) -> NodeExecutorRegistry:
+    """Resolve the singleton executor registry from the composition root."""
+
+    return container.executor_registry
 
 
 def get_workflow_chat_llm() -> WorkflowChatLLM:
@@ -112,10 +115,10 @@ def get_workflow_chat_llm() -> WorkflowChatLLM:
 
 def get_workflow_chat_service(
     workflow_id: str = "",  # 从路径参数传入
+    container: ApiContainer = Depends(get_container),
     llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
-    chat_message_repository: SQLAlchemyChatMessageRepository | None = Depends(
-        get_chat_message_repository
-    ),
+    chat_message_repository: ChatMessageRepository | None = Depends(get_chat_message_repository),
+    db: Session = Depends(get_db_session),
 ) -> WorkflowChatServicePort:
     """构建增强版对话服务（使用新的 CompositeMemoryService）
 
@@ -126,7 +129,7 @@ def get_workflow_chat_service(
         from src.interfaces.api.dependencies.memory import get_composite_memory_service
 
         # 获取新的内存服务
-        memory_service = get_composite_memory_service(session=chat_message_repository.session)
+        memory_service = get_composite_memory_service(session=db, container=container)
 
         # 使用新的内存系统创建服务
         return EnhancedWorkflowChatService(
@@ -143,10 +146,12 @@ def get_workflow_chat_service(
 
 def get_update_workflow_by_chat_use_case(
     workflow_id: str,  # 从路径参数注入
-    workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
-    chat_message_repository: SQLAlchemyChatMessageRepository = Depends(get_chat_message_repository),
+    container: ApiContainer = Depends(get_container),
+    workflow_repository: WorkflowRepository = Depends(get_workflow_repository),
+    chat_message_repository: ChatMessageRepository = Depends(get_chat_message_repository),
     llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
     rag_service=Depends(get_rag_service),
+    db: Session = Depends(get_db_session),
 ) -> UpdateWorkflowByChatUseCase:
     """Assemble the chat update use case with its dependencies (using CompositeMemoryService)."""
 
@@ -154,7 +159,7 @@ def get_update_workflow_by_chat_use_case(
     from src.interfaces.api.dependencies.memory import get_composite_memory_service
 
     # 获取新的内存服务
-    memory_service = get_composite_memory_service(session=chat_message_repository.session)
+    memory_service = get_composite_memory_service(session=db, container=container)
 
     # 为每个请求创建新的对话服务实例（使用高性能内存系统）
     chat_service = EnhancedWorkflowChatService(
@@ -172,10 +177,12 @@ def get_update_workflow_by_chat_use_case(
 
 
 def get_update_workflow_by_chat_use_case_factory(
-    workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
-    chat_message_repository: SQLAlchemyChatMessageRepository = Depends(get_chat_message_repository),
+    container: ApiContainer = Depends(get_container),
+    workflow_repository: WorkflowRepository = Depends(get_workflow_repository),
+    chat_message_repository: ChatMessageRepository = Depends(get_chat_message_repository),
     llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
     rag_service=Depends(get_rag_service),
+    db: Session = Depends(get_db_session),
 ) -> Callable[[str], UpdateWorkflowByChatUseCase]:
     """Return a factory that can build UpdateWorkflowByChatUseCase for a given workflow_id.
 
@@ -184,7 +191,7 @@ def get_update_workflow_by_chat_use_case_factory(
 
     from src.interfaces.api.dependencies.memory import get_composite_memory_service
 
-    memory_service = get_composite_memory_service(session=chat_message_repository.session)
+    memory_service = get_composite_memory_service(session=db, container=container)
 
     def factory(workflow_id: str) -> UpdateWorkflowByChatUseCase:
         chat_service = EnhancedWorkflowChatService(
@@ -206,6 +213,7 @@ def get_update_workflow_by_chat_use_case_factory(
 def create_workflow(
     request: CreateWorkflowRequest,
     response: Response,
+    container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
     current_user=Depends(get_current_user_optional),
 ) -> WorkflowResponse:
@@ -213,7 +221,7 @@ def create_workflow(
 
     from src.domain.entities.workflow import Workflow
 
-    repository = SQLAlchemyWorkflowRepository(db)
+    repository = container.workflow_repository(db)
 
     try:
         response.headers["Deprecation"] = "true"
@@ -268,11 +276,12 @@ def create_workflow(
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
 def get_workflow(
     workflow_id: str,
+    container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
 ) -> WorkflowResponse:
     """Return workflow details."""
 
-    repository = SQLAlchemyWorkflowRepository(db)
+    repository = container.workflow_repository(db)
     workflow = repository.get_by_id(workflow_id)
     if not workflow:
         raise HTTPException(
@@ -286,11 +295,12 @@ def get_workflow(
 def update_workflow(
     workflow_id: str,
     request: UpdateWorkflowRequest,
+    container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
 ) -> WorkflowResponse:
     """Update a workflow via drag-and-drop payloads."""
 
-    repository = SQLAlchemyWorkflowRepository(db)
+    repository = container.workflow_repository(db)
     use_case = UpdateWorkflowByDragUseCase(workflow_repository=repository)
 
     nodes = [node_dto.to_entity() for node_dto in request.nodes]
@@ -336,14 +346,16 @@ class ExecuteWorkflowResponse(BaseModel):
 async def execute_workflow(
     workflow_id: str,
     request: ExecuteWorkflowRequest,
+    container: ApiContainer = Depends(get_container),
+    executor_registry: NodeExecutorRegistry = Depends(get_executor_registry),
     db: Session = Depends(get_db_session),
 ) -> ExecuteWorkflowResponse:
     """Execute a workflow synchronously."""
 
-    repository = SQLAlchemyWorkflowRepository(db)
+    repository = container.workflow_repository(db)
     use_case = ExecuteWorkflowUseCase(
         workflow_repository=repository,
-        executor_registry=_executor_registry,
+        executor_registry=executor_registry,
     )
 
     try:
@@ -372,15 +384,17 @@ async def execute_workflow(
 async def execute_workflow_streaming(
     workflow_id: str,
     request: ExecuteWorkflowRequest,
+    container: ApiContainer = Depends(get_container),
+    executor_registry: NodeExecutorRegistry = Depends(get_executor_registry),
     db: Session = Depends(get_db_session),
 ) -> StreamingResponse:
     """Execute a workflow and stream progress via SSE."""
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        repository = SQLAlchemyWorkflowRepository(db)
+        repository = container.workflow_repository(db)
         use_case = ExecuteWorkflowUseCase(
             workflow_repository=repository,
-            executor_registry=_executor_registry,
+            executor_registry=executor_registry,
         )
 
         try:
@@ -417,6 +431,7 @@ async def execute_workflow_streaming(
 async def chat_create_stream(
     request: ChatCreateRequest,
     http_request: Request,
+    container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
     current_user=Depends(get_current_user_optional),
     use_case_factory: Callable[[str], UpdateWorkflowByChatUseCase] = Depends(
@@ -434,7 +449,7 @@ async def chat_create_stream(
     from src.domain.services.conversation_flow_emitter import ConversationFlowEmitter
     from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler
 
-    repository = SQLAlchemyWorkflowRepository(db)
+    repository = container.workflow_repository(db)
 
     try:
         workflow = Workflow.create_base(
@@ -798,11 +813,12 @@ Rules:
 )
 def import_workflow(
     request: ImportWorkflowRequest,
+    container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
 ) -> ImportWorkflowResponse:
     """Import a workflow from a Coze JSON payload."""
 
-    repository = SQLAlchemyWorkflowRepository(db)
+    repository = container.workflow_repository(db)
     use_case = ImportWorkflowUseCase(workflow_repository=repository)
 
     try:
@@ -830,6 +846,7 @@ def import_workflow(
 )
 async def generate_workflow_from_form(
     request: GenerateWorkflowRequest,
+    container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
 ) -> GenerateWorkflowResponse:
     """Generate a workflow structure using the supplied form inputs."""
@@ -840,7 +857,7 @@ async def generate_workflow_from_form(
             detail="OPENAI_API_KEY is not configured.",
         )
 
-    repository = SQLAlchemyWorkflowRepository(db)
+    repository = container.workflow_repository(db)
     llm = ChatOpenAI(
         api_key=SecretStr(settings.openai_api_key),
         model=settings.openai_model,

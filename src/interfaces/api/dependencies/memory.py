@@ -17,12 +17,11 @@ from fastapi import Depends
 from src.application.services.composite_memory_service import CompositeMemoryService
 from src.domain.ports.memory_service import MemoryServicePort
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories.chat_message_repository import (
-    SQLAlchemyChatMessageRepository,
-)
 from src.infrastructure.memory.database_memory_store import DatabaseMemoryStore
 from src.infrastructure.memory.in_memory_cache import InMemoryCache
 from src.infrastructure.memory.tfidf_compressor import TFIDFCompressor
+from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.container import get_container
 
 
 @lru_cache
@@ -41,7 +40,7 @@ def get_global_memory_cache() -> InMemoryCache:
     return InMemoryCache(ttl_seconds=900, max_workflows=1000, max_messages_per_workflow=50)
 
 
-def _create_memory_service_impl(session=None) -> CompositeMemoryService:
+def _create_memory_service_impl(session=None, *, container: ApiContainer) -> CompositeMemoryService:
     """
     创建 CompositeMemoryService 实现（内部工厂函数）
 
@@ -55,7 +54,7 @@ def _create_memory_service_impl(session=None) -> CompositeMemoryService:
         session = next(get_db_session())
 
     # 创建依赖组件
-    repository = SQLAlchemyChatMessageRepository(session)
+    repository = container.chat_message_repository(session)
     db_store = DatabaseMemoryStore(repository)
     cache = get_global_memory_cache()
     compressor = TFIDFCompressor()
@@ -65,7 +64,7 @@ def _create_memory_service_impl(session=None) -> CompositeMemoryService:
     )
 
 
-def get_memory_service() -> MemoryServicePort:
+def get_memory_service(container: ApiContainer = Depends(get_container)) -> MemoryServicePort:
     """
     获取内存服务（通过端口协议）
 
@@ -84,14 +83,17 @@ def get_memory_service() -> MemoryServicePort:
         ...     metrics = memory.get_metrics()
         ...     return metrics
     """
-    return _create_memory_service_impl()
+    return _create_memory_service_impl(container=container)
 
 
 # Backward-compatible helper used by some route wiring.
-def get_composite_memory_service(session=None) -> CompositeMemoryService:
+def get_composite_memory_service(
+    session=None,
+    container: ApiContainer = Depends(get_container),
+) -> CompositeMemoryService:
     """Return CompositeMemoryService instance (optionally bound to a given DB session)."""
 
-    return _create_memory_service_impl(session=session)
+    return _create_memory_service_impl(session=session, container=container)
 
 
 # Type alias for FastAPI dependency injection

@@ -21,12 +21,12 @@ from sqlalchemy.orm import Session
 
 from src.domain.entities.tool import Tool, ToolParameter
 from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.ports.tool_repository import ToolRepository
 from src.domain.value_objects.tool_category import ToolCategory
 from src.domain.value_objects.tool_status import ToolStatus
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories.tool_repository import (
-    SQLAlchemyToolRepository,
-)
+from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dependencies.current_user import get_current_user_optional
 from src.interfaces.api.dto import (
     CreateToolRequest,
@@ -41,9 +41,12 @@ from src.interfaces.api.dto import (
 router = APIRouter(prefix="/tools", tags=["tools"])
 
 
-def get_tool_repository(session: Session = Depends(get_db_session)) -> SQLAlchemyToolRepository:
+def get_tool_repository(
+    container: ApiContainer = Depends(get_container),
+    session: Session = Depends(get_db_session),
+) -> ToolRepository:
     """获取 Tool Repository - 依赖注入函数"""
-    return SQLAlchemyToolRepository(session)
+    return container.tool_repository(session)
 
 
 def _tool_to_response(tool: Tool) -> ToolResponse:
@@ -87,7 +90,7 @@ def _tool_to_response(tool: Tool) -> ToolResponse:
 @router.post("", response_model=ToolResponse, status_code=status.HTTP_201_CREATED)
 def create_tool(
     request: CreateToolRequest,
-    tool_repository: SQLAlchemyToolRepository = Depends(get_tool_repository),
+    tool_repository: ToolRepository = Depends(get_tool_repository),
     session: Session = Depends(get_db_session),
     current_user=Depends(get_current_user_optional),  # 可选认证
 ) -> ToolResponse:
@@ -181,7 +184,7 @@ def create_tool(
 def list_tools(
     category: str | None = None,
     status_filter: str | None = None,
-    tool_repository: SQLAlchemyToolRepository = Depends(get_tool_repository),
+    tool_repository: ToolRepository = Depends(get_tool_repository),
 ) -> ToolListResponse:
     """列出所有工具
 
@@ -211,7 +214,7 @@ def list_tools(
 @router.get("/{tool_id}", response_model=ToolResponse)
 def get_tool(
     tool_id: str,
-    tool_repository: SQLAlchemyToolRepository = Depends(get_tool_repository),
+    tool_repository: ToolRepository = Depends(get_tool_repository),
 ) -> ToolResponse:
     """获取工具详情"""
     try:
@@ -228,7 +231,7 @@ def get_tool(
 def update_tool(
     tool_id: str,
     request: UpdateToolRequest,
-    tool_repository: SQLAlchemyToolRepository = Depends(get_tool_repository),
+    tool_repository: ToolRepository = Depends(get_tool_repository),
     session: Session = Depends(get_db_session),
 ) -> ToolResponse:
     """更新工具"""
@@ -288,7 +291,7 @@ def update_tool(
 @router.delete("/{tool_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_tool(
     tool_id: str,
-    tool_repository: SQLAlchemyToolRepository = Depends(get_tool_repository),
+    tool_repository: ToolRepository = Depends(get_tool_repository),
     session: Session = Depends(get_db_session),
 ) -> None:
     """删除工具"""
@@ -312,7 +315,7 @@ def delete_tool(
 def publish_tool(
     tool_id: str,
     request: PublishToolRequest,
-    tool_repository: SQLAlchemyToolRepository = Depends(get_tool_repository),
+    tool_repository: ToolRepository = Depends(get_tool_repository),
     session: Session = Depends(get_db_session),
 ) -> ToolResponse:
     """发布工具
@@ -352,7 +355,7 @@ def publish_tool(
 def deprecate_tool(
     tool_id: str,
     request: DeprecateToolRequest,
-    tool_repository: SQLAlchemyToolRepository = Depends(get_tool_repository),
+    tool_repository: ToolRepository = Depends(get_tool_repository),
     session: Session = Depends(get_db_session),
 ) -> ToolResponse:
     """废弃工具"""

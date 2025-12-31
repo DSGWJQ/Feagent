@@ -31,19 +31,22 @@ from sqlalchemy.orm import Session
 
 from src.application import CreateAgentInput, CreateAgentUseCase
 from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.ports.agent_repository import AgentRepository
+from src.domain.ports.task_repository import TaskRepository
+from src.domain.ports.workflow_repository import WorkflowRepository
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories import (
-    SQLAlchemyAgentRepository,
-    SQLAlchemyTaskRepository,
-    SQLAlchemyWorkflowRepository,
-)
+from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dto import AgentResponse, CreateAgentRequest
 
 # 创建路由器
 router = APIRouter()
 
 
-def get_agent_repository(session: Session = Depends(get_db_session)) -> SQLAlchemyAgentRepository:
+def get_agent_repository(
+    container: ApiContainer = Depends(get_container),
+    session: Session = Depends(get_db_session),
+) -> AgentRepository:
     """获取 Agent Repository
 
     这是依赖注入函数：
@@ -62,10 +65,13 @@ def get_agent_repository(session: Session = Depends(get_db_session)) -> SQLAlche
     返回：
         SQLAlchemyAgentRepository 实例
     """
-    return SQLAlchemyAgentRepository(session)
+    return container.agent_repository(session)
 
 
-def get_task_repository(session: Session = Depends(get_db_session)) -> SQLAlchemyTaskRepository:
+def get_task_repository(
+    container: ApiContainer = Depends(get_container),
+    session: Session = Depends(get_db_session),
+) -> TaskRepository:
     """获取 Task Repository
 
     这是依赖注入函数：
@@ -84,12 +90,13 @@ def get_task_repository(session: Session = Depends(get_db_session)) -> SQLAlchem
     返回：
         SQLAlchemyTaskRepository 实例
     """
-    return SQLAlchemyTaskRepository(session)
+    return container.task_repository(session)
 
 
 def get_workflow_repository(
+    container: ApiContainer = Depends(get_container),
     session: Session = Depends(get_db_session),
-) -> SQLAlchemyWorkflowRepository:
+) -> WorkflowRepository:
     """获取 Workflow Repository
 
     这是依赖注入函数：
@@ -108,15 +115,15 @@ def get_workflow_repository(
     返回：
         SQLAlchemyWorkflowRepository 实例
     """
-    return SQLAlchemyWorkflowRepository(session)
+    return container.workflow_repository(session)
 
 
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
 def create_agent(
     request: CreateAgentRequest,
-    agent_repository: SQLAlchemyAgentRepository = Depends(get_agent_repository),
-    task_repository: SQLAlchemyTaskRepository = Depends(get_task_repository),
-    workflow_repository: SQLAlchemyWorkflowRepository = Depends(get_workflow_repository),
+    agent_repository: AgentRepository = Depends(get_agent_repository),
+    task_repository: TaskRepository = Depends(get_task_repository),
+    workflow_repository: WorkflowRepository = Depends(get_workflow_repository),
     session: Session = Depends(get_db_session),
 ) -> AgentResponse:
     """创建 Agent
@@ -236,7 +243,7 @@ def create_agent(
 @router.get("/{agent_id}", response_model=AgentResponse)
 def get_agent(
     agent_id: str,
-    agent_repository: SQLAlchemyAgentRepository = Depends(get_agent_repository),
+    agent_repository: AgentRepository = Depends(get_agent_repository),
 ) -> AgentResponse:
     """获取 Agent 详情
 
@@ -292,7 +299,7 @@ def get_agent(
 
 @router.get("", response_model=list[AgentResponse])
 def list_agents(
-    agent_repository: SQLAlchemyAgentRepository = Depends(get_agent_repository),
+    agent_repository: AgentRepository = Depends(get_agent_repository),
 ) -> list[AgentResponse]:
     """列出所有 Agents
 

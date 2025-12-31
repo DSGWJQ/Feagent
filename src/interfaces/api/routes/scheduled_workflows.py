@@ -12,12 +12,8 @@ from src.application.use_cases.schedule_workflow import (
 )
 from src.domain.exceptions import DomainError, NotFoundError
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories.scheduled_workflow_repository import (
-    SQLAlchemyScheduledWorkflowRepository,
-)
-from src.infrastructure.database.repositories.workflow_repository import (
-    SQLAlchemyWorkflowRepository,
-)
+from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dependencies.scheduler import scheduler_service_dependency
 from src.interfaces.api.dto.workflow_features_dto import (
     ScheduledWorkflowResponse,
@@ -28,13 +24,14 @@ router = APIRouter(tags=["Scheduled Workflows"])
 
 
 def get_schedule_workflow_use_case(
+    container: ApiContainer = Depends(get_container),
     session: Session = Depends(get_db_session),
     scheduler=Depends(scheduler_service_dependency),
 ) -> ScheduleWorkflowUseCase:
     """注入仓库与全局调度服务."""
 
-    workflow_repo = SQLAlchemyWorkflowRepository(session)
-    scheduled_workflow_repo = SQLAlchemyScheduledWorkflowRepository(session)
+    workflow_repo = container.workflow_repository(session)
+    scheduled_workflow_repo = container.scheduled_workflow_repository(session)
 
     return ScheduleWorkflowUseCase(
         workflow_repo=workflow_repo,

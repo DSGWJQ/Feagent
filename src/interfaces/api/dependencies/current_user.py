@@ -13,17 +13,16 @@
 """
 
 from fastapi import Depends, Header, HTTPException
-from sqlalchemy.orm import Session
 
 from src.domain.entities.user import User
+from src.domain.ports.user_repository import UserRepository
 from src.infrastructure.auth.jwt_service import JWTService
-from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories.user_repository import SQLAlchemyUserRepository
+from src.interfaces.api.dependencies.auth import get_user_repository
 
 
 def get_current_user_optional(
     authorization: str | None = Header(None),
-    db: Session = Depends(get_db_session),
+    user_repository: UserRepository = Depends(get_user_repository),
 ) -> User | None:
     """获取当前登录用户（可选）
 
@@ -75,8 +74,7 @@ def get_current_user_optional(
         return None
 
     # 从数据库查询用户
-    repository = SQLAlchemyUserRepository(db)
-    user = repository.find_by_id(user_id)
+    user = user_repository.find_by_id(user_id)
 
     # 检查用户是否激活
     if user and not user.is_active:
@@ -87,7 +85,7 @@ def get_current_user_optional(
 
 def get_current_user(
     authorization: str = Header(..., description="Bearer token"),
-    db: Session = Depends(get_db_session),
+    user_repository: UserRepository = Depends(get_user_repository),
 ) -> User:
     """获取当前登录用户（必需）
 
@@ -133,8 +131,7 @@ def get_current_user(
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     # 从数据库查询用户
-    repository = SQLAlchemyUserRepository(db)
-    user = repository.find_by_id(user_id)
+    user = user_repository.find_by_id(user_id)
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")

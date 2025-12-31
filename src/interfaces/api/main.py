@@ -7,14 +7,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from src.application.services.async_run_event_recorder import AsyncRunEventRecorder
 from src.config import settings
+from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.services.event_bus import EventBus
 from src.domain.services.workflow_scheduler import ScheduleWorkflowService
 from src.infrastructure.database.engine import SessionLocal
 from src.infrastructure.database.schema import ensure_sqlite_schema
 from src.infrastructure.executors import create_executor_registry
+from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.dependencies.agents import set_event_bus
 from src.interfaces.api.dependencies.scheduler import (
     clear_scheduler_service,
@@ -27,7 +30,6 @@ from src.interfaces.api.routes import (
     knowledge,
     llm_providers,
     memory_metrics,
-    projects,
     runs,
     scheduled_workflows,
     tools,
@@ -45,15 +47,87 @@ def _create_session():
     return SessionLocal()
 
 
-def _init_scheduler() -> ScheduleWorkflowService:
+def _build_container(executor_registry: NodeExecutorRegistry) -> ApiContainer:
+    def user_repository(session: Session):
+        from src.infrastructure.database.repositories.user_repository import (
+            SQLAlchemyUserRepository,
+        )
+
+        return SQLAlchemyUserRepository(session)
+
+    def agent_repository(session: Session):
+        from src.infrastructure.database.repositories.agent_repository import (
+            SQLAlchemyAgentRepository,
+        )
+
+        return SQLAlchemyAgentRepository(session)
+
+    def task_repository(session: Session):
+        from src.infrastructure.database.repositories.task_repository import (
+            SQLAlchemyTaskRepository,
+        )
+
+        return SQLAlchemyTaskRepository(session)
+
+    def workflow_repository(session: Session):
+        from src.infrastructure.database.repositories.workflow_repository import (
+            SQLAlchemyWorkflowRepository,
+        )
+
+        return SQLAlchemyWorkflowRepository(session)
+
+    def chat_message_repository(session: Session):
+        from src.infrastructure.database.repositories.chat_message_repository import (
+            SQLAlchemyChatMessageRepository,
+        )
+
+        return SQLAlchemyChatMessageRepository(session)
+
+    def llm_provider_repository(session: Session):
+        from src.infrastructure.database.repositories.llm_provider_repository import (
+            SQLAlchemyLLMProviderRepository,
+        )
+
+        return SQLAlchemyLLMProviderRepository(session)
+
+    def tool_repository(session: Session):
+        from src.infrastructure.database.repositories.tool_repository import (
+            SQLAlchemyToolRepository,
+        )
+
+        return SQLAlchemyToolRepository(session)
+
+    def run_repository(session: Session):
+        from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
+
+        return SQLAlchemyRunRepository(session)
+
+    def scheduled_workflow_repository(session: Session):
+        from src.infrastructure.database.repositories.scheduled_workflow_repository import (
+            SQLAlchemyScheduledWorkflowRepository,
+        )
+
+        return SQLAlchemyScheduledWorkflowRepository(session)
+
+    return ApiContainer(
+        executor_registry=executor_registry,
+        user_repository=user_repository,
+        agent_repository=agent_repository,
+        task_repository=task_repository,
+        workflow_repository=workflow_repository,
+        chat_message_repository=chat_message_repository,
+        llm_provider_repository=llm_provider_repository,
+        tool_repository=tool_repository,
+        run_repository=run_repository,
+        scheduled_workflow_repository=scheduled_workflow_repository,
+    )
+
+
+def _init_scheduler(executor_registry: NodeExecutorRegistry) -> ScheduleWorkflowService:
     from src.infrastructure.database.repositories.scheduled_workflow_repository import (
         SQLAlchemyScheduledWorkflowRepository,
     )
 
-    executor_registry = create_executor_registry(
-        openai_api_key=settings.openai_api_key or None,
-        anthropic_api_key=getattr(settings, "anthropic_api_key", None),
-    )
     workflow_executor = WorkflowExecutorAdapter(
         session_factory=_create_session,
         executor_registry=executor_registry,
@@ -106,8 +180,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:  # pragma: no cover - best effort startup helper
         print(f"[DB] 数据库初始化失败（请运行 Alembic 迁移）: {exc}")
 
+    executor_registry = create_executor_registry(
+        openai_api_key=settings.openai_api_key or None,
+        anthropic_api_key=getattr(settings, "anthropic_api_key", None),
+    )
+    app.state.container = _build_container(executor_registry)
+
     try:
-        _scheduler_service = _init_scheduler()
+        _scheduler_service = _init_scheduler(executor_registry)
         _scheduler_service.start()
         set_scheduler_service(_scheduler_service)
     except SQLAlchemyError as exc:
@@ -182,7 +262,6 @@ async def root() -> JSONResponse:
     )
 
 
-app.include_router(projects.router, prefix="/api", tags=["Projects"])
 app.include_router(workflows_routes.router, prefix="/api", tags=["Workflows"])
 app.include_router(auth.router, prefix="/api", tags=["Authentication"])
 app.include_router(chat_workflows_routes.router, prefix="/api", tags=["Chat Workflows"])

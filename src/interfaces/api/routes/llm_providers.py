@@ -22,10 +22,10 @@ from sqlalchemy.orm import Session
 
 from src.domain.entities.llm_provider import LLMProvider
 from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.ports.llm_provider_repository import LLMProviderRepository
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.repositories.llm_provider_repository import (
-    SQLAlchemyLLMProviderRepository,
-)
+from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dto import (
     DisableLLMProviderRequest,
     EnableLLMProviderRequest,
@@ -40,10 +40,11 @@ router = APIRouter(prefix="/llm-providers", tags=["llm-providers"])
 
 
 def get_llm_provider_repository(
+    container: ApiContainer = Depends(get_container),
     session: Session = Depends(get_db_session),
-) -> SQLAlchemyLLMProviderRepository:
+) -> LLMProviderRepository:
     """获取 LLMProvider Repository - 依赖注入函数"""
-    return SQLAlchemyLLMProviderRepository(session)
+    return container.llm_provider_repository(session)
 
 
 def _mask_api_key(api_key: str | None) -> str | None:
@@ -88,7 +89,7 @@ def _provider_to_response(provider: LLMProvider) -> LLMProviderResponse:
 @router.post("", response_model=LLMProviderResponse, status_code=status.HTTP_201_CREATED)
 def register_llm_provider(
     request: RegisterLLMProviderRequest,
-    provider_repository: SQLAlchemyLLMProviderRepository = Depends(get_llm_provider_repository),
+    provider_repository: LLMProviderRepository = Depends(get_llm_provider_repository),
     session: Session = Depends(get_db_session),
 ) -> LLMProviderResponse:
     """注册 LLM 提供商
@@ -130,7 +131,7 @@ def register_llm_provider(
 @router.get("", response_model=LLMProviderListResponse)
 def list_llm_providers(
     enabled_only: bool = False,
-    provider_repository: SQLAlchemyLLMProviderRepository = Depends(get_llm_provider_repository),
+    provider_repository: LLMProviderRepository = Depends(get_llm_provider_repository),
 ) -> LLMProviderListResponse:
     """列出所有 LLM 提供商
 
@@ -159,7 +160,7 @@ def list_llm_providers(
 @router.get("/{provider_id}", response_model=LLMProviderResponse)
 def get_llm_provider(
     provider_id: str,
-    provider_repository: SQLAlchemyLLMProviderRepository = Depends(get_llm_provider_repository),
+    provider_repository: LLMProviderRepository = Depends(get_llm_provider_repository),
 ) -> LLMProviderResponse:
     """获取 LLM 提供商详情"""
     try:
@@ -176,7 +177,7 @@ def get_llm_provider(
 def update_llm_provider(
     provider_id: str,
     request: UpdateLLMProviderRequest,
-    provider_repository: SQLAlchemyLLMProviderRepository = Depends(get_llm_provider_repository),
+    provider_repository: LLMProviderRepository = Depends(get_llm_provider_repository),
     session: Session = Depends(get_db_session),
 ) -> LLMProviderResponse:
     """更新 LLM 提供商
@@ -219,7 +220,7 @@ def update_llm_provider(
 @router.delete("/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_llm_provider(
     provider_id: str,
-    provider_repository: SQLAlchemyLLMProviderRepository = Depends(get_llm_provider_repository),
+    provider_repository: LLMProviderRepository = Depends(get_llm_provider_repository),
     session: Session = Depends(get_db_session),
 ) -> None:
     """删除 LLM 提供商"""
@@ -243,7 +244,7 @@ def delete_llm_provider(
 def enable_llm_provider(
     provider_id: str,
     request: EnableLLMProviderRequest,
-    provider_repository: SQLAlchemyLLMProviderRepository = Depends(get_llm_provider_repository),
+    provider_repository: LLMProviderRepository = Depends(get_llm_provider_repository),
     session: Session = Depends(get_db_session),
 ) -> LLMProviderResponse:
     """启用 LLM 提供商"""
@@ -271,7 +272,7 @@ def enable_llm_provider(
 def disable_llm_provider(
     provider_id: str,
     request: DisableLLMProviderRequest,
-    provider_repository: SQLAlchemyLLMProviderRepository = Depends(get_llm_provider_repository),
+    provider_repository: LLMProviderRepository = Depends(get_llm_provider_repository),
     session: Session = Depends(get_db_session),
 ) -> LLMProviderResponse:
     """禁用 LLM 提供商"""

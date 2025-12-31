@@ -14,8 +14,19 @@
 """
 
 from src.domain.ports.agent_repository import AgentRepository
+from src.domain.ports.capability_definition_source import CapabilityDefinitionSource
+from src.domain.ports.execution_event_sink import ExecutionEventSink
+from src.domain.ports.idempotency_store import IdempotencyStore
 from src.domain.ports.run_repository import RunRepository
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.ports.workflow_repository import WorkflowRepository
 
-__all__ = ["AgentRepository", "RunRepository", "WorkflowRepository", "WorkflowChatLLM"]
+__all__ = [
+    "AgentRepository",
+    "CapabilityDefinitionSource",
+    "ExecutionEventSink",
+    "IdempotencyStore",
+    "RunRepository",
+    "WorkflowRepository",
+    "WorkflowChatLLM",
+]
