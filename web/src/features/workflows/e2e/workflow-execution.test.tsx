@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { waitFor } from '@testing-library/react';
 import {
   chatWorkflowStreaming,
+  chatCreateWorkflowStreaming,
   executeWorkflowStreaming,
 } from '../api/workflowsApi';
 
@@ -63,6 +64,33 @@ describe('workflow streaming SSE parsing', () => {
     } as any);
 
     chatWorkflowStreaming('wf_test_123', { message: 'hello' }, onEvent, onError);
+
+    await waitFor(() => {
+      expect(onError).not.toHaveBeenCalled();
+      expect(onEvent).toHaveBeenCalledTimes(2);
+      expect(onEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({ type: 'thinking' }));
+      expect(onEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({ type: 'final' }));
+    });
+  });
+
+  it('chatCreateWorkflowStreaming parses JSON events from `data:` chunks', async () => {
+    const onEvent = vi.fn();
+    const onError = vi.fn();
+
+    const body = createSseReadableStream(
+      [
+        'data: {"type":"thinking","content":"creating...","is_final":false,"metadata":{"workflow_id":"wf_created_123"}}\n\n',
+        'data: {"type":"final","content":"done","is_final":true,"metadata":{"workflow":{"id":"wf_created_123"}}}\n\n',
+      ],
+      0
+    );
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body,
+    } as any);
+
+    chatCreateWorkflowStreaming({ message: 'hello' }, onEvent, onError);
 
     await waitFor(() => {
       expect(onError).not.toHaveBeenCalled();

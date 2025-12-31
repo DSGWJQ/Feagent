@@ -23,6 +23,12 @@ export interface PlanningSseEvent {
   metadata?: Record<string, any>;
 }
 
+export interface ChatCreateRequest {
+  message: string;
+  project_id?: string;
+  run_id?: string;
+}
+
 /**
  * 列出所有工作流
  */
@@ -148,6 +154,85 @@ export function chatWorkflowStreaming(
         onError(error);
       } else {
         console.error('chat-stream error:', error);
+      }
+    });
+
+  return () => {
+    abortController.abort();
+  };
+}
+
+/**
+ * Chat-create（流式 SSE，创建后尽早返回 workflow_id）
+ *
+ * @returns 取消函数
+ */
+export function chatCreateWorkflowStreaming(
+  request: ChatCreateRequest,
+  onEvent: (event: PlanningSseEvent) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const abortController = new AbortController();
+
+  fetch(`${API_BASE_URL}/workflows/chat-create/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify(request),
+    signal: abortController.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('No response body');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary !== -1) {
+          const chunk = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf('\n\n');
+
+          if (!chunk.startsWith('data:')) {
+            continue;
+          }
+
+          const data = chunk.replace(/^data:\s*/, '').trim();
+          if (!data || data === '[DONE]') {
+            continue;
+          }
+
+          try {
+            onEvent(JSON.parse(data) as PlanningSseEvent);
+          } catch (error) {
+            console.warn('Failed to parse chat-create SSE event:', error);
+          }
+        }
+      }
+    })
+    .catch((error) => {
+      if (error?.name === 'AbortError') {
+        return;
+      }
+      if (onError) {
+        onError(error);
+      } else {
+        console.error('chat-create error:', error);
       }
     });
 
