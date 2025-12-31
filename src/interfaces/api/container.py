@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from src.application.services.workflow_execution_orchestrator import WorkflowExecutionOrchestrator
 from src.domain.ports.agent_repository import AgentRepository
 from src.domain.ports.chat_message_repository import ChatMessageRepository
 from src.domain.ports.llm_provider_repository import LLMProviderRepository
@@ -27,6 +28,7 @@ class ApiContainer:
     """Typed container attached to `app.state.container`."""
 
     executor_registry: NodeExecutorRegistry
+    workflow_execution_orchestrator: Callable[[Session], WorkflowExecutionOrchestrator]
 
     user_repository: Callable[[Session], UserRepository]
     agent_repository: Callable[[Session], AgentRepository]

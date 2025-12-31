@@ -14,10 +14,6 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
 from sqlalchemy.orm import Session
 
-from src.application.use_cases.execute_workflow import (
-    ExecuteWorkflowInput,
-    ExecuteWorkflowUseCase,
-)
 from src.application.use_cases.generate_workflow_from_form import (
     GenerateWorkflowFromFormUseCase,
     GenerateWorkflowInput,
@@ -37,7 +33,6 @@ from src.application.use_cases.update_workflow_by_drag import (
 from src.config import settings
 from src.domain.exceptions import DomainError, NotFoundError
 from src.domain.ports.chat_message_repository import ChatMessageRepository
-from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.ports.workflow_chat_service import WorkflowChatServicePort
 from src.domain.ports.workflow_repository import WorkflowRepository
@@ -80,14 +75,6 @@ def get_chat_message_repository(
     """Return a chat message repository bound to the current DB session."""
 
     return container.chat_message_repository(db)
-
-
-def get_executor_registry(
-    container: ApiContainer = Depends(get_container),
-) -> NodeExecutorRegistry:
-    """Resolve the singleton executor registry from the composition root."""
-
-    return container.executor_registry
 
 
 def get_workflow_chat_llm() -> WorkflowChatLLM:
@@ -347,23 +334,16 @@ async def execute_workflow(
     workflow_id: str,
     request: ExecuteWorkflowRequest,
     container: ApiContainer = Depends(get_container),
-    executor_registry: NodeExecutorRegistry = Depends(get_executor_registry),
     db: Session = Depends(get_db_session),
 ) -> ExecuteWorkflowResponse:
     """Execute a workflow synchronously."""
 
-    repository = container.workflow_repository(db)
-    use_case = ExecuteWorkflowUseCase(
-        workflow_repository=repository,
-        executor_registry=executor_registry,
-    )
-
     try:
-        input_data = ExecuteWorkflowInput(
+        orchestrator = container.workflow_execution_orchestrator(db)
+        result = await orchestrator.execute(
             workflow_id=workflow_id,
-            initial_input=request.initial_input,
+            input_data=request.initial_input,
         )
-        result = await use_case.execute(input_data)
         return ExecuteWorkflowResponse(
             execution_log=result["execution_log"],
             final_result=result["final_result"],
@@ -385,24 +365,17 @@ async def execute_workflow_streaming(
     workflow_id: str,
     request: ExecuteWorkflowRequest,
     container: ApiContainer = Depends(get_container),
-    executor_registry: NodeExecutorRegistry = Depends(get_executor_registry),
     db: Session = Depends(get_db_session),
 ) -> StreamingResponse:
     """Execute a workflow and stream progress via SSE."""
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        repository = container.workflow_repository(db)
-        use_case = ExecuteWorkflowUseCase(
-            workflow_repository=repository,
-            executor_registry=executor_registry,
-        )
-
         try:
-            input_data = ExecuteWorkflowInput(
+            orchestrator = container.workflow_execution_orchestrator(db)
+            async for event in orchestrator.execute_streaming(
                 workflow_id=workflow_id,
-                initial_input=request.initial_input,
-            )
-            async for event in use_case.execute_streaming(input_data):
+                input_data=request.initial_input,
+            ):
                 yield f"data: {json.dumps(event)}\n\n"
         except NotFoundError as exc:
             error_event = {

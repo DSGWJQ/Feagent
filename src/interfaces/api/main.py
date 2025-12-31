@@ -48,6 +48,12 @@ def _create_session():
 
 
 def _build_container(executor_registry: NodeExecutorRegistry) -> ApiContainer:
+    from src.application.services.workflow_execution_facade import WorkflowExecutionFacade
+    from src.application.services.workflow_execution_orchestrator import (
+        NoopWorkflowExecutionPolicy,
+        WorkflowExecutionOrchestrator,
+    )
+
     def user_repository(session: Session):
         from src.infrastructure.database.repositories.user_repository import (
             SQLAlchemyUserRepository,
@@ -75,6 +81,17 @@ def _build_container(executor_registry: NodeExecutorRegistry) -> ApiContainer:
         )
 
         return SQLAlchemyWorkflowRepository(session)
+
+    def workflow_execution_orchestrator(session: Session) -> WorkflowExecutionOrchestrator:
+        repo = workflow_repository(session)
+        facade = WorkflowExecutionFacade(
+            workflow_repository=repo,
+            executor_registry=executor_registry,
+        )
+        return WorkflowExecutionOrchestrator(
+            facade=facade,
+            policies=[NoopWorkflowExecutionPolicy()],
+        )
 
     def chat_message_repository(session: Session):
         from src.infrastructure.database.repositories.chat_message_repository import (
@@ -111,6 +128,7 @@ def _build_container(executor_registry: NodeExecutorRegistry) -> ApiContainer:
 
     return ApiContainer(
         executor_registry=executor_registry,
+        workflow_execution_orchestrator=workflow_execution_orchestrator,
         user_repository=user_repository,
         agent_repository=agent_repository,
         task_repository=task_repository,
