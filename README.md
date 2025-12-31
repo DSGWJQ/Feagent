@@ -109,6 +109,20 @@ pnpm dev
 - **增量修改（SSE）**：`POST /api/workflows/{workflow_id}/chat-stream`
 - **Legacy（Deprecated）**：`POST /api/workflows`（兼容期保留；响应会返回 deprecation 提示，优先迁移到 chat-create）
 
+## 灰度发布与回滚（Chat-Create）
+
+### 观测项与阈值（示例）
+
+- **错误率**：`/api/workflows/chat-create/stream` 5xx < 1%
+- **创建耗时**：P95 < 3s（以首个含 `metadata.workflow_id` 的 SSE 事件为准）
+- **兼容期流量**：日志事件 `legacy_create_workflow_called` 持续下降且无异常峰值
+
+### 回滚开关
+
+- **默认**：使用 chat-create（无需配置）
+- **前端回滚（发布级）**：设置 `VITE_WORKFLOW_CREATE_MODE=legacy` 后重新发布前端
+- **前端回滚（紧急/临时）**：访问根路由时追加 `?create=legacy`（仅影响该次访问）
+
 ## 项目结构
 
 ```
