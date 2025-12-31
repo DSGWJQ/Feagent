@@ -27,7 +27,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button, message, Empty, Spin, Modal, Alert, Drawer, Input, Collapse, Typography } from 'antd';
-import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined, UndoOutlined, RedoOutlined, WarningOutlined, FileTextOutlined, HistoryOutlined, ExperimentOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined, UndoOutlined, RedoOutlined, WarningOutlined, HistoryOutlined, ExperimentOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ResearchResultDisplay, type ResearchResult } from '@/components/ResearchResultDisplay';
 import { useRunReplay, type RunEvent } from '@/hooks/useRunReplay';
@@ -978,14 +978,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             onClick={handleRedo}
             disabled={!canRedo || isExecuting}
             title="重做 (Ctrl+Y)"
-          />
-
-          <Button
-            type="text"
-            icon={<FileTextOutlined />}
-            onClick={() => navigate('/project/rules')}
-            disabled={isExecuting}
-            title="项目规则"
           />
 
           <Divider type="vertical" style={{ borderColor: '#e5e7eb', height: '20px' }} />
