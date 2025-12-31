@@ -8,7 +8,7 @@ import logging
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
@@ -205,6 +205,7 @@ def get_update_workflow_by_chat_use_case_factory(
 @router.post("", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
 def create_workflow(
     request: CreateWorkflowRequest,
+    response: Response,
     db: Session = Depends(get_db_session),
     current_user=Depends(get_current_user_optional),
 ) -> WorkflowResponse:
@@ -215,15 +216,34 @@ def create_workflow(
     repository = SQLAlchemyWorkflowRepository(db)
 
     try:
-        nodes = [node_dto.to_entity() for node_dto in request.nodes]
-        edges = [edge_dto.to_entity() for edge_dto in request.edges]
+        response.headers["Deprecation"] = "true"
+        response.headers["Link"] = '</api/workflows/chat-create/stream>; rel="alternate"'
+        response.headers["Warning"] = '299 - "Deprecated: prefer /api/workflows/chat-create/stream"'
 
-        workflow = Workflow.create(
-            name=request.name,
-            description=request.description,
-            nodes=nodes,
-            edges=edges,
+        logger.info(
+            "legacy_create_workflow_called",
+            extra={"workflow_name": request.name},
         )
+
+        if not request.nodes:
+            if request.edges:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="edges must be empty when nodes is empty (deprecated endpoint)",
+                )
+            workflow = Workflow.create_base(
+                name=request.name,
+                description=request.description,
+            )
+        else:
+            nodes = [node_dto.to_entity() for node_dto in request.nodes]
+            edges = [edge_dto.to_entity() for edge_dto in request.edges]
+            workflow = Workflow.create(
+                name=request.name,
+                description=request.description,
+                nodes=nodes,
+                edges=edges,
+            )
         if current_user:
             workflow.user_id = current_user.id
 
