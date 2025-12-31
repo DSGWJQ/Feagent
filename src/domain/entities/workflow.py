@@ -123,6 +123,51 @@ class Workflow:
             updated_at=datetime.now(UTC),
         )
 
+    @classmethod
+    def create_base(
+        cls,
+        *,
+        description: str,
+        name: str = "新建工作流",
+        project_id: str | None = None,
+        source: str = "feagent",
+        source_id: str | None = None,
+    ) -> "Workflow":
+        """创建“基底 workflow”（用于 chat-create 等链路）。
+
+        设计目标：
+        - 满足聚合根不变式（至少一个节点）
+        - 默认形状最小且可扩展（KISS）
+        - 统一默认数据结构，避免散落硬编码（DRY）
+        """
+
+        start_node = Node.create(
+            type=NodeType.START,
+            name="开始",
+            config={},
+            position=Position(x=100, y=100),
+        )
+        end_node = Node.create(
+            type=NodeType.END,
+            name="结束",
+            config={},
+            position=Position(x=350, y=100),
+        )
+        edge = Edge.create(
+            source_node_id=start_node.id,
+            target_node_id=end_node.id,
+        )
+
+        return cls.create(
+            name=name,
+            description=description,
+            nodes=[start_node, end_node],
+            edges=[edge],
+            source=source,
+            source_id=source_id,
+            project_id=project_id,
+        )
+
     def add_node(self, node: Node) -> None:
         """添加节点
 

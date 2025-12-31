@@ -61,6 +61,19 @@ class TestWorkflowCreation:
         assert workflow.created_at is not None
         assert workflow.updated_at is not None
 
+    def test_create_base_workflow_should_include_start_end_and_edge(self):
+        """测试：创建基底 workflow 应包含 start->end 的最小形状"""
+        workflow = Workflow.create_base(description="hello", project_id="proj_1")
+
+        assert workflow.project_id == "proj_1"
+        assert len(workflow.nodes) >= 2
+        start_node = next(node for node in workflow.nodes if node.type == NodeType.START)
+        end_node = next(node for node in workflow.nodes if node.type == NodeType.END)
+        assert any(
+            edge.source_node_id == start_node.id and edge.target_node_id == end_node.id
+            for edge in workflow.edges
+        )
+
     def test_create_workflow_with_empty_name_should_raise_error(self):
         """测试：使用空名称创建 Workflow 应该抛出错误"""
         # Arrange

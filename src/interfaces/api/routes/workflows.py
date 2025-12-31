@@ -410,27 +410,15 @@ async def chat_create_stream(
     - Uses SSEEmitterHandler so the payload is `data: <json>\\n\\n` (fetch-friendly).
     """
 
-    from src.domain.entities.node import Node
     from src.domain.entities.workflow import Workflow
     from src.domain.services.conversation_flow_emitter import ConversationFlowEmitter
-    from src.domain.value_objects.node_type import NodeType
-    from src.domain.value_objects.position import Position
     from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler
 
     repository = SQLAlchemyWorkflowRepository(db)
 
     try:
-        start_node = Node.create(
-            type=NodeType.START,
-            name="开始",
-            config={},
-            position=Position(x=100, y=100),
-        )
-        workflow = Workflow.create(
-            name="新建工作流",
+        workflow = Workflow.create_base(
             description=request.message,
-            nodes=[start_node],
-            edges=[],
             project_id=request.project_id,
         )
         if current_user:

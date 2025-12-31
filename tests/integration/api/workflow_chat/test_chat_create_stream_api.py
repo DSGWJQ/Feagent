@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.domain.exceptions import DomainError
+from src.domain.value_objects.node_type import NodeType
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.repositories.workflow_repository import (
@@ -135,6 +136,13 @@ class TestChatCreateStreamAPI:
             workflow = repo.get_by_id(workflow_id)
             assert workflow is not None
             assert workflow.project_id == "proj_1"
+            assert len(workflow.nodes) >= 2
+            start_node = next(node for node in workflow.nodes if node.type == NodeType.START)
+            end_node = next(node for node in workflow.nodes if node.type == NodeType.END)
+            assert any(
+                edge.source_node_id == start_node.id and edge.target_node_id == end_node.id
+                for edge in workflow.edges
+            )
         finally:
             db.close()
 
