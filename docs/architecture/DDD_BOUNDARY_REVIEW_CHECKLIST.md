@@ -615,6 +615,9 @@ async def execute(workflow_id: str):
 
 **快速检查命令**:
 ```bash
+# 一键执行（建议优先用脚本，输出包含 file:line）
+python scripts/ddd_boundary_checks.py
+
 # Interface 越界检查
 rg -n "from src\.domain\.agents" src/interfaces/
 
@@ -674,6 +677,10 @@ type = "forbidden"
 source_modules = ["src.domain"]
 forbidden_modules = ["src.infrastructure", "src.interfaces"]
 ```
+
+**CI 门禁**:
+- `lint-imports`
+- `python scripts/ddd_boundary_checks.py`
 
 运行检查：
 ```bash

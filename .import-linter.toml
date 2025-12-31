@@ -1,0 +1,20 @@
+[importlinter]
+root_package = "src"
+
+[[importlinter.contracts]]
+name = "Interface 不能依赖 Domain Agents"
+type = "forbidden"
+source_modules = ["src.interfaces"]
+forbidden_modules = ["src.domain.agents"]
+
+[[importlinter.contracts]]
+name = "Application 不能依赖 Interface"
+type = "forbidden"
+source_modules = ["src.application"]
+forbidden_modules = ["src.interfaces"]
+
+[[importlinter.contracts]]
+name = "Domain 不能依赖 Interface"
+type = "forbidden"
+source_modules = ["src.domain"]
+forbidden_modules = ["src.interfaces"]

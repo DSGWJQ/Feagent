@@ -50,6 +50,16 @@ jobs:
           source .venv/bin/activate
           pyright src
 
+      - name: Run Import Linter (DDD Boundaries)
+        run: |
+          source .venv/bin/activate
+          lint-imports
+
+      - name: Run DDD Boundary Checks (Fast)
+        run: |
+          source .venv/bin/activate
+          python scripts/ddd_boundary_checks.py
+
       - name: Run Pytest (Unit Tests)
         run: |
           source .venv/bin/activate
