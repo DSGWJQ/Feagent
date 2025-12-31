@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.application.services.async_run_event_recorder import AsyncRunEventRecorder
+from src.application.services.coordinator_agent_factory import create_coordinator_agent
 from src.config import settings
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.services.event_bus import EventBus
@@ -25,6 +26,7 @@ from src.interfaces.api.dependencies.scheduler import (
 )
 from src.interfaces.api.routes import (
     auth,
+    conversation_stream,
     coordinator_status,
     health,
     knowledge,
@@ -47,12 +49,18 @@ def _create_session():
     return SessionLocal()
 
 
-def _build_container(executor_registry: NodeExecutorRegistry) -> ApiContainer:
+def _build_container(executor_registry: NodeExecutorRegistry, event_bus: EventBus) -> ApiContainer:
+    from src.application.services.conversation_agent_factory import create_conversation_agent
+    from src.application.services.conversation_turn_orchestrator import (
+        ConversationTurnOrchestrator,
+        NoopConversationTurnPolicy,
+    )
     from src.application.services.workflow_execution_facade import WorkflowExecutionFacade
     from src.application.services.workflow_execution_orchestrator import (
         NoopWorkflowExecutionPolicy,
         WorkflowExecutionOrchestrator,
     )
+    from src.infrastructure.adapters.model_metadata_adapter import create_model_metadata_adapter
 
     def user_repository(session: Session):
         from src.infrastructure.database.repositories.user_repository import (
@@ -93,6 +101,17 @@ def _build_container(executor_registry: NodeExecutorRegistry) -> ApiContainer:
             policies=[NoopWorkflowExecutionPolicy()],
         )
 
+    conversation_agent = create_conversation_agent(
+        event_bus=event_bus,
+        model_metadata_port=create_model_metadata_adapter(),
+    )
+
+    def conversation_turn_orchestrator() -> ConversationTurnOrchestrator:
+        return ConversationTurnOrchestrator(
+            conversation_agent=conversation_agent,
+            policies=[NoopConversationTurnPolicy()],
+        )
+
     def chat_message_repository(session: Session):
         from src.infrastructure.database.repositories.chat_message_repository import (
             SQLAlchemyChatMessageRepository,
@@ -129,6 +148,7 @@ def _build_container(executor_registry: NodeExecutorRegistry) -> ApiContainer:
     return ApiContainer(
         executor_registry=executor_registry,
         workflow_execution_orchestrator=workflow_execution_orchestrator,
+        conversation_turn_orchestrator=conversation_turn_orchestrator,
         user_repository=user_repository,
         agent_repository=agent_repository,
         task_repository=task_repository,
@@ -190,7 +210,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 向后兼容：供非 Request 上下文的调用路径复用同一实例
     set_event_bus(event_bus)
     # 初始化 Coordinator（使用同一 EventBus）
-    app.state.coordinator = coordinator_status.init_coordinator(event_bus)
+    app.state.coordinator = create_coordinator_agent(event_bus=event_bus)
     print("[EVENTBUS] 统一事件总线已初始化")
 
     try:
@@ -202,7 +222,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         openai_api_key=settings.openai_api_key or None,
         anthropic_api_key=getattr(settings, "anthropic_api_key", None),
     )
-    app.state.container = _build_container(executor_registry)
+    app.state.container = _build_container(executor_registry, event_bus)
 
     try:
         _scheduler_service = _init_scheduler(executor_registry)
@@ -290,6 +310,7 @@ app.include_router(llm_providers.router, prefix="/api", tags=["LLM Providers"])
 app.include_router(scheduled_workflows.router, prefix="/api", tags=["Scheduled Workflows"])
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(coordinator_status.router, prefix="/api/coordinator", tags=["Coordinator"])
+app.include_router(conversation_stream.router, prefix="/api")
 app.include_router(memory_metrics.router, tags=["Memory"])
 app.include_router(knowledge.router, tags=["Knowledge"])
 app.include_router(runs.router, prefix="/api", tags=["Runs"])

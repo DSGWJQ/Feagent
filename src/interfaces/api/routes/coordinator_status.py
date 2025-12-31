@@ -15,11 +15,9 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
-from src.domain.agents.coordinator_agent import CoordinatorAgent
-from src.domain.services.event_bus import EventBus
 from src.interfaces.api.dto.coordinator_dto import (
     CompressedContextResponse,
     ContextHistoryResponse,
@@ -31,43 +29,15 @@ from src.interfaces.api.dto.coordinator_dto import (
 
 router = APIRouter(tags=["coordinator"])
 
-# 全局协调者实例（应用启动时初始化）
-_coordinator: CoordinatorAgent | None = None
-_event_bus: EventBus | None = None
 
-
-def init_coordinator(event_bus: EventBus) -> CoordinatorAgent:
-    """初始化全局协调者
-
-    参数：
-        event_bus: 事件总线
-
-    返回：
-        协调者实例
-    """
-    global _coordinator, _event_bus
-    _event_bus = event_bus
-    _coordinator = CoordinatorAgent(event_bus=event_bus)
-    _coordinator.start_monitoring()
-    return _coordinator
-
-
-def get_coordinator() -> CoordinatorAgent:
-    """获取协调者实例
-
-    返回：
-        协调者实例
-
-    异常：
-        HTTPException: 如果协调者未初始化
-    """
-    global _coordinator
-    if _coordinator is None:
-        # 如果未初始化，创建一个默认的
-        event_bus = EventBus()
-        _coordinator = CoordinatorAgent(event_bus=event_bus)
-        _coordinator.start_monitoring()
-    return _coordinator
+def _get_coordinator(request: Request) -> Any:
+    coordinator = getattr(request.app.state, "coordinator", None)
+    if coordinator is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Coordinator is not initialized (lifespan not executed).",
+        )
+    return coordinator
 
 
 def format_sse_event(data: dict[str, Any], event_type: str | None = None) -> str:
@@ -97,7 +67,7 @@ def format_sse_done() -> str:
 
 
 @router.get("/status", response_model=SystemStatusResponse)
-async def get_system_status() -> SystemStatusResponse:
+async def get_system_status(request: Request) -> SystemStatusResponse:
     """获取系统状态摘要
 
     返回协调者维护的系统状态，包括：
@@ -105,7 +75,7 @@ async def get_system_status() -> SystemStatusResponse:
     - 活跃节点数
     - 决策统计
     """
-    coordinator = get_coordinator()
+    coordinator = _get_coordinator(request)
     status_data = coordinator.get_system_status()
 
     return SystemStatusResponse(
@@ -119,12 +89,12 @@ async def get_system_status() -> SystemStatusResponse:
 
 
 @router.get("/workflows", response_model=WorkflowListResponse)
-async def get_all_workflows() -> WorkflowListResponse:
+async def get_all_workflows(request: Request) -> WorkflowListResponse:
     """获取所有工作流状态
 
     返回所有正在监控的工作流的状态列表。
     """
-    coordinator = get_coordinator()
+    coordinator = _get_coordinator(request)
     all_states = coordinator.get_all_workflow_states()
 
     workflows = []
@@ -150,7 +120,7 @@ async def get_all_workflows() -> WorkflowListResponse:
 
 
 @router.get("/workflows/{workflow_id}", response_model=WorkflowStateResponse)
-async def get_workflow_state(workflow_id: str) -> WorkflowStateResponse:
+async def get_workflow_state(request: Request, workflow_id: str) -> WorkflowStateResponse:
     """获取单个工作流状态
 
     参数：
@@ -162,7 +132,7 @@ async def get_workflow_state(workflow_id: str) -> WorkflowStateResponse:
     异常：
         404: 工作流不存在
     """
-    coordinator = get_coordinator()
+    coordinator = _get_coordinator(request)
     state = coordinator.get_workflow_state(workflow_id)
 
     if state is None:
@@ -189,6 +159,7 @@ async def get_workflow_state(workflow_id: str) -> WorkflowStateResponse:
 
 @router.get("/workflows/{workflow_id}/stream")
 async def stream_workflow_status(
+    request: Request,
     workflow_id: str,
     poll_interval: float = Query(default=1.0, ge=0.1, le=10.0, description="轮询间隔（秒）"),
     timeout: float = Query(default=300.0, ge=1.0, le=3600.0, description="超时时间（秒）"),
@@ -213,8 +184,9 @@ async def stream_workflow_status(
         - workflow_completed: 工作流完成
     """
 
+    coordinator = _get_coordinator(request)
+
     async def event_generator() -> AsyncGenerator[str, None]:
-        coordinator = get_coordinator()
         start_time = datetime.now()
         last_state: dict[str, Any] | None = None
 
@@ -341,7 +313,7 @@ async def stream_workflow_status(
 
 
 @router.get("/workflows/{workflow_id}/context", response_model=CompressedContextResponse)
-async def get_compressed_context(workflow_id: str) -> CompressedContextResponse:
+async def get_compressed_context(request: Request, workflow_id: str) -> CompressedContextResponse:
     """获取工作流的压缩上下文
 
     返回八段压缩结构的上下文数据。
@@ -355,7 +327,7 @@ async def get_compressed_context(workflow_id: str) -> CompressedContextResponse:
     异常：
         404: 上下文不存在或压缩未启用
     """
-    coordinator = get_coordinator()
+    coordinator = _get_coordinator(request)
     context = coordinator.get_compressed_context(workflow_id)
 
     if context is None:
@@ -385,7 +357,7 @@ async def get_compressed_context(workflow_id: str) -> CompressedContextResponse:
 
 
 @router.get("/workflows/{workflow_id}/context/history", response_model=ContextHistoryResponse)
-async def get_context_history(workflow_id: str) -> ContextHistoryResponse:
+async def get_context_history(request: Request, workflow_id: str) -> ContextHistoryResponse:
     """获取工作流的上下文历史
 
     返回工作流的所有上下文快照列表。
@@ -396,7 +368,7 @@ async def get_context_history(workflow_id: str) -> ContextHistoryResponse:
     返回：
         上下文历史响应
     """
-    coordinator = get_coordinator()
+    coordinator = _get_coordinator(request)
 
     if not coordinator.snapshot_manager:
         raise HTTPException(
@@ -427,6 +399,7 @@ async def get_context_history(workflow_id: str) -> ContextHistoryResponse:
 
 @router.get("/workflows/{workflow_id}/context/stream")
 async def stream_context_updates(
+    request: Request,
     workflow_id: str,
     poll_interval: float = Query(default=1.0, ge=0.1, le=10.0, description="轮询间隔（秒）"),
     timeout: float = Query(default=60.0, ge=1.0, le=300.0, description="超时时间（秒）"),
@@ -448,8 +421,9 @@ async def stream_context_updates(
         - initial_context: 初始上下文
     """
 
+    coordinator = _get_coordinator(request)
+
     async def event_generator() -> AsyncGenerator[str, None]:
-        coordinator = get_coordinator()
         start_time = datetime.now()
         last_version: int | None = None
 
@@ -549,8 +523,6 @@ async def stream_context_updates(
 # 导出
 __all__ = [
     "router",
-    "init_coordinator",
-    "get_coordinator",
     "format_sse_event",
     "format_sse_done",
 ]

@@ -59,6 +59,7 @@ def test_execute_endpoint_goes_through_orchestrator_and_policy_chain() -> None:
     app.state.container = ApiContainer(
         executor_registry=NodeExecutorRegistry(),
         workflow_execution_orchestrator=orchestrator_factory,
+        conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
         user_repository=_fake_repo,
         agent_repository=_fake_repo,
         task_repository=_fake_repo,

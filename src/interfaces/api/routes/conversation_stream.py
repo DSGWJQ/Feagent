@@ -23,8 +23,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.domain.agents.conversation_agent import ConversationAgent
-from src.interfaces.api.dependencies.agents import get_conversation_agent
+from src.application.services.conversation_turn_orchestrator import ConversationTurnOrchestrator
+from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.services.sse_emitter_handler import (
     get_session_manager,
 )
@@ -56,7 +57,7 @@ class SessionStatusResponse(BaseModel):
 async def stream_conversation(
     request: Request,
     body: ConversationStreamRequest,
-    conversation_agent: ConversationAgent = Depends(get_conversation_agent),
+    container: ApiContainer = Depends(get_container),
 ) -> StreamingResponse:
     """流式对话端点
 
@@ -95,28 +96,13 @@ async def stream_conversation(
         timeout=30.0,  # 30 秒超时
     )
 
-    async def run_conversation():
-        """运行对话逻辑（使用真实的ConversationAgent）"""
-        try:
-            # 发送开始事件
-            await emitter.emit_thinking(f"收到消息：{body.message[:50]}...")
-
-            # 使用真实的 ConversationAgent 处理消息
-            # 注意：ConversationAgent需要进一步集成emitter来实时发送事件
-            # 当前简化实现：直接调用agent并在完成后发送最终结果
-            result = await conversation_agent.run_async(body.message)
-
-            # 发送最终响应
-            await emitter.emit_final_response(result.get("response", "处理完成"))
-            await emitter.complete()
-
-        except Exception as e:
-            logger.error(f"Conversation error: {e}")
-            await emitter.emit_error(str(e), error_code="CONVERSATION_ERROR")
-            await emitter.complete()
-
-    # 启动对话任务
-    asyncio.create_task(run_conversation())
+    orchestrator: ConversationTurnOrchestrator = container.conversation_turn_orchestrator()
+    await orchestrator.start_streaming_turn(
+        session_id=session_id,
+        message=body.message,
+        context=body.context,
+        emitter=emitter,
+    )
 
     # 返回 SSE 响应
     return handler.create_response(

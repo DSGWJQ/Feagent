@@ -34,13 +34,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from src.domain.agents.agent_channel import (
+from src.application.services.conversation_turn_orchestrator import ConversationTurnOrchestrator
+from src.application.services.domain_agent_channel_facade import (
     AgentChannelBridge,
     AgentMessage,
     AgentMessageHandler,
     AgentWebSocketChannel,
 )
-from src.interfaces.api.dependencies.agents import get_conversation_agent
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,6 @@ router = APIRouter(tags=["agent-websocket"])
 # 全局 Agent 通信信道
 _agent_channel: AgentWebSocketChannel | None = None
 _agent_bridge: AgentChannelBridge | None = None
-_message_handler: AgentMessageHandler | None = None
 
 
 def get_agent_channel() -> AgentWebSocketChannel:
@@ -68,34 +67,31 @@ def get_agent_bridge() -> AgentChannelBridge:
     return _agent_bridge
 
 
-def get_message_handler() -> AgentMessageHandler:
-    """获取消息处理器单例"""
-    global _message_handler
-    if _message_handler is None:
-        _message_handler = AgentMessageHandler(channel=get_agent_channel())
-        _setup_message_handlers(_message_handler)
-    return _message_handler
-
-
-def _setup_message_handlers(handler: AgentMessageHandler) -> None:
+def _setup_message_handlers(
+    handler: AgentMessageHandler,
+    *,
+    orchestrator: ConversationTurnOrchestrator,
+) -> None:
     """设置消息处理器回调（集成真实Agent）"""
 
     async def on_task_request(session_id: str, payload: dict) -> dict:
-        """处理任务请求（使用真实ConversationAgent）"""
+        """处理任务请求（通过 Application Orchestrator）"""
         query = payload.get("query", "")
         logger.info(f"Task request received: session={session_id}, query={query}")
 
-        # 获取真实的 ConversationAgent
-        conversation_agent = get_conversation_agent()
         bridge = get_agent_bridge()
 
         try:
-            # 使用真实的 ConversationAgent 分析任务
-            result = await conversation_agent.run_async(query)
+            result = await orchestrator.run_turn(session_id=session_id, message=query)
+            final_response = getattr(result, "final_response", None) or getattr(
+                result, "response", None
+            )
+            if final_response is None:
+                final_response = f"任务：{query}"
 
             # 生成计划摘要（从agent结果中提取）
-            plan_summary = result.get("response", f"任务：{query}")
-            estimated_steps = result.get("estimated_steps", 3)
+            plan_summary = str(final_response)
+            estimated_steps = 3
 
             # 通知客户端计划
             await bridge.notify_plan_proposed(
@@ -201,7 +197,9 @@ async def agent_websocket_endpoint(
         }
     """
     channel = get_agent_channel()
-    handler = get_message_handler()
+    orchestrator = _get_orchestrator(websocket)
+    handler = AgentMessageHandler(channel=channel)
+    _setup_message_handlers(handler, orchestrator=orchestrator)
 
     # 接受连接
     await websocket.accept()
@@ -271,6 +269,13 @@ async def _send_error(websocket: WebSocket, message: str) -> None:
         )
     except Exception as e:
         logger.warning(f"发送错误消息失败: {e}")
+
+
+def _get_orchestrator(websocket: WebSocket) -> ConversationTurnOrchestrator:
+    container = getattr(getattr(websocket.app, "state", None), "container", None)
+    if container is None:
+        raise RuntimeError("API container is not initialized (lifespan not executed).")
+    return container.conversation_turn_orchestrator()
 
 
 # 导出辅助函数供其他模块使用

@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from src.application.services.conversation_turn_orchestrator import ConversationTurnOrchestrator
 from src.application.services.workflow_execution_orchestrator import WorkflowExecutionOrchestrator
 from src.domain.ports.agent_repository import AgentRepository
 from src.domain.ports.chat_message_repository import ChatMessageRepository
@@ -29,6 +30,7 @@ class ApiContainer:
 
     executor_registry: NodeExecutorRegistry
     workflow_execution_orchestrator: Callable[[Session], WorkflowExecutionOrchestrator]
+    conversation_turn_orchestrator: Callable[[], ConversationTurnOrchestrator]
 
     user_repository: Callable[[Session], UserRepository]
     agent_repository: Callable[[Session], AgentRepository]
