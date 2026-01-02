@@ -21,6 +21,7 @@
 import asyncio
 import logging
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
@@ -43,6 +44,7 @@ from src.domain.services.expression_evaluator import (
 )
 from src.domain.services.node_hierarchy_service import NodeHierarchyService
 from src.domain.services.node_registry import Node, NodeFactory, NodeType
+from src.domain.services.workflow_engine import topological_sort_ids
 
 logger = logging.getLogger(__name__)
 
@@ -374,7 +376,8 @@ class WorkflowAgent:
         self._total_nodes: int = 0  # 总节点数（用于计算进度）
 
         # Phase 8.2: NodeDefinition 节点存储
-        self._node_definitions: dict[str, NodeDefinition] = {}
+        self._node_definitions: dict[str, Any] = {}
+        self._current_plan: Any | None = None
 
     def get_container_executor(self) -> Any:
         """获取容器执行器（懒加载）
@@ -608,9 +611,14 @@ class WorkflowAgent:
                     config=config,
                     inputs=inputs,
                 )
-                result = (
-                    result_obj.to_dict() if hasattr(result_obj, "to_dict") else dict(result_obj)
-                )
+                raw_result = result_obj.to_dict() if hasattr(result_obj, "to_dict") else result_obj
+                if isinstance(raw_result, Mapping):
+                    result = {str(k): v for k, v in raw_result.items()}
+                else:
+                    result = {
+                        "success": False,
+                        "error": f"Unexpected container result type: {type(raw_result).__name__}",
+                    }
 
         except Exception as e:
             result = {"success": False, "error": str(e), "exit_code": -1}
@@ -709,13 +717,17 @@ class WorkflowAgent:
         collapsed = decision.get("collapsed")  # None 表示使用默认值
         children_defs = decision.get("children", [])
 
+        if not self.node_factory:
+            raise ValueError("node_factory is required to create nodes")
+        node_factory = self.node_factory
+
         # 检查是否是自定义节点类型
         if node_type_str.lower() in self._custom_node_types:
             custom_type = self._custom_node_types[node_type_str.lower()]
             # 验证配置
             self._validate_custom_node_config(custom_type, config)
             # 创建节点，使用 GENERIC 类型但保存原始类型名
-            node = self.node_factory.create(NodeType.GENERIC, config)
+            node = node_factory.create(NodeType.GENERIC, config)
             node.config["_custom_type"] = node_type_str.lower()
         else:
             # 转换预定义节点类型
@@ -725,7 +737,7 @@ class WorkflowAgent:
                 node_type = NodeType.GENERIC
 
             # 使用工厂创建节点
-            node = self.node_factory.create(node_type, config)
+            node = node_factory.create(node_type, config)
 
         # 设置父节点ID
         if parent_id:
@@ -789,7 +801,11 @@ class WorkflowAgent:
             self._node_definitions[node_or_id.id] = node_or_id
             # 如果有 node_factory，也创建 Node 实例
             if self.node_factory:
-                node = self.node_factory.create(node_or_id.node_type, node_or_id.config)
+                try:
+                    node_type_enum = NodeType(node_or_id.node_type.value)
+                except ValueError:
+                    node_type_enum = NodeType.GENERIC
+                node = self.node_factory.create(node_type_enum, node_or_id.config)
                 node.id = node_or_id.id
                 self._nodes[node.id] = node
                 self.hierarchy_service.register_node(node)
@@ -1011,7 +1027,8 @@ class WorkflowAgent:
             result = {"status": "success", "executed": True}
 
         # 存储节点输出到上下文
-        self.workflow_context.set_node_output(node_id, result)
+        if self.workflow_context:
+            self.workflow_context.set_node_output(node_id, result)
 
         # 发布节点执行完成事件
         if self.event_bus:
@@ -1108,7 +1125,8 @@ class WorkflowAgent:
 
                 # 成功
                 execution_time_ms = (time.time() - start_time) * 1000
-                self.workflow_context.set_node_output(node_id, output)
+                if self.workflow_context:
+                    self.workflow_context.set_node_output(node_id, output)
 
                 return ExecutionResult.ok(
                     output=output,
@@ -1243,7 +1261,9 @@ class WorkflowAgent:
             await self.event_bus.publish(
                 WorkflowExecutionStartedEvent(
                     source="workflow_agent",
-                    workflow_id=self.workflow_context.workflow_id,
+                    workflow_id=self.workflow_context.workflow_id
+                    if self.workflow_context
+                    else "unknown",
                     node_count=len(self._nodes),
                 )
             )
@@ -1268,7 +1288,11 @@ class WorkflowAgent:
                 await self.event_bus.publish(
                     WorkflowExecutionCompletedEvent(
                         source="workflow_agent",
-                        workflow_id=self.workflow_context.workflow_id,
+                        workflow_id=(
+                            self.workflow_context.workflow_id
+                            if self.workflow_context
+                            else "unknown"
+                        ),
                         status="completed",
                         result=results,
                     )
@@ -1306,7 +1330,9 @@ class WorkflowAgent:
             await self.event_bus.publish(
                 WorkflowExecutionStartedEvent(
                     source="workflow_agent",
-                    workflow_id=self.workflow_context.workflow_id,
+                    workflow_id=self.workflow_context.workflow_id
+                    if self.workflow_context
+                    else "unknown",
                     node_count=len(self._nodes),
                 )
             )
@@ -1358,7 +1384,11 @@ class WorkflowAgent:
                 await self.event_bus.publish(
                     WorkflowExecutionCompletedEvent(
                         source="workflow_agent",
-                        workflow_id=self.workflow_context.workflow_id,
+                        workflow_id=(
+                            self.workflow_context.workflow_id
+                            if self.workflow_context
+                            else "unknown"
+                        ),
                         status="completed",
                         result=results,
                     )
@@ -2226,33 +2256,10 @@ class WorkflowAgent:
         返回：
             按拓扑顺序排列的节点ID列表
         """
-        # 构建邻接表和入度表
-        in_degree = dict.fromkeys(self._nodes, 0)
-        adjacency = {node_id: [] for node_id in self._nodes}
-
-        for edge in self._edges:
-            if edge.source_id in adjacency and edge.target_id in in_degree:
-                adjacency[edge.source_id].append(edge.target_id)
-                in_degree[edge.target_id] += 1
-
-        # Kahn算法
-        queue = [node_id for node_id, degree in in_degree.items() if degree == 0]
-        result = []
-
-        while queue:
-            node_id = queue.pop(0)
-            result.append(node_id)
-
-            for neighbor in adjacency[node_id]:
-                in_degree[neighbor] -= 1
-                if in_degree[neighbor] == 0:
-                    queue.append(neighbor)
-
-        # 如果结果数量不等于节点数，说明有环
-        if len(result) != len(self._nodes):
-            raise ValueError("Workflow contains a cycle")
-
-        return result
+        return topological_sort_ids(
+            node_ids=self._nodes.keys(),
+            edges=((edge.source_id, edge.target_id) for edge in self._edges),
+        )
 
     async def handle_decision(self, decision: dict[str, Any]) -> dict[str, Any]:
         """处理决策
@@ -2982,6 +2989,8 @@ class WorkflowAgent:
                 config[key] = value
 
         # 使用工厂创建节点
+        if not self.node_factory:
+            raise ValueError("node_factory is required to create nodes from definitions")
         node = self.node_factory.create(node_type, config)
 
         # 设置父节点ID
@@ -3123,7 +3132,8 @@ class WorkflowAgent:
                 children_results[nid] = result
 
             # 存储到上下文
-            self.workflow_context.set_node_output(nid, result)
+            if self.workflow_context:
+                self.workflow_context.set_node_output(nid, result)
 
             # 发布节点执行事件
             if self.event_bus:

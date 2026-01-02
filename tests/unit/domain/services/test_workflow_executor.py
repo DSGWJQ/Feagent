@@ -10,15 +10,23 @@ Domain 层服务：负责执行工作流
 注意：execute 方法是异步的，需要使用 pytest-asyncio
 """
 
+from typing import Any
+
 import pytest
 
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError
+from src.domain.ports.node_executor import NodeExecutor, NodeExecutorRegistry
 from src.domain.services.workflow_executor import WorkflowExecutor
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
+
+
+class _EchoExecutor(NodeExecutor):
+    async def execute(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
+        return {"node_id": node.id, "node_type": node.type.value, "inputs": inputs}
 
 
 class TestWorkflowExecutor:
@@ -66,13 +74,16 @@ class TestWorkflowExecutor:
             edges=[edge1, edge2],
         )
 
-        executor = WorkflowExecutor()
+        registry = NodeExecutorRegistry()
+        registry.register(NodeType.HTTP.value, _EchoExecutor())
+        executor = WorkflowExecutor(executor_registry=registry)
 
         # Act
         result = await executor.execute(workflow, initial_input="test")
 
         # Assert
         assert result is not None
+        assert result["node_type"] == NodeType.HTTP.value
         # 验证执行顺序：Start → HTTP → End
         assert len(executor.execution_log) == 3
         assert executor.execution_log[0]["node_id"] == node1.id
@@ -144,7 +155,10 @@ class TestWorkflowExecutor:
             edges=[edge1, edge2, edge3, edge4, edge5],
         )
 
-        executor = WorkflowExecutor()
+        registry = NodeExecutorRegistry()
+        registry.register(NodeType.CONDITIONAL.value, _EchoExecutor())
+        registry.register(NodeType.TRANSFORM.value, _EchoExecutor())
+        executor = WorkflowExecutor(executor_registry=registry)
 
         # Act
         result = await executor.execute(workflow, initial_input="test")

@@ -21,9 +21,17 @@ def _iter_python_files(root: Path) -> Iterable[Path]:
         yield path
 
 
-def _scan_tree(*, rule: str, root: Path, patterns: list[re.Pattern[str]]) -> list[Violation]:
+def _scan_tree(
+    *,
+    rule: str,
+    root: Path,
+    patterns: list[re.Pattern[str]],
+    allowed_files: set[Path] | None = None,
+) -> list[Violation]:
     violations: list[Violation] = []
     for file in _iter_python_files(root):
+        if allowed_files and file in allowed_files:
+            continue
         try:
             lines = file.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
@@ -44,33 +52,81 @@ def _scan_tree(*, rule: str, root: Path, patterns: list[re.Pattern[str]]) -> lis
     return violations
 
 
+def _resolve_allowlist(*, repo_root: Path, relative_paths: Iterable[str]) -> set[Path]:
+    allowed_files: set[Path] = set()
+    for relative_path in relative_paths:
+        file = repo_root / relative_path
+        if not file.exists():
+            raise RuntimeError(f"Allowlist file does not exist: {relative_path}")
+        allowed_files.add(file)
+    return allowed_files
+
+
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
 
-    checks: list[tuple[str, Path, list[str]]] = [
+    domain_yaml_pathlib_allowlist = _resolve_allowlist(
+        repo_root=repo_root,
+        relative_paths=[
+            "src/domain/agents/node_definition.py",
+            "src/domain/services/configurable_rule_engine.py",
+            "src/domain/services/logging_metrics.py",
+            "src/domain/services/node_code_generator.py",
+            "src/domain/services/node_yaml_validator.py",
+            "src/domain/services/parent_node_schema.py",
+            "src/domain/services/prompt_template_system.py",
+            "src/domain/services/rule_engine.py",
+            "src/domain/services/sandbox_executor.py",
+            "src/domain/services/scenario_prompt_system.py",
+            "src/domain/services/self_describing_node.py",
+            "src/domain/services/safety_guard/core.py",
+            "src/domain/services/tool_config_loader.py",
+            "src/domain/services/tool_engine.py",
+            "src/domain/services/unified_definition.py",
+            "src/domain/services/workflow_dependency_graph.py",
+        ],
+    )
+
+    checks: list[tuple[str, Path, list[str], set[Path] | None]] = [
         (
             "interfaces_no_domain_agents",
             repo_root / "src" / "interfaces",
             [r"\bfrom\s+src\.domain\.agents\b", r"\bimport\s+src\.domain\.agents\b"],
+            None,
         ),
         (
             "application_no_interfaces",
             repo_root / "src" / "application",
             [r"\bfrom\s+src\.interfaces\b", r"\bimport\s+src\.interfaces\b"],
+            None,
         ),
         (
             "domain_no_interfaces",
             repo_root / "src" / "domain",
             [r"\bfrom\s+src\.interfaces\b", r"\bimport\s+src\.interfaces\b"],
+            None,
+        ),
+        (
+            "domain_yaml_pathlib_allowlist",
+            repo_root / "src" / "domain",
+            [
+                r"^\s*import\s+yaml\b",
+                r"^\s*from\s+yaml\b",
+                r"^\s*from\s+pathlib\s+import\s+Path\b",
+                r"^\s*import\s+pathlib\b",
+            ],
+            domain_yaml_pathlib_allowlist,
         ),
     ]
 
     all_violations: list[Violation] = []
-    for rule, root, pattern_strings in checks:
+    for rule, root, pattern_strings, allowed_files in checks:
         if not root.exists():
             raise RuntimeError(f"Expected directory does not exist: {root}")
         patterns = [re.compile(p) for p in pattern_strings]
-        all_violations.extend(_scan_tree(rule=rule, root=root, patterns=patterns))
+        all_violations.extend(
+            _scan_tree(rule=rule, root=root, patterns=patterns, allowed_files=allowed_files)
+        )
 
     if all_violations:
         for v in all_violations:
