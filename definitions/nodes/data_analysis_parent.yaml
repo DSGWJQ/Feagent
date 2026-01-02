@@ -16,7 +16,7 @@ executor_type: generic
 parameters:
   - name: data_source
     type: object
-    description: 数据源配置（type: csv/json/database, path/url）
+    description: "数据源配置（type: csv/json/database, path/url）"
     required: true
     constraints:
       properties:

@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.application.services.async_run_event_recorder import AsyncRunEventRecorder
+from src.application.services.capability_catalog_service import CapabilityCatalogService
 from src.application.services.coordinator_agent_factory import create_coordinator_agent
 from src.config import settings
 from src.domain.ports.node_executor import NodeExecutorRegistry
@@ -17,6 +19,7 @@ from src.domain.services.event_bus import EventBus
 from src.domain.services.workflow_scheduler import ScheduleWorkflowService
 from src.infrastructure.database.engine import SessionLocal
 from src.infrastructure.database.schema import ensure_sqlite_schema
+from src.infrastructure.definitions.yaml_node_definition_source import YamlNodeDefinitionSource
 from src.infrastructure.executors import create_executor_registry
 from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.dependencies.agents import set_event_bus
@@ -227,6 +230,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         openai_api_key=settings.openai_api_key or None,
         anthropic_api_key=getattr(settings, "anthropic_api_key", None),
     )
+
+    catalog = CapabilityCatalogService(
+        sources=[
+            YamlNodeDefinitionSource(
+                definitions_dir=Path("definitions/nodes"),
+                schema_path=Path("definitions/schemas/node_definition_schema.json"),
+            )
+        ]
+    )
+    app.state.capability_definitions = catalog.load_and_validate_startup()
     app.state.container = _build_container(executor_registry, event_bus)
 
     try:
