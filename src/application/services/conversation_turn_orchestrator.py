@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Iterable
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from src.domain.services.conversation_flow_emitter import (
     ConversationFlowEmitter,
@@ -114,6 +114,16 @@ class ConversationTurnOrchestrator:
     ) -> asyncio.Task[None]:
         for policy in self._policies:
             await policy.before_turn(session_id=session_id, message=message, context=context)
+
+        agent = self._conversation_agent
+        if hasattr(agent, "emitter"):
+            cast(Any, agent).emitter = emitter
+        if hasattr(agent, "stream_emitter"):
+            cast(Any, agent).stream_emitter = emitter
+        if hasattr(agent, "session_context"):
+            session_context = getattr(agent, "session_context", None)
+            if session_context is not None and hasattr(session_context, "session_id"):
+                session_context.session_id = session_id
 
         await self._safe_emit(
             session_id=session_id,

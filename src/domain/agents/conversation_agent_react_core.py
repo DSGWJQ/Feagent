@@ -297,7 +297,8 @@ class ConversationAgentReActCoreMixin:
 
             # 检查熔断器
             if self.coordinator and hasattr(self.coordinator, "circuit_breaker"):
-                if self.coordinator.circuit_breaker.is_open:
+                circuit_breaker = getattr(self.coordinator, "circuit_breaker", None)
+                if circuit_breaker is not None and getattr(circuit_breaker, "is_open", False):
                     result.terminated_by_limit = True
                     result.limit_type = "circuit_breaker"
                     result.alert_message = "熔断器已打开，循环终止"
@@ -410,12 +411,15 @@ class ConversationAgentReActCoreMixin:
             action_type = action.get("action_type", "continue")
 
             if action_type == "respond":
+                # Ensure respond decisions are still supervised by Coordinator via EventBus.
+                decision = await self._record_decision_async(action)
+                await self._flush_staged_state()  # type: ignore[attr-defined]
+                if self.event_bus:
+                    await self.publish_decision(decision)
+
                 result.completed = True
                 result.final_response = action.get("response", "任务完成")
                 result.execution_time = time.time() - start_time
-
-                # P0-2 Phase 2: Flush staged state before return
-                await self._flush_staged_state()  # type: ignore[attr-defined]
 
                 # Phase 2: 发送最终响应到 emitter 并完成
                 if self.emitter:
@@ -651,6 +655,7 @@ class ConversationAgentReActCoreMixin:
 
         event = DecisionMadeEvent(
             source="conversation_agent",
+            correlation_id=getattr(self.session_context, "session_id", None),
             decision_type=decision.type.value,
             decision_id=decision.id,  # 使用 Decision 对象的 ID
             payload=decision.payload,

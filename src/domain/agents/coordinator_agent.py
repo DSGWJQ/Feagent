@@ -2157,6 +2157,7 @@ class CoordinatorAgent:
         """
 
         async def middleware(event: Event) -> Event | None:
+            logger = logging.getLogger(__name__)
             # 只处理决策事件
             from src.domain.agents.conversation_agent import DecisionMadeEvent
 
@@ -2171,10 +2172,32 @@ class CoordinatorAgent:
                 **event.payload,
             }
 
+            # Minimal fail-closed guard for obviously invalid create_node decisions.
+            # This keeps the SSE/main-path observable even when upstream skips schema validation.
+            if event.decision_type == "create_node" and not decision.get("config"):
+                if self.event_bus:
+                    rejected_event = DecisionRejectedEvent(
+                        source="coordinator_agent",
+                        correlation_id=event.correlation_id,
+                        original_decision_id=event.id,
+                        decision_type=event.decision_type,
+                        reason="create_node requires non-empty config",
+                        errors=["create_node requires non-empty config"],
+                    )
+                    await self.event_bus.publish(rejected_event)
+                logger.warning(
+                    "Coordinator deny: decision_type=%s decision_id=%s correlation_id=%s errors=%s",
+                    event.decision_type,
+                    event.id,
+                    event.correlation_id,
+                    1,
+                )
+                return None
+
             # 验证决策（P1-1步骤4-5: 直接用 Facade）
             result = self._rule_engine_facade.validate_decision(
                 decision,
-                session_id=decision.get("session_id"),
+                session_id=decision.get("session_id") or event.correlation_id,
             )
 
             if result.is_valid:
@@ -2182,12 +2205,19 @@ class CoordinatorAgent:
                 if self.event_bus:
                     validated_event = DecisionValidatedEvent(
                         source="coordinator_agent",
+                        correlation_id=event.correlation_id,
                         original_decision_id=event.id,
                         decision_type=event.decision_type,
                         payload=event.payload,
                     )
                     await self.event_bus.publish(validated_event)
 
+                logger.info(
+                    "Coordinator allow: decision_type=%s decision_id=%s correlation_id=%s",
+                    event.decision_type,
+                    event.id,
+                    event.correlation_id,
+                )
                 return event  # 放行
 
             else:
@@ -2195,6 +2225,7 @@ class CoordinatorAgent:
                 if self.event_bus:
                     rejected_event = DecisionRejectedEvent(
                         source="coordinator_agent",
+                        correlation_id=event.correlation_id,
                         original_decision_id=event.id,
                         decision_type=event.decision_type,
                         reason="; ".join(result.errors),
@@ -2202,6 +2233,13 @@ class CoordinatorAgent:
                     )
                     await self.event_bus.publish(rejected_event)
 
+                logger.warning(
+                    "Coordinator deny: decision_type=%s decision_id=%s correlation_id=%s errors=%s",
+                    event.decision_type,
+                    event.id,
+                    event.correlation_id,
+                    len(result.errors),
+                )
                 return None  # 阻止传播
 
         return middleware

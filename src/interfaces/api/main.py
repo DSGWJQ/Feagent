@@ -3,6 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any, cast
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,7 +53,11 @@ def _create_session():
     return SessionLocal()
 
 
-def _build_container(executor_registry: NodeExecutorRegistry, event_bus: EventBus) -> ApiContainer:
+def _build_container(
+    executor_registry: NodeExecutorRegistry,
+    event_bus: EventBus,
+    coordinator: object,
+) -> ApiContainer:
     from src.application.services.conversation_agent_factory import create_conversation_agent
     from src.application.services.conversation_turn_orchestrator import (
         ConversationTurnOrchestrator,
@@ -109,12 +114,12 @@ def _build_container(executor_registry: NodeExecutorRegistry, event_bus: EventBu
 
     _idempotency = IdempotencyCoordinator(store=InMemoryIdempotencyStore())
 
-    conversation_agent = create_conversation_agent(
-        event_bus=event_bus,
-        model_metadata_port=create_model_metadata_adapter(),
-    )
-
     def conversation_turn_orchestrator() -> ConversationTurnOrchestrator:
+        conversation_agent = create_conversation_agent(
+            event_bus=event_bus,
+            model_metadata_port=create_model_metadata_adapter(),
+            coordinator=coordinator,
+        )
         return ConversationTurnOrchestrator(
             conversation_agent=conversation_agent,
             policies=[NoopConversationTurnPolicy()],
@@ -219,6 +224,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     set_event_bus(event_bus)
     # 初始化 Coordinator（使用同一 EventBus）
     app.state.coordinator = create_coordinator_agent(event_bus=event_bus)
+    if not getattr(event_bus, "_coordinator_middleware_attached", False):
+        event_bus.add_middleware(app.state.coordinator.as_middleware())
+        cast(Any, event_bus)._coordinator_middleware_attached = True
+    from src.interfaces.api.services.event_bus_sse_bridge import attach_event_bus_sse_bridge
+
+    attach_event_bus_sse_bridge(event_bus)
     print("[EVENTBUS] 统一事件总线已初始化")
 
     try:
@@ -240,7 +251,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         ]
     )
     app.state.capability_definitions = catalog.load_and_validate_startup()
-    app.state.container = _build_container(executor_registry, event_bus)
+    app.state.container = _build_container(executor_registry, event_bus, app.state.coordinator)
 
     try:
         _scheduler_service = _init_scheduler(executor_registry)
