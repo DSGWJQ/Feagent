@@ -19,6 +19,7 @@
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from hashlib import sha256
 from uuid import uuid4
 
 from src.domain.exceptions import DomainError
@@ -71,6 +72,43 @@ class Run:
         now = datetime.now(UTC)
         return cls(
             id=f"run_{uuid4().hex[:8]}",
+            project_id=project_id.strip(),
+            workflow_id=workflow_id.strip(),
+            status=RunStatus.CREATED,
+            created_at=now,
+            finished_at=None,
+        )
+
+    @classmethod
+    def create_with_idempotency(
+        cls,
+        *,
+        project_id: str,
+        workflow_id: str,
+        idempotency_key: str,
+    ) -> "Run":
+        """创建幂等 Run（由 idempotency_key 派生稳定 run_id）。
+
+        约束：
+        - 不引入额外 DB 字段（KISS），通过稳定主键实现幂等。
+        - run_id 取 sha256 前 16 hex，降低碰撞概率。
+        """
+        if not idempotency_key or not idempotency_key.strip():
+            raise DomainError("idempotency_key 不能为空")
+
+        if not project_id or not project_id.strip():
+            raise DomainError("project_id 不能为空")
+        if not workflow_id or not workflow_id.strip():
+            raise DomainError("workflow_id 不能为空")
+
+        key_material = (
+            f"{project_id.strip()}|{workflow_id.strip()}|{idempotency_key.strip()}".encode()
+        )
+        digest = sha256(key_material).hexdigest()
+        run_id = f"run_{digest[:16]}"
+        now = datetime.now(UTC)
+        return cls(
+            id=run_id,
             project_id=project_id.strip(),
             workflow_id=workflow_id.strip(),
             status=RunStatus.CREATED,

@@ -139,7 +139,7 @@ class AppendRunEventUseCase:
             # 4. 创建 RunEvent 实体
             event = RunEvent.create(
                 run_id=input_data.run_id,
-                event_type=input_data.event_type,
+                type=input_data.event_type,
                 channel=input_data.channel,
                 payload=input_data.payload,
             )

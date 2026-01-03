@@ -320,6 +320,7 @@ class ExecuteWorkflowRequest(BaseModel):
     """Workflow execution request payload."""
 
     initial_input: Any = None
+    run_id: str | None = None
 
 
 class ExecuteWorkflowResponse(BaseModel):
@@ -346,6 +347,38 @@ async def execute_workflow(
             input_data=request.initial_input,
             idempotency_key=idempotency_key,
         )
+        if request.run_id:
+            from src.application.use_cases.append_run_event import (
+                AppendRunEventInput,
+                AppendRunEventUseCase,
+            )
+            from src.infrastructure.database.repositories.run_event_repository import (
+                SQLAlchemyRunEventRepository,
+            )
+            from src.infrastructure.database.repositories.run_repository import (
+                SQLAlchemyRunRepository,
+            )
+            from src.infrastructure.database.transaction_manager import SQLAlchemyTransactionManager
+
+            try:
+                use_case = AppendRunEventUseCase(
+                    run_repository=SQLAlchemyRunRepository(db),
+                    run_event_repository=SQLAlchemyRunEventRepository(db),
+                    transaction_manager=SQLAlchemyTransactionManager(db),
+                )
+                use_case.execute(
+                    AppendRunEventInput(
+                        run_id=request.run_id,
+                        event_type="workflow_complete",
+                        channel="execution",
+                        payload={
+                            "workflow_id": workflow_id,
+                            "execution_log": result.get("execution_log", []),
+                        },
+                    )
+                )
+            except Exception:
+                pass
         return ExecuteWorkflowResponse(
             execution_log=result["execution_log"],
             final_result=result["final_result"],
@@ -366,30 +399,62 @@ async def execute_workflow(
 async def execute_workflow_streaming(
     workflow_id: str,
     request: ExecuteWorkflowRequest,
+    http_request: Request,
     container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
 ) -> StreamingResponse:
     """Execute a workflow and stream progress via SSE."""
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        event_recorder = getattr(http_request.app.state, "event_recorder", None)
         try:
             orchestrator = container.workflow_execution_orchestrator(db)
             async for event in orchestrator.execute_streaming(
                 workflow_id=workflow_id,
                 input_data=request.initial_input,
             ):
+                if request.run_id:
+                    if event_recorder is not None:
+                        try:
+                            event_recorder.enqueue(
+                                run_id=request.run_id,
+                                sse_event={**event, "channel": "execution"},
+                            )
+                        except Exception:
+                            pass
+                    event = {**event, "run_id": request.run_id}
                 yield f"data: {json.dumps(event)}\n\n"
         except NotFoundError as exc:
             error_event = {
                 "type": "workflow_error",
                 "error": f"{exc.entity_type} not found: {exc.entity_id}",
             }
+            if request.run_id:
+                error_event["run_id"] = request.run_id
+                if event_recorder is not None:
+                    try:
+                        event_recorder.enqueue(
+                            run_id=request.run_id,
+                            sse_event={**error_event, "channel": "execution"},
+                        )
+                    except Exception:
+                        pass
             yield f"data: {json.dumps(error_event)}\n\n"
         except Exception as exc:  # pragma: no cover - best-effort error reporting
             error_event = {
                 "type": "workflow_error",
                 "error": f"Workflow execution failed: {exc}",
             }
+            if request.run_id:
+                error_event["run_id"] = request.run_id
+                if event_recorder is not None:
+                    try:
+                        event_recorder.enqueue(
+                            run_id=request.run_id,
+                            sse_event={**error_event, "channel": "execution"},
+                        )
+                    except Exception:
+                        pass
             yield f"data: {json.dumps(error_event)}\n\n"
 
     return StreamingResponse(
