@@ -116,6 +116,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { isCanvasMode } = useWorkflowInteraction();
+  const disableRunPersistence =
+    (import.meta.env.VITE_DISABLE_RUN_PERSISTENCE ?? 'false').toString().toLowerCase() === 'true';
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_, setInteractionMode] = useState('idle');
 
@@ -815,7 +817,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
     // Create run for unified session tracking
     let runIdForSession: string | null = null;
-    if (effectiveProjectId) {
+    if (!disableRunPersistence && effectiveProjectId) {
       runIdForSession = await createResearchRun();
       if (runIdForSession) {
         setLastRunId(runIdForSession);
@@ -824,7 +826,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     }
 
     await generatePlan(researchGoal, runIdForSession);
-  }, [researchGoal, effectiveProjectId, createResearchRun, generatePlan]);
+  }, [researchGoal, effectiveProjectId, disableRunPersistence, createResearchRun, generatePlan]);
 
   /**
    * MVP Step 1: 编译 Plan 到画布
@@ -838,7 +840,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
     // 确保有 run_id（如果没有则创建）
     let runIdForCompile = lastRunId;
-    if (!runIdForCompile && effectiveProjectId) {
+    if (!disableRunPersistence && !runIdForCompile && effectiveProjectId) {
       runIdForCompile = await createResearchRun();
       if (runIdForCompile) {
         setLastRunId(runIdForCompile);
@@ -847,7 +849,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     }
 
     await compilePlan(researchPlan, runIdForCompile);
-  }, [researchPlan, compilePlan, lastRunId, effectiveProjectId, createResearchRun]);
+  }, [researchPlan, compilePlan, lastRunId, effectiveProjectId, disableRunPersistence, createResearchRun]);
 
   /**
    * 执行工作流 (Step F.7: 创建 Run 后执行)
@@ -870,10 +872,10 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     setExecutionStartTime(Date.now());
 
     // MVP Step 2: 优先复用 lastRunId (来自 plan/compile 流程)
-    let runId: string | undefined = lastRunId ?? undefined;
+    let runId: string | undefined = disableRunPersistence ? undefined : lastRunId ?? undefined;
 
     // 如果没有 lastRunId，尝试创建新的 Run
-    if (!runId && effectiveProjectId) {
+    if (!disableRunPersistence && !runId && effectiveProjectId) {
       try {
         const token = localStorage.getItem('authToken');
         const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -903,10 +905,10 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
     // 执行工作流
     execute(workflowId, {
-      run_id: runId,
       initial_input: { message: 'test' },
+      ...(runId ? { run_id: runId } : {}),
     });
-  }, [workflowId, execute, handleSave, effectiveProjectId, lastRunId]);
+  }, [workflowId, execute, handleSave, effectiveProjectId, lastRunId, disableRunPersistence]);
 
   // 初始化时加载工作流
   useEffect(() => {

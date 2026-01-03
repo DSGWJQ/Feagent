@@ -8,16 +8,22 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+import logging
+import time
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from src.config import settings
 from src.domain.entities.run import Run
 from src.domain.exceptions import DomainError, NotFoundError
 from src.infrastructure.database.engine import get_db_session
 from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dto.run_dto import CreateRunRequest, RunListResponse, RunResponse
+
+logger = logging.getLogger(__name__)
 
 # 主路由 (包含 /projects/... 端点)
 router = APIRouter(tags=["runs"])
@@ -34,6 +40,7 @@ _runs_router = APIRouter(prefix="/runs", tags=["runs"])
 )
 def get_run(
     run_id: str,
+    response: Response,
     container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
 ) -> RunResponse:
@@ -50,6 +57,14 @@ def get_run(
         404: Run 不存在
         500: 内部错误
     """
+    if settings.disable_run_persistence:
+        response.headers["Deprecation"] = "true"
+        response.headers["Warning"] = '299 - "Runs API disabled by feature flag"'
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Runs API is disabled by feature flag (disable_run_persistence).",
+        )
+
     try:
         repo = container.run_repository(db)
         run = repo.get_by_id(run_id)
@@ -79,6 +94,7 @@ def get_run(
 def list_runs_by_workflow(
     project_id: str,
     workflow_id: str,
+    response: Response,
     limit: int = Query(default=100, ge=1, le=1000, description="返回数量上限"),
     offset: int = Query(default=0, ge=0, description="偏移量"),
     container: ApiContainer = Depends(get_container),
@@ -96,10 +112,32 @@ def list_runs_by_workflow(
     Returns:
         Run 列表
     """
+    if settings.disable_run_persistence:
+        response.headers["Deprecation"] = "true"
+        response.headers["Warning"] = (
+            '299 - "Runs API disabled: use /api/workflows/{workflow_id}/execute/stream"'
+        )
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Runs API is disabled by feature flag (disable_run_persistence).",
+        )
+
     try:
+        started = time.perf_counter()
         repo = container.run_repository(db)
         runs = repo.list_by_workflow_id(workflow_id, limit=limit, offset=offset)
         total = repo.count_by_workflow_id(workflow_id)
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "runs_listed",
+            extra={
+                "project_id": project_id,
+                "workflow_id": workflow_id,
+                "limit": limit,
+                "offset": offset,
+                "duration_ms": duration_ms,
+            },
+        )
         return RunListResponse.from_entities(runs, total=total)
 
     except Exception as exc:
@@ -122,11 +160,28 @@ def create_run(
     project_id: str,
     workflow_id: str,
     request: CreateRunRequest,
+    response: Response,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
 ) -> RunResponse:
+    if settings.disable_run_persistence:
+        response.headers["Deprecation"] = "true"
+        response.headers["Link"] = f'</api/workflows/{workflow_id}/execute/stream>; rel="alternate"'
+        response.headers["Warning"] = (
+            '299 - "Runs API disabled: use /api/workflows/{workflow_id}/execute/stream"'
+        )
+        logger.info(
+            "run_persistence_disabled_create_run_called",
+            extra={"project_id": project_id, "workflow_id": workflow_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Runs API is disabled by feature flag (disable_run_persistence).",
+        )
+
     try:
+        started = time.perf_counter()
         # 一致性校验（body 可选字段不允许与 path 冲突）
         if request.project_id is not None and request.project_id != project_id:
             raise HTTPException(
@@ -166,6 +221,17 @@ def create_run(
 
         repo.save(run)
         db.commit()
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "run_created",
+            extra={
+                "project_id": project_id,
+                "workflow_id": workflow_id,
+                "run_id": run.id,
+                "idempotency_key_present": bool(idempotency_key),
+                "duration_ms": duration_ms,
+            },
+        )
         return RunResponse.from_entity(run)
 
     except NotFoundError as exc:

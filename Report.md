@@ -8,6 +8,22 @@
 
 ---
 
+## 灰度/回滚与监控（Feature Flags & Monitoring）
+
+### Feature Flags（默认关闭，不影响现有行为）
+
+- 后端（`src/config.py`）：
+  - `DISABLE_RUN_PERSISTENCE=true`：禁用 Runs API，并在 `execute/stream` 路径忽略 `run_id`（一键切回 legacy 仅靠 SSE）。
+  - `ENABLE_LANGGRAPH_WORKFLOW_EXECUTOR=true`：灰度启用 LangGraph workflow executor（实验性）。
+- 前端（Vite env）：
+  - `VITE_DISABLE_RUN_PERSISTENCE=true`：前端不再创建/传递 `run_id`（避免调用 Runs API）。
+
+### 监控口径（基于结构化日志）
+
+- 错误率：按 `workflow_execute_*` / `workflow_chat_*` 日志事件的异常计数/比例统计。
+- P95：基于日志字段 `duration_ms` 计算 P95 延迟（按 endpoint / executor_id 分维度）。
+- 拒绝率：按 `COORDINATOR_REJECTED` 相关事件/日志计数除以总决策次数。
+
 ## 现状盘点：有哪些入口/链路？
 
 ### 后端（FastAPI）

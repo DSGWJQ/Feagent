@@ -130,6 +130,16 @@ class Settings(BaseSettings):
     rag_cache_ttl: int = Field(default=3600, description="RAG缓存TTL（秒）")
     rag_metrics_enabled: bool = Field(default=True, description="是否启用RAG指标收集")
 
+    # Feature Flags / Rollback
+    disable_run_persistence: bool = Field(
+        default=False,
+        description="回滚开关：忽略 run_id 且禁用 Runs API（切回 legacy execute/stream）。",
+    )
+    enable_langgraph_workflow_executor: bool = Field(
+        default=False,
+        description="灰度开关：启用 LangGraph workflow executor（实验性）。",
+    )
+
 
 # 全局配置实例
 settings = Settings()

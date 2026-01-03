@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
@@ -444,13 +445,35 @@ async def execute_workflow(
     """Execute a workflow synchronously."""
 
     try:
-        orchestrator = container.workflow_execution_orchestrator(db)
-        result = await orchestrator.execute(
-            workflow_id=workflow_id,
-            input_data=request.initial_input,
-            idempotency_key=idempotency_key,
+        started = time.perf_counter()
+        run_persistence_enabled = bool(request.run_id) and not settings.disable_run_persistence
+        executor_id = (
+            "langgraph_workflow_v1"
+            if settings.enable_langgraph_workflow_executor
+            else "workflow_engine_v1"
         )
-        if request.run_id:
+
+        if settings.enable_langgraph_workflow_executor:
+            from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
+                LangGraphWorkflowExecutorAdapter,
+            )
+
+            adapter = LangGraphWorkflowExecutorAdapter(
+                workflow_repository=container.workflow_repository(db),
+                executor_registry=container.executor_registry,
+            )
+            result = await adapter.execute(
+                workflow_id=workflow_id, input_data=request.initial_input
+            )
+        else:
+            orchestrator = container.workflow_execution_orchestrator(db)
+            result = await orchestrator.execute(
+                workflow_id=workflow_id,
+                input_data=request.initial_input,
+                idempotency_key=idempotency_key,
+            )
+
+        if run_persistence_enabled and request.run_id:
             from src.application.use_cases.append_run_event import (
                 AppendRunEventInput,
                 AppendRunEventUseCase,
@@ -482,6 +505,17 @@ async def execute_workflow(
                 )
             except Exception:
                 pass
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "workflow_execute_done",
+            extra={
+                "workflow_id": workflow_id,
+                "executor_id": executor_id,
+                "duration_ms": duration_ms,
+                "run_id_present": bool(request.run_id),
+                "run_persistence_enabled": run_persistence_enabled,
+            },
+        )
         return ExecuteWorkflowResponse(
             execution_log=result["execution_log"],
             final_result=result["final_result"],
@@ -510,13 +544,37 @@ async def execute_workflow_streaming(
 
     async def event_generator() -> AsyncGenerator[str, None]:
         event_recorder = getattr(http_request.app.state, "event_recorder", None)
+        started = time.perf_counter()
+        events_sent = 0
+        run_persistence_enabled = bool(request.run_id) and not settings.disable_run_persistence
+        executor_id = (
+            "langgraph_workflow_v1"
+            if settings.enable_langgraph_workflow_executor
+            else "workflow_engine_v1"
+        )
         try:
-            orchestrator = container.workflow_execution_orchestrator(db)
-            async for event in orchestrator.execute_streaming(
-                workflow_id=workflow_id,
-                input_data=request.initial_input,
-            ):
-                if request.run_id:
+            if settings.enable_langgraph_workflow_executor:
+                from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
+                    LangGraphWorkflowExecutorAdapter,
+                )
+
+                adapter = LangGraphWorkflowExecutorAdapter(
+                    workflow_repository=container.workflow_repository(db),
+                    executor_registry=container.executor_registry,
+                )
+                event_iter = adapter.execute_streaming(
+                    workflow_id=workflow_id,
+                    input_data=request.initial_input,
+                )
+            else:
+                orchestrator = container.workflow_execution_orchestrator(db)
+                event_iter = orchestrator.execute_streaming(
+                    workflow_id=workflow_id,
+                    input_data=request.initial_input,
+                )
+
+            async for event in event_iter:
+                if run_persistence_enabled and request.run_id:
                     if event_recorder is not None:
                         try:
                             event_recorder.enqueue(
@@ -526,13 +584,14 @@ async def execute_workflow_streaming(
                         except Exception:
                             pass
                     event = {**event, "run_id": request.run_id}
+                events_sent += 1
                 yield f"data: {json.dumps(event)}\n\n"
         except NotFoundError as exc:
             error_event = {
                 "type": "workflow_error",
                 "error": f"{exc.entity_type} not found: {exc.entity_id}",
             }
-            if request.run_id:
+            if run_persistence_enabled and request.run_id:
                 error_event["run_id"] = request.run_id
                 if event_recorder is not None:
                     try:
@@ -548,7 +607,7 @@ async def execute_workflow_streaming(
                 "type": "workflow_error",
                 "error": f"Workflow execution failed: {exc}",
             }
-            if request.run_id:
+            if run_persistence_enabled and request.run_id:
                 error_event["run_id"] = request.run_id
                 if event_recorder is not None:
                     try:
@@ -559,6 +618,19 @@ async def execute_workflow_streaming(
                     except Exception:
                         pass
             yield f"data: {json.dumps(error_event)}\n\n"
+        finally:
+            duration_ms = int((time.perf_counter() - started) * 1000)
+            logger.info(
+                "workflow_execute_stream_done",
+                extra={
+                    "workflow_id": workflow_id,
+                    "executor_id": executor_id,
+                    "duration_ms": duration_ms,
+                    "events_sent": events_sent,
+                    "run_id_present": bool(request.run_id),
+                    "run_persistence_enabled": run_persistence_enabled,
+                },
+            )
 
     return StreamingResponse(
         event_generator(),
@@ -867,6 +939,16 @@ async def chat_stream_react_with_workflow(
                                 )
                             else:
                                 errors = list(getattr(validation, "errors", []) or [])
+                                logger.info(
+                                    "coordinator_decision_rejected",
+                                    extra={
+                                        "workflow_id": workflow_id,
+                                        "session_id": session_id,
+                                        "decision_type": action_type,
+                                        "tool_id": step.tool_id,
+                                        "errors_count": len(errors),
+                                    },
+                                )
                                 try:
                                     await event_bus.publish(
                                         DecisionRejectedEvent(
