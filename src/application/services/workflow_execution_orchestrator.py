@@ -7,24 +7,56 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from typing import Any, Protocol
 
+from src.application.services.coordinator_policy_chain import (
+    CoordinatorPolicyChain,
+    CoordinatorPort,
+)
 from src.application.services.idempotency_coordinator import IdempotencyCoordinator
 from src.application.services.workflow_execution_facade import WorkflowExecutionFacade
+from src.domain.services.event_bus import EventBus
 
 
 class WorkflowExecutionPolicy(Protocol):
-    async def before_execute(self, *, workflow_id: str, input_data: Any) -> None: ...
-
-    async def after_execute(
-        self, *, workflow_id: str, input_data: Any, result: dict[str, Any]
+    async def before_execute(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        correlation_id: str | None,
+        original_decision_id: str | None,
     ) -> None: ...
 
-    async def on_error(self, *, workflow_id: str, input_data: Any, error: Exception) -> None: ...
+    async def after_execute(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        result: dict[str, Any],
+        correlation_id: str | None,
+        original_decision_id: str | None,
+    ) -> None: ...
+
+    async def on_error(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        error: Exception,
+        correlation_id: str | None,
+        original_decision_id: str | None,
+    ) -> None: ...
 
     async def on_event(
-        self, *, workflow_id: str, input_data: Any, event: dict[str, Any]
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        event: dict[str, Any],
+        correlation_id: str | None,
+        original_decision_id: str | None,
     ) -> None: ...
 
 
@@ -46,9 +78,17 @@ class WorkflowExecutionOrchestrator:
         workflow_id: str,
         input_data: Any = None,
         idempotency_key: str | None = None,
+        correlation_id: str | None = None,
+        original_decision_id: str | None = None,
+        after_gate: Callable[[], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
-        for policy in self._policies:
-            await policy.before_execute(workflow_id=workflow_id, input_data=input_data)
+        await self.gate_execute(
+            workflow_id=workflow_id,
+            input_data=input_data,
+            correlation_id=correlation_id,
+            original_decision_id=original_decision_id,
+            after_gate=after_gate,
+        )
 
         try:
             if idempotency_key is None:
@@ -68,25 +108,54 @@ class WorkflowExecutionOrchestrator:
                 )
         except Exception as exc:  # noqa: BLE001 - orchestrator is the central boundary
             for policy in self._policies:
-                await policy.on_error(workflow_id=workflow_id, input_data=input_data, error=exc)
+                await policy.on_error(
+                    workflow_id=workflow_id,
+                    input_data=input_data,
+                    error=exc,
+                    correlation_id=correlation_id,
+                    original_decision_id=original_decision_id,
+                )
             raise
 
         for policy in reversed(self._policies):
             await policy.after_execute(
-                workflow_id=workflow_id, input_data=input_data, result=result
+                workflow_id=workflow_id,
+                input_data=input_data,
+                result=result,
+                correlation_id=correlation_id,
+                original_decision_id=original_decision_id,
             )
 
         return result
 
-    async def execute_streaming(
+    async def gate_execute(
         self,
         *,
         workflow_id: str,
         input_data: Any = None,
-    ) -> AsyncGenerator[dict[str, Any], None]:
+        correlation_id: str | None = None,
+        original_decision_id: str | None = None,
+        after_gate: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         for policy in self._policies:
-            await policy.before_execute(workflow_id=workflow_id, input_data=input_data)
+            await policy.before_execute(
+                workflow_id=workflow_id,
+                input_data=input_data,
+                correlation_id=correlation_id,
+                original_decision_id=original_decision_id,
+            )
 
+        if after_gate is not None:
+            await after_gate()
+
+    async def stream_after_gate(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any = None,
+        correlation_id: str | None = None,
+        original_decision_id: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
         try:
             async for event in self._facade.execute_streaming(
                 workflow_id=workflow_id,
@@ -94,26 +163,167 @@ class WorkflowExecutionOrchestrator:
             ):
                 for policy in self._policies:
                     await policy.on_event(
-                        workflow_id=workflow_id, input_data=input_data, event=event
+                        workflow_id=workflow_id,
+                        input_data=input_data,
+                        event=event,
+                        correlation_id=correlation_id,
+                        original_decision_id=original_decision_id,
                     )
                 yield event
         except Exception as exc:  # noqa: BLE001 - orchestrator is the central boundary
             for policy in self._policies:
-                await policy.on_error(workflow_id=workflow_id, input_data=input_data, error=exc)
+                await policy.on_error(
+                    workflow_id=workflow_id,
+                    input_data=input_data,
+                    error=exc,
+                    correlation_id=correlation_id,
+                    original_decision_id=original_decision_id,
+                )
             raise
+
+    async def execute_streaming(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any = None,
+        correlation_id: str | None = None,
+        original_decision_id: str | None = None,
+        after_gate: Callable[[], Awaitable[None]] | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        await self.gate_execute(
+            workflow_id=workflow_id,
+            input_data=input_data,
+            correlation_id=correlation_id,
+            original_decision_id=original_decision_id,
+            after_gate=after_gate,
+        )
+        async for event in self.stream_after_gate(
+            workflow_id=workflow_id,
+            input_data=input_data,
+            correlation_id=correlation_id,
+            original_decision_id=original_decision_id,
+        ):
+            yield event
 
 
 class NoopWorkflowExecutionPolicy:
-    async def before_execute(self, *, workflow_id: str, input_data: Any) -> None:
-        return None
-
-    async def after_execute(
-        self, *, workflow_id: str, input_data: Any, result: dict[str, Any]
+    async def before_execute(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        correlation_id: str | None,
+        original_decision_id: str | None,
     ) -> None:
         return None
 
-    async def on_error(self, *, workflow_id: str, input_data: Any, error: Exception) -> None:
+    async def after_execute(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        result: dict[str, Any],
+        correlation_id: str | None,
+        original_decision_id: str | None,
+    ) -> None:
         return None
 
-    async def on_event(self, *, workflow_id: str, input_data: Any, event: dict[str, Any]) -> None:
+    async def on_error(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        error: Exception,
+        correlation_id: str | None,
+        original_decision_id: str | None,
+    ) -> None:
+        return None
+
+    async def on_event(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        event: dict[str, Any],
+        correlation_id: str | None,
+        original_decision_id: str | None,
+    ) -> None:
+        return None
+
+
+class CoordinatorWorkflowExecutionPolicy:
+    """将 workflow 执行的监督点下沉到 Application policy chain（WF-060）。
+
+    注意：不把 input_data 透传给 coordinator，避免潜在敏感信息泄露。
+    """
+
+    def __init__(
+        self,
+        *,
+        coordinator: CoordinatorPort | None,
+        event_bus: EventBus | None,
+        source: str,
+        fail_closed: bool = True,
+    ) -> None:
+        self._policy = CoordinatorPolicyChain(
+            coordinator=coordinator,
+            event_bus=event_bus,
+            source=source,
+            fail_closed=fail_closed,
+            supervised_decision_types={"api_request"},
+        )
+
+    async def before_execute(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        correlation_id: str | None,
+        original_decision_id: str | None,
+    ) -> None:
+        correlation = correlation_id or workflow_id
+        original = original_decision_id or correlation
+        await self._policy.enforce_action_or_raise(
+            decision_type="api_request",
+            decision={
+                "decision_type": "api_request",
+                "action": "execute_workflow",
+                "workflow_id": workflow_id,
+                "correlation_id": correlation,
+            },
+            correlation_id=correlation,
+            original_decision_id=original,
+        )
+
+    async def after_execute(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        result: dict[str, Any],
+        correlation_id: str | None,
+        original_decision_id: str | None,
+    ) -> None:
+        return None
+
+    async def on_error(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        error: Exception,
+        correlation_id: str | None,
+        original_decision_id: str | None,
+    ) -> None:
+        return None
+
+    async def on_event(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any,
+        event: dict[str, Any],
+        correlation_id: str | None,
+        original_decision_id: str | None,
+    ) -> None:
         return None

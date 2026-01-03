@@ -97,12 +97,25 @@ async def stream_conversation(
     )
 
     orchestrator: ConversationTurnOrchestrator = container.conversation_turn_orchestrator()
-    await orchestrator.start_streaming_turn(
-        session_id=session_id,
-        message=body.message,
-        context=body.context,
-        emitter=emitter,
-    )
+    from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
+
+    try:
+        await orchestrator.start_streaming_turn(
+            session_id=session_id,
+            message=body.message,
+            context=body.context,
+            emitter=emitter,
+        )
+    except CoordinatorRejectedError as exc:
+        await session_manager.remove_session(session_id)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "coordinator_rejected",
+                "reason": str(exc),
+                "errors": list(exc.errors),
+            },
+        ) from exc
 
     # 返回 SSE 响应
     return handler.create_response(

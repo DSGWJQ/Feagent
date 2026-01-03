@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -17,8 +17,11 @@ from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
+from src.domain.value_objects.run_status import RunStatus
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.models import RunEventModel
+from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
 from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
@@ -352,6 +355,67 @@ class TestExecuteWorkflowAPI:
         assert "node_complete" in event_types
         assert "workflow_complete" in event_types
         assert all(event.get("run_id") == run_id for event in events)
+
+    def test_execute_workflow_streaming_coordinator_reject_should_return_403_and_no_side_effects(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        test_db: Session,
+        client: TestClient,
+    ):
+        node1 = Node.create(
+            type=NodeType.START,
+            name="开始",
+            config={},
+            position=Position(x=0, y=0),
+        )
+        node2 = Node.create(
+            type=NodeType.END,
+            name="结束",
+            config={},
+            position=Position(x=100, y=0),
+        )
+        edge1 = Edge.create(source_node_id=node1.id, target_node_id=node2.id)
+        workflow = Workflow.create(
+            name="测试工作流",
+            description="",
+            nodes=[node1, node2],
+            edges=[edge1],
+        )
+        SQLAlchemyWorkflowRepository(test_db).save(workflow)
+        test_db.commit()
+
+        run_resp = client.post(
+            f"/api/projects/proj_1/workflows/{workflow.id}/runs",
+            json={},
+        )
+        assert run_resp.status_code == 200
+        run_id = run_resp.json()["id"]
+
+        def _deny_validate_decision(decision: dict):
+            return type("Validation", (), {"is_valid": False, "errors": ["deny"]})()
+
+        monkeypatch.setattr(
+            client.app.state.coordinator,
+            "validate_decision",
+            _deny_validate_decision,
+        )
+
+        response = client.post(
+            f"/api/workflows/{workflow.id}/execute/stream",
+            json={"initial_input": {"message": "test"}, "run_id": run_id},
+        )
+        assert response.status_code == 403
+        detail = response.json()["detail"]
+        assert detail["error"] == "coordinator_rejected"
+        assert detail["errors"]
+
+        run = SQLAlchemyRunRepository(test_db).get_by_id(run_id)
+        assert run.status is RunStatus.CREATED
+
+        rows = test_db.execute(
+            select(RunEventModel.type).where(RunEventModel.run_id == run_id)
+        ).all()
+        assert rows == []
 
     def test_execute_workflow_streaming_without_run_id_should_return_400(
         self, test_db: Session, client: TestClient

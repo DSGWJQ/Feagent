@@ -15,10 +15,6 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
 from sqlalchemy.orm import Session
 
-from src.application.services.coordinator_policy_chain import (
-    CoordinatorPolicyChain,
-    CoordinatorRejectedError,
-)
 from src.application.use_cases.generate_workflow_from_form import (
     GenerateWorkflowFromFormUseCase,
     GenerateWorkflowInput,
@@ -412,38 +408,7 @@ async def execute_workflow_streaming(
             detail=str(exc),
         ) from exc
 
-    # Fail-closed: Coordinator supervision before committing run state transitions.
-    coordinator = getattr(http_request.app.state, "coordinator", None)
-    supervision = CoordinatorPolicyChain(
-        coordinator=coordinator,
-        event_bus=event_bus,
-        source="workflow_execute_stream",
-        fail_closed=True,
-        supervised_decision_types={"api_request"},
-    )
-    try:
-        await supervision.enforce_action_or_raise(
-            decision_type="api_request",
-            decision={
-                "decision_type": "api_request",
-                "action": "execute_workflow_stream",
-                "workflow_id": workflow_id,
-                "run_id": run_id,
-            },
-            correlation_id=run_id,
-            original_decision_id=run_id,
-        )
-    except CoordinatorRejectedError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "coordinator_rejected",
-                "reason": str(exc),
-                "errors": list(exc.errors),
-            },
-        ) from exc
-
-    # Fail-closed: ensure run exists and persist a deterministic start event before streaming begins.
+    # Fail-closed: ensure run exists before any state transitions.
     from src.application.use_cases.append_run_event import (
         AppendRunEventInput,
         AppendRunEventUseCase,
@@ -481,17 +446,42 @@ async def execute_workflow_streaming(
         transaction_manager=SQLAlchemyTransactionManager(db),
     )
 
-    run_event_use_case.execute(
-        AppendRunEventInput(
-            run_id=run_id,
-            event_type="workflow_start",
-            channel="lifecycle",
-            payload={
-                "workflow_id": workflow_id,
-                "executor_id": executor_id,
-            },
+    # Fail-closed: Coordinator supervision is enforced by WorkflowExecutionOrchestrator policy chain.
+    # Gate must run before persisting any run events to keep rejection paths side-effect free.
+    from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
+
+    kernel = container.workflow_execution_kernel(db)
+
+    async def _after_gate() -> None:
+        run_event_use_case.execute(
+            AppendRunEventInput(
+                run_id=run_id,
+                event_type="workflow_start",
+                channel="lifecycle",
+                payload={
+                    "workflow_id": workflow_id,
+                    "executor_id": executor_id,
+                },
+            )
         )
-    )
+
+    try:
+        await kernel.gate_execute(
+            workflow_id=workflow_id,
+            input_data=request.initial_input,
+            correlation_id=run_id,
+            original_decision_id=run_id,
+            after_gate=_after_gate,
+        )
+    except CoordinatorRejectedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "coordinator_rejected",
+                "reason": str(exc),
+                "errors": list(exc.errors),
+            },
+        ) from exc
 
     async def event_generator() -> AsyncGenerator[str, None]:
         event_recorder = getattr(http_request.app.state, "event_recorder", None)
@@ -499,10 +489,11 @@ async def execute_workflow_streaming(
         events_sent = 0
         terminal_persisted = False
         try:
-            kernel = container.workflow_execution_kernel(db)
-            event_iter = kernel.execute_streaming(
+            event_iter = kernel.stream_after_gate(
                 workflow_id=workflow_id,
                 input_data=request.initial_input,
+                correlation_id=run_id,
+                original_decision_id=run_id,
             )
 
             async for event in event_iter:

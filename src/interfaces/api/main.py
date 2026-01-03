@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from src.application.services.async_run_event_recorder import AsyncRunEventRecorder
 from src.application.services.capability_catalog_service import CapabilityCatalogService
 from src.application.services.coordinator_agent_factory import create_coordinator_agent
+from src.application.services.coordinator_policy_chain import CoordinatorPort
 from src.config import settings
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.services.event_bus import EventBus
@@ -55,7 +56,7 @@ def _create_session():
 def _build_container(
     executor_registry: NodeExecutorRegistry,
     event_bus: EventBus,
-    coordinator: object,
+    coordinator: CoordinatorPort,
 ) -> ApiContainer:
     from src.application.services.conversation_agent_factory import create_conversation_agent
     from src.application.services.conversation_turn_orchestrator import (
@@ -105,9 +106,21 @@ def _build_container(
             workflow_repository=repo,
             executor_registry=executor_registry,
         )
+        from src.application.services.workflow_execution_orchestrator import (
+            CoordinatorWorkflowExecutionPolicy,
+        )
+
         return WorkflowExecutionOrchestrator(
             facade=facade,
-            policies=[NoopWorkflowExecutionPolicy()],
+            policies=[
+                CoordinatorWorkflowExecutionPolicy(
+                    coordinator=coordinator,
+                    event_bus=event_bus,
+                    source="workflow_execute_stream",
+                    fail_closed=True,
+                ),
+                NoopWorkflowExecutionPolicy(),
+            ],
             idempotency=_idempotency,
         )
 
@@ -119,9 +132,21 @@ def _build_container(
             model_metadata_port=create_model_metadata_adapter(),
             coordinator=coordinator,
         )
+        from src.application.services.conversation_turn_orchestrator import (
+            CoordinatorConversationTurnPolicy,
+        )
+
         return ConversationTurnOrchestrator(
             conversation_agent=conversation_agent,
-            policies=[NoopConversationTurnPolicy()],
+            policies=[
+                CoordinatorConversationTurnPolicy(
+                    coordinator=coordinator,
+                    event_bus=event_bus,
+                    source="conversation_stream",
+                    fail_closed=True,
+                ),
+                NoopConversationTurnPolicy(),
+            ],
         )
 
     def chat_message_repository(session: Session):
@@ -250,7 +275,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         ]
     )
     app.state.capability_definitions = catalog.load_and_validate_startup()
-    app.state.container = _build_container(executor_registry, event_bus, app.state.coordinator)
+    app.state.container = _build_container(
+        executor_registry,
+        event_bus,
+        cast(CoordinatorPort, app.state.coordinator),
+    )
 
     try:
         _scheduler_service = _init_scheduler(executor_registry)

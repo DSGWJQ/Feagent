@@ -13,10 +13,15 @@ import logging
 from collections.abc import Iterable
 from typing import Any, Protocol, cast
 
+from src.application.services.coordinator_policy_chain import (
+    CoordinatorPolicyChain,
+    CoordinatorPort,
+)
 from src.domain.services.conversation_flow_emitter import (
     ConversationFlowEmitter,
     EmitterClosedError,
 )
+from src.domain.services.event_bus import EventBus
 
 logger = logging.getLogger(__name__)
 
@@ -251,4 +256,81 @@ class NoopConversationTurnPolicy:
         return None
 
     async def on_emit(self, *, session_id: str, message: str, kind: str, payload: Any) -> None:
+        return None
+
+
+class CoordinatorConversationTurnPolicy:
+    """将对话入口的监督点下沉到 Application policy chain（WF-060）。
+
+    注意：不把 message 明文透传给 coordinator，避免潜在敏感信息泄露。
+    """
+
+    def __init__(
+        self,
+        *,
+        coordinator: CoordinatorPort | None,
+        event_bus: EventBus | None,
+        source: str,
+        fail_closed: bool = True,
+    ) -> None:
+        self._policy = CoordinatorPolicyChain(
+            coordinator=coordinator,
+            event_bus=event_bus,
+            source=source,
+            fail_closed=fail_closed,
+            supervised_decision_types={"api_request"},
+        )
+
+    async def before_turn(
+        self,
+        *,
+        session_id: str,
+        message: str,
+        context: dict[str, Any] | None,
+    ) -> None:
+        workflow_id = None
+        if isinstance(context, dict):
+            workflow_id = context.get("workflow_id")
+
+        await self._policy.enforce_action_or_raise(
+            decision_type="api_request",
+            decision={
+                "decision_type": "api_request",
+                "action": "conversation_turn",
+                "session_id": session_id,
+                "workflow_id": workflow_id,
+                "message_len": len(message or ""),
+            },
+            correlation_id=session_id,
+            original_decision_id=session_id,
+        )
+
+    async def after_turn(
+        self,
+        *,
+        session_id: str,
+        message: str,
+        context: dict[str, Any] | None,
+        result: Any,
+    ) -> None:
+        return None
+
+    async def on_error(
+        self,
+        *,
+        session_id: str,
+        message: str,
+        context: dict[str, Any] | None,
+        error: Exception,
+    ) -> None:
+        return None
+
+    async def on_emit(
+        self,
+        *,
+        session_id: str,
+        message: str,
+        kind: str,
+        payload: Any,
+    ) -> None:
         return None

@@ -55,16 +55,47 @@ def test_execute_stream_endpoint_goes_through_orchestrator_and_policy_chain(
             yield {"type": "workflow_complete", "metadata": {"workflow_id": workflow_id}}
 
     class RecordingPolicy(WorkflowExecutionPolicy):
-        async def before_execute(self, *, workflow_id: str, input_data) -> None:
+        async def before_execute(
+            self,
+            *,
+            workflow_id: str,
+            input_data,
+            correlation_id: str | None,
+            original_decision_id: str | None,
+        ) -> None:
             calls.append("before")
 
-        async def after_execute(self, *, workflow_id: str, input_data, result) -> None:
+        async def after_execute(
+            self,
+            *,
+            workflow_id: str,
+            input_data,
+            result,
+            correlation_id: str | None,
+            original_decision_id: str | None,
+        ) -> None:
             calls.append("after")
 
-        async def on_error(self, *, workflow_id: str, input_data, error: Exception) -> None:
+        async def on_error(
+            self,
+            *,
+            workflow_id: str,
+            input_data,
+            error: Exception,
+            correlation_id: str | None,
+            original_decision_id: str | None,
+        ) -> None:
             calls.append("error")
 
-        async def on_event(self, *, workflow_id: str, input_data, event: dict) -> None:
+        async def on_event(
+            self,
+            *,
+            workflow_id: str,
+            input_data,
+            event: dict,
+            correlation_id: str | None,
+            original_decision_id: str | None,
+        ) -> None:
             calls.append("event")
 
     def orchestrator_factory(_: Session) -> WorkflowExecutionOrchestrator:
