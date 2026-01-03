@@ -60,6 +60,52 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 logger = logging.getLogger(__name__)
 
 
+class _ReactStepEvent(BaseModel):
+    step_number: int = 0
+    tool_id: str = ""
+    thought: str = ""
+    action: dict[str, Any] = {}
+    observation: str = ""
+
+
+def _normalize_react_step_event(raw_event: dict[str, Any]) -> _ReactStepEvent:
+    step_data = raw_event.get("step")
+    if isinstance(step_data, dict):
+        step_number = (
+            raw_event.get("step_number")
+            or step_data.get("step")
+            or step_data.get("step_number")
+            or 0
+        )
+        tool_id = raw_event.get("tool_id") or step_data.get("tool_id") or ""
+        thought = raw_event.get("thought") or step_data.get("thought") or ""
+        action = (
+            raw_event.get("action")
+            if isinstance(raw_event.get("action"), dict)
+            else step_data.get("action")
+        )
+        observation = raw_event.get("observation") or step_data.get("observation") or ""
+    else:
+        step_number = raw_event.get("step_number") or 0
+        tool_id = raw_event.get("tool_id") or ""
+        thought = raw_event.get("thought") or ""
+        action = raw_event.get("action") if isinstance(raw_event.get("action"), dict) else {}
+        observation = raw_event.get("observation") or ""
+
+    if not tool_id:
+        tool_id = f"react_{step_number or 0}"
+
+    return _ReactStepEvent.model_validate(
+        {
+            "step_number": step_number,
+            "tool_id": tool_id,
+            "thought": thought,
+            "action": action or {},
+            "observation": observation,
+        }
+    )
+
+
 def get_workflow_repository(
     container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
@@ -740,41 +786,101 @@ async def chat_stream_react_with_workflow(
                 if event_type == "processing_started":
                     await emitter.emit_thinking(event.get("message", "处理中..."))
                 elif event_type == "react_step":
-                    step_data = event.get("step", {})
-                    thought = step_data.get("thought", "")
-                    action = step_data.get("action", {})
-                    observation = step_data.get("observation", "")
+                    try:
+                        step = _normalize_react_step_event(event)
+                    except Exception:
+                        await emitter.emit_error(
+                            "Invalid react_step event payload",
+                            error_code="INVALID_REACT_STEP",
+                        )
+                        continue
 
-                    if thought:
-                        await emitter.emit_thinking(thought)
-                    if action:
-                        action_type = action.get("type", "unknown")
+                    if step.thought:
+                        await emitter.emit_thinking(step.thought)
+
+                    if step.action:
+                        action_type = step.action.get("type", "unknown")
+
+                        supervised_decisions = {
+                            "api_request",
+                            "create_node",
+                            "file_operation",
+                            "human_interaction",
+                        }
+                        coordinator = getattr(http_request.app.state, "coordinator", None)
+                        event_bus = getattr(http_request.app.state, "event_bus", None)
+                        if (
+                            action_type in supervised_decisions
+                            and coordinator is not None
+                            and event_bus is not None
+                        ):
+                            from src.domain.agents.coordinator_agent import (
+                                DecisionRejectedEvent,
+                                DecisionValidatedEvent,
+                            )
+
+                            decision = {
+                                "type": action_type,
+                                "session_id": session_id,
+                                "workflow_id": workflow_id,
+                                "tool_id": step.tool_id,
+                                **step.action,
+                            }
+                            validation = coordinator.validate_decision(decision)
+                            if getattr(validation, "is_valid", False):
+                                await event_bus.publish(
+                                    DecisionValidatedEvent(
+                                        source="workflow_chat_stream_react",
+                                        correlation_id=session_id,
+                                        original_decision_id=step.tool_id,
+                                        decision_type=action_type,
+                                        payload=step.action,
+                                    )
+                                )
+                            else:
+                                errors = list(getattr(validation, "errors", []) or [])
+                                await event_bus.publish(
+                                    DecisionRejectedEvent(
+                                        source="workflow_chat_stream_react",
+                                        correlation_id=session_id,
+                                        original_decision_id=step.tool_id,
+                                        decision_type=action_type,
+                                        reason="; ".join(errors) or "coordinator rejected decision",
+                                        errors=errors,
+                                    )
+                                )
+                                db.rollback()
+                                return
+
                         await emitter.emit_tool_call(
                             tool_name=action_type,
-                            tool_id=f"action_{event.get('step_number', 0)}",
-                            arguments=action,
+                            tool_id=step.tool_id,
+                            arguments=step.action,
                         )
-                    if observation:
+
+                    if step.observation:
                         await emitter.emit_tool_result(
-                            tool_id=f"action_{event.get('step_number', 0)}",
-                            result={"observation": observation},
+                            tool_id=step.tool_id,
+                            result={"observation": step.observation},
                             success=True,
                         )
                 elif event_type == "modifications_preview":
                     await emitter.emit_tool_result(
                         tool_id="modifications",
                         result={
-                            "count": event.get("count", 0),
-                            "modifications": event.get("modifications", []),
+                            "count": event.get("modifications_count", 0),
+                            "intent": event.get("intent", ""),
+                            "confidence": event.get("confidence", 0.0),
                         },
                         success=True,
                     )
                 elif event_type == "workflow_updated":
                     await emitter.emit_final_response(
-                        event.get("message", "工作流已更新"),
+                        event.get("ai_message", "工作流已更新"),
                         metadata={
                             "workflow_id": workflow_id,
-                            "ai_message": event.get("ai_message", ""),
+                            "workflow": event.get("workflow", {}),
+                            "rag_sources": event.get("rag_sources", []),
                         },
                     )
                 elif event_type == "error":

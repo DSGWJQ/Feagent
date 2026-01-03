@@ -195,10 +195,13 @@ class UpdateWorkflowByChatUseCase:
             raise DomainError("修改工作流失败：返回的工作流为空")
 
         # 6. 流式产生 react_step 事件
-        for react_step in result.react_steps:
+        for idx, react_step in enumerate(result.react_steps, start=1):
+            step_number = react_step.get("step") or idx
+            tool_id = f"react_{step_number}"
             yield {
                 "type": "react_step",
-                "step_number": react_step.get("step", 0),
+                "step_number": step_number,
+                "tool_id": tool_id,
                 "thought": react_step.get("thought", ""),
                 "action": react_step.get("action", {}),
                 "observation": react_step.get("observation", ""),

@@ -17,6 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
+from src.domain.exceptions import NotFoundError
 from src.domain.services.workflow_chat_service_enhanced import ModificationResult
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
@@ -26,6 +27,7 @@ from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
 from src.interfaces.api.main import app
+from src.interfaces.api.routes.workflows import get_update_workflow_by_chat_use_case
 
 
 @pytest.fixture(scope="function")
@@ -71,6 +73,43 @@ def client(test_engine):
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     app.dependency_overrides[get_rag_service] = override_get_rag_service
+
+    # Override the chat use case to avoid requiring app lifespan/container wiring in this test.
+    async def _override_use_case(workflow_id: str):
+        class _StubUseCase:
+            async def execute_streaming(self, input_data):
+                if workflow_id.startswith("nonexistent"):
+                    raise NotFoundError(entity_type="Workflow", entity_id=workflow_id)
+                yield {
+                    "type": "processing_started",
+                    "workflow_id": workflow_id,
+                }
+                step_count = 3 if getattr(input_data, "user_message", "") == "设计工作流" else 1
+                for step in range(1, step_count + 1):
+                    yield {
+                        "type": "react_step",
+                        "step_number": step,
+                        "tool_id": f"react_{step}",
+                        "thought": f"步骤 {step} 思考",
+                        "action": {"type": "add_node"},
+                        "observation": f"步骤 {step} 观察",
+                    }
+                yield {
+                    "type": "modifications_preview",
+                    "modifications_count": step_count,
+                    "intent": "add_node",
+                    "confidence": 0.9,
+                }
+                yield {
+                    "type": "workflow_updated",
+                    "ai_message": "完成",
+                    "workflow": {"id": workflow_id},
+                    "rag_sources": [],
+                }
+
+        return _StubUseCase()
+
+    app.dependency_overrides[get_update_workflow_by_chat_use_case] = _override_use_case
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -154,9 +193,9 @@ class TestChatStreamReactAPI:
             assert response.status_code == 200, "应该返回 200"
 
             # 验证响应头
-            assert "text/event-stream" in response.headers.get("content-type", ""), (
-                "Content-Type 应该是 text/event-stream"
-            )
+            assert "text/event-stream" in response.headers.get(
+                "content-type", ""
+            ), "Content-Type 应该是 text/event-stream"
 
             # 验证响应内容包含 data: 开头的行
             content = response.text
@@ -213,56 +252,50 @@ class TestChatStreamReactAPI:
     def test_stream_includes_all_event_types(self, client: TestClient, sample_workflow: Workflow):
         """测试：流式响应包含所有必需的事件类型
 
-        RED 阶段：应该包含 processing_started、react_step、modifications_preview、workflow_updated 事件
+        应该包含：thinking、tool_call、tool_result、final 事件
         """
-        with patch("langchain_openai.ChatOpenAI") as mock_llm_class:
-            mock_llm = AsyncMock()
-            mock_llm_class.return_value = mock_llm
+        response = client.post(
+            f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+            json={"message": "测试"},
+        )
 
-            mock_result = ModificationResult(
-                success=True,
-                ai_message="完成",
-                intent="add_node",
-                confidence=0.9,
-                modifications_count=1,
-                modified_workflow=sample_workflow,
-                react_steps=[
-                    {
-                        "step": 1,
-                        "thought": "思考",
-                        "action": {"type": "add_node"},
-                        "observation": "观察",
-                    }
-                ],
-            )
-            mock_llm.invoke.return_value = mock_result
+        assert response.status_code == 200
 
-            response = client.post(
-                f"/api/workflows/{sample_workflow.id}/chat-stream-react",
-                json={"message": "测试"},
-            )
+        # 解析事件
+        lines = response.text.strip().split("\n")
+        events = []
+        for line in lines:
+            if line.startswith("data: "):
+                data_str = line[6:]
+                if data_str != "[DONE]":
+                    try:
+                        event = json.loads(data_str)
+                        events.append(event)
+                    except json.JSONDecodeError:
+                        pass
 
-            assert response.status_code == 200
+        event_types = [e.get("type") for e in events]
+        assert "thinking" in event_types
+        assert "tool_call" in event_types
+        assert "tool_result" in event_types
+        assert "final" in event_types
 
-            # 解析事件
-            lines = response.text.strip().split("\n")
-            events = []
-            for line in lines:
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str != "[DONE]":
-                        try:
-                            event = json.loads(data_str)
-                            events.append(event)
-                        except json.JSONDecodeError:
-                            pass
-
-            # 红色：验证事件类型
-            event_types = [e.get("type") for e in events]
-            assert "processing_started" in event_types, "应该包含 processing_started 事件"
-            assert "react_step" in event_types, "应该包含 react_step 事件"
-            assert "modifications_preview" in event_types, "应该包含 modifications_preview 事件"
-            assert "workflow_updated" in event_types, "应该包含 workflow_updated 事件"
+        tool_calls = [e for e in events if e.get("type") == "tool_call"]
+        tool_results = [e for e in events if e.get("type") == "tool_result"]
+        tool_call_ids = {
+            e.get("metadata", {}).get("tool_id")
+            for e in tool_calls
+            if e.get("metadata", {}).get("tool_id")
+        }
+        tool_result_ids = {
+            e.get("metadata", {}).get("tool_id")
+            for e in tool_results
+            if e.get("metadata", {}).get("tool_id")
+        }
+        assert tool_call_ids, "tool_call 应该包含可审计的 tool_id"
+        assert tool_call_ids.issubset(
+            tool_result_ids
+        ), "tool_call 与 tool_result 应该可配对（tool_id）"
 
     def test_stream_response_headers(self, client: TestClient, sample_workflow: Workflow):
         """测试：流式响应包含正确的 HTTP 头
@@ -348,9 +381,9 @@ class TestChatStreamReactAPI:
             # 流式端点会返回 200 然后在流中发送错误事件
             assert response.status_code == 200, "流式端点应该返回 200"
             # 验证响应包含错误信息
-            assert "error" in response.text or "workflow_not_found" in response.text, (
-                "应该包含错误信息"
-            )
+            assert (
+                "error" in response.text or "workflow_not_found" in response.text
+            ), "应该包含错误信息"
 
     def test_empty_message_validation(self, client: TestClient, sample_workflow: Workflow):
         """测试：空消息的验证
@@ -379,54 +412,30 @@ class TestChatStreamReactAPI:
 
         RED 阶段：完整的多步骤流式传输
         """
-        with patch("langchain_openai.ChatOpenAI") as mock_llm_class:
-            mock_llm = AsyncMock()
-            mock_llm_class.return_value = mock_llm
+        response = client.post(
+            f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+            json={"message": "设计工作流"},
+        )
 
-            # 创建 3 个 react_steps
-            react_steps = [
-                {
-                    "step": i,
-                    "thought": f"步骤 {i} 思考",
-                    "action": {"type": "add_node", "node": {"name": f"node_{i}"}},
-                    "observation": f"步骤 {i} 观察",
-                }
-                for i in range(1, 4)
-            ]
+        assert response.status_code == 200
 
-            mock_result = ModificationResult(
-                success=True,
-                ai_message="完成设计",
-                intent="add_node",
-                confidence=0.95,
-                modifications_count=3,
-                modified_workflow=sample_workflow,
-                react_steps=react_steps,
-            )
-            mock_llm.invoke.return_value = mock_result
+        lines = response.text.strip().split("\n")
+        events = []
+        for line in lines:
+            if line.startswith("data: "):
+                data_str = line[6:]
+                if data_str != "[DONE]":
+                    try:
+                        events.append(json.loads(data_str))
+                    except json.JSONDecodeError:
+                        pass
 
-            response = client.post(
-                f"/api/workflows/{sample_workflow.id}/chat-stream-react",
-                json={"message": "设计工作流"},
-            )
-
-            assert response.status_code == 200
-
-            # 解析事件并计数
-            lines = response.text.strip().split("\n")
-            react_step_count = 0
-            for line in lines:
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str != "[DONE]":
-                        try:
-                            event = json.loads(data_str)
-                            if event.get("type") == "react_step":
-                                react_step_count += 1
-                        except json.JSONDecodeError:
-                            pass
-
-            # 应该有 3 个 react_step 事件
-            assert react_step_count == 3, (
-                f"应该有 3 个 react_step 事件，但实际有 {react_step_count} 个"
-            )
+        tool_calls = [e for e in events if e.get("type") == "tool_call"]
+        tool_call_ids = [
+            e.get("metadata", {}).get("tool_id")
+            for e in tool_calls
+            if e.get("metadata", {}).get("tool_id")
+        ]
+        assert tool_call_ids.count("react_1") == 1
+        assert tool_call_ids.count("react_2") == 1
+        assert tool_call_ids.count("react_3") == 1
