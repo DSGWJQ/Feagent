@@ -46,6 +46,7 @@ from src.domain.services.expression_evaluator import (
 from src.domain.services.node_hierarchy_service import NodeHierarchyService
 from src.domain.services.node_registry import Node, NodeFactory, NodeType
 from src.domain.services.workflow_engine import topological_sort_ids
+from src.domain.value_objects.run_status import RunStatus
 
 logger = logging.getLogger(__name__)
 
@@ -2344,7 +2345,17 @@ class WorkflowAgent:
             return {"success": True, "node_id": node.id, "node_type": node.type.value}
 
         elif decision_type == "execute_workflow":
-            workflow_id = self.workflow_context.workflow_id if self.workflow_context else "unknown"
+            decision_workflow_id = decision.get("workflow_id")
+            workflow_id = (
+                decision_workflow_id.strip() if isinstance(decision_workflow_id, str) else ""
+            )
+            if not workflow_id:
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "workflow_id": "unknown",
+                    "error": "workflow_id is required for execute_workflow",
+                }
             kernel = self.workflow_execution_kernel
             if kernel is None:
                 logger.warning(
@@ -2362,18 +2373,35 @@ class WorkflowAgent:
                     ),
                 }
 
+            run_id = decision.get("run_id")
+            if not isinstance(run_id, str) or not run_id.strip():
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "workflow_id": workflow_id,
+                    "error": "run_id is required for execute_workflow (use the same contract as REST execute/stream)",
+                }
+            run_id = run_id.strip()
+
             initial_input = decision.get("initial_input", decision.get("input_data"))
             events: list[dict[str, Any]] = []
             async for event in kernel.execute_streaming(
                 workflow_id=workflow_id, input_data=initial_input
             ):
-                events.append(event)
+                events.append({**event, "run_id": run_id})
 
             terminal_type = events[-1].get("type") if events else None
+            if terminal_type == "workflow_complete":
+                run_status = RunStatus.COMPLETED
+            else:
+                run_status = RunStatus.FAILED
+
             return {
-                "success": terminal_type == "workflow_complete",
-                "status": "completed" if terminal_type == "workflow_complete" else "failed",
+                "success": terminal_type == "workflow_complete"
+                and run_status is RunStatus.COMPLETED,
+                "status": run_status.value,
                 "workflow_id": workflow_id,
+                "run_id": run_id,
                 "executor_id": (events[-1].get("executor_id") if events else None),
                 "events": events,
             }
