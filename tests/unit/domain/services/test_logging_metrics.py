@@ -815,8 +815,8 @@ class TestAPIMetricsCollector:
         collector = APIMetricsCollector()
 
         collector.record_call(
-            endpoint="/api/workflows",
-            method="GET",
+            endpoint="/api/workflows/chat-create/stream",
+            method="POST",
             status_code=500,
             latency_ms=50,
         )
@@ -857,14 +857,14 @@ class TestAPIMetricsCollector:
 
         collector.record_call("/api/agents", "POST", 200, 100)
         collector.record_call("/api/agents", "GET", 200, 50)
-        collector.record_call("/api/workflows", "POST", 201, 200)
+        collector.record_call("/api/workflows/chat-create/stream", "POST", 200, 200)
 
         metrics = collector.get_metrics_by_endpoint()
 
         assert "/api/agents" in metrics
-        assert "/api/workflows" in metrics
+        assert "/api/workflows/chat-create/stream" in metrics
         assert metrics["/api/agents"]["call_count"] == 2
-        assert metrics["/api/workflows"]["call_count"] == 1
+        assert metrics["/api/workflows/chat-create/stream"]["call_count"] == 1
 
 
 class TestWorkflowMetricsCollector:
@@ -1202,7 +1202,7 @@ class TestDashboardDataGenerator:
         api_collector = APIMetricsCollector()
         api_collector.record_call("/api/agents", "GET", 200, 100)
         api_collector.record_call("/api/agents", "POST", 201, 150)
-        api_collector.record_call("/api/workflows", "GET", 500, 50)
+        api_collector.record_call("/api/workflows/chat-create/stream", "POST", 500, 50)
 
         generator = DashboardDataGenerator(api_collector=api_collector)
 

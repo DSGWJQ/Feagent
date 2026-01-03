@@ -1,8 +1,7 @@
-"""测试：Legacy POST /api/workflows（兼容期保留）.
+"""测试：Legacy POST /api/workflows（已移除）.
 
 覆盖点（WCC-070）：
-- 当 nodes 为空时，仍可创建 workflow（使用统一的基底 workflow shape：start->end）
-- 响应包含 deprecation 提示头，指导迁移到 /api/workflows/chat-create/stream
+- POST /api/workflows 不应再被挂载到 API app（应当 404）
 """
 
 from __future__ import annotations
@@ -56,7 +55,7 @@ def client(test_engine):
 
 
 class TestLegacyCreateWorkflowAPI:
-    def test_create_without_nodes_uses_base_workflow_shape_and_sets_deprecation_headers(
+    def test_legacy_create_is_removed(
         self,
         client: TestClient,
     ):
@@ -65,13 +64,4 @@ class TestLegacyCreateWorkflowAPI:
             json={"name": "legacy", "description": "deprecated create"},
         )
 
-        assert response.status_code == 201
-        assert response.headers.get("Deprecation") == "true"
-        assert "/api/workflows/chat-create/stream" in (response.headers.get("Link") or "")
-        assert "Deprecated" in (response.headers.get("Warning") or "")
-
-        body = response.json()
-        assert body["name"] == "legacy"
-        assert len(body["nodes"]) >= 2
-        assert {node["type"] for node in body["nodes"]} >= {"start", "end"}
-        assert any(edge["source"] and edge["target"] for edge in body["edges"])
+        assert response.status_code == 404

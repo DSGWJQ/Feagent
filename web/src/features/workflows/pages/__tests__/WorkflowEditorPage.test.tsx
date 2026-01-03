@@ -26,12 +26,10 @@ vi.mock('@/hooks/useWorkflow', () => ({
 
 const mocks = vi.hoisted(() => ({
   chatCreateWorkflowStreaming: vi.fn(),
-  createWorkflow: vi.fn(),
 }));
 
 vi.mock('../../api/workflowsApi', () => ({
   chatCreateWorkflowStreaming: mocks.chatCreateWorkflowStreaming,
-  createWorkflow: mocks.createWorkflow,
 }));
 
 vi.mock('../WorkflowEditorPageWithMutex', () => ({
@@ -93,28 +91,4 @@ describe('WorkflowEditorPage', () => {
     });
   });
 
-  it('can rollback to legacy create via query param override', async () => {
-    mocks.createWorkflow.mockResolvedValue({ id: 'wf_legacy_123' } as any);
-
-    const user = userEvent.setup();
-
-    renderWithProviders(
-      <Routes>
-        <Route path="/" element={<WorkflowEditorPage />} />
-        <Route path="/workflows/:id/edit" element={<WorkflowEditorPage />} />
-      </Routes>,
-      { initialEntries: ['/?create=legacy'] }
-    );
-
-    await user.type(
-      screen.getByPlaceholderText('例如：帮我生成一个“用户注册与欢迎邮件”工作流'),
-      '创建一个示例工作流'
-    );
-    await user.click(screen.getByRole('button', { name: '创建并进入编辑器' }));
-
-    await waitFor(() => {
-      expect(mocks.createWorkflow).toHaveBeenCalled();
-      expect(screen.getByTestId('workflow-editor-inner')).toHaveTextContent('wf_legacy_123');
-    });
-  });
 });

@@ -10,6 +10,7 @@
 使用真实的数据库和API（FastAPI TestClient）
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,6 +21,7 @@ from sqlalchemy.orm import sessionmaker
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
 from src.interfaces.api.main import app
+from src.interfaces.api.routes import workflows as workflows_routes
 
 # 创建测试数据库
 TEST_DATABASE_URL = "sqlite:///./test_integration.db"
@@ -40,6 +42,18 @@ def override_get_db():
 app.dependency_overrides[get_db_session] = override_get_db
 
 
+def _parse_sse_events(text: str) -> list[dict]:
+    events: list[dict] = []
+    for line in text.splitlines():
+        if not line.startswith("data: "):
+            continue
+        payload = line[6:]
+        if payload == "[DONE]":
+            continue
+        events.append(json.loads(payload))
+    return events
+
+
 @pytest.fixture(scope="function")
 def test_db():
     """每个测试前创建表，测试后删除表"""
@@ -51,7 +65,8 @@ def test_db():
 @pytest.fixture
 def client(test_db):
     """创建测试客户端"""
-    return TestClient(app)
+    with TestClient(app) as client:
+        yield client
 
 
 @pytest.fixture
@@ -192,35 +207,44 @@ class TestAuthenticatedWorkflowCreation:
         login_response = client.post("/api/auth/github/callback", json={"code": "test_code"})
         assert login_response.status_code == 200
         token = login_response.json()["access_token"]
-        # Act - 创建工作流（带token）
-        workflow_data = {
-            "name": "测试工作流",
-            "description": "登录用户创建的工作流",
-            "nodes": [
-                {
-                    "id": "node_1",
-                    "type": "start",
-                    "name": "开始",
-                    "config": {},
-                    "position": {"x": 100, "y": 100},
-                }
-            ],
-            "edges": [],
-        }
 
-        headers = {"Authorization": f"Bearer {token}"}
-        response = client.post("/api/workflows", json=workflow_data, headers=headers)
+        def override_use_case_factory():
+            def factory(workflow_id: str):
+                class _StubUseCase:
+                    async def execute_streaming(self, _input_data):
+                        yield {
+                            "type": "workflow_updated",
+                            "ai_message": "ok",
+                            "workflow": {"id": workflow_id},
+                            "rag_sources": [],
+                        }
 
-        # Assert
-        assert response.status_code == 201
-        workflow = response.json()
+                return _StubUseCase()
 
-        # 验证工作流已关联用户
-        # 注意：user_id可能不在response中，需要从数据库验证
-        assert workflow["name"] == "测试工作流"
-        assert workflow["description"] == "登录用户创建的工作流"
+            return factory
 
-        # TODO: 验证数据库中workflow.user_id == user_id
+        client.app.dependency_overrides[
+            workflows_routes.get_update_workflow_by_chat_use_case_factory
+        ] = override_use_case_factory
+        try:
+            headers = {"Authorization": f"Bearer {token}", "Accept": "text/event-stream"}
+            response = client.post(
+                "/api/workflows/chat-create/stream",
+                json={"message": "登录用户创建的工作流", "run_id": "run_auth_1"},
+                headers=headers,
+            )
+            assert response.status_code == 200
+
+            events = _parse_sse_events(response.text)
+            assert events and events[0]["metadata"]["workflow_id"].startswith("wf_")
+            workflow_id = events[0]["metadata"]["workflow_id"]
+
+            get_response = client.get(f"/api/workflows/{workflow_id}")
+            assert get_response.status_code == 200
+        finally:
+            client.app.dependency_overrides.pop(
+                workflows_routes.get_update_workflow_by_chat_use_case_factory, None
+            )
 
     def test_unauthenticated_user_should_save_workflow_without_user_id(self, client):
         """
@@ -230,30 +254,42 @@ class TestAuthenticatedWorkflowCreation:
         When: POST /api/workflows without Authorization header
         Then: 工作流user_id应该为None（体验模式）
         """
-        # Act - 创建工作流（不带token）
-        workflow_data = {
-            "name": "体验工作流",
-            "description": "非登录用户创建的工作流",
-            "nodes": [
-                {
-                    "id": "node_1",
-                    "type": "start",
-                    "name": "开始",
-                    "config": {},
-                    "position": {"x": 100, "y": 100},
-                }
-            ],
-            "edges": [],
-        }
 
-        response = client.post("/api/workflows", json=workflow_data)
+        def override_use_case_factory():
+            def factory(workflow_id: str):
+                class _StubUseCase:
+                    async def execute_streaming(self, _input_data):
+                        yield {
+                            "type": "workflow_updated",
+                            "ai_message": "ok",
+                            "workflow": {"id": workflow_id},
+                            "rag_sources": [],
+                        }
 
-        # Assert
-        assert response.status_code == 201
-        workflow = response.json()
+                return _StubUseCase()
 
-        assert workflow["name"] == "体验工作流"
-        # TODO: 验证数据库中workflow.user_id is None
+            return factory
+
+        client.app.dependency_overrides[
+            workflows_routes.get_update_workflow_by_chat_use_case_factory
+        ] = override_use_case_factory
+        try:
+            response = client.post(
+                "/api/workflows/chat-create/stream",
+                json={"message": "非登录用户创建的工作流", "run_id": "run_anon_1"},
+                headers={"Accept": "text/event-stream"},
+            )
+            assert response.status_code == 200
+            events = _parse_sse_events(response.text)
+            assert events and events[0]["metadata"]["workflow_id"].startswith("wf_")
+            workflow_id = events[0]["metadata"]["workflow_id"]
+
+            get_response = client.get(f"/api/workflows/{workflow_id}")
+            assert get_response.status_code == 200
+        finally:
+            client.app.dependency_overrides.pop(
+                workflows_routes.get_update_workflow_by_chat_use_case_factory, None
+            )
 
 
 class TestAuthenticatedToolCreation:
@@ -348,25 +384,41 @@ class TestJWTTokenValidation:
         When: 尝试访问API
         Then: 应该返回401错误（或被忽略，取决于是否必须认证）
         """
-        # Act - 使用无效token创建工作流
-        headers = {"Authorization": "Bearer invalid_fake_token_12345"}
-        workflow_data = {
-            "name": "测试",
-            "description": "测试",
-            "nodes": [
-                {
-                    "id": "1",
-                    "type": "start",
-                    "name": "开始",
-                    "config": {},
-                    "position": {"x": 0, "y": 0},
-                }
-            ],
-            "edges": [],
-        }
 
-        response = client.post("/api/workflows", json=workflow_data, headers=headers)
+        def override_use_case_factory():
+            def factory(workflow_id: str):
+                class _StubUseCase:
+                    async def execute_streaming(self, _input_data):
+                        yield {
+                            "type": "workflow_updated",
+                            "ai_message": "ok",
+                            "workflow": {"id": workflow_id},
+                            "rag_sources": [],
+                        }
 
-        # Assert - 因为是可选认证，应该成功但不关联用户
-        assert response.status_code == 201
-        # TODO: 验证数据库中workflow.user_id is None
+                return _StubUseCase()
+
+            return factory
+
+        client.app.dependency_overrides[
+            workflows_routes.get_update_workflow_by_chat_use_case_factory
+        ] = override_use_case_factory
+        try:
+            headers = {
+                "Authorization": "Bearer invalid_fake_token_12345",
+                "Accept": "text/event-stream",
+            }
+            response = client.post(
+                "/api/workflows/chat-create/stream",
+                json={"message": "测试", "run_id": "run_invalid_token_1"},
+                headers=headers,
+            )
+
+            # Assert - 因为是可选认证，应成功但不关联用户（具体 user_id 验证留待 DB 侧）
+            assert response.status_code == 200
+            events = _parse_sse_events(response.text)
+            assert events and events[0]["metadata"]["workflow_id"].startswith("wf_")
+        finally:
+            client.app.dependency_overrides.pop(
+                workflows_routes.get_update_workflow_by_chat_use_case_factory, None
+            )

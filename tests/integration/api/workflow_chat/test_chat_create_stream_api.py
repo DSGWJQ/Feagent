@@ -198,7 +198,9 @@ class TestChatCreateStreamAPI:
         )
         assert response.status_code == 503
 
-    def test_llm_error_emits_sse_error_event(self, client: TestClient):
+    def test_llm_error_emits_sse_error_event_and_deletes_base_workflow(
+        self, client: TestClient, test_engine
+    ):
         def override_use_case_factory() -> Callable[[str], object]:
             def factory(workflow_id: str):
                 return _FakeUseCase(workflow_id, raise_exc=DomainError("LLM error"))
@@ -219,3 +221,13 @@ class TestChatCreateStreamAPI:
         events = _parse_sse_events(response.text)
         assert events[0]["metadata"]["workflow_id"].startswith("wf_")
         assert any(e.get("type") == "error" for e in events)
+
+        # fail-closed: should not leave a half-created workflow in DB
+        workflow_id = events[0]["metadata"]["workflow_id"]
+        TestingSessionLocal = sessionmaker(bind=test_engine)
+        db: Session = TestingSessionLocal()
+        try:
+            repo = SQLAlchemyWorkflowRepository(db)
+            assert repo.find_by_id(workflow_id) is None
+        finally:
+            db.close()

@@ -38,19 +38,6 @@ export async function listWorkflows(): Promise<Workflow[]> {
 }
 
 /**
- * 创建工作流
- */
-export async function createWorkflow(request: {
-  name: string;
-  description?: string;
-  nodes?: any[];
-  edges?: any[];
-}): Promise<Workflow> {
-  const response = await axiosInstance.post<Workflow>('/workflows', request);
-  return response.data;
-}
-
-/**
  * 获取工作流详情
  */
 export async function getWorkflow(workflowId: string): Promise<Workflow> {

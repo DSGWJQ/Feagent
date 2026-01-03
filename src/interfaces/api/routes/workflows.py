@@ -9,7 +9,7 @@ import time
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
@@ -49,7 +49,6 @@ from src.interfaces.api.dto.workflow_dto import (
     ChatCreateRequest,
     ChatRequest,
     ChatResponse,
-    CreateWorkflowRequest,
     ImportWorkflowRequest,
     ImportWorkflowResponse,
     UpdateWorkflowRequest,
@@ -240,8 +239,6 @@ def get_update_workflow_by_chat_use_case(
 
 def get_update_workflow_by_chat_use_case_factory(
     container: ApiContainer = Depends(get_container),
-    workflow_repository: WorkflowRepository = Depends(get_workflow_repository),
-    chat_message_repository: ChatMessageRepository = Depends(get_chat_message_repository),
     llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
     rag_service=Depends(get_rag_service),
     db: Session = Depends(get_db_session),
@@ -253,13 +250,14 @@ def get_update_workflow_by_chat_use_case_factory(
 
     from src.interfaces.api.dependencies.memory import get_composite_memory_service
 
-    memory_service = get_composite_memory_service(session=db, container=container)
-    save_validator = WorkflowSaveValidator(
-        executor_registry=container.executor_registry,
-        tool_repository=container.tool_repository(db),
-    )
-
     def factory(workflow_id: str) -> UpdateWorkflowByChatUseCase:
+        workflow_repository = container.workflow_repository(db)
+        chat_message_repository = container.chat_message_repository(db)
+        memory_service = get_composite_memory_service(session=db, container=container)
+        save_validator = WorkflowSaveValidator(
+            executor_registry=container.executor_registry,
+            tool_repository=container.tool_repository(db),
+        )
         chat_service = EnhancedWorkflowChatService(
             workflow_id=workflow_id,
             llm=llm,
@@ -274,86 +272,6 @@ def get_update_workflow_by_chat_use_case_factory(
         )
 
     return factory
-
-
-@router.post(
-    "",
-    response_model=WorkflowResponse,
-    status_code=status.HTTP_201_CREATED,
-    deprecated=True,
-)
-def create_workflow(
-    request: CreateWorkflowRequest,
-    response: Response,
-    container: ApiContainer = Depends(get_container),
-    db: Session = Depends(get_db_session),
-    current_user=Depends(get_current_user_optional),
-) -> WorkflowResponse:
-    """Create a workflow."""
-
-    from src.domain.entities.workflow import Workflow
-
-    repository = container.workflow_repository(db)
-    save_validator = WorkflowSaveValidator(
-        executor_registry=container.executor_registry,
-        tool_repository=container.tool_repository(db),
-    )
-
-    try:
-        response.headers["Deprecation"] = "true"
-        response.headers["Link"] = '</api/workflows/chat-create/stream>; rel="alternate"'
-        response.headers["Warning"] = '299 - "Deprecated: prefer /api/workflows/chat-create/stream"'
-
-        logger.info(
-            "legacy_create_workflow_called",
-            extra={"workflow_name": request.name},
-        )
-
-        if not request.nodes:
-            if request.edges:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="edges must be empty when nodes is empty (deprecated endpoint)",
-                )
-            workflow = Workflow.create_base(
-                name=request.name,
-                description=request.description,
-            )
-        else:
-            nodes = [node_dto.to_entity() for node_dto in request.nodes]
-            edges = [edge_dto.to_entity() for edge_dto in request.edges]
-            workflow = Workflow.create(
-                name=request.name,
-                description=request.description,
-                nodes=nodes,
-                edges=edges,
-            )
-        if current_user:
-            workflow.user_id = current_user.id
-
-        save_validator.validate_or_raise(workflow)
-        repository.save(workflow)
-        db.commit()
-        return WorkflowResponse.from_entity(workflow)
-
-    except DomainValidationError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=exc.to_dict(),
-        ) from exc
-    except DomainError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-    except Exception as exc:  # pragma: no cover - unexpected failure path
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create workflow: {exc}",
-        ) from exc
 
 
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
@@ -718,6 +636,14 @@ async def chat_create_stream(
     await emitter.emit_thinking("AI is analyzing the request.", **base_metadata)
 
     async def run_chat() -> None:
+        def _cleanup_failed_creation() -> None:
+            try:
+                repository.delete(workflow.id)
+                db.commit()
+            except Exception:  # pragma: no cover - best-effort cleanup
+                db.rollback()
+                logger.exception("chat_create_cleanup_failed", extra=base_metadata)
+
         try:
             input_data = UpdateWorkflowByChatInput(
                 workflow_id=workflow.id,
@@ -726,6 +652,8 @@ async def chat_create_stream(
 
             async for event in use_case.execute_streaming(input_data):
                 if await http_request.is_disconnected():
+                    db.rollback()
+                    _cleanup_failed_creation()
                     return
 
                 event_type = event.get("type", "")
@@ -775,6 +703,7 @@ async def chat_create_stream(
 
         except DomainError as exc:
             db.rollback()
+            _cleanup_failed_creation()
             await emitter.emit_error(
                 str(exc),
                 error_code="DOMAIN_ERROR",
@@ -783,6 +712,7 @@ async def chat_create_stream(
             )
         except Exception:  # pragma: no cover - best-effort fallback
             db.rollback()
+            _cleanup_failed_creation()
             logger.exception("chat-create streaming failed", extra=base_metadata)
             await emitter.emit_error(
                 "Server error",

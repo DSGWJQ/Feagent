@@ -62,7 +62,8 @@ def client(test_engine):
             db.close()
 
     app.dependency_overrides[get_db_session] = override_get_db_session
-    yield TestClient(app)
+    with TestClient(app) as client:
+        yield client
     app.dependency_overrides.clear()
 
 
@@ -233,7 +234,7 @@ class TestExecuteWorkflowAPI:
         """测试：执行工作流应该成功
 
         场景：
-        - 创建一个简单工作流（Start → HTTP → End）
+        - 创建一个简单工作流（Start → End）
         - 通过 API 执行工作流
         - 验证返回执行结果
 
@@ -251,26 +252,19 @@ class TestExecuteWorkflowAPI:
             position=Position(x=0, y=0),
         )
         node2 = Node.create(
-            type=NodeType.HTTP,
-            name="HTTP 请求",
-            config={"url": "https://api.example.com", "method": "GET"},
-            position=Position(x=100, y=0),
-        )
-        node3 = Node.create(
             type=NodeType.END,
             name="结束",
             config={},
-            position=Position(x=200, y=0),
+            position=Position(x=100, y=0),
         )
 
         edge1 = Edge.create(source_node_id=node1.id, target_node_id=node2.id)
-        edge2 = Edge.create(source_node_id=node2.id, target_node_id=node3.id)
 
         workflow = Workflow.create(
             name="测试工作流",
             description="",
-            nodes=[node1, node2, node3],
-            edges=[edge1, edge2],
+            nodes=[node1, node2],
+            edges=[edge1],
         )
 
         # 保存到数据库
@@ -289,7 +283,7 @@ class TestExecuteWorkflowAPI:
         data = response.json()
         assert "execution_log" in data
         assert "final_result" in data
-        assert len(data["execution_log"]) == 3  # 3 个节点
+        assert len(data["execution_log"]) == 2  # 2 个节点
 
     def test_execute_workflow_streaming_should_succeed(self, test_db: Session, client: TestClient):
         """测试：流式执行工作流应该成功

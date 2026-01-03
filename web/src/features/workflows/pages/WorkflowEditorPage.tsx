@@ -11,14 +11,10 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useLocation, useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, App, Button, Card, Input, Spin, Space, Typography } from 'antd';
 import { useWorkflow } from '@/hooks/useWorkflow';
-import {
-  chatCreateWorkflowStreaming,
-  createWorkflow,
-  type PlanningSseEvent,
-} from '../api/workflowsApi';
+import { chatCreateWorkflowStreaming, type PlanningSseEvent } from '../api/workflowsApi';
 import WorkflowInteractionProvider from '../contexts/WorkflowInteractionContext';
 import WorkflowEditorPageWithMutex from './WorkflowEditorPageWithMutex';
 
@@ -40,24 +36,12 @@ function extractWorkflowId(event: PlanningSseEvent): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function getWorkflowCreateMode(search: string): 'chat_create' | 'legacy' {
-  const params = new URLSearchParams(search);
-  const raw =
-    params.get('create') ??
-    params.get('create_mode') ??
-    import.meta.env.VITE_WORKFLOW_CREATE_MODE ??
-    'chat_create';
-
-  return raw.toLowerCase() === 'legacy' ? 'legacy' : 'chat_create';
-}
-
 /**
  * 工作流编辑器页面组件（带 Provider 包装）
  */
 export const WorkflowEditorPage: React.FC = () => {
   const params = useParams<{ id: string }>();
   const workflowId = params.id || '';
-  const location = useLocation();
   const navigate = useNavigate();
   const { message } = App.useApp();
 
@@ -85,8 +69,6 @@ export const WorkflowEditorPage: React.FC = () => {
     const trimmed = createPrompt.trim();
     if (!trimmed || isCreating) return;
 
-    const createMode = getWorkflowCreateMode(location.search);
-
     setIsCreating(true);
     setCreateError(null);
     setCreateProgress(null);
@@ -97,23 +79,6 @@ export const WorkflowEditorPage: React.FC = () => {
     }
 
     try {
-      if (createMode === 'legacy') {
-        try {
-          const created = await createWorkflow({
-            name: '新建工作流',
-            description: trimmed,
-          });
-          setIsCreating(false);
-          message.success('已使用 legacy 创建，正在进入编辑器...');
-          navigate(`/workflows/${created.id}/edit`, { replace: true });
-          return;
-        } catch (error: any) {
-          setIsCreating(false);
-          setCreateError(error?.message || 'legacy 创建失败');
-          return;
-        }
-      }
-
       let eventsSeen = 0;
 
       const finishWithError = (errorMessage: string) => {
