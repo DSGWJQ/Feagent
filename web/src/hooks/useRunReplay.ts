@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { API_BASE_URL } from '@/services/api';
+
 export type RunEvent = {
-  event_type: string;
-  payload: Record<string, any>;
+  type: string;
+  run_id: string;
+  [key: string]: any;
 };
 
 export type UseRunReplayOptions = {
   runId: string;
+  pageSize?: number;
   onEvent?: (event: RunEvent) => void;
   onComplete?: () => void;
   onError?: (error: Error) => void;
 };
 
 export function useRunReplay(options: UseRunReplayOptions) {
-  const { runId, onEvent, onComplete, onError } = options;
+  const { runId, pageSize = 200, onEvent, onComplete, onError } = options;
   const [isReplaying, setIsReplaying] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const onEventRef = useRef(onEvent);
   const onCompleteRef = useRef(onComplete);
@@ -31,33 +36,77 @@ export function useRunReplay(options: UseRunReplayOptions) {
   }, [onError]);
 
   const stopReplay = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     setIsReplaying(false);
   }, []);
 
   const startReplay = useCallback(async () => {
     if (!runId) return;
     try {
+      abortRef.current?.abort();
+      const abortController = new AbortController();
+      abortRef.current = abortController;
       setIsReplaying(true);
 
-      // Minimal placeholder: real replay should stream persisted run events.
-      // Keep this hook stable for tests/build even when backend replay is unavailable.
-      onEventRef.current?.({
-        event_type: 'replay_started',
-        payload: { run_id: runId },
-      });
+      let cursor: number | undefined;
+      while (true) {
+        const params = new URLSearchParams();
+        params.set('limit', String(pageSize));
+        if (cursor !== undefined) params.set('cursor', String(cursor));
+
+        const token = localStorage.getItem('authToken');
+        const headers: HeadersInit = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`${API_BASE_URL}/runs/${runId}/events?${params.toString()}`, {
+          method: 'GET',
+          headers,
+          signal: abortController.signal,
+        });
+
+        if (!res.ok) {
+          const detail = await res.json().catch(() => ({}));
+          const msg =
+            typeof detail?.detail === 'string'
+              ? detail.detail
+              : `HTTP error! status: ${res.status}`;
+          throw new Error(msg);
+        }
+
+        const data = (await res.json()) as {
+          run_id: string;
+          events: RunEvent[];
+          next_cursor: number | null;
+          has_more: boolean;
+        };
+
+        for (const evt of data.events || []) {
+          onEventRef.current?.(evt);
+        }
+
+        if (!data.has_more || data.next_cursor == null) break;
+        cursor = data.next_cursor;
+      }
+
+      onCompleteRef.current?.();
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        return;
+      }
       const err = e instanceof Error ? e : new Error(String(e));
       onErrorRef.current?.(err);
+    } finally {
+      abortRef.current = null;
       setIsReplaying(false);
     }
-  }, [runId]);
+  }, [pageSize, runId]);
 
   useEffect(() => {
-    if (!isReplaying) return;
     return () => {
-      onCompleteRef.current?.();
+      abortRef.current?.abort();
     };
-  }, [isReplaying]);
+  }, []);
 
   return {
     isReplaying,

@@ -135,10 +135,21 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   const [resultDrawerOpen, setResultDrawerOpen] = useState(false);
   const [lastRunId, setLastRunId] = useState<string | null>(null);
 
-  // MVP Step 2: workflowId 变化时重置 lastRunId，防止 stale run_id
+  const runIdStorageKey = useMemo(() => `workflow:lastRunId:${workflowId}`, [workflowId]);
+
+  // MVP Step 2: 刷新后可恢复 run_id（用于 Replay 复原同一成功/失败结论）
   useEffect(() => {
-    setLastRunId(null);
-  }, [workflowId]);
+    const stored = localStorage.getItem(runIdStorageKey);
+    setLastRunId(stored && stored.trim() ? stored : null);
+  }, [runIdStorageKey]);
+
+  useEffect(() => {
+    if (!lastRunId) {
+      localStorage.removeItem(runIdStorageKey);
+      return;
+    }
+    localStorage.setItem(runIdStorageKey, lastRunId);
+  }, [lastRunId, runIdStorageKey]);
 
   // MVP Step 1: Research Plan 状态
   const [planDrawerOpen, setPlanDrawerOpen] = useState(false);
@@ -188,8 +199,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     runId: lastRunId ?? '',
     onEvent: (event: RunEvent) => {
       // 处理成功完成事件（防止双重触发）
-      if ((event.event_type === 'workflow_complete' || event.event_type === 'RESEARCH_END') && !resultHandledRef.current) {
-        const rr = extractResearchResult(event.payload);
+      if ((event.type === 'workflow_complete' || event.type === 'RESEARCH_END') && !resultHandledRef.current) {
+        const rr = extractResearchResult(event);
         if (rr) {
           resultHandledRef.current = true;
           setResearchResult(rr);
@@ -197,17 +208,17 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         }
       }
       // 处理失败事件 - 允许用户查看部分结果或错误
-      if (event.event_type === 'workflow_error') {
-        const rr = extractResearchResult(event.payload);
+      if (event.type === 'workflow_error') {
+        const rr = extractResearchResult(event);
         if (rr) {
           setResearchResult(rr);
           setResultDrawerOpen(true);
           message.warning('Research completed with errors');
         } else {
           // 规范化错误消息
-          const errorMsg = typeof event.payload.error === 'string'
-            ? event.payload.error
-            : (event.payload.detail ?? event.payload.message ?? 'Unknown error');
+          const errorMsg = typeof event.error === 'string'
+            ? event.error
+            : (event.detail ?? event.message ?? 'Unknown error');
           message.error(`Workflow failed: ${errorMsg}`);
         }
       }

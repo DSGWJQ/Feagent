@@ -485,7 +485,7 @@ async def execute_workflow_streaming(
         AppendRunEventInput(
             run_id=run_id,
             event_type="workflow_start",
-            channel="execution",
+            channel="lifecycle",
             payload={
                 "workflow_id": workflow_id,
                 "executor_id": executor_id,
@@ -506,22 +506,13 @@ async def execute_workflow_streaming(
             )
 
             async for event in event_iter:
-                if event_recorder is not None:
-                    try:
-                        event_recorder.enqueue(
-                            run_id=run_id,
-                            sse_event={**event, "channel": "execution"},
-                        )
-                    except Exception:
-                        pass
-
                 event_type = event.get("type", "")
                 if not terminal_persisted and event_type in {"workflow_complete", "workflow_error"}:
                     run_event_use_case.execute(
                         AppendRunEventInput(
                             run_id=run_id,
                             event_type=event_type,
-                            channel="execution",
+                            channel="lifecycle",
                             payload={
                                 "workflow_id": workflow_id,
                                 "executor_id": executor_id,
@@ -535,6 +526,14 @@ async def execute_workflow_streaming(
                     "run_id": run_id,
                     "executor_id": event.get("executor_id", executor_id),
                 }
+                if event_recorder is not None:
+                    try:
+                        event_recorder.enqueue(
+                            run_id=run_id,
+                            sse_event={**event, "channel": "execution"},
+                        )
+                    except Exception:
+                        pass
                 events_sent += 1
                 yield f"data: {json.dumps(event)}\n\n"
         except NotFoundError as exc:
@@ -546,7 +545,7 @@ async def execute_workflow_streaming(
                 AppendRunEventInput(
                     run_id=run_id,
                     event_type="workflow_error",
-                    channel="execution",
+                    channel="lifecycle",
                     payload={
                         "workflow_id": workflow_id,
                         "executor_id": executor_id,
@@ -555,6 +554,7 @@ async def execute_workflow_streaming(
                 )
             )
             error_event["run_id"] = run_id
+            error_event["executor_id"] = executor_id
             if event_recorder is not None:
                 try:
                     event_recorder.enqueue(
@@ -573,7 +573,7 @@ async def execute_workflow_streaming(
                 AppendRunEventInput(
                     run_id=run_id,
                     event_type="workflow_error",
-                    channel="execution",
+                    channel="lifecycle",
                     payload={
                         "workflow_id": workflow_id,
                         "executor_id": executor_id,
@@ -582,6 +582,7 @@ async def execute_workflow_streaming(
                 )
             )
             error_event["run_id"] = run_id
+            error_event["executor_id"] = executor_id
             if event_recorder is not None:
                 try:
                     event_recorder.enqueue(

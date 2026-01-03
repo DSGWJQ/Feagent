@@ -12,6 +12,7 @@ import logging
 import time
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,9 +20,16 @@ from src.config import settings
 from src.domain.entities.run import Run
 from src.domain.exceptions import DomainError, NotFoundError
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.models import RunEventModel
 from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.dependencies.container import get_container
-from src.interfaces.api.dto.run_dto import CreateRunRequest, RunListResponse, RunResponse
+from src.interfaces.api.dto.run_dto import (
+    CreateRunRequest,
+    RunListResponse,
+    RunReplayEvent,
+    RunReplayEventsPageResponse,
+    RunResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +87,83 @@ def get_run(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取 Run 失败: {exc}",
+        ) from exc
+
+
+# ==================== 回放 RunEvents (按 Run) ====================
+@_runs_router.get(
+    "/{run_id}/events",
+    response_model=RunReplayEventsPageResponse,
+    summary="回放 RunEvents",
+    description="按稳定顺序分页获取 Run 的事件流（用于前端回放）。",
+)
+def list_run_events(
+    run_id: str,
+    response: Response,
+    limit: int = Query(default=200, ge=1, le=1000, description="单页数量上限"),
+    cursor: int | None = Query(
+        default=None,
+        ge=0,
+        description="cursor（返回 id > cursor 的事件；基于自增主键稳定分页）",
+    ),
+    channel: str = Query(
+        default="execution",
+        description="事件通道（默认 execution；可用于区分 planning/lifecycle 等）",
+    ),
+    container: ApiContainer = Depends(get_container),
+    db: Session = Depends(get_db_session),
+) -> RunReplayEventsPageResponse:
+    if settings.disable_run_persistence:
+        response.headers["Deprecation"] = "true"
+        response.headers["Warning"] = '299 - "Runs API disabled by feature flag"'
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Runs API is disabled by feature flag (disable_run_persistence).",
+        )
+
+    try:
+        # fail-closed: run must exist
+        container.run_repository(db).get_by_id(run_id)
+
+        stmt = select(RunEventModel).where(RunEventModel.run_id == run_id)
+        if channel:
+            stmt = stmt.where(RunEventModel.channel == channel)
+        if cursor is not None:
+            stmt = stmt.where(RunEventModel.id > cursor)
+
+        # stable ordering: monotonic PK asc
+        stmt = stmt.order_by(RunEventModel.id.asc()).limit(limit + 1)
+        models = list(db.execute(stmt).scalars().all())
+
+        has_more = len(models) > limit
+        if has_more:
+            models = models[:limit]
+
+        events: list[RunReplayEvent] = []
+        for model in models:
+            payload = dict(model.payload or {})
+            payload.pop("type", None)
+            payload.pop("channel", None)
+            payload["run_id"] = run_id
+            events.append(RunReplayEvent(type=model.type, **payload))
+
+        next_cursor = models[-1].id if has_more and models else None
+        return RunReplayEventsPageResponse(
+            run_id=run_id,
+            events=events,
+            next_cursor=next_cursor,
+            has_more=has_more,
+        )
+
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取 RunEvents 失败: {exc}",
         ) from exc
 
 

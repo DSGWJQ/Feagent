@@ -145,6 +145,32 @@ class RunEventResponse(BaseModel):
         return [cls.from_entity(event) for event in events]
 
 
+class RunReplayEvent(BaseModel):
+    """Run replay event in SSE shape (frontend-facing).
+
+    Contract:
+    - Must contain `type` and `run_id` like SSE payloads.
+    - Allows additional event fields (node_id/result/error/...) via `extra="allow"`.
+    """
+
+    type: str = Field(..., description="事件类型 (node_start/workflow_complete 等)")
+    run_id: str = Field(..., description="Run ID")
+
+    model_config = ConfigDict(extra="allow")
+
+
+class RunReplayEventsPageResponse(BaseModel):
+    """Paginated run replay response (cursor-based)."""
+
+    run_id: str = Field(..., description="Run ID")
+    events: list[RunReplayEvent] = Field(default_factory=list, description="事件列表（按稳定顺序）")
+    next_cursor: int | None = Field(
+        default=None,
+        description="下一页 cursor（使用最后一个事件的自增 id；无更多则为 null）",
+    )
+    has_more: bool = Field(default=False, description="是否还有更多事件")
+
+
 class RunListResponse(BaseModel):
     """Run 列表响应 DTO"""
 
