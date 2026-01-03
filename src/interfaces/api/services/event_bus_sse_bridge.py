@@ -26,7 +26,7 @@ def attach_event_bus_sse_bridge(event_bus: EventBus) -> None:
         return
     cast(Any, event_bus)._sse_bridge_attached = True
 
-    from src.domain.agents.coordinator_agent import DecisionRejectedEvent, DecisionValidatedEvent
+    from src.domain.services.decision_events import DecisionRejectedEvent, DecisionValidatedEvent
 
     async def _emit_step(session_id: str, step: ConversationStep) -> None:
         session_manager = get_session_manager()

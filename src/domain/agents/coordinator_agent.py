@@ -41,6 +41,7 @@ from src.domain.agents.workflow_state_monitor import WorkflowStateMonitor
 
 # Phase 35.1: ContextResponse moved to context module
 from src.domain.services.context import ContextResponse, ContextService
+from src.domain.services.decision_events import DecisionRejectedEvent, DecisionValidatedEvent
 from src.domain.services.event_bus import Event, EventBus
 
 # Phase 35.3: MessageLogListener, MessageLogAccessor moved to message_log_listener
@@ -117,25 +118,6 @@ _LEGACY_UNSET: Final[object] = object()
 
 # Phase 35.1: ContextResponse moved to src.domain.services.context.models
 # (removed from here to avoid duplication)
-
-
-@dataclass
-class DecisionValidatedEvent(Event):
-    """决策验证通过事件"""
-
-    original_decision_id: str = ""
-    decision_type: str = ""
-    payload: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class DecisionRejectedEvent(Event):
-    """决策拒绝事件"""
-
-    original_decision_id: str = ""
-    decision_type: str = ""
-    reason: str = ""
-    errors: list[str] = field(default_factory=list)
 
 
 @dataclass

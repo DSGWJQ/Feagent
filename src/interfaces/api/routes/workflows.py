@@ -147,6 +147,28 @@ def get_workflow_chat_llm() -> WorkflowChatLLM:
         ) from exc
 
 
+def get_chat_openai() -> ChatOpenAI:
+    """
+    Backward-compatible helper for tests/patching.
+
+    Workflow chat no longer depends directly on ChatOpenAI, but some integration tests
+    patch this symbol to prevent accidental network calls.
+    """
+
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OpenAI API key is not configured for workflow chat.",
+        )
+
+    return ChatOpenAI(
+        api_key=SecretStr(settings.openai_api_key),
+        model=settings.openai_model,
+        base_url=settings.openai_base_url,
+        temperature=0.0,
+    )
+
+
 def get_workflow_chat_service(
     workflow_id: str = "",  # 从路径参数传入
     container: ApiContainer = Depends(get_container),
@@ -820,7 +842,7 @@ async def chat_stream_react_with_workflow(
                             and coordinator is not None
                             and event_bus is not None
                         ):
-                            from src.domain.agents.coordinator_agent import (
+                            from src.domain.services.decision_events import (
                                 DecisionRejectedEvent,
                                 DecisionValidatedEvent,
                             )
