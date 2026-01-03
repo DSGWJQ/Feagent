@@ -19,6 +19,7 @@ from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.ports.workflow_repository import WorkflowRepository
+from src.domain.services.workflow_save_validator import WorkflowSaveValidator
 
 
 @dataclass
@@ -59,7 +60,11 @@ class UpdateWorkflowByDragUseCase:
     - WorkflowRepository: 工作流仓储接口
     """
 
-    def __init__(self, workflow_repository: WorkflowRepository):
+    def __init__(
+        self,
+        workflow_repository: WorkflowRepository,
+        save_validator: WorkflowSaveValidator,
+    ):
         """初始化 Use Case
 
         参数：
@@ -71,6 +76,7 @@ class UpdateWorkflowByDragUseCase:
         - 灵活性：可以轻松切换不同的 Repository 实现
         """
         self.workflow_repository = workflow_repository
+        self.save_validator = save_validator
 
     def execute(self, input_data: UpdateWorkflowByDragInput) -> Workflow:
         """执行 Use Case
@@ -106,22 +112,8 @@ class UpdateWorkflowByDragUseCase:
         # 3. 更新时间戳
         workflow.updated_at = datetime.now(UTC)
 
-        # 4. 验证工作流（确保节点和边的一致性）
-        # 注意：这里可以调用 workflow.validate() 方法
-        # 但目前 Workflow 实体没有 validate() 方法
-        # 验证逻辑在 add_edge() 等方法中
-
-        # 验证边引用的节点存在
-        node_ids = {node.id for node in workflow.nodes}
-        for edge in workflow.edges:
-            if edge.source_node_id not in node_ids:
-                from src.domain.exceptions import DomainError
-
-                raise DomainError(f"节点不存在: {edge.source_node_id}")
-            if edge.target_node_id not in node_ids:
-                from src.domain.exceptions import DomainError
-
-                raise DomainError(f"节点不存在: {edge.target_node_id}")
+        # 4. 保存前强校验（可执行性 / DAG / 引用完整性）
+        self.save_validator.validate_or_raise(workflow)
 
         # 5. 保存工作流
         self.workflow_repository.save(workflow)

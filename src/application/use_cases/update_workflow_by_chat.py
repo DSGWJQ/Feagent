@@ -22,6 +22,7 @@ from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError, NotFoundError
 from src.domain.ports.workflow_chat_service import WorkflowChatServicePort
 from src.domain.ports.workflow_repository import WorkflowRepository
+from src.domain.services.workflow_save_validator import WorkflowSaveValidator
 
 
 @dataclass
@@ -79,6 +80,7 @@ class UpdateWorkflowByChatUseCase:
         self,
         workflow_repository: WorkflowRepository,
         chat_service: WorkflowChatServicePort,
+        save_validator: WorkflowSaveValidator,
     ):
         """初始化用例
 
@@ -88,6 +90,7 @@ class UpdateWorkflowByChatUseCase:
         """
         self.workflow_repository = workflow_repository
         self.chat_service = chat_service
+        self.save_validator = save_validator
 
     def execute(self, input_data: UpdateWorkflowByChatInput) -> UpdateWorkflowByChatOutput:
         """执行用例
@@ -126,6 +129,7 @@ class UpdateWorkflowByChatUseCase:
             raise DomainError("修改工作流失败：返回的工作流为空")
 
         # 5. 保存修改后的工作流
+        self.save_validator.validate_or_raise(modified_workflow)
         self.workflow_repository.save(modified_workflow)
 
         # 6. 返回结果
@@ -211,6 +215,7 @@ class UpdateWorkflowByChatUseCase:
         }
 
         # 8. 保存修改后的工作流
+        self.save_validator.validate_or_raise(modified_workflow)
         self.workflow_repository.save(modified_workflow)
 
         # 9. 产生工作流更新完成事件

@@ -31,12 +31,13 @@ from src.application.use_cases.update_workflow_by_drag import (
     UpdateWorkflowByDragUseCase,
 )
 from src.config import settings
-from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.exceptions import DomainError, DomainValidationError, NotFoundError
 from src.domain.ports.chat_message_repository import ChatMessageRepository
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.ports.workflow_chat_service import WorkflowChatServicePort
 from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.services.workflow_chat_service_enhanced import EnhancedWorkflowChatService
+from src.domain.services.workflow_save_validator import WorkflowSaveValidator
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.llm import LangChainWorkflowChatLLM
 from src.interfaces.api.container import ApiContainer
@@ -156,10 +157,15 @@ def get_update_workflow_by_chat_use_case(
         rag_service=rag_service,
         memory_service=memory_service,
     )
+    save_validator = WorkflowSaveValidator(
+        executor_registry=container.executor_registry,
+        tool_repository=container.tool_repository(db),
+    )
 
     return UpdateWorkflowByChatUseCase(
         workflow_repository=workflow_repository,
         chat_service=chat_service,
+        save_validator=save_validator,
     )
 
 
@@ -179,6 +185,10 @@ def get_update_workflow_by_chat_use_case_factory(
     from src.interfaces.api.dependencies.memory import get_composite_memory_service
 
     memory_service = get_composite_memory_service(session=db, container=container)
+    save_validator = WorkflowSaveValidator(
+        executor_registry=container.executor_registry,
+        tool_repository=container.tool_repository(db),
+    )
 
     def factory(workflow_id: str) -> UpdateWorkflowByChatUseCase:
         chat_service = EnhancedWorkflowChatService(
@@ -191,6 +201,7 @@ def get_update_workflow_by_chat_use_case_factory(
         return UpdateWorkflowByChatUseCase(
             workflow_repository=workflow_repository,
             chat_service=chat_service,
+            save_validator=save_validator,
         )
 
     return factory
@@ -209,6 +220,10 @@ def create_workflow(
     from src.domain.entities.workflow import Workflow
 
     repository = container.workflow_repository(db)
+    save_validator = WorkflowSaveValidator(
+        executor_registry=container.executor_registry,
+        tool_repository=container.tool_repository(db),
+    )
 
     try:
         response.headers["Deprecation"] = "true"
@@ -242,10 +257,17 @@ def create_workflow(
         if current_user:
             workflow.user_id = current_user.id
 
+        save_validator.validate_or_raise(workflow)
         repository.save(workflow)
         db.commit()
         return WorkflowResponse.from_entity(workflow)
 
+    except DomainValidationError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.to_dict(),
+        ) from exc
     except DomainError as exc:
         db.rollback()
         raise HTTPException(
@@ -288,7 +310,14 @@ def update_workflow(
     """Update a workflow via drag-and-drop payloads."""
 
     repository = container.workflow_repository(db)
-    use_case = UpdateWorkflowByDragUseCase(workflow_repository=repository)
+    save_validator = WorkflowSaveValidator(
+        executor_registry=container.executor_registry,
+        tool_repository=container.tool_repository(db),
+    )
+    use_case = UpdateWorkflowByDragUseCase(
+        workflow_repository=repository,
+        save_validator=save_validator,
+    )
 
     nodes = [node_dto.to_entity() for node_dto in request.nodes]
     edges = [edge_dto.to_entity() for edge_dto in request.edges]
@@ -307,6 +336,12 @@ def update_workflow(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{exc.entity_type} not found: {exc.entity_id}",
+        ) from exc
+    except DomainValidationError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.to_dict(),
         ) from exc
     except DomainError as exc:
         db.rollback()
@@ -490,6 +525,10 @@ async def chat_create_stream(
     from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler
 
     repository = container.workflow_repository(db)
+    save_validator = WorkflowSaveValidator(
+        executor_registry=container.executor_registry,
+        tool_repository=container.tool_repository(db),
+    )
 
     try:
         workflow = Workflow.create_base(
@@ -498,8 +537,15 @@ async def chat_create_stream(
         )
         if current_user:
             workflow.user_id = current_user.id
+        save_validator.validate_or_raise(workflow)
         repository.save(workflow)
         db.commit()
+    except DomainValidationError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.to_dict(),
+        ) from exc
     except DomainError as exc:
         db.rollback()
         raise HTTPException(

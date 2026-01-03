@@ -4,6 +4,7 @@
 """
 
 import json
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -114,7 +115,10 @@ class TestUpdateWorkflowAPI:
             UpdateWorkflowByDragUseCase,
         )
 
-        use_case = UpdateWorkflowByDragUseCase(workflow_repository=repo)
+        use_case = UpdateWorkflowByDragUseCase(
+            workflow_repository=repo,
+            save_validator=Mock(),
+        )
         input_data = UpdateWorkflowByDragInput(
             workflow_id=workflow.id,
             nodes=[node1, node2],
@@ -148,7 +152,10 @@ class TestUpdateWorkflowAPI:
         from src.domain.exceptions import NotFoundError
 
         repo = SQLAlchemyWorkflowRepository(test_db)
-        use_case = UpdateWorkflowByDragUseCase(workflow_repository=repo)
+        use_case = UpdateWorkflowByDragUseCase(
+            workflow_repository=repo,
+            save_validator=Mock(),
+        )
 
         node = Node.create(
             type=NodeType.HTTP,
@@ -200,7 +207,10 @@ class TestUpdateWorkflowAPI:
         repo.save(workflow)
         test_db.commit()
 
-        use_case = UpdateWorkflowByDragUseCase(workflow_repository=repo)
+        use_case = UpdateWorkflowByDragUseCase(
+            workflow_repository=repo,
+            save_validator=Mock(),
+        )
 
         input_data = UpdateWorkflowByDragInput(
             workflow_id=workflow.id,

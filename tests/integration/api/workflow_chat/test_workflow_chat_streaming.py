@@ -7,7 +7,7 @@ TDD RED 阶段：定义流式对话的期望行为
 - 支持流式 cancellation
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy import create_engine
@@ -99,6 +99,7 @@ class TestWorkflowChatStreaming:
         use_case = UpdateWorkflowByChatUseCase(
             workflow_repository=workflow_repository,
             chat_service=mock_chat_service,
+            save_validator=Mock(),
         )
 
         # 红色：方法应该存在
@@ -149,6 +150,7 @@ class TestWorkflowChatStreaming:
         use_case = UpdateWorkflowByChatUseCase(
             workflow_repository=workflow_repository,
             chat_service=mock_chat_service,
+            save_validator=Mock(),
         )
 
         input_data = UpdateWorkflowByChatInput(
@@ -213,6 +215,7 @@ class TestWorkflowChatStreaming:
         use_case = UpdateWorkflowByChatUseCase(
             workflow_repository=workflow_repository,
             chat_service=mock_chat_service,
+            save_validator=Mock(),
         )
 
         input_data = UpdateWorkflowByChatInput(
@@ -276,6 +279,7 @@ class TestWorkflowChatStreaming:
         use_case = UpdateWorkflowByChatUseCase(
             workflow_repository=workflow_repository,
             chat_service=mock_chat_service,
+            save_validator=Mock(),
         )
 
         input_data = UpdateWorkflowByChatInput(
@@ -350,6 +354,7 @@ class TestWorkflowChatStreaming:
         use_case = UpdateWorkflowByChatUseCase(
             workflow_repository=workflow_repository,
             chat_service=mock_chat_service,
+            save_validator=Mock(),
         )
 
         input_data = UpdateWorkflowByChatInput(
@@ -400,6 +405,7 @@ class TestWorkflowChatStreaming:
         use_case = UpdateWorkflowByChatUseCase(
             workflow_repository=workflow_repository,
             chat_service=mock_chat_service,
+            save_validator=Mock(),
         )
 
         input_data = UpdateWorkflowByChatInput(
@@ -483,6 +489,7 @@ class TestWorkflowChatStreaming:
         use_case = UpdateWorkflowByChatUseCase(
             workflow_repository=workflow_repository,
             chat_service=mock_chat_service,
+            save_validator=Mock(),
         )
 
         input_data = UpdateWorkflowByChatInput(

@@ -58,8 +58,13 @@ class TestUpdateWorkflowByDragUseCase:
         mock_repo = Mock()
         mock_repo.get_by_id.return_value = workflow
 
+        mock_validator = Mock()
+
         # 创建 Use Case
-        use_case = UpdateWorkflowByDragUseCase(workflow_repository=mock_repo)
+        use_case = UpdateWorkflowByDragUseCase(
+            workflow_repository=mock_repo,
+            save_validator=mock_validator,
+        )
 
         # 准备输入（添加新节点）
         node2 = Node.create(
@@ -81,6 +86,7 @@ class TestUpdateWorkflowByDragUseCase:
         assert len(result.nodes) == 2, "应该有 2 个节点"
         assert result.nodes[1].name == "节点2"
         mock_repo.get_by_id.assert_called_once_with(workflow.id)
+        mock_validator.validate_or_raise.assert_called_once()
         mock_repo.save.assert_called_once()
 
     def test_update_workflow_edges_should_succeed(self):
@@ -118,8 +124,13 @@ class TestUpdateWorkflowByDragUseCase:
         mock_repo = Mock()
         mock_repo.get_by_id.return_value = workflow
 
+        mock_validator = Mock()
+
         # 创建 Use Case
-        use_case = UpdateWorkflowByDragUseCase(workflow_repository=mock_repo)
+        use_case = UpdateWorkflowByDragUseCase(
+            workflow_repository=mock_repo,
+            save_validator=mock_validator,
+        )
 
         # 准备输入（添加边）
         edge = Edge.create(source_node_id=node1.id, target_node_id=node2.id)
@@ -136,6 +147,7 @@ class TestUpdateWorkflowByDragUseCase:
         assert len(result.edges) == 1, "应该有 1 条边"
         assert result.edges[0].source_node_id == node1.id
         assert result.edges[0].target_node_id == node2.id
+        mock_validator.validate_or_raise.assert_called_once()
         mock_repo.save.assert_called_once()
 
     def test_update_workflow_with_invalid_id_should_raise_error(self):
@@ -151,7 +163,10 @@ class TestUpdateWorkflowByDragUseCase:
         mock_repo = Mock()
         mock_repo.get_by_id.side_effect = NotFoundError(entity_type="Workflow", entity_id="wf_999")
 
-        use_case = UpdateWorkflowByDragUseCase(workflow_repository=mock_repo)
+        use_case = UpdateWorkflowByDragUseCase(
+            workflow_repository=mock_repo,
+            save_validator=Mock(),
+        )
 
         input_data = UpdateWorkflowByDragInput(
             workflow_id="wf_999",
@@ -190,7 +205,11 @@ class TestUpdateWorkflowByDragUseCase:
         mock_repo = Mock()
         mock_repo.get_by_id.return_value = workflow
 
-        use_case = UpdateWorkflowByDragUseCase(workflow_repository=mock_repo)
+        mock_validator = Mock()
+        use_case = UpdateWorkflowByDragUseCase(
+            workflow_repository=mock_repo,
+            save_validator=mock_validator,
+        )
 
         # 准备输入（更新节点位置）
         updated_node = Node.create(
@@ -212,4 +231,5 @@ class TestUpdateWorkflowByDragUseCase:
 
         # Assert
         assert result.nodes[0].position == updated_node.position
+        mock_validator.validate_or_raise.assert_called_once()
         mock_repo.save.assert_called_once()

@@ -11,6 +11,10 @@
 - 可扩展（未来可以添加错误码、详情等）
 """
 
+from __future__ import annotations
+
+from typing import Any
+
 
 class DomainError(Exception):
     """领域层异常基类
@@ -35,6 +39,32 @@ class DomainError(Exception):
     """
 
     pass
+
+
+class DomainValidationError(DomainError):
+    """结构化的领域校验错误（前端友好）"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "validation_error",
+        errors: list[dict[str, Any]] | None = None,
+    ) -> None:
+        self.message = message
+        self.code = code
+        self.errors = errors or []
+        super().__init__(message)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "errors": self.errors,
+        }
+
+    def __str__(self) -> str:  # pragma: no cover - trivial formatting
+        return self.message
 
 
 class NotFoundError(DomainError):

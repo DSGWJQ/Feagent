@@ -59,6 +59,14 @@ def mock_repo():
 
 
 @pytest.fixture()
+def mock_save_validator():
+    """No-op workflow save validator."""
+    validator = Mock()
+    validator.validate_or_raise.return_value = None
+    return validator
+
+
+@pytest.fixture()
 def basic_chat_service(workflow):
     """Mock basic WorkflowChatService returning ModificationResult"""
     from src.domain.value_objects.workflow_modification_result import ModificationResult
@@ -106,20 +114,22 @@ def enhanced_chat_service(workflow):
 
 
 @pytest.fixture()
-def use_case_basic(mock_repo, basic_chat_service):
+def use_case_basic(mock_repo, basic_chat_service, mock_save_validator):
     """UpdateWorkflowByChatUseCase with basic service"""
     return UpdateWorkflowByChatUseCase(
         workflow_repository=mock_repo,
         chat_service=basic_chat_service,
+        save_validator=mock_save_validator,
     )
 
 
 @pytest.fixture()
-def use_case_enhanced(mock_repo, enhanced_chat_service):
+def use_case_enhanced(mock_repo, enhanced_chat_service, mock_save_validator):
     """UpdateWorkflowByChatUseCase with enhanced service"""
     return UpdateWorkflowByChatUseCase(
         workflow_repository=mock_repo,
         chat_service=enhanced_chat_service,
+        save_validator=mock_save_validator,
     )
 
 
