@@ -20,6 +20,8 @@ from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.services.workflow_executor import WorkflowExecutor
 
+WORKFLOW_EXECUTION_KERNEL_ID = "workflow_engine_v1"
+
 
 @dataclass
 class ExecuteWorkflowInput:
@@ -111,6 +113,7 @@ class ExecuteWorkflowUseCase:
         return {
             "execution_log": executor.execution_log,
             "final_result": final_result,
+            "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
         }
 
     async def execute_streaming(
@@ -151,7 +154,9 @@ class ExecuteWorkflowUseCase:
 
             def event_callback(event_type: str, data: dict[str, Any]) -> None:
                 """事件回调函数"""
-                events.append({"type": event_type, **data})
+                events.append(
+                    {"type": event_type, "executor_id": WORKFLOW_EXECUTION_KERNEL_ID, **data}
+                )
 
             # 4. 设置事件回调
             executor.set_event_callback(event_callback)
@@ -168,6 +173,7 @@ class ExecuteWorkflowUseCase:
                 "type": "workflow_complete",
                 "result": final_result,
                 "execution_log": executor.execution_log,
+                "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
             }
 
         except DomainError as e:
@@ -175,4 +181,5 @@ class ExecuteWorkflowUseCase:
             yield {
                 "type": "workflow_error",
                 "error": str(e),
+                "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
             }

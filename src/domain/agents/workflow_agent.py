@@ -2286,11 +2286,19 @@ class WorkflowAgent:
             return {"success": True, "node_id": node.id, "node_type": node.type.value}
 
         elif decision_type == "execute_workflow":
-            result = await self.execute_workflow()
+            workflow_id = self.workflow_context.workflow_id if self.workflow_context else "unknown"
+            logger.warning(
+                "WorkflowAgent execute_workflow is frozen; use /api/workflows/{id}/execute instead. workflow_id=%s",
+                workflow_id,
+            )
             return {
-                "success": result["status"] == "completed",
-                "status": result["status"],
-                "results": result.get("results", {}),
+                "success": False,
+                "status": "not_supported",
+                "workflow_id": workflow_id,
+                "error": (
+                    "WorkflowAgent-based execution is frozen to enforce a single workflow execution kernel. "
+                    "Use WorkflowExecutionOrchestrator (API: POST /api/workflows/{workflow_id}/execute)."
+                ),
             }
 
         elif decision_type == "connect_nodes":
