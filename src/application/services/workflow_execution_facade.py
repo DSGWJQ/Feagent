@@ -12,7 +12,12 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from src.application.use_cases.execute_workflow import ExecuteWorkflowInput, ExecuteWorkflowUseCase
+from src.application.use_cases.execute_workflow import (
+    WORKFLOW_EXECUTION_KERNEL_ID,
+    ExecuteWorkflowInput,
+    ExecuteWorkflowUseCase,
+)
+from src.config import settings
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.ports.workflow_repository import WorkflowRepository
 
@@ -30,6 +35,19 @@ class WorkflowExecutionFacade:
         self._executor_registry = executor_registry
 
     async def execute(self, *, workflow_id: str, input_data: Any = None) -> dict[str, Any]:
+        if settings.enable_langgraph_workflow_executor:
+            from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
+                LangGraphWorkflowExecutorAdapter,
+            )
+
+            adapter = LangGraphWorkflowExecutorAdapter(
+                workflow_repository=self._workflow_repository,
+                executor_registry=self._executor_registry,
+            )
+            result = await adapter.execute(workflow_id=workflow_id, input_data=input_data)
+            result["executor_id"] = WORKFLOW_EXECUTION_KERNEL_ID
+            return result
+
         use_case = ExecuteWorkflowUseCase(
             workflow_repository=self._workflow_repository,
             executor_registry=self._executor_registry,
@@ -41,6 +59,25 @@ class WorkflowExecutionFacade:
     async def execute_streaming(
         self, *, workflow_id: str, input_data: Any = None
     ) -> AsyncGenerator[dict[str, Any], None]:
+        if settings.enable_langgraph_workflow_executor:
+            from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
+                LangGraphWorkflowExecutorAdapter,
+            )
+
+            adapter = LangGraphWorkflowExecutorAdapter(
+                workflow_repository=self._workflow_repository,
+                executor_registry=self._executor_registry,
+            )
+            async for event in adapter.execute_streaming(
+                workflow_id=workflow_id,
+                input_data=input_data,
+            ):
+                yield {
+                    **event,
+                    "executor_id": event.get("executor_id", WORKFLOW_EXECUTION_KERNEL_ID),
+                }
+            return
+
         use_case = ExecuteWorkflowUseCase(
             workflow_repository=self._workflow_repository,
             executor_registry=self._executor_registry,

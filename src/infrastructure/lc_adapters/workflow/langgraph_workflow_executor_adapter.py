@@ -1,13 +1,12 @@
-"""LangGraphWorkflowExecutorAdapter (disabled).
+"""LangGraphWorkflowExecutorAdapter - LangGraph 驱动的 workflow 执行适配器（可回滚）
 
-WF-050 decision: workflow execution uses the Domain `WorkflowEngine` kernel.
-LangGraph remains available for other agent/task execution paths, but workflow
-execution must not route into a NotImplemented placeholder.
+目标（WF-040）：
+- 当 feature flag 启用时，workflow 执行走 LangGraph；关闭时由上层回滚到 legacy DAG engine
+- 对外事件契约保持与 legacy 执行一致（node_* + workflow_*）
 """
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -15,14 +14,16 @@ from src.config import settings
 from src.domain.exceptions import DomainError
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.ports.workflow_repository import WorkflowRepository
-from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor import execute_workflow
+from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor import (
+    execute_workflow_async,
+)
 
 
 class LangGraphWorkflowExecutorAdapter:
     """Infrastructure adapter for LangGraph workflow execution.
 
-    注意：该路径默认关闭（通过 settings.enable_langgraph_workflow_executor 控制），
-    仅用于灰度/实验；关闭时必须可一键回滚到 legacy workflow engine。
+    注意：该路径可通过 settings.enable_langgraph_workflow_executor 控制。
+    关闭时必须可一键回滚到 legacy workflow engine。
     """
 
     def __init__(
@@ -39,22 +40,15 @@ class LangGraphWorkflowExecutorAdapter:
             raise DomainError("feature_disabled: langgraph workflow executor is not enabled")
 
         workflow = self._workflow_repository.get_by_id(workflow_id)
-        initial_input = (
-            input_data
-            if isinstance(input_data, dict) or input_data is None
-            else {"input": input_data}
-        )
-        final_state = await asyncio.to_thread(
-            execute_workflow,
+        final_result, execution_log = await execute_workflow_async(
             workflow,
-            initial_input=initial_input,
+            initial_input=input_data,
             executor_registry=self._executor_registry,
         )
 
         return {
-            "execution_log": [],
-            "final_result": final_state.get("results", final_state),
-            "executor_id": "langgraph_workflow_v1",
+            "execution_log": execution_log,
+            "final_result": final_result,
         }
 
     async def execute_streaming(
@@ -63,36 +57,35 @@ class LangGraphWorkflowExecutorAdapter:
         if not settings.enable_langgraph_workflow_executor:
             raise DomainError("feature_disabled: langgraph workflow executor is not enabled")
 
-        yield {
-            "type": "workflow_start",
-            "workflow_id": workflow_id,
-            "executor_id": "langgraph_workflow_v1",
-        }
+        events: list[dict[str, Any]] = []
 
         try:
             workflow = self._workflow_repository.get_by_id(workflow_id)
-            initial_input = (
-                input_data
-                if isinstance(input_data, dict) or input_data is None
-                else {"input": input_data}
-            )
-            final_state = await asyncio.to_thread(
-                execute_workflow,
+
+            def _on_event(event_type: str, data: dict[str, Any]) -> None:
+                events.append({"type": event_type, **data})
+
+            final_result, execution_log = await execute_workflow_async(
                 workflow,
-                initial_input=initial_input,
+                initial_input=input_data,
                 executor_registry=self._executor_registry,
+                event_callback=_on_event,
             )
-            yield {
-                "type": "workflow_complete",
-                "workflow_id": workflow_id,
-                "result": final_state.get("results", final_state),
-                "execution_log": [],
-                "executor_id": "langgraph_workflow_v1",
-            }
+        except DomainError as exc:
+            for event in events:
+                yield event
+            yield {"type": "workflow_error", "error": str(exc)}
+            return
         except Exception as exc:
-            yield {
-                "type": "workflow_error",
-                "workflow_id": workflow_id,
-                "error": str(exc),
-                "executor_id": "langgraph_workflow_v1",
-            }
+            for event in events:
+                yield event
+            yield {"type": "workflow_error", "error": str(exc)}
+            return
+
+        for event in events:
+            yield event
+        yield {
+            "type": "workflow_complete",
+            "result": final_result,
+            "execution_log": execution_log,
+        }

@@ -136,8 +136,8 @@ class Settings(BaseSettings):
         description="回滚开关：忽略 run_id 且禁用 Runs API（切回 legacy execute/stream）。",
     )
     enable_langgraph_workflow_executor: bool = Field(
-        default=False,
-        description="灰度开关：启用 LangGraph workflow executor（实验性）。",
+        default=True,
+        description="回滚开关：是否启用 LangGraph workflow executor（关闭可紧急回滚到 legacy workflow engine）。",
     )
 
 
