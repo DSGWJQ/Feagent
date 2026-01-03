@@ -21,7 +21,7 @@
 import asyncio
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
@@ -49,6 +49,18 @@ from src.domain.services.workflow_engine import topological_sort_ids
 logger = logging.getLogger(__name__)
 
 
+_DEFAULT_CONTAINER_EXECUTOR_FACTORY: Callable[[], Any] | None = None
+
+
+def register_default_container_executor_factory(factory: Callable[[], Any] | None) -> None:
+    """为 Domain 层注册默认容器执行器工厂（由 Infrastructure/Composition Root 调用）。
+
+    KISS: Domain 不直接依赖 Infrastructure，实现通过注入的工厂提供。
+    """
+    global _DEFAULT_CONTAINER_EXECUTOR_FACTORY
+    _DEFAULT_CONTAINER_EXECUTOR_FACTORY = factory
+
+
 @dataclass
 class CustomNodeType:
     """自定义节点类型定义"""
@@ -59,19 +71,57 @@ class CustomNodeType:
 
 
 def create_default_container_executor() -> Any:
-    """创建默认容器执行器（从 Infrastructure 层导入）
+    """创建默认容器执行器。
 
     Architecture Note:
-        工厂函数从 Infrastructure 层导入具体实现，保持 Domain 层的架构纯净。
+        Domain 层不直接 import Infrastructure/Interface。默认实现由外部注入工厂提供；
+        若未注册，则退化为仅使用 Sandbox 的执行器（保持可执行性）。
 
-    返回：
-        容器执行器实例（带沙箱回退）
+    返回:
+        容器执行器实例（至少具备 execute_async / is_available）。
     """
-    from src.infrastructure.executors.default_container_executor import (
-        DefaultContainerExecutor,
-    )
 
-    return DefaultContainerExecutor()
+    if _DEFAULT_CONTAINER_EXECUTOR_FACTORY is not None:
+        return _DEFAULT_CONTAINER_EXECUTOR_FACTORY()
+
+    class _SandboxDefaultContainerExecutor:
+        def is_available(self) -> bool:
+            return True
+
+        async def execute_async(
+            self,
+            code: str,
+            config: Any = None,
+            inputs: dict[str, Any] | None = None,
+        ) -> Any:
+            from src.domain.agents.container_executor import ContainerExecutionResult
+            from src.domain.services.sandbox_executor import SandboxConfig, SandboxExecutor
+
+            timeout_seconds = 30
+            if config is not None and hasattr(config, "timeout"):
+                try:
+                    timeout_seconds = int(config.timeout)
+                except Exception:
+                    timeout_seconds = 30
+
+            sandbox = SandboxExecutor()
+            sandbox_result = sandbox.execute(
+                code=code,
+                config=SandboxConfig(timeout_seconds=timeout_seconds),
+                input_data=inputs or {},
+            )
+
+            return ContainerExecutionResult(
+                success=bool(getattr(sandbox_result, "success", False)),
+                stdout=str(getattr(sandbox_result, "stdout", "")),
+                stderr=str(getattr(sandbox_result, "stderr", "")),
+                exit_code=0 if getattr(sandbox_result, "success", False) else 1,
+                execution_time=float(getattr(sandbox_result, "execution_time", 0.0) or 0.0),
+                logs=list(getattr(sandbox_result, "logs", []) or []),
+                output_data=dict(getattr(sandbox_result, "output_data", {}) or {}),
+            )
+
+    return _SandboxDefaultContainerExecutor()
 
 
 if TYPE_CHECKING:
@@ -331,6 +381,7 @@ class WorkflowAgent:
         executor: WorkflowExecutorProtocol | None = None,
         llm: ReflectionLLMProtocol | None = None,
         container_executor: Any = None,
+        container_executor_factory: Callable[[], Any] | None = None,
         coordinator_agent: Any | None = None,
     ):
         """初始化工作流Agent
@@ -343,6 +394,7 @@ class WorkflowAgent:
             executor: 工作流执行器（可选，Phase 16）
             llm: 反思 LLM（可选，Phase 16）
             container_executor: 容器执行器（可选，Phase 8.2）
+            container_executor_factory: 容器执行器工厂（可选，优先于全局默认工厂）
             coordinator_agent: 协调者Agent（可选，用于安全校验）
         """
         self.workflow_context = workflow_context
@@ -358,6 +410,7 @@ class WorkflowAgent:
         # Phase 8.2: 容器执行器（支持外部注入或自动创建）
         self._container_executor = container_executor
         self._container_executor_initialized = container_executor is not None
+        self._container_executor_factory = container_executor_factory
 
         self._nodes: dict[str, Node] = {}
         self._edges: list[Edge] = []
@@ -411,6 +464,8 @@ class WorkflowAgent:
         返回：
             容器执行器实例
         """
+        if self._container_executor_factory is not None:
+            return self._container_executor_factory()
         return create_default_container_executor()
 
     def get_sandbox_executor(self) -> Any:

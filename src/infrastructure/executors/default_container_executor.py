@@ -21,7 +21,7 @@ class DefaultContainerExecutor:
 
     Architecture Note:
         此类位于 Infrastructure 层，因为它组装了具体的实现（InfraContainerExecutor + SandboxExecutor）。
-        Domain 层的 workflow_agent.py 通过 create_default_container_executor() 工厂函数使用它。
+        通过 Infrastructure 侧注册工厂注入到 Domain（见 src/infrastructure/executors/__init__.py）。
 
     使用示例：
         from src.infrastructure.executors.default_container_executor import DefaultContainerExecutor

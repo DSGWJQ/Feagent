@@ -136,8 +136,8 @@ class ContainerExecutor:
     Domain 仅依赖端口 `ContainerExecutorPort`，具体执行实现由 Infrastructure 提供并注入。
 
     使用示例：
-        from src.infrastructure.executors.container_executor import ContainerExecutor as InfraExecutor
-        executor = ContainerExecutor(InfraExecutor())
+        infra_executor = ...  # Infrastructure adapter implementing ContainerExecutorPort
+        executor = ContainerExecutor(infra_executor)
         result = await executor.execute_async(code, config)
     """
 
@@ -262,7 +262,6 @@ class MockContainerExecutor:
         inputs: dict[str, Any] | None = None,
     ) -> ContainerExecutionResult:
         """带事件发布的异步执行"""
-        import time
         from uuid import uuid4
 
         config = config or ContainerConfig()
@@ -296,7 +295,6 @@ class MockContainerExecutor:
                 stdout=result.stdout,
                 stderr=result.stderr,
                 execution_time=result.execution_time,
-                timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
             )
             await event_bus.publish(completed_event)
 

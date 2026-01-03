@@ -5,9 +5,11 @@ Infrastructure 层：节点执行器实现
 导出所有执行器和工厂函数
 """
 
+from src.domain.agents.workflow_agent import register_default_container_executor_factory
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.infrastructure.executors.base_executor import EndExecutor, StartExecutor
 from src.infrastructure.executors.database_executor import DatabaseExecutor
+from src.infrastructure.executors.default_container_executor import DefaultContainerExecutor
 from src.infrastructure.executors.file_executor import FileExecutor
 from src.infrastructure.executors.http_executor import HttpExecutor
 from src.infrastructure.executors.javascript_executor import (
@@ -20,6 +22,8 @@ from src.infrastructure.executors.notification_executor import NotificationExecu
 from src.infrastructure.executors.prompt_executor import PromptExecutor
 from src.infrastructure.executors.python_executor import PythonExecutor
 from src.infrastructure.executors.transform_executor import TransformExecutor
+
+register_default_container_executor_factory(DefaultContainerExecutor)
 
 __all__ = [
     "StartExecutor",
