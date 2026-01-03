@@ -852,6 +852,11 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       return;
     }
 
+    if (disableRunPersistence) {
+      message.error('Run 持久化功能已禁用，无法执行');
+      return;
+    }
+
     // 先保存工作流
     const saveSuccess = await handleSave();
     if (!saveSuccess) {
@@ -863,10 +868,14 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     setExecutionStartTime(Date.now());
 
     // MVP Step 2: 优先复用 lastRunId (来自 plan/compile 流程)
-    let runId: string | undefined = disableRunPersistence ? undefined : lastRunId ?? undefined;
+    let runId: string | undefined = lastRunId ?? undefined;
 
     // 如果没有 lastRunId，尝试创建新的 Run
-    if (!disableRunPersistence && !runId && effectiveProjectId) {
+    if (!runId) {
+      if (!effectiveProjectId) {
+        message.error('缺少 projectId，无法创建 Run');
+        return;
+      }
       try {
         const token = localStorage.getItem('authToken');
         const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -880,24 +889,25 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         if (runRes.ok) {
           const runData = await runRes.json();
           runId = runData.id;
-          setLastRunId(runId ?? null);
+          setLastRunId(runId);
           message.info(`Session started (${runId?.slice(0, 8) ?? '?'}...)`);
         } else {
           const errData = await runRes.json().catch(() => ({}));
-          console.warn('Failed to create run, proceeding without run_id:', {
-            status: runRes.status,
-            errData,
-          });
+          console.warn('Failed to create run:', { status: runRes.status, errData });
+          message.error('无法创建 Run，请稍后重试');
+          return;
         }
       } catch (err) {
-        console.warn('Failed to create run, proceeding without run_id:', err);
+        console.warn('Failed to create run:', err);
+        message.error('无法创建 Run，请检查网络后重试');
+        return;
       }
     }
 
     // 执行工作流
     execute(workflowId, {
       initial_input: { message: 'test' },
-      ...(runId ? { run_id: runId } : {}),
+      run_id: runId,
     });
   }, [workflowId, execute, handleSave, effectiveProjectId, lastRunId, disableRunPersistence]);
 
