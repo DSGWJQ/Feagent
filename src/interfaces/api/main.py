@@ -99,7 +99,7 @@ def _build_container(
 
         return SQLAlchemyWorkflowRepository(session)
 
-    def workflow_execution_orchestrator(session: Session) -> WorkflowExecutionOrchestrator:
+    def workflow_execution_kernel(session: Session) -> WorkflowExecutionOrchestrator:
         repo = workflow_repository(session)
         facade = WorkflowExecutionFacade(
             workflow_repository=repo,
@@ -159,7 +159,7 @@ def _build_container(
 
     return ApiContainer(
         executor_registry=executor_registry,
-        workflow_execution_orchestrator=workflow_execution_orchestrator,
+        workflow_execution_kernel=workflow_execution_kernel,
         conversation_turn_orchestrator=conversation_turn_orchestrator,
         user_repository=user_repository,
         agent_repository=agent_repository,

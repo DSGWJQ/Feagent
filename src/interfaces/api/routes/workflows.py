@@ -374,11 +374,9 @@ async def execute_workflow_streaming(
         )
 
     assert run_id is not None
-    executor_id = (
-        "langgraph_workflow_v1"
-        if settings.enable_langgraph_workflow_executor
-        else "workflow_engine_v1"
-    )
+    from src.application.use_cases.execute_workflow import WORKFLOW_EXECUTION_KERNEL_ID
+
+    executor_id = WORKFLOW_EXECUTION_KERNEL_ID
 
     # Fail-closed: ensure run exists and persist a deterministic start event before streaming begins.
     from src.application.use_cases.append_run_event import (
@@ -436,25 +434,11 @@ async def execute_workflow_streaming(
         events_sent = 0
         terminal_persisted = False
         try:
-            if settings.enable_langgraph_workflow_executor:
-                from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
-                    LangGraphWorkflowExecutorAdapter,
-                )
-
-                adapter = LangGraphWorkflowExecutorAdapter(
-                    workflow_repository=container.workflow_repository(db),
-                    executor_registry=container.executor_registry,
-                )
-                event_iter = adapter.execute_streaming(
-                    workflow_id=workflow_id,
-                    input_data=request.initial_input,
-                )
-            else:
-                orchestrator = container.workflow_execution_orchestrator(db)
-                event_iter = orchestrator.execute_streaming(
-                    workflow_id=workflow_id,
-                    input_data=request.initial_input,
-                )
+            kernel = container.workflow_execution_kernel(db)
+            event_iter = kernel.execute_streaming(
+                workflow_id=workflow_id,
+                input_data=request.initial_input,
+            )
 
             async for event in event_iter:
                 if event_recorder is not None:
@@ -481,7 +465,11 @@ async def execute_workflow_streaming(
                     )
                     terminal_persisted = True
 
-                event = {**event, "run_id": run_id}
+                event = {
+                    **event,
+                    "run_id": run_id,
+                    "executor_id": event.get("executor_id", executor_id),
+                }
                 events_sent += 1
                 yield f"data: {json.dumps(event)}\n\n"
         except NotFoundError as exc:

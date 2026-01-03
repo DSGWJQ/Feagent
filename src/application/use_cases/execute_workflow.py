@@ -142,44 +142,42 @@ class ExecuteWorkflowUseCase:
         异常：
             NotFoundError: 工作流不存在
         """
+        # 1. 获取工作流
+        workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
+
+        # 2. 创建执行器
+        executor = WorkflowExecutor(executor_registry=self.executor_registry)
+
+        # 3. 创建事件队列
+        events: list[dict[str, Any]] = []
+
+        def event_callback(event_type: str, data: dict[str, Any]) -> None:
+            events.append({"type": event_type, "executor_id": WORKFLOW_EXECUTION_KERNEL_ID, **data})
+
+        # 4. 设置事件回调
+        executor.set_event_callback(event_callback)
+
         try:
-            # 1. 获取工作流
-            workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
-
-            # 2. 创建执行器
-            executor = WorkflowExecutor(executor_registry=self.executor_registry)
-
-            # 3. 创建事件队列
-            events: list[dict[str, Any]] = []
-
-            def event_callback(event_type: str, data: dict[str, Any]) -> None:
-                """事件回调函数"""
-                events.append(
-                    {"type": event_type, "executor_id": WORKFLOW_EXECUTION_KERNEL_ID, **data}
-                )
-
-            # 4. 设置事件回调
-            executor.set_event_callback(event_callback)
-
             # 5. 执行工作流
             final_result = await executor.execute(workflow, input_data.initial_input)
-
-            # 6. 生成所有事件
+        except DomainError as exc:
             for event in events:
                 yield event
-
-            # 7. 生成 workflow_complete 事件
-            yield {
-                "type": "workflow_complete",
-                "result": final_result,
-                "execution_log": executor.execution_log,
-                "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
-            }
-
-        except DomainError as e:
-            # 工作流执行失败（例如包含环）
             yield {
                 "type": "workflow_error",
-                "error": str(e),
+                "error": str(exc),
                 "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
             }
+            return
+
+        # 6. 生成所有事件
+        for event in events:
+            yield event
+
+        # 7. 生成 workflow_complete 事件
+        yield {
+            "type": "workflow_complete",
+            "result": final_result,
+            "execution_log": executor.execution_log,
+            "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
+        }

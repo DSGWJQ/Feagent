@@ -89,7 +89,7 @@ def client(test_engine):
 
     test_app.state.container = ApiContainer(
         executor_registry=NodeExecutorRegistry(),
-        workflow_execution_orchestrator=lambda _: None,  # type: ignore[return-value]
+        workflow_execution_kernel=lambda _: None,  # type: ignore[return-value]
         conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
         user_repository=lambda _: _NoopUserRepository(),
         agent_repository=_fake_repo,

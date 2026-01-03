@@ -86,7 +86,21 @@ class WorkflowEngine:
                 )
 
             inputs = _get_node_inputs(node_id=node.id, edges=workflow.edges, outputs=node_outputs)
-            output = await self._execute_node(node=node, inputs=inputs, context=context)
+            try:
+                output = await self._execute_node(node=node, inputs=inputs, context=context)
+            except Exception as exc:  # noqa: BLE001 - Domain boundary for execution errors
+                if event_callback:
+                    event_callback(
+                        "node_error",
+                        {
+                            "node_id": node.id,
+                            "node_type": node.type.value,
+                            "error": str(exc),
+                        },
+                    )
+                raise DomainError(
+                    f"Node execution failed: node_id={node.id} node_type={node.type.value}"
+                ) from exc
 
             node_outputs[node.id] = output
             execution_log.append(

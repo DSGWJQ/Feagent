@@ -78,7 +78,7 @@ def test_t_run_1_execute_stream_persists_key_events(
     test_app = FastAPI()
     test_app.state.container = ApiContainer(
         executor_registry=NodeExecutorRegistry(),
-        workflow_execution_orchestrator=orchestrator_factory,
+        workflow_execution_kernel=orchestrator_factory,
         conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
         user_repository=_noop_repo,
         agent_repository=_noop_repo,

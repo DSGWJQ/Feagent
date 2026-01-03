@@ -252,3 +252,67 @@ class TestExecuteWorkflowUseCase:
         error_events = [e for e in events if e["type"] == "workflow_error"]
         assert len(error_events) == 1
         assert "error" in error_events[0]
+
+    @pytest.mark.asyncio
+    async def test_execute_workflow_with_node_error_should_yield_node_error_then_workflow_error(
+        self,
+    ):
+        """测试：节点执行失败应先产生 node_error，再产生 workflow_error。
+
+        场景：
+        - 工作流包含需要 executor 的节点，但未注入 executor_registry
+        """
+        from src.application.use_cases.execute_workflow import (
+            ExecuteWorkflowInput,
+            ExecuteWorkflowUseCase,
+        )
+
+        node_start = Node.create(
+            type=NodeType.START,
+            name="开始",
+            config={},
+            position=Position(x=0, y=0),
+        )
+        node_llm = Node.create(
+            type=NodeType.LLM,
+            name="处理",
+            config={},
+            position=Position(x=100, y=0),
+        )
+        node_end = Node.create(
+            type=NodeType.END,
+            name="结束",
+            config={},
+            position=Position(x=200, y=0),
+        )
+
+        workflow = Workflow.create(
+            name="缺少执行器的工作流",
+            description="",
+            nodes=[node_start, node_llm, node_end],
+            edges=[
+                Edge.create(source_node_id=node_start.id, target_node_id=node_llm.id),
+                Edge.create(source_node_id=node_llm.id, target_node_id=node_end.id),
+            ],
+        )
+
+        mock_repository = Mock()
+        mock_repository.get_by_id.return_value = workflow
+
+        use_case = ExecuteWorkflowUseCase(
+            workflow_repository=mock_repository, executor_registry=None
+        )
+        input_data = ExecuteWorkflowInput(
+            workflow_id=workflow.id, initial_input={"message": "test"}
+        )
+
+        events: list[dict] = []
+        async for event in use_case.execute_streaming(input_data):
+            events.append(event)
+
+        node_error_events = [e for e in events if e["type"] == "node_error"]
+        assert len(node_error_events) == 1
+        assert node_error_events[0]["node_id"] == node_llm.id
+
+        workflow_error_events = [e for e in events if e["type"] == "workflow_error"]
+        assert len(workflow_error_events) == 1

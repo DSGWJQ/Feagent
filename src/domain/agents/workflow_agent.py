@@ -27,6 +27,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
+from src.domain.ports.workflow_execution_kernel import WorkflowExecutionKernelPort
 from src.domain.services.context_manager import WorkflowContext
 from src.domain.services.event_bus import Event, EventBus
 from src.domain.services.execution_result import (
@@ -383,6 +384,7 @@ class WorkflowAgent:
         container_executor: Any = None,
         container_executor_factory: Callable[[], Any] | None = None,
         coordinator_agent: Any | None = None,
+        workflow_execution_kernel: WorkflowExecutionKernelPort | None = None,
     ):
         """初始化工作流Agent
 
@@ -402,6 +404,7 @@ class WorkflowAgent:
         self.node_executor = node_executor
         self.event_bus = event_bus
         self.coordinator_agent = coordinator_agent
+        self.workflow_execution_kernel = workflow_execution_kernel
 
         # Phase 16: 新增执行器和 LLM
         self.executor = executor
@@ -2342,18 +2345,37 @@ class WorkflowAgent:
 
         elif decision_type == "execute_workflow":
             workflow_id = self.workflow_context.workflow_id if self.workflow_context else "unknown"
-            logger.warning(
-                "WorkflowAgent execute_workflow is frozen; use /api/workflows/{id}/execute instead. workflow_id=%s",
-                workflow_id,
-            )
+            kernel = self.workflow_execution_kernel
+            if kernel is None:
+                logger.warning(
+                    "WorkflowAgent execute_workflow requires WorkflowExecutionKernelPort; workflow_id=%s",
+                    workflow_id,
+                )
+                return {
+                    "success": False,
+                    "status": "not_supported",
+                    "workflow_id": workflow_id,
+                    "error": (
+                        "WorkflowAgent execution requires a WorkflowExecutionKernelPort to enforce a single "
+                        "workflow execution kernel. Please inject WorkflowExecutionKernelPort (API uses "
+                        "POST /api/workflows/{workflow_id}/execute/stream with run_id)."
+                    ),
+                }
+
+            initial_input = decision.get("initial_input", decision.get("input_data"))
+            events: list[dict[str, Any]] = []
+            async for event in kernel.execute_streaming(
+                workflow_id=workflow_id, input_data=initial_input
+            ):
+                events.append(event)
+
+            terminal_type = events[-1].get("type") if events else None
             return {
-                "success": False,
-                "status": "not_supported",
+                "success": terminal_type == "workflow_complete",
+                "status": "completed" if terminal_type == "workflow_complete" else "failed",
                 "workflow_id": workflow_id,
-                "error": (
-                    "WorkflowAgent-based execution is frozen to enforce a single workflow execution kernel. "
-                    "Use WorkflowExecutionOrchestrator (API: POST /api/workflows/{workflow_id}/execute)."
-                ),
+                "executor_id": (events[-1].get("executor_id") if events else None),
+                "events": events,
             }
 
         elif decision_type == "connect_nodes":

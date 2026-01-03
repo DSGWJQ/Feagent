@@ -88,7 +88,7 @@ def test_execute_stream_endpoint_goes_through_orchestrator_and_policy_chain(
     test_app = FastAPI()
     test_app.state.container = ApiContainer(
         executor_registry=NodeExecutorRegistry(),
-        workflow_execution_orchestrator=orchestrator_factory,
+        workflow_execution_kernel=orchestrator_factory,
         conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
         user_repository=_noop_repo,
         agent_repository=_noop_repo,
