@@ -87,7 +87,7 @@ def client(test_engine):
                 step_count = 3 if getattr(input_data, "user_message", "") == "设计工作流" else 1
                 for step in range(1, step_count + 1):
                     action_type = (
-                        "api_request"
+                        "tool_call"
                         if getattr(input_data, "user_message", "") == "danger"
                         else "add_node"
                     )
@@ -466,9 +466,11 @@ class TestChatStreamReactAPI:
         assert tool_call_ids.count("react_2") == 1
         assert tool_call_ids.count("react_3") == 1
 
-    def test_coordinator_rejection_emits_error_and_completes(
+    def test_coordinator_rejection_emits_error_rollback_and_completes(
         self, client: TestClient, sample_workflow: Workflow
     ):
+        """T-SUP-1: coordinator deny -> rollback + SSE COORDINATOR_REJECTED + stream terminates."""
+
         class _FakeValidationResult:
             is_valid = False
             errors = ["blocked by coordinator"]
@@ -481,6 +483,20 @@ class TestChatStreamReactAPI:
 
         app.state.coordinator = _FakeCoordinator()
         app.state.event_bus = EventBus()
+        spy_session = {"commit": 0, "rollback": 0}
+
+        def _override_spy_db_session():
+            class _SpySession:
+                def commit(self):
+                    spy_session["commit"] += 1
+
+                def rollback(self):
+                    spy_session["rollback"] += 1
+
+            yield _SpySession()
+
+        original_db_override = app.dependency_overrides.get(get_db_session)
+        app.dependency_overrides[get_db_session] = _override_spy_db_session
         try:
             response = client.post(
                 f"/api/workflows/{sample_workflow.id}/chat-stream-react",
@@ -504,8 +520,24 @@ class TestChatStreamReactAPI:
             error_events = [e for e in events if e.get("type") == "error"]
             assert error_events, "should emit an error event when coordinator rejects"
             assert error_events[0]["metadata"]["error_code"] == "COORDINATOR_REJECTED"
+            assert spy_session["rollback"] == 1, "should rollback transaction on coordinator reject"
+            assert spy_session["commit"] == 0, "should not commit when coordinator rejects"
+            correlation_id = error_events[0].get("metadata", {}).get("correlation_id")
+            assert (
+                correlation_id is not None
+            ), "SSE error should include correlation_id for observability"
+            from src.domain.services.decision_events import DecisionRejectedEvent
+
+            assert any(
+                isinstance(e, DecisionRejectedEvent) and e.correlation_id == correlation_id
+                for e in app.state.event_bus.event_log
+            ), "EventBus should record DecisionRejectedEvent with matching correlation_id"
             assert response.text.strip().endswith("data: [DONE]"), "stream must complete"
         finally:
+            if original_db_override is not None:
+                app.dependency_overrides[get_db_session] = original_db_override
+            else:
+                app.dependency_overrides.pop(get_db_session, None)
             if hasattr(app.state, "coordinator"):
                 delattr(app.state, "coordinator")
             if hasattr(app.state, "event_bus"):

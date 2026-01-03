@@ -910,79 +910,45 @@ async def chat_stream_react_with_workflow(
                     if step.action:
                         action_type = step.action.get("type", "unknown")
 
-                        supervised_decisions = {
-                            "api_request",
-                            "create_node",
-                            "file_operation",
-                            "human_interaction",
-                        }
+                        from src.application.services.coordinator_policy_chain import (
+                            CoordinatorPolicyChain,
+                            CoordinatorRejectedError,
+                        )
+
                         coordinator = getattr(http_request.app.state, "coordinator", None)
                         event_bus = getattr(http_request.app.state, "event_bus", None)
-                        if (
-                            action_type in supervised_decisions
-                            and coordinator is not None
-                            and event_bus is not None
-                        ):
-                            from src.domain.services.decision_events import (
-                                DecisionRejectedEvent,
-                                DecisionValidatedEvent,
-                            )
 
-                            decision = {
-                                "type": action_type,
-                                "session_id": session_id,
-                                "workflow_id": workflow_id,
-                                "tool_id": step.tool_id,
-                                **step.action,
-                            }
-                            validation = coordinator.validate_decision(decision)
-                            if getattr(validation, "is_valid", False):
-                                await event_bus.publish(
-                                    DecisionValidatedEvent(
-                                        source="workflow_chat_stream_react",
-                                        correlation_id=session_id,
-                                        original_decision_id=step.tool_id,
-                                        decision_type=action_type,
-                                        payload=step.action,
-                                    )
-                                )
-                            else:
-                                errors = list(getattr(validation, "errors", []) or [])
-                                logger.info(
-                                    "coordinator_decision_rejected",
-                                    extra={
-                                        "workflow_id": workflow_id,
-                                        "session_id": session_id,
-                                        "decision_type": action_type,
-                                        "tool_id": step.tool_id,
-                                        "errors_count": len(errors),
-                                    },
-                                )
-                                try:
-                                    await event_bus.publish(
-                                        DecisionRejectedEvent(
-                                            source="workflow_chat_stream_react",
-                                            correlation_id=session_id,
-                                            original_decision_id=step.tool_id,
-                                            decision_type=action_type,
-                                            reason="; ".join(errors)
-                                            or "coordinator rejected decision",
-                                            errors=errors,
-                                        )
-                                    )
-                                except Exception:
-                                    pass
-                                await emitter.emit_error(
-                                    error_message="; ".join(errors)
-                                    or "coordinator rejected decision",
-                                    error_code="COORDINATOR_REJECTED",
-                                    recoverable=False,
-                                    decision_type=action_type,
-                                    tool_id=step.tool_id,
-                                )
-                                await emitter.complete()
-                                db.rollback()
-                                return
+                        decision = {
+                            "type": action_type,
+                            "session_id": session_id,
+                            "workflow_id": workflow_id,
+                            "tool_id": step.tool_id,
+                            **step.action,
+                        }
+                        policy = CoordinatorPolicyChain(
+                            coordinator=coordinator,
+                            event_bus=event_bus,
+                            source="workflow_chat_stream_react",
+                        )
+                        try:
+                            await policy.enforce_action_or_raise(
+                                decision_type=action_type,
+                                decision=decision,
+                                correlation_id=session_id,
+                                original_decision_id=step.tool_id,
+                            )
+                        except CoordinatorRejectedError as exc:
+                            await emitter.emit_error(
+                                error_message=str(exc),
+                                error_code="COORDINATOR_REJECTED",
+                                recoverable=False,
+                                decision_type=action_type,
+                                tool_id=step.tool_id,
+                                correlation_id=session_id,
+                            )
+                            await emitter.complete()
+                            db.rollback()
+                            return
 
                         await emitter.emit_tool_call(
                             tool_name=action_type,
