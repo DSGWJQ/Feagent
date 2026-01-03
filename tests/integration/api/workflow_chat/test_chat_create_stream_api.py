@@ -21,12 +21,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.domain.exceptions import DomainError
+from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.value_objects.node_type import NodeType
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
+from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.dependencies.rag import get_rag_service
 from src.interfaces.api.routes import workflows as workflows_routes
 
@@ -60,6 +62,17 @@ def client(test_engine):
     test_app = FastAPI()
     test_app.include_router(workflows_routes.router, prefix="/api")
 
+    class _NoopToolRepository:
+        def exists(self, _tool_id: str) -> bool:
+            return True
+
+        def find_by_id(self, _tool_id: str):
+            return None
+
+    class _NoopUserRepository:
+        def find_by_id(self, _user_id: str):
+            return None
+
     def override_get_db_session():
         TestingSessionLocal = sessionmaker(bind=test_engine)
         db = TestingSessionLocal()
@@ -70,6 +83,24 @@ def client(test_engine):
 
     async def override_get_rag_service():
         yield object()
+
+    def _fake_repo(_: Session):
+        raise AssertionError("unexpected repository dependency in this test")
+
+    test_app.state.container = ApiContainer(
+        executor_registry=NodeExecutorRegistry(),
+        workflow_execution_orchestrator=lambda _: None,  # type: ignore[return-value]
+        conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
+        user_repository=lambda _: _NoopUserRepository(),
+        agent_repository=_fake_repo,
+        task_repository=_fake_repo,
+        workflow_repository=lambda db: SQLAlchemyWorkflowRepository(db),
+        chat_message_repository=_fake_repo,
+        llm_provider_repository=_fake_repo,
+        tool_repository=lambda _: _NoopToolRepository(),
+        run_repository=_fake_repo,
+        scheduled_workflow_repository=_fake_repo,
+    )
 
     test_app.dependency_overrides[get_db_session] = override_get_db_session
     test_app.dependency_overrides[get_rag_service] = override_get_rag_service

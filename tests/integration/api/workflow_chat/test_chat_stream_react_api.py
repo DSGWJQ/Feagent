@@ -302,6 +302,27 @@ class TestChatStreamReactAPI:
             tool_result_ids
         ), "tool_call 与 tool_result 应该可配对（tool_id）"
 
+    def test_stream_event_types_are_whitelisted(
+        self, client: TestClient, sample_workflow: Workflow
+    ):
+        """测试：事件类型严格受白名单约束（契约护栏）"""
+        response = client.post(
+            f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+            json={"message": "测试"},
+        )
+
+        assert response.status_code == 200
+
+        allowed_types = {"thinking", "tool_call", "tool_result", "final", "error"}
+        for line in response.text.strip().split("\n"):
+            if not line.startswith("data: "):
+                continue
+            data_str = line[6:]
+            if data_str == "[DONE]":
+                continue
+            event = json.loads(data_str)
+            assert event.get("type") in allowed_types
+
     def test_stream_response_headers(self, client: TestClient, sample_workflow: Workflow):
         """测试：流式响应包含正确的 HTTP 头
 

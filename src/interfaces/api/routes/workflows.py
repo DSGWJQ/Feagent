@@ -276,7 +276,12 @@ def get_update_workflow_by_chat_use_case_factory(
     return factory
 
 
-@router.post("", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=WorkflowResponse,
+    status_code=status.HTTP_201_CREATED,
+    deprecated=True,
+)
 def create_workflow(
     request: CreateWorkflowRequest,
     response: Response,
@@ -434,7 +439,11 @@ class ExecuteWorkflowResponse(BaseModel):
     final_result: Any
 
 
-@router.post("/{workflow_id}/execute", response_model=ExecuteWorkflowResponse)
+@router.post(
+    "/{workflow_id}/execute",
+    response_model=ExecuteWorkflowResponse,
+    deprecated=True,
+)
 async def execute_workflow(
     workflow_id: str,
     request: ExecuteWorkflowRequest,
