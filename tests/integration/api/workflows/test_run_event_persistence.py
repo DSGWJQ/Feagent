@@ -18,8 +18,13 @@ from sqlalchemy.pool import StaticPool
 
 from src.application.services.workflow_execution_orchestrator import WorkflowExecutionOrchestrator
 from src.config import settings
+from src.domain.entities.node import Node
 from src.domain.entities.run import Run
+from src.domain.entities.workflow import Workflow
 from src.domain.ports.node_executor import NodeExecutorRegistry
+from src.domain.services.event_bus import EventBus
+from src.domain.value_objects.node_type import NodeType
+from src.domain.value_objects.position import Position
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.models import RunEventModel
@@ -76,6 +81,29 @@ def test_t_run_1_execute_stream_persists_key_events(
         return None
 
     test_app = FastAPI()
+    test_app.state.event_bus = EventBus()
+
+    class _AllowCoordinator:
+        def validate_decision(self, decision: dict):
+            return type("Validation", (), {"is_valid": True, "errors": []})()
+
+    test_app.state.coordinator = _AllowCoordinator()
+
+    workflow = Workflow.create(
+        name="test",
+        description="",
+        nodes=[
+            Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)),
+            Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0)),
+        ],
+        edges=[],
+    )
+    workflow.id = "wf_123"
+
+    class _FakeWorkflowRepository:
+        def get_by_id(self, workflow_id: str):
+            return workflow
+
     test_app.state.container = ApiContainer(
         executor_registry=NodeExecutorRegistry(),
         workflow_execution_kernel=orchestrator_factory,
@@ -83,7 +111,7 @@ def test_t_run_1_execute_stream_persists_key_events(
         user_repository=_noop_repo,
         agent_repository=_noop_repo,
         task_repository=_noop_repo,
-        workflow_repository=_noop_repo,
+        workflow_repository=lambda _s: _FakeWorkflowRepository(),
         chat_message_repository=_noop_repo,
         llm_provider_repository=_noop_repo,
         tool_repository=_noop_repo,

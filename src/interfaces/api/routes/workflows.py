@@ -15,6 +15,10 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
 from sqlalchemy.orm import Session
 
+from src.application.services.coordinator_policy_chain import (
+    CoordinatorPolicyChain,
+    CoordinatorRejectedError,
+)
 from src.application.use_cases.generate_workflow_from_form import (
     GenerateWorkflowFromFormUseCase,
     GenerateWorkflowInput,
@@ -37,11 +41,13 @@ from src.domain.ports.chat_message_repository import ChatMessageRepository
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.ports.workflow_chat_service import WorkflowChatServicePort
 from src.domain.ports.workflow_repository import WorkflowRepository
+from src.domain.services.event_bus import EventBus
 from src.domain.services.workflow_chat_service_enhanced import EnhancedWorkflowChatService
 from src.domain.services.workflow_save_validator import WorkflowSaveValidator
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.llm import LangChainWorkflowChatLLM
 from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.agents import get_event_bus
 from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dependencies.current_user import get_current_user_optional
 from src.interfaces.api.dependencies.rag import get_rag_service
@@ -355,6 +361,7 @@ async def execute_workflow_streaming(
     workflow_id: str,
     request: ExecuteWorkflowRequest,
     http_request: Request,
+    event_bus: EventBus = Depends(get_event_bus),
     container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
 ) -> StreamingResponse:
@@ -377,6 +384,64 @@ async def execute_workflow_streaming(
     from src.application.use_cases.execute_workflow import WORKFLOW_EXECUTION_KERNEL_ID
 
     executor_id = WORKFLOW_EXECUTION_KERNEL_ID
+
+    # Hard gate: validate workflow executability before any side effects (fail-closed).
+    repository = container.workflow_repository(db)
+    try:
+        workflow = repository.get_by_id(workflow_id)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{exc.entity_type} not found: {exc.entity_id}",
+        ) from exc
+
+    save_validator = WorkflowSaveValidator(
+        executor_registry=container.executor_registry,
+        tool_repository=container.tool_repository(db),
+    )
+    try:
+        save_validator.validate_or_raise(workflow)
+    except DomainValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.to_dict(),
+        ) from exc
+    except DomainError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    # Fail-closed: Coordinator supervision before committing run state transitions.
+    coordinator = getattr(http_request.app.state, "coordinator", None)
+    supervision = CoordinatorPolicyChain(
+        coordinator=coordinator,
+        event_bus=event_bus,
+        source="workflow_execute_stream",
+        fail_closed=True,
+        supervised_decision_types={"api_request"},
+    )
+    try:
+        await supervision.enforce_action_or_raise(
+            decision_type="api_request",
+            decision={
+                "decision_type": "api_request",
+                "action": "execute_workflow_stream",
+                "workflow_id": workflow_id,
+                "run_id": run_id,
+            },
+            correlation_id=run_id,
+            original_decision_id=run_id,
+        )
+    except CoordinatorRejectedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "coordinator_rejected",
+                "reason": str(exc),
+                "errors": list(exc.errors),
+            },
+        ) from exc
 
     # Fail-closed: ensure run exists and persist a deterministic start event before streaming begins.
     from src.application.use_cases.append_run_event import (
