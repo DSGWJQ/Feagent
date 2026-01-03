@@ -223,23 +223,18 @@ class ConversationAgentHelpersMixin:
         provider = "openai"  # 默认提供商
         model = settings.openai_model
 
-        # P1-1: 使用注入的 ModelMetadataPort（必需依赖）
+        # P1-1: 使用注入的 ModelMetadataPort（依赖注入），避免 Domain 直接依赖 Infrastructure。
+        context_window: int = 8192
         if hasattr(self, "model_metadata_port") and self.model_metadata_port is not None:
-            # 使用注入的 ModelMetadataPort
             metadata = self.model_metadata_port.get_model_metadata(provider, model)
             context_window = metadata.max_tokens
         else:
-            # Fallback: 向后兼容，直接导入（将在 v2.0 移除）
-            # TODO (v2.0): 移除 fallback 逻辑，强制要求注入 ModelMetadataPort
+            # 向后兼容：未注入时使用保守默认值（主要用于测试/装配缺失场景）。
+            # 重要：该分支不得从 Infrastructure import（DDD 边界）。
             logger.warning(
-                "ModelMetadataPort not injected, falling back to direct import. "
-                "This fallback will be removed in v2.0. "
-                "Please inject ModelMetadataPort via ConversationAgentConfig."
+                "ModelMetadataPort not injected; using fallback context_window=8192. "
+                "Inject ModelMetadataPort via ConversationAgentConfig to avoid drift."
             )
-            from src.infrastructure.lc_adapters.model_metadata import get_model_metadata
-
-            metadata = get_model_metadata(provider, model)
-            context_window = metadata.context_window
 
         # 设置到 SessionContext
         self.session_context.set_model_info(

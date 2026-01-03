@@ -317,7 +317,8 @@ class ConversationAgent(
         self._current_input: str | None = None
 
         # P1-1: Domain层解耦 - 模型元数据端口（依赖注入）
-        self.model_metadata_port: Any | None = model_metadata_port if config else None
+        # 兼容 legacy 构造方式：即使未传 config，也应保留从 _resolve_config 解析出的端口。
+        self.model_metadata_port: Any | None = model_metadata_port
 
         # Phase 14: 意图分类配置
         self.enable_intent_classification = enable_intent_classification
