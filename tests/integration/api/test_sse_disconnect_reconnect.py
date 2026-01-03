@@ -404,21 +404,64 @@ class TestRealWorldDisconnectScenarios:
         assert connection_count == 2
 
 
-class TestChatStreamReactWithEmitter:
-    """测试改进后的 chat-stream-react 端点"""
+class TestChatStreamWithEmitter:
+    """测试改进后的 chat-stream 端点"""
 
-    def test_chat_stream_react_uses_emitter_events(self):
-        """测试: chat-stream-react 使用 emitter 事件格式"""
+    def test_chat_stream_uses_emitter_events(self):
+        """测试: chat-stream 使用 emitter 事件格式"""
+        from src.infrastructure.database.engine import get_db_session
         from src.interfaces.api.main import app
+        from src.interfaces.api.routes.workflows import get_update_workflow_by_chat_use_case
 
+        class _SpySession:
+            def commit(self):
+                return None
+
+            def rollback(self):
+                return None
+
+        async def _override_use_case(workflow_id: str):
+            class _StubUseCase:
+                async def execute_streaming(self, input_data):
+                    yield {"type": "processing_started", "workflow_id": workflow_id}
+                    yield {
+                        "type": "workflow_updated",
+                        "ai_message": "完成",
+                        "workflow": {"id": workflow_id},
+                        "rag_sources": [],
+                    }
+
+            return _StubUseCase()
+
+        def _override_db_session():
+            yield _SpySession()
+
+        original_use_case_override = app.dependency_overrides.get(
+            get_update_workflow_by_chat_use_case
+        )
+        original_db_override = app.dependency_overrides.get(get_db_session)
+        app.dependency_overrides[get_update_workflow_by_chat_use_case] = _override_use_case
+        app.dependency_overrides[get_db_session] = _override_db_session
         client = TestClient(app)
 
         # 注意：这个测试需要数据库中有工作流
         # 这里测试端点存在并返回正确格式
-        response = client.post(
-            "/api/workflows/nonexistent/chat-stream-react",
-            json={"message": "测试消息"},
-        )
+        try:
+            response = client.post(
+                "/api/workflows/nonexistent/chat-stream",
+                json={"message": "测试消息"},
+            )
+        finally:
+            if original_use_case_override is not None:
+                app.dependency_overrides[get_update_workflow_by_chat_use_case] = (
+                    original_use_case_override
+                )
+            else:
+                app.dependency_overrides.pop(get_update_workflow_by_chat_use_case, None)
+            if original_db_override is not None:
+                app.dependency_overrides[get_db_session] = original_db_override
+            else:
+                app.dependency_overrides.pop(get_db_session, None)
 
         # 应该返回 200 (SSE 流)
         assert response.status_code == 200
@@ -438,5 +481,5 @@ __all__ = [
     "TestSSESessionManagerReconnect",
     "TestSSEHandlerDisconnect",
     "TestRealWorldDisconnectScenarios",
-    "TestChatStreamReactWithEmitter",
+    "TestChatStreamWithEmitter",
 ]

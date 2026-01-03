@@ -37,6 +37,10 @@ def _assert_deprecated(paths: dict, path: str, method: str, expected: bool) -> N
     assert operation.get("deprecated", False) is expected
 
 
+def _assert_path_absent(paths: dict, path: str) -> None:
+    assert path not in paths, f"unexpected path in OpenAPI: {path}"
+
+
 def test_t_route_1_openapi_create_execute_guardrails(client: TestClient) -> None:
     paths = _get_openapi_paths(client)
 
@@ -54,6 +58,12 @@ def test_t_route_1_openapi_create_execute_guardrails(client: TestClient) -> None
 
     # I-2（PATCH）：目标修改入口（非 deprecated）
     _assert_deprecated(paths, "/api/workflows/{workflow_id}", "patch", False)
+
+    # I-4：目标对话修改入口（非 deprecated）
+    _assert_deprecated(paths, "/api/workflows/{workflow_id}/chat-stream", "post", False)
+
+    # legacy react-stream：必须不存在（404 / not mounted）
+    _assert_path_absent(paths, "/api/workflows/{workflow_id}/chat-stream-react")
 
 
 def test_t_route_1_canvas_websocket_route_is_unavailable(client: TestClient) -> None:

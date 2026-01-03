@@ -1,7 +1,7 @@
 """测试：工作流对话流式 API - 实时 ReAct 步骤流
 
 TDD RED 阶段：定义流式 API 的期望行为
-- POST /api/workflows/{workflow_id}/chat-stream-react SSE 端点
+- POST /api/workflows/{workflow_id}/chat-stream SSE 端点
 - 支持流式传输 ReAct 步骤
 - 正确的 SSE 格式和响应头
 """
@@ -143,24 +143,27 @@ def sample_workflow(test_db: Session):
     return workflow
 
 
-class TestChatStreamReactAPI:
-    """测试工作流对话流式 ReAct API"""
+class TestChatStreamAPI:
+    """测试工作流对话流式 API"""
 
-    def test_endpoint_exists(self, client: TestClient, sample_workflow: Workflow):
-        """测试：/chat-stream-react 端点存在
+    def test_chat_stream_endpoint_exists(self, client: TestClient, sample_workflow: Workflow):
+        """测试：/chat-stream 端点存在
 
-        RED 阶段：端点还不存在，此测试应失败
+        端点应该存在并返回 SSE 流
         """
+        response = client.post(
+            f"/api/workflows/{sample_workflow.id}/chat-stream",
+            json={"message": "测试消息"},
+        )
+
+        assert response.status_code == 200
+
+    def test_legacy_chat_stream_react_is_404(self, client: TestClient, sample_workflow: Workflow):
         response = client.post(
             f"/api/workflows/{sample_workflow.id}/chat-stream-react",
             json={"message": "测试消息"},
         )
-
-        # 红色：端点应该存在并返回 200 或流式响应
-        assert response.status_code in [
-            200,
-            404,
-        ], "端点应该存在或返回 404（稍后实现）"
+        assert response.status_code == 404
 
     def test_stream_endpoint_returns_sse_format(
         self, client: TestClient, sample_workflow: Workflow
@@ -189,7 +192,7 @@ class TestChatStreamReactAPI:
             mock_llm.invoke.return_value = mock_result
 
             response = client.post(
-                f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+                f"/api/workflows/{sample_workflow.id}/chat-stream",
                 json={"message": "测试消息"},
                 headers={"Accept": "text/event-stream"},
             )
@@ -231,7 +234,7 @@ class TestChatStreamReactAPI:
             mock_llm.invoke.return_value = mock_result
 
             response = client.post(
-                f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+                f"/api/workflows/{sample_workflow.id}/chat-stream",
                 json={"message": "测试"},
             )
 
@@ -260,7 +263,7 @@ class TestChatStreamReactAPI:
         应该包含：thinking、tool_call、tool_result、final 事件
         """
         response = client.post(
-            f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+            f"/api/workflows/{sample_workflow.id}/chat-stream",
             json={"message": "测试"},
         )
 
@@ -307,7 +310,7 @@ class TestChatStreamReactAPI:
     ):
         """测试：事件类型严格受白名单约束（契约护栏）"""
         response = client.post(
-            f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+            f"/api/workflows/{sample_workflow.id}/chat-stream",
             json={"message": "测试"},
         )
 
@@ -344,7 +347,7 @@ class TestChatStreamReactAPI:
             mock_llm.invoke.return_value = mock_result
 
             response = client.post(
-                f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+                f"/api/workflows/{sample_workflow.id}/chat-stream",
                 json={"message": "测试"},
             )
 
@@ -374,7 +377,7 @@ class TestChatStreamReactAPI:
             mock_llm.invoke.return_value = mock_result
 
             response = client.post(
-                f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+                f"/api/workflows/{sample_workflow.id}/chat-stream",
                 json={"message": "测试"},
             )
 
@@ -400,7 +403,7 @@ class TestChatStreamReactAPI:
             mock_llm_func.return_value = mock_llm
 
             response = client.post(
-                "/api/workflows/nonexistent-id/chat-stream-react",
+                "/api/workflows/nonexistent-id/chat-stream",
                 json={"message": "测试"},
             )
 
@@ -421,7 +424,7 @@ class TestChatStreamReactAPI:
             mock_llm_func.return_value = mock_llm
 
             response = client.post(
-                f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+                f"/api/workflows/{sample_workflow.id}/chat-stream",
                 json={"message": ""},
             )
 
@@ -439,7 +442,7 @@ class TestChatStreamReactAPI:
         RED 阶段：完整的多步骤流式传输
         """
         response = client.post(
-            f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+            f"/api/workflows/{sample_workflow.id}/chat-stream",
             json={"message": "设计工作流"},
         )
 
@@ -499,7 +502,7 @@ class TestChatStreamReactAPI:
         app.dependency_overrides[get_db_session] = _override_spy_db_session
         try:
             response = client.post(
-                f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+                f"/api/workflows/{sample_workflow.id}/chat-stream",
                 json={"message": "danger"},
                 headers={"Accept": "text/event-stream"},
             )

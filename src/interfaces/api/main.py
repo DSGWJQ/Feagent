@@ -40,7 +40,6 @@ from src.interfaces.api.routes import (
     scheduled_workflows,
     tools,
 )
-from src.interfaces.api.routes import chat_workflows as chat_workflows_routes
 from src.interfaces.api.routes import workflows as workflows_routes
 from src.interfaces.api.routes import workflows_rag as workflows_rag_routes
 from src.interfaces.api.services.workflow_executor_adapter import WorkflowExecutorAdapter
@@ -331,7 +330,6 @@ async def root() -> JSONResponse:
 
 app.include_router(workflows_routes.router, prefix="/api", tags=["Workflows"])
 app.include_router(auth.router, prefix="/api", tags=["Authentication"])
-app.include_router(chat_workflows_routes.router, prefix="/api", tags=["Chat Workflows"])
 app.include_router(workflows_rag_routes.router, prefix="/api", tags=["Workflows RAG"])
 
 app.include_router(tools.router, prefix="/api", tags=["Tools"])

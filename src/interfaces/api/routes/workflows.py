@@ -841,15 +841,15 @@ def chat_with_workflow(
         ) from exc
 
 
-@router.post("/{workflow_id}/chat-stream-react")
-async def chat_stream_react_with_workflow(
+@router.post("/{workflow_id}/chat-stream")
+async def chat_stream_with_workflow(
     workflow_id: str,
     request: ChatRequest,
     http_request: Request,
     db: Session = Depends(get_db_session),
     use_case: UpdateWorkflowByChatUseCase = Depends(get_update_workflow_by_chat_use_case),
 ):
-    """Modify a workflow through conversational input with streaming ReAct steps (SSE).
+    """Modify a workflow through conversational input with streaming steps (SSE).
 
     Phase 3 改进版：使用 ConversationFlowEmitter 实现流式输出。
 
