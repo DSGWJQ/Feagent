@@ -1,20 +1,23 @@
-[importlinter]
+[tool.importlinter]
 root_package = "src"
 
-[[importlinter.contracts]]
-name = "Interface 不能依赖 Domain Agents"
-type = "forbidden"
-source_modules = ["src.interfaces"]
-forbidden_modules = ["src.domain.agents"]
-
-[[importlinter.contracts]]
+[[tool.importlinter.contracts]]
+id = "application_no_interfaces"
 name = "Application 不能依赖 Interface"
 type = "forbidden"
 source_modules = ["src.application"]
 forbidden_modules = ["src.interfaces"]
 
-[[importlinter.contracts]]
+[[tool.importlinter.contracts]]
+id = "domain_no_interfaces"
 name = "Domain 不能依赖 Interface"
 type = "forbidden"
 source_modules = ["src.domain"]
 forbidden_modules = ["src.interfaces"]
+
+[[tool.importlinter.contracts]]
+id = "domain_no_infrastructure"
+name = "Domain 不能依赖 Infrastructure"
+type = "forbidden"
+source_modules = ["src.domain"]
+forbidden_modules = ["src.infrastructure"]

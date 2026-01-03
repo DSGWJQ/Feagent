@@ -107,6 +107,12 @@ def main() -> int:
             None,
         ),
         (
+            "domain_no_infrastructure",
+            repo_root / "src" / "domain",
+            [r"\bfrom\s+src\.infrastructure\b", r"\bimport\s+src\.infrastructure\b"],
+            None,
+        ),
+        (
             "domain_yaml_pathlib_allowlist",
             repo_root / "src" / "domain",
             [
