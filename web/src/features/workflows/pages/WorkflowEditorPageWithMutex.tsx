@@ -39,7 +39,6 @@ import { useConflictResolution, type Conflict } from '../hooks/useConflictResolu
 import { wouldCreateCycle } from '../utils/graphUtils';
 import { updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
-import { useCanvasSync } from '../hooks/useCanvasSync';
 import { useWorkflow } from '@/hooks/useWorkflow';
 import type { WorkflowNode, WorkflowEdge } from '../types/workflow';
 import NodePalette from '../components/NodePalette';
@@ -304,14 +303,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   useEffect(() => {
     edgesRef.current = edges;
   }, [edges]);
-
-  // WebSocket canvas sync (enabled only in canvas mode + non-local drafts)
-  useCanvasSync({
-    workflowId,
-    enabled: !isLocalDraft,
-    onNodesChange: (changes) => setNodes((prev) => applyNodeChanges(changes, prev)),
-    onEdgesChange: (changes) => setEdges((prev) => applyEdgeChanges(changes, prev)),
-  });
 
   // Undo/Redo history management
   const {
