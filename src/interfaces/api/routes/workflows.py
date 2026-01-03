@@ -724,6 +724,12 @@ def chat_with_workflow(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{exc.entity_type} not found: {exc.entity_id}",
         ) from exc
+    except DomainValidationError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.to_dict(),
+        ) from exc
     except DomainError as exc:
         db.rollback()
         raise HTTPException(
@@ -839,16 +845,29 @@ async def chat_stream_react_with_workflow(
                                 )
                             else:
                                 errors = list(getattr(validation, "errors", []) or [])
-                                await event_bus.publish(
-                                    DecisionRejectedEvent(
-                                        source="workflow_chat_stream_react",
-                                        correlation_id=session_id,
-                                        original_decision_id=step.tool_id,
-                                        decision_type=action_type,
-                                        reason="; ".join(errors) or "coordinator rejected decision",
-                                        errors=errors,
+                                try:
+                                    await event_bus.publish(
+                                        DecisionRejectedEvent(
+                                            source="workflow_chat_stream_react",
+                                            correlation_id=session_id,
+                                            original_decision_id=step.tool_id,
+                                            decision_type=action_type,
+                                            reason="; ".join(errors)
+                                            or "coordinator rejected decision",
+                                            errors=errors,
+                                        )
                                     )
+                                except Exception:
+                                    pass
+                                await emitter.emit_error(
+                                    error_message="; ".join(errors)
+                                    or "coordinator rejected decision",
+                                    error_code="COORDINATOR_REJECTED",
+                                    recoverable=False,
+                                    decision_type=action_type,
+                                    tool_id=step.tool_id,
                                 )
+                                await emitter.complete()
                                 db.rollback()
                                 return
 
@@ -865,6 +884,15 @@ async def chat_stream_react_with_workflow(
                             success=True,
                         )
                 elif event_type == "modifications_preview":
+                    await emitter.emit_tool_call(
+                        tool_name="modifications_preview",
+                        tool_id="modifications",
+                        arguments={
+                            "modifications_count": event.get("modifications_count", 0),
+                            "intent": event.get("intent", ""),
+                            "confidence": event.get("confidence", 0.0),
+                        },
+                    )
                     await emitter.emit_tool_result(
                         tool_id="modifications",
                         result={

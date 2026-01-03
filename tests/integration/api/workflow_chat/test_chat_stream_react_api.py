@@ -86,12 +86,17 @@ def client(test_engine):
                 }
                 step_count = 3 if getattr(input_data, "user_message", "") == "设计工作流" else 1
                 for step in range(1, step_count + 1):
+                    action_type = (
+                        "api_request"
+                        if getattr(input_data, "user_message", "") == "danger"
+                        else "add_node"
+                    )
                     yield {
                         "type": "react_step",
                         "step_number": step,
                         "tool_id": f"react_{step}",
                         "thought": f"步骤 {step} 思考",
-                        "action": {"type": "add_node"},
+                        "action": {"type": action_type},
                         "observation": f"步骤 {step} 观察",
                     }
                 yield {
@@ -439,3 +444,48 @@ class TestChatStreamReactAPI:
         assert tool_call_ids.count("react_1") == 1
         assert tool_call_ids.count("react_2") == 1
         assert tool_call_ids.count("react_3") == 1
+
+    def test_coordinator_rejection_emits_error_and_completes(
+        self, client: TestClient, sample_workflow: Workflow
+    ):
+        class _FakeValidationResult:
+            is_valid = False
+            errors = ["blocked by coordinator"]
+
+        class _FakeCoordinator:
+            def validate_decision(self, _decision):
+                return _FakeValidationResult()
+
+        from src.domain.services.event_bus import EventBus
+
+        app.state.coordinator = _FakeCoordinator()
+        app.state.event_bus = EventBus()
+        try:
+            response = client.post(
+                f"/api/workflows/{sample_workflow.id}/chat-stream-react",
+                json={"message": "danger"},
+                headers={"Accept": "text/event-stream"},
+            )
+            assert response.status_code == 200
+
+            events = []
+            for line in response.text.strip().splitlines():
+                if not line.startswith("data: "):
+                    continue
+                payload = line[6:]
+                if payload == "[DONE]":
+                    continue
+                try:
+                    events.append(json.loads(payload))
+                except json.JSONDecodeError:
+                    continue
+
+            error_events = [e for e in events if e.get("type") == "error"]
+            assert error_events, "should emit an error event when coordinator rejects"
+            assert error_events[0]["metadata"]["error_code"] == "COORDINATOR_REJECTED"
+            assert response.text.strip().endswith("data: [DONE]"), "stream must complete"
+        finally:
+            if hasattr(app.state, "coordinator"):
+                delattr(app.state, "coordinator")
+            if hasattr(app.state, "event_bus"):
+                delattr(app.state, "event_bus")
