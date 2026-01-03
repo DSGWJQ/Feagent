@@ -4,10 +4,6 @@ Step 3 重构：
 - 实现 WorkflowExecutorPort 接口
 - 内部使用 WorkflowExecutionFacade 执行
 - 每次执行创建独立 session（调度器场景）
-
-Step 6 重构：
-- 注入 LangGraphWorkflowExecutorAdapter 实现 LANGGRAPH 模式
-- Application 层（WorkflowExecutionFacade）不直接 import LangGraph
 """
 
 from __future__ import annotations
@@ -23,9 +19,6 @@ from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
 from src.infrastructure.executors import create_executor_registry
-from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
-    LangGraphWorkflowExecutorAdapter,
-)
 
 if TYPE_CHECKING:
     pass
@@ -41,10 +34,6 @@ class WorkflowExecutorAdapter:
     Step 3 重构：
     - 统一使用 WorkflowExecutionFacade 执行
     - 确保调度器执行与 API 执行产生相同格式的 SSE 事件
-
-    Step 6 重构：
-    - 注入 LangGraphWorkflowExecutorAdapter 实现 LANGGRAPH 模式
-    - Application 层不直接 import LangGraph（仅出现在 Infrastructure）
     """
 
     def __init__(
@@ -59,23 +48,13 @@ class WorkflowExecutorAdapter:
 
     @contextmanager
     def _create_facade(self) -> Iterator[WorkflowExecutionFacade]:
-        """为每次执行创建独立的 session 和 Facade
-
-        Step 6: 同时创建 LangGraphWorkflowExecutorAdapter 注入 Facade
-        """
+        """为每次执行创建独立的 session 和 Facade"""
         session = self._session_factory()
         repo = SQLAlchemyWorkflowRepository(session)
-
-        # Step 6: 创建 LangGraph 执行器（Infrastructure 层）
-        langgraph_executor = LangGraphWorkflowExecutorAdapter(
-            workflow_repository=repo,
-            executor_registry=self.executor_registry,
-        )
 
         facade = WorkflowExecutionFacade(
             workflow_repository=repo,
             executor_registry=self.executor_registry,
-            langgraph_executor=langgraph_executor,
         )
         try:
             yield facade
@@ -112,16 +91,9 @@ class WorkflowExecutorAdapter:
         session = self._session_factory()
         repo = SQLAlchemyWorkflowRepository(session)
 
-        # Step 6: 创建 LangGraph 执行器（Infrastructure 层）
-        langgraph_executor = LangGraphWorkflowExecutorAdapter(
-            workflow_repository=repo,
-            executor_registry=self.executor_registry,
-        )
-
         facade = WorkflowExecutionFacade(
             workflow_repository=repo,
             executor_registry=self.executor_registry,
-            langgraph_executor=langgraph_executor,
         )
         try:
             async for event in facade.execute_streaming(

@@ -25,14 +25,11 @@ class WorkflowExecutionFacade:
         *,
         workflow_repository: WorkflowRepository,
         executor_registry: NodeExecutorRegistry | None = None,
-        langgraph_executor: Any | None = None,
     ) -> None:
         self._workflow_repository = workflow_repository
         self._executor_registry = executor_registry
-        self._langgraph_executor = langgraph_executor
 
     async def execute(self, *, workflow_id: str, input_data: Any = None) -> dict[str, Any]:
-        # 预留：后续可根据配置选择 langgraph_executor；当前保持最小可用实现。
         use_case = ExecuteWorkflowUseCase(
             workflow_repository=self._workflow_repository,
             executor_registry=self._executor_registry,
