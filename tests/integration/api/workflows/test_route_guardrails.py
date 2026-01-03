@@ -53,8 +53,8 @@ def test_t_route_1_openapi_create_execute_guardrails(client: TestClient) -> None
     # I-3：目标执行入口（非 deprecated）
     _assert_deprecated(paths, "/api/workflows/{workflow_id}/execute/stream", "post", False)
 
-    # legacy execute：兼容期存在，但必须 deprecated
-    _assert_deprecated(paths, "/api/workflows/{workflow_id}/execute", "post", True)
+    # legacy execute：必须不存在（404 / not mounted）
+    _assert_path_absent(paths, "/api/workflows/{workflow_id}/execute")
 
     # I-2（PATCH）：目标修改入口（非 deprecated）
     _assert_deprecated(paths, "/api/workflows/{workflow_id}", "patch", False)

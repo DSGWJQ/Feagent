@@ -230,18 +230,15 @@ class TestUpdateWorkflowAPI:
 class TestExecuteWorkflowAPI:
     """测试执行工作流 API"""
 
-    def test_execute_workflow_should_succeed(self, test_db: Session, client: TestClient):
-        """测试：执行工作流应该成功
+    def test_execute_workflow_should_return_404(self, test_db: Session, client: TestClient):
+        """测试：非流式 execute 已移除（应返回 404）
 
         场景：
         - 创建一个简单工作流（Start → End）
-        - 通过 API 执行工作流
-        - 验证返回执行结果
+        - 调用 legacy /execute
 
         验收标准：
-        - 返回 200 状态码
-        - 返回执行日志
-        - 返回最终结果
+        - 返回 404 状态码
         """
         # Arrange
         # 创建工作流
@@ -272,18 +269,14 @@ class TestExecuteWorkflowAPI:
         repository.save(workflow)
         test_db.commit()
 
-        # Act
+        # Act (legacy endpoint removed)
         response = client.post(
             f"/api/workflows/{workflow.id}/execute",
-            json={"initial_input": {"message": "test"}},
+            json={"initial_input": {"message": "test"}, "run_id": "run_legacy"},
         )
 
         # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert "execution_log" in data
-        assert "final_result" in data
-        assert len(data["execution_log"]) == 2  # 2 个节点
+        assert response.status_code == 404
 
     def test_execute_workflow_streaming_should_succeed(self, test_db: Session, client: TestClient):
         """测试：流式执行工作流应该成功
@@ -327,10 +320,18 @@ class TestExecuteWorkflowAPI:
         repository.save(workflow)
         test_db.commit()
 
+        # Arrange - create run first (run_id is required)
+        run_resp = client.post(
+            f"/api/projects/proj_1/workflows/{workflow.id}/runs",
+            json={},
+        )
+        assert run_resp.status_code == 200
+        run_id = run_resp.json()["id"]
+
         # Act
         response = client.post(
             f"/api/workflows/{workflow.id}/execute/stream",
-            json={"initial_input": {"message": "test"}},
+            json={"initial_input": {"message": "test"}, "run_id": run_id},
         )
 
         # Assert
@@ -350,6 +351,41 @@ class TestExecuteWorkflowAPI:
         assert "node_start" in event_types
         assert "node_complete" in event_types
         assert "workflow_complete" in event_types
+        assert all(event.get("run_id") == run_id for event in events)
+
+    def test_execute_workflow_streaming_without_run_id_should_return_400(
+        self, test_db: Session, client: TestClient
+    ):
+        """测试：流式执行缺少 run_id 应 fail-closed（400）"""
+
+        node1 = Node.create(
+            type=NodeType.START,
+            name="开始",
+            config={},
+            position=Position(x=0, y=0),
+        )
+        node2 = Node.create(
+            type=NodeType.END,
+            name="结束",
+            config={},
+            position=Position(x=100, y=0),
+        )
+        edge1 = Edge.create(source_node_id=node1.id, target_node_id=node2.id)
+        workflow = Workflow.create(
+            name="测试工作流",
+            description="",
+            nodes=[node1, node2],
+            edges=[edge1],
+        )
+        SQLAlchemyWorkflowRepository(test_db).save(workflow)
+        test_db.commit()
+
+        response = client.post(
+            f"/api/workflows/{workflow.id}/execute/stream",
+            json={"initial_input": {"message": "test"}},
+        )
+
+        assert response.status_code == 400
 
     def test_execute_workflow_with_invalid_id_should_return_404(
         self, test_db: Session, client: TestClient

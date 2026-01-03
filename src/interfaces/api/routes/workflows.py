@@ -9,7 +9,7 @@ import time
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
@@ -350,115 +350,6 @@ class ExecuteWorkflowRequest(BaseModel):
     run_id: str | None = None
 
 
-class ExecuteWorkflowResponse(BaseModel):
-    """Workflow execution response."""
-
-    execution_log: list[dict[str, Any]]
-    final_result: Any
-
-
-@router.post(
-    "/{workflow_id}/execute",
-    response_model=ExecuteWorkflowResponse,
-    deprecated=True,
-)
-async def execute_workflow(
-    workflow_id: str,
-    request: ExecuteWorkflowRequest,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    container: ApiContainer = Depends(get_container),
-    db: Session = Depends(get_db_session),
-) -> ExecuteWorkflowResponse:
-    """Execute a workflow synchronously."""
-
-    try:
-        started = time.perf_counter()
-        run_persistence_enabled = bool(request.run_id) and not settings.disable_run_persistence
-        executor_id = (
-            "langgraph_workflow_v1"
-            if settings.enable_langgraph_workflow_executor
-            else "workflow_engine_v1"
-        )
-
-        if settings.enable_langgraph_workflow_executor:
-            from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
-                LangGraphWorkflowExecutorAdapter,
-            )
-
-            adapter = LangGraphWorkflowExecutorAdapter(
-                workflow_repository=container.workflow_repository(db),
-                executor_registry=container.executor_registry,
-            )
-            result = await adapter.execute(
-                workflow_id=workflow_id, input_data=request.initial_input
-            )
-        else:
-            orchestrator = container.workflow_execution_orchestrator(db)
-            result = await orchestrator.execute(
-                workflow_id=workflow_id,
-                input_data=request.initial_input,
-                idempotency_key=idempotency_key,
-            )
-
-        if run_persistence_enabled and request.run_id:
-            from src.application.use_cases.append_run_event import (
-                AppendRunEventInput,
-                AppendRunEventUseCase,
-            )
-            from src.infrastructure.database.repositories.run_event_repository import (
-                SQLAlchemyRunEventRepository,
-            )
-            from src.infrastructure.database.repositories.run_repository import (
-                SQLAlchemyRunRepository,
-            )
-            from src.infrastructure.database.transaction_manager import SQLAlchemyTransactionManager
-
-            try:
-                use_case = AppendRunEventUseCase(
-                    run_repository=SQLAlchemyRunRepository(db),
-                    run_event_repository=SQLAlchemyRunEventRepository(db),
-                    transaction_manager=SQLAlchemyTransactionManager(db),
-                )
-                use_case.execute(
-                    AppendRunEventInput(
-                        run_id=request.run_id,
-                        event_type="workflow_complete",
-                        channel="execution",
-                        payload={
-                            "workflow_id": workflow_id,
-                            "execution_log": result.get("execution_log", []),
-                        },
-                    )
-                )
-            except Exception:
-                pass
-        duration_ms = int((time.perf_counter() - started) * 1000)
-        logger.info(
-            "workflow_execute_done",
-            extra={
-                "workflow_id": workflow_id,
-                "executor_id": executor_id,
-                "duration_ms": duration_ms,
-                "run_id_present": bool(request.run_id),
-                "run_persistence_enabled": run_persistence_enabled,
-            },
-        )
-        return ExecuteWorkflowResponse(
-            execution_log=result["execution_log"],
-            final_result=result["final_result"],
-        )
-    except NotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"{exc.entity_type} not found: {exc.entity_id}",
-        ) from exc
-    except DomainError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-
-
 @router.post("/{workflow_id}/execute/stream")
 async def execute_workflow_streaming(
     workflow_id: str,
@@ -469,16 +360,81 @@ async def execute_workflow_streaming(
 ) -> StreamingResponse:
     """Execute a workflow and stream progress via SSE."""
 
+    if settings.disable_run_persistence:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Runs API is disabled by feature flag (disable_run_persistence).",
+        )
+
+    run_id = request.run_id
+    if run_id is None or not run_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="run_id is required (create run first, then execute/stream).",
+        )
+
+    assert run_id is not None
+    executor_id = (
+        "langgraph_workflow_v1"
+        if settings.enable_langgraph_workflow_executor
+        else "workflow_engine_v1"
+    )
+
+    # Fail-closed: ensure run exists and persist a deterministic start event before streaming begins.
+    from src.application.use_cases.append_run_event import (
+        AppendRunEventInput,
+        AppendRunEventUseCase,
+    )
+    from src.domain.value_objects.run_status import RunStatus
+    from src.infrastructure.database.repositories.run_event_repository import (
+        SQLAlchemyRunEventRepository,
+    )
+    from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
+    from src.infrastructure.database.transaction_manager import SQLAlchemyTransactionManager
+
+    run_repository = SQLAlchemyRunRepository(db)
+    try:
+        run = run_repository.get_by_id(run_id)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"run_id not found: {exc.entity_id}",
+        ) from exc
+
+    if run.workflow_id != workflow_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="run_id does not belong to this workflow",
+        )
+    if run.status is not RunStatus.CREATED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"run is not executable (status={run.status.value})",
+        )
+
+    run_event_use_case = AppendRunEventUseCase(
+        run_repository=run_repository,
+        run_event_repository=SQLAlchemyRunEventRepository(db),
+        transaction_manager=SQLAlchemyTransactionManager(db),
+    )
+
+    run_event_use_case.execute(
+        AppendRunEventInput(
+            run_id=run_id,
+            event_type="workflow_start",
+            channel="execution",
+            payload={
+                "workflow_id": workflow_id,
+                "executor_id": executor_id,
+            },
+        )
+    )
+
     async def event_generator() -> AsyncGenerator[str, None]:
         event_recorder = getattr(http_request.app.state, "event_recorder", None)
         started = time.perf_counter()
         events_sent = 0
-        run_persistence_enabled = bool(request.run_id) and not settings.disable_run_persistence
-        executor_id = (
-            "langgraph_workflow_v1"
-            if settings.enable_langgraph_workflow_executor
-            else "workflow_engine_v1"
-        )
+        terminal_persisted = False
         try:
             if settings.enable_langgraph_workflow_executor:
                 from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
@@ -501,16 +457,31 @@ async def execute_workflow_streaming(
                 )
 
             async for event in event_iter:
-                if run_persistence_enabled and request.run_id:
-                    if event_recorder is not None:
-                        try:
-                            event_recorder.enqueue(
-                                run_id=request.run_id,
-                                sse_event={**event, "channel": "execution"},
-                            )
-                        except Exception:
-                            pass
-                    event = {**event, "run_id": request.run_id}
+                if event_recorder is not None:
+                    try:
+                        event_recorder.enqueue(
+                            run_id=run_id,
+                            sse_event={**event, "channel": "execution"},
+                        )
+                    except Exception:
+                        pass
+
+                event_type = event.get("type", "")
+                if not terminal_persisted and event_type in {"workflow_complete", "workflow_error"}:
+                    run_event_use_case.execute(
+                        AppendRunEventInput(
+                            run_id=run_id,
+                            event_type=event_type,
+                            channel="execution",
+                            payload={
+                                "workflow_id": workflow_id,
+                                "executor_id": executor_id,
+                            },
+                        )
+                    )
+                    terminal_persisted = True
+
+                event = {**event, "run_id": run_id}
                 events_sent += 1
                 yield f"data: {json.dumps(event)}\n\n"
         except NotFoundError as exc:
@@ -518,32 +489,54 @@ async def execute_workflow_streaming(
                 "type": "workflow_error",
                 "error": f"{exc.entity_type} not found: {exc.entity_id}",
             }
-            if run_persistence_enabled and request.run_id:
-                error_event["run_id"] = request.run_id
-                if event_recorder is not None:
-                    try:
-                        event_recorder.enqueue(
-                            run_id=request.run_id,
-                            sse_event={**error_event, "channel": "execution"},
-                        )
-                    except Exception:
-                        pass
+            run_event_use_case.execute(
+                AppendRunEventInput(
+                    run_id=run_id,
+                    event_type="workflow_error",
+                    channel="execution",
+                    payload={
+                        "workflow_id": workflow_id,
+                        "executor_id": executor_id,
+                        "error": error_event["error"],
+                    },
+                )
+            )
+            error_event["run_id"] = run_id
+            if event_recorder is not None:
+                try:
+                    event_recorder.enqueue(
+                        run_id=run_id,
+                        sse_event={**error_event, "channel": "execution"},
+                    )
+                except Exception:
+                    pass
             yield f"data: {json.dumps(error_event)}\n\n"
         except Exception as exc:  # pragma: no cover - best-effort error reporting
             error_event = {
                 "type": "workflow_error",
                 "error": f"Workflow execution failed: {exc}",
             }
-            if run_persistence_enabled and request.run_id:
-                error_event["run_id"] = request.run_id
-                if event_recorder is not None:
-                    try:
-                        event_recorder.enqueue(
-                            run_id=request.run_id,
-                            sse_event={**error_event, "channel": "execution"},
-                        )
-                    except Exception:
-                        pass
+            run_event_use_case.execute(
+                AppendRunEventInput(
+                    run_id=run_id,
+                    event_type="workflow_error",
+                    channel="execution",
+                    payload={
+                        "workflow_id": workflow_id,
+                        "executor_id": executor_id,
+                        "error": "workflow execution failed",
+                    },
+                )
+            )
+            error_event["run_id"] = run_id
+            if event_recorder is not None:
+                try:
+                    event_recorder.enqueue(
+                        run_id=run_id,
+                        sse_event={**error_event, "channel": "execution"},
+                    )
+                except Exception:
+                    pass
             yield f"data: {json.dumps(error_event)}\n\n"
         finally:
             duration_ms = int((time.perf_counter() - started) * 1000)
@@ -554,8 +547,8 @@ async def execute_workflow_streaming(
                     "executor_id": executor_id,
                     "duration_ms": duration_ms,
                     "events_sent": events_sent,
-                    "run_id_present": bool(request.run_id),
-                    "run_persistence_enabled": run_persistence_enabled,
+                    "run_id_present": True,
+                    "run_persistence_enabled": True,
                 },
             )
 

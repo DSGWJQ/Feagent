@@ -1,3 +1,10 @@
+"""T-RUN-1：execute/stream 关键事件强一致落库（workflow_start/workflow_complete/workflow_error）。
+
+覆盖点：
+- POST /api/workflows/{id}/execute/stream 强制 run_id
+- start/complete 事件可查询且不丢（数据库 RunEventModel）
+"""
+
 from __future__ import annotations
 
 import json
@@ -5,19 +12,17 @@ import json
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.application.services.workflow_execution_orchestrator import (
-    WorkflowExecutionOrchestrator,
-    WorkflowExecutionPolicy,
-)
+from src.application.services.workflow_execution_orchestrator import WorkflowExecutionOrchestrator
 from src.config import settings
 from src.domain.entities.run import Run
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.models import RunEventModel
 from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
 from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.routes import workflows as workflows_routes
@@ -35,34 +40,19 @@ def test_engine():
     engine.dispose()
 
 
-def test_execute_stream_endpoint_goes_through_orchestrator_and_policy_chain(
+def test_t_run_1_execute_stream_persists_key_events(
     monkeypatch: pytest.MonkeyPatch, test_engine
 ) -> None:
     monkeypatch.setattr(settings, "disable_run_persistence", False)
     monkeypatch.setattr(settings, "enable_langgraph_workflow_executor", False)
-
-    calls: list[str] = []
 
     class FakeFacade:
         async def execute_streaming(self, *, workflow_id: str, input_data=None):
             yield {"type": "node_start", "metadata": {"workflow_id": workflow_id}}
             yield {"type": "workflow_complete", "metadata": {"workflow_id": workflow_id}}
 
-    class RecordingPolicy(WorkflowExecutionPolicy):
-        async def before_execute(self, *, workflow_id: str, input_data) -> None:
-            calls.append("before")
-
-        async def after_execute(self, *, workflow_id: str, input_data, result) -> None:
-            calls.append("after")
-
-        async def on_error(self, *, workflow_id: str, input_data, error: Exception) -> None:
-            calls.append("error")
-
-        async def on_event(self, *, workflow_id: str, input_data, event: dict) -> None:
-            calls.append("event")
-
     def orchestrator_factory(_: Session) -> WorkflowExecutionOrchestrator:
-        return WorkflowExecutionOrchestrator(facade=FakeFacade(), policies=[RecordingPolicy()])
+        return WorkflowExecutionOrchestrator(facade=FakeFacade())
 
     def override_get_db_session():
         TestingSessionLocal = sessionmaker(bind=test_engine)
@@ -72,7 +62,7 @@ def test_execute_stream_endpoint_goes_through_orchestrator_and_policy_chain(
         finally:
             db.close()
 
-    # Seed a CREATED run so the execute/stream endpoint can fail-closed on run_id.
+    # Seed a CREATED run and ensure it is queryable.
     TestingSessionLocal = sessionmaker(bind=test_engine)
     db: Session = TestingSessionLocal()
     try:
@@ -116,4 +106,16 @@ def test_execute_stream_endpoint_goes_through_orchestrator_and_policy_chain(
     ]
     assert [e["type"] for e in events] == ["node_start", "workflow_complete"]
     assert all(e["run_id"] == run.id for e in events)
-    assert calls == ["before", "event", "event"]
+
+    # Assert key run events are persisted (strong consistency: start + complete).
+    db = TestingSessionLocal()
+    try:
+        rows = db.execute(
+            select(RunEventModel.type)
+            .where(RunEventModel.run_id == run.id)
+            .order_by(RunEventModel.id.asc())
+        ).all()
+        event_types = [r[0] for r in rows]
+        assert event_types[:2] == ["workflow_start", "workflow_complete"]
+    finally:
+        db.close()
