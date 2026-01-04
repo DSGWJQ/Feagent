@@ -115,6 +115,24 @@ def test_validator_rejects_deprecated_tool():
     assert "tool_deprecated" in codes
 
 
+def test_validator_rejects_when_tool_not_found_fail_closed():
+    registry = create_executor_registry(session_factory=lambda: None)
+
+    tool_repo = Mock()
+    tool_repo.exists.return_value = False
+    tool_repo.find_by_id.return_value = None
+
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=tool_repo)
+    node = _node(NodeType.TOOL, config={"tool_id": "tool_missing"})
+    workflow = Workflow.create(name="wf", description="", nodes=[node], edges=[])
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "tool_not_found" in codes
+
+
 def test_validator_normalizes_tool_id_from_toolId_before_persisting_shape():
     registry = create_executor_registry()
 

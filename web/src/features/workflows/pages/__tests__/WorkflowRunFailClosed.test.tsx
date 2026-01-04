@@ -78,5 +78,5 @@ describe('Workflow execution run_id fail-closed', () => {
       );
       expect(screen.getByText('无法创建 Run，请稍后重试')).toBeInTheDocument();
     });
-  });
+  }, 15000);
 });

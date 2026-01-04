@@ -124,6 +124,7 @@ asyncio_mode = "auto"
 addopts = [
     "-v",
     "--strict-markers",
+    "--import-mode=importlib",
     "--cov=src",
     "--cov-report=term-missing",
     "--cov-report=html",
