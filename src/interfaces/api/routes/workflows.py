@@ -564,6 +564,7 @@ async def execute_workflow_streaming(
 async def chat_create_stream(
     request: ChatCreateRequest,
     http_request: Request,
+    event_bus: EventBus = Depends(get_event_bus),
     container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
     current_user=Depends(get_current_user_optional),
@@ -578,6 +579,10 @@ async def chat_create_stream(
     - Uses SSEEmitterHandler so the payload is `data: <json>\\n\\n` (fetch-friendly).
     """
 
+    from src.application.services.coordinator_policy_chain import (
+        CoordinatorPolicyChain,
+        CoordinatorRejectedError,
+    )
     from src.domain.entities.workflow import Workflow
     from src.domain.services.conversation_flow_emitter import ConversationFlowEmitter
     from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler
@@ -595,9 +600,48 @@ async def chat_create_stream(
         )
         if current_user:
             workflow.user_id = current_user.id
+
+        coordinator = getattr(http_request.app.state, "coordinator", None)
+        policy = CoordinatorPolicyChain(
+            coordinator=coordinator,
+            event_bus=event_bus,
+            source="chat_create",
+            fail_closed=False,
+            supervised_decision_types={"api_request"},
+        )
+        correlation_id = request.run_id or workflow.id
+        original_decision_id = correlation_id
+        decision: dict[str, Any] = {
+            "decision_type": "api_request",
+            "action": "workflow_chat_create",
+            "workflow_id": workflow.id,
+            "project_id": request.project_id,
+            "run_id": request.run_id,
+            "message_len": len(request.message or ""),
+            "correlation_id": correlation_id,
+        }
+        if current_user:
+            decision["actor_id"] = current_user.id
+        await policy.enforce_action_or_raise(
+            decision_type="api_request",
+            decision=decision,
+            correlation_id=correlation_id,
+            original_decision_id=original_decision_id,
+        )
+
         save_validator.validate_or_raise(workflow)
         repository.save(workflow)
         db.commit()
+    except CoordinatorRejectedError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "coordinator_rejected",
+                "reason": str(exc),
+                "errors": list(exc.errors),
+            },
+        ) from exc
     except DomainValidationError as exc:
         db.rollback()
         raise HTTPException(

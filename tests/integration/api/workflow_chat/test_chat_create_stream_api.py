@@ -125,6 +125,21 @@ class _FakeUseCase:
         }
 
 
+class _FakeCoordinatorValidation:
+    def __init__(self, *, is_valid: bool, errors: list[str] | None = None) -> None:
+        self.is_valid = is_valid
+        self.errors = errors or []
+
+
+class _RejectingCoordinator:
+    def __init__(self) -> None:
+        self.last_decision: dict | None = None
+
+    def validate_decision(self, decision: dict) -> _FakeCoordinatorValidation:
+        self.last_decision = dict(decision)
+        return _FakeCoordinatorValidation(is_valid=False, errors=["policy denied"])
+
+
 class TestChatCreateStreamAPI:
     def test_success_includes_workflow_id_in_first_event(self, client: TestClient, test_engine):
         def override_use_case_factory() -> Callable[[str], object]:
@@ -184,6 +199,46 @@ class TestChatCreateStreamAPI:
             json={"message": ""},
         )
         assert response.status_code == 422
+
+    def test_coordinator_rejection_has_zero_db_side_effects_and_no_plaintext_leak(
+        self, client: TestClient, test_engine
+    ):
+        def override_use_case_factory() -> Callable[[str], object]:
+            def factory(_workflow_id: str):
+                raise AssertionError("use case factory should not be called when gate rejects")
+
+            return factory
+
+        rejecting = _RejectingCoordinator()
+        client.app.state.coordinator = rejecting
+        client.app.dependency_overrides[
+            workflows_routes.get_update_workflow_by_chat_use_case_factory
+        ] = override_use_case_factory
+
+        response = client.post(
+            "/api/workflows/chat-create/stream",
+            json={"message": "hello", "project_id": "proj_1", "run_id": "run_1"},
+        )
+
+        assert response.status_code == 403
+        detail = response.json().get("detail", {})
+        assert detail.get("error") == "coordinator_rejected"
+
+        # No DB side effects (workflow not persisted).
+        TestingSessionLocal = sessionmaker(bind=test_engine)
+        db: Session = TestingSessionLocal()
+        try:
+            repo = SQLAlchemyWorkflowRepository(db)
+            assert repo.find_all() == []
+        finally:
+            db.close()
+
+        # Gate payload must NOT include message plaintext.
+        assert rejecting.last_decision is not None
+        assert "message" not in rejecting.last_decision
+        assert rejecting.last_decision.get("message_len") == 5
+        assert rejecting.last_decision.get("project_id") == "proj_1"
+        assert rejecting.last_decision.get("run_id") == "run_1"
 
     def test_llm_unavailable_returns_503(self, client: TestClient):
         def override_get_workflow_chat_llm():
