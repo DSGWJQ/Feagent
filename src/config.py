@@ -146,6 +146,18 @@ class Settings(BaseSettings):
         default=True,
         description="回滚开关：是否启用 LangGraph workflow executor（关闭可紧急回滚到 legacy workflow engine）。",
     )
+    langgraph_workflow_executor_rollback_actor: str = Field(
+        default="",
+        description="审计：紧急回滚启用人/执行人（当 enable_langgraph_workflow_executor=false 时用于记录审计）。",
+    )
+    langgraph_workflow_executor_rollback_scope: str = Field(
+        default="global",
+        description="审计：紧急回滚范围（例如 global / workflow_id=...）。",
+    )
+    langgraph_workflow_executor_rollback_reason: str = Field(
+        default="",
+        description="审计：紧急回滚原因（可选）。",
+    )
 
 
 # 全局配置实例

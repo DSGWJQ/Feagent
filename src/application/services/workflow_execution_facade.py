@@ -9,7 +9,10 @@ Use Case 的构造细节；可在后续迭代中再引入更复杂的策略（�
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import AsyncGenerator
+from functools import lru_cache
 from typing import Any
 
 from src.application.use_cases.execute_workflow import (
@@ -20,6 +23,22 @@ from src.application.use_cases.execute_workflow import (
 from src.config import settings
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.ports.workflow_repository import WorkflowRepository
+
+logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _audit_langgraph_rollback_once() -> None:
+    logger.warning(
+        "langgraph_workflow_executor_rollback_active",
+        extra={
+            "audit_at_ms": int(time.time() * 1000),
+            "actor": settings.langgraph_workflow_executor_rollback_actor or "unknown",
+            "scope": settings.langgraph_workflow_executor_rollback_scope or "global",
+            "reason": settings.langgraph_workflow_executor_rollback_reason or "",
+            "env": settings.env,
+        },
+    )
 
 
 class WorkflowExecutionFacade:
@@ -48,6 +67,7 @@ class WorkflowExecutionFacade:
             result["executor_id"] = WORKFLOW_EXECUTION_KERNEL_ID
             return result
 
+        _audit_langgraph_rollback_once()
         use_case = ExecuteWorkflowUseCase(
             workflow_repository=self._workflow_repository,
             executor_registry=self._executor_registry,
@@ -78,6 +98,7 @@ class WorkflowExecutionFacade:
                 }
             return
 
+        _audit_langgraph_rollback_once()
         use_case = ExecuteWorkflowUseCase(
             workflow_repository=self._workflow_repository,
             executor_registry=self._executor_registry,
