@@ -42,6 +42,15 @@ repos:
       - id: check-toml
         name: check-toml-syntax
 
+  # Import Linter - DDD boundary guard (WF-080)
+  - repo: local
+    hooks:
+      - id: import-linter
+        name: import-linter
+        entry: python -X utf8 -c "from importlinter.cli import lint_imports_command; import sys; sys.argv=['lint-imports','--config','.import-linter.toml']; lint_imports_command()"
+        language: system
+        pass_filenames: false
+
   # Pytest - Run tests (optional, can be slow)
   # Uncomment if you want to run tests on every commit
   # - repo: local

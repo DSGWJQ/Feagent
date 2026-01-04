@@ -229,6 +229,7 @@ class EnhancedWorkflowChatService:
         chat_message_repository: ChatMessageRepository,
         rag_service=None,
         memory_service=None,
+        history=None,
     ):
         """初始化服务
 
@@ -242,13 +243,13 @@ class EnhancedWorkflowChatService:
         self.workflow_id = workflow_id
         self.llm = llm
 
-        # 使用新的 CompositeMemoryService（如果提供）
-        if memory_service is not None:
-            from src.application.services.memory_service_adapter import MemoryServiceAdapter
-
-            self.history = MemoryServiceAdapter(workflow_id=workflow_id, service=memory_service)
+        # 注意：Domain 层不应依赖 Application/Infrastructure 具体实现。
+        # 若需要高性能内存系统，请在外部注入一个兼容 ChatHistory 的 adapter（Ports/Adapters）。
+        if history is not None:
+            self.history = history
+        elif memory_service is not None:
+            self.history = memory_service
         else:
-            # 向后兼容：使用旧的 ChatHistory
             self.history = ChatHistory(workflow_id=workflow_id, repository=chat_message_repository)
 
         self.rag_service = rag_service

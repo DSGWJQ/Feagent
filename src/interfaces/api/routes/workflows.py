@@ -184,6 +184,7 @@ def get_workflow_chat_service(
     """
     if workflow_id and chat_message_repository:
         # 导入 CompositeMemoryService 依赖
+        from src.application.services.memory_service_adapter import MemoryServiceAdapter
         from src.interfaces.api.dependencies.memory import get_composite_memory_service
 
         # 获取新的内存服务
@@ -194,7 +195,7 @@ def get_workflow_chat_service(
             workflow_id=workflow_id,
             llm=llm,
             chat_message_repository=chat_message_repository,
-            memory_service=memory_service,
+            history=MemoryServiceAdapter(workflow_id=workflow_id, service=memory_service),
         )
     else:
         # 临时会话（向后兼容，但需要 workflow_id）
@@ -219,13 +220,15 @@ def get_update_workflow_by_chat_use_case(
     # 获取新的内存服务
     memory_service = get_composite_memory_service(session=db, container=container)
 
+    from src.application.services.memory_service_adapter import MemoryServiceAdapter
+
     # 为每个请求创建新的对话服务实例（使用高性能内存系统）
     chat_service = EnhancedWorkflowChatService(
         workflow_id=workflow_id,
         llm=llm,
         chat_message_repository=chat_message_repository,
         rag_service=rag_service,
-        memory_service=memory_service,
+        history=MemoryServiceAdapter(workflow_id=workflow_id, service=memory_service),
     )
     save_validator = WorkflowSaveValidator(
         executor_registry=container.executor_registry,
@@ -250,6 +253,7 @@ def get_update_workflow_by_chat_use_case_factory(
     用于需要“先创建 workflow 再开始对话”的场景（如 chat-create）。
     """
 
+    from src.application.services.memory_service_adapter import MemoryServiceAdapter
     from src.interfaces.api.dependencies.memory import get_composite_memory_service
 
     def factory(workflow_id: str) -> UpdateWorkflowByChatUseCase:
@@ -265,7 +269,7 @@ def get_update_workflow_by_chat_use_case_factory(
             llm=llm,
             chat_message_repository=chat_message_repository,
             rag_service=rag_service,
-            memory_service=memory_service,
+            history=MemoryServiceAdapter(workflow_id=workflow_id, service=memory_service),
         )
         return UpdateWorkflowByChatUseCase(
             workflow_repository=workflow_repository,
