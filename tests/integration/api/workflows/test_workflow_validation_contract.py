@@ -67,6 +67,7 @@ def app_with_overrides(test_engine) -> FastAPI:
         return ApiContainer(
             executor_registry=registry,
             workflow_execution_kernel=lambda _s: Mock(),
+            workflow_run_execution_entry=lambda _s: Mock(),
             conversation_turn_orchestrator=lambda: Mock(),
             user_repository=lambda _s: Mock(),
             agent_repository=lambda _s: Mock(),
