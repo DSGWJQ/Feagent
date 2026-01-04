@@ -220,7 +220,6 @@ class RAGServiceAdapter(KnowledgeRetrieverPort):
     将现有的 RAGService 适配到 KnowledgeRetrieverPort 接口。
 
     使用示例：
-        from src.application.services.rag_service import RAGService
         adapter = RAGServiceAdapter(rag_service)
         results = await adapter.retrieve_by_query("查询")
     """
@@ -240,7 +239,7 @@ class RAGServiceAdapter(KnowledgeRetrieverPort):
         top_k: int = 5,
     ) -> list[dict[str, Any]]:
         """通过 RAGService 检索"""
-        from src.application.services.rag_service import QueryContext
+        from src.domain.value_objects.query_context import QueryContext
 
         query_context = QueryContext(
             query=query,

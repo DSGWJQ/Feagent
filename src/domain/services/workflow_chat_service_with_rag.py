@@ -77,7 +77,7 @@ class WorkflowChatServiceWithRAG:
         if use_rag and self.rag_service:
             try:
                 # 使用RAG服务检索上下文
-                from src.application.services.rag_service import QueryContext
+                from src.domain.value_objects.query_context import QueryContext
 
                 query_context = QueryContext(
                     query=user_message,
@@ -396,7 +396,7 @@ class WorkflowChatServiceWithRAG:
             return "", []
 
         try:
-            from src.application.services.rag_service import QueryContext
+            from src.domain.value_objects.query_context import QueryContext
 
             query_context = QueryContext(
                 query=query,

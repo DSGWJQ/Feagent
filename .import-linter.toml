@@ -21,3 +21,10 @@ name = "Domain 不能依赖 Infrastructure"
 type = "forbidden"
 source_modules = ["src.domain"]
 forbidden_modules = ["src.infrastructure"]
+
+[[tool.importlinter.contracts]]
+id = "domain_no_application"
+name = "Domain 不能依赖 Application"
+type = "forbidden"
+source_modules = ["src.domain"]
+forbidden_modules = ["src.application"]

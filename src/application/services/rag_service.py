@@ -14,19 +14,9 @@ from src.domain.knowledge_base.entities.document_chunk import DocumentChunk
 from src.domain.knowledge_base.ports.knowledge_repository import KnowledgeRepository
 from src.domain.knowledge_base.ports.retriever_service import RetrieverService
 from src.domain.value_objects.document_source import DocumentSource
+from src.domain.value_objects.query_context import QueryContext
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class QueryContext:
-    """查询上下文"""
-
-    query: str
-    workflow_id: str | None = None
-    max_context_length: int = 4000
-    top_k: int = 5
-    filters: dict[str, str] | None = None
 
 
 @dataclass

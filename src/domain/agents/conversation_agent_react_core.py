@@ -444,7 +444,7 @@ class ConversationAgentReActCoreMixin:
                     tool_call_id = f"tool_{iteration_count + 1}"
 
                 if self.coordinator is not None:
-                    from src.application.services.coordinator_policy_chain import (
+                    from src.domain.services.coordinator_policy_chain import (
                         CoordinatorPolicyChain,
                         CoordinatorRejectedError,
                     )

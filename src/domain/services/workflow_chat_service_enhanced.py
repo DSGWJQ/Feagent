@@ -329,7 +329,7 @@ class EnhancedWorkflowChatService:
                 import asyncio
 
                 # 创建异步任务获取RAG上下文
-                from src.application.services.rag_service import QueryContext
+                from src.domain.value_objects.query_context import QueryContext
 
                 query_context = QueryContext(
                     query=user_message,
