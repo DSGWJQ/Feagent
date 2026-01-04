@@ -265,6 +265,10 @@ def create_run(
             detail="Runs API is disabled by feature flag (disable_run_persistence).",
         )
 
+    idempotency_key_value = idempotency_key.strip() if isinstance(idempotency_key, str) else None
+    if idempotency_key_value == "":
+        idempotency_key_value = None
+
     try:
         started = time.perf_counter()
         # 一致性校验（body 可选字段不允许与 path 冲突）
@@ -291,11 +295,11 @@ def create_run(
 
         repo = container.run_repository(db)
 
-        if idempotency_key:
+        if idempotency_key_value:
             candidate = Run.create_with_idempotency(
                 project_id=project_id,
                 workflow_id=workflow_id,
-                idempotency_key=idempotency_key,
+                idempotency_key=idempotency_key_value,
             )
             existing = repo.find_by_id(candidate.id)
             if existing is not None:
@@ -313,7 +317,7 @@ def create_run(
                 "project_id": project_id,
                 "workflow_id": workflow_id,
                 "run_id": run.id,
-                "idempotency_key_present": bool(idempotency_key),
+                "idempotency_key_present": bool(idempotency_key_value),
                 "duration_ms": duration_ms,
             },
         )
@@ -333,6 +337,16 @@ def create_run(
         ) from exc
     except IntegrityError as exc:
         db.rollback()
+        if idempotency_key_value:
+            repo = container.run_repository(db)
+            candidate = Run.create_with_idempotency(
+                project_id=project_id,
+                workflow_id=workflow_id,
+                idempotency_key=idempotency_key_value,
+            )
+            existing = repo.find_by_id(candidate.id)
+            if existing is not None:
+                return RunResponse.from_entity(existing)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="failed to create run (integrity error)",

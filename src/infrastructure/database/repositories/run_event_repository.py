@@ -53,11 +53,13 @@ class SQLAlchemyRunEventRepository:
     def append(self, event: RunEvent) -> RunEvent:
         if event.type in self._TERMINAL_TYPES:
             existing = self.session.execute(
-                select(RunEventModel).where(
+                select(RunEventModel)
+                .where(
                     RunEventModel.run_id == event.run_id,
-                    RunEventModel.type == event.type,
                     RunEventModel.channel == event.channel,
+                    RunEventModel.type.in_(self._TERMINAL_TYPES),
                 )
+                .order_by(RunEventModel.id.asc())
             ).scalar_one_or_none()
             if existing is not None:
                 return self._to_entity(existing)

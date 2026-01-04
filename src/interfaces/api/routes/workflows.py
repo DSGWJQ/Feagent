@@ -452,9 +452,27 @@ async def execute_workflow_streaming(
     except RunGateError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
+            detail={
+                "error": exc.code,
+                "message": str(exc),
+                "workflow_id": workflow_id,
+                "run_id": run_id,
+                "correlation_id": run_id,
+                "details": dict(exc.details or {}),
+            },
         ) from exc
     except NotFoundError as exc:
+        if exc.entity_type == "Run":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "run_not_found",
+                    "message": str(exc),
+                    "workflow_id": workflow_id,
+                    "run_id": run_id,
+                    "correlation_id": run_id,
+                },
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{exc.entity_type} not found: {exc.entity_id}",
