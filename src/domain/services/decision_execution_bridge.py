@@ -58,6 +58,7 @@ class ExecutionResultEvent(Event):
     status: str = ""  # completed, failed
     result: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
+    run_id: str | None = None
 
 
 @dataclass
@@ -75,6 +76,7 @@ class ValidationRejectedEvent(Event):
     decision_id: str = ""
     decision_type: str = ""
     violations: list[str] = field(default_factory=list)
+    run_id: str | None = None
 
 
 class DecisionExecutionBridge:
@@ -132,7 +134,7 @@ class DecisionExecutionBridge:
         self.event_bus.subscribe(DecisionMadeEvent, self._handler)
         self._running = True
         logger.info(
-            "DecisionExecutionBridge started",
+            "decision_execution_bridge_started",
             extra={
                 "actionable_decision_types": sorted(self._actionable_decision_types),
                 "has_validator": self.decision_validator is not None,
@@ -150,7 +152,7 @@ class DecisionExecutionBridge:
             self.event_bus.unsubscribe(DecisionMadeEvent, self._handler)
             self._handler = None
         self._running = False
-        logger.info("DecisionExecutionBridge stopped")
+        logger.info("decision_execution_bridge_stopped")
 
     async def _handle_decision(self, event: Event) -> None:
         """处理决策事件
@@ -163,13 +165,30 @@ class DecisionExecutionBridge:
 
         decision_type = event.decision_type
         decision_id = event.decision_id
-        # payload is available via event.payload when needed
+        correlation_id = getattr(event, "correlation_id", None)
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        run_id = payload.get("run_id") if isinstance(payload.get("run_id"), str) else None
 
-        logger.debug(f"Received decision: {decision_type} ({decision_id})")
+        logger.info(
+            "decision_execution_bridge_received",
+            extra={
+                "decision_type": decision_type,
+                "decision_id": decision_id,
+                "correlation_id": correlation_id,
+                "run_id": run_id,
+            },
+        )
 
         # 检查是否是可执行的决策类型
         if decision_type not in self._actionable_decision_types:
-            logger.debug(f"Ignoring non-actionable decision type: {decision_type}")
+            logger.debug(
+                "decision_execution_bridge_ignored",
+                extra={
+                    "decision_type": decision_type,
+                    "decision_id": decision_id,
+                    "correlation_id": correlation_id,
+                },
+            )
             return
 
         # 验证决策（如果配置了验证器）
@@ -210,10 +229,25 @@ class DecisionExecutionBridge:
             return result
         except ImportError:
             # DecisionValidator 不可用，跳过验证
-            logger.warning("DecisionValidator not available, skipping validation")
+            logger.warning(
+                "decision_validator_not_available",
+                extra={
+                    "decision_type": event.decision_type,
+                    "decision_id": event.decision_id,
+                    "correlation_id": getattr(event, "correlation_id", None),
+                },
+            )
             return None
-        except Exception as e:
-            logger.error(f"Validation error: {e}")
+        except Exception as exc:
+            logger.warning(
+                "decision_validation_error",
+                extra={
+                    "decision_type": event.decision_type,
+                    "decision_id": event.decision_id,
+                    "correlation_id": getattr(event, "correlation_id", None),
+                    "error_type": type(exc).__name__,
+                },
+            )
             return None
 
     async def _publish_rejection(self, event: DecisionMadeEvent, violations: list[str]) -> None:
@@ -225,12 +259,22 @@ class DecisionExecutionBridge:
         """
         rejection_event = ValidationRejectedEvent(
             source="decision_execution_bridge",
+            correlation_id=getattr(event, "correlation_id", None),
             decision_id=event.decision_id,
             decision_type=event.decision_type,
             violations=violations,
+            run_id=event.payload.get("run_id") if isinstance(event.payload, dict) else None,
         )
         await self.event_bus.publish(rejection_event)
-        logger.warning(f"Decision rejected: {event.decision_id}, violations: {violations}")
+        logger.warning(
+            "decision_validation_rejected",
+            extra={
+                "decision_type": event.decision_type,
+                "decision_id": event.decision_id,
+                "correlation_id": getattr(event, "correlation_id", None),
+                "violations_count": len(violations),
+            },
+        )
 
     async def _execute_decision(self, event: DecisionMadeEvent) -> None:
         """执行决策
@@ -240,14 +284,19 @@ class DecisionExecutionBridge:
         """
         if self.workflow_decision_handler is None and not self.workflow_agent_factory:
             logger.warning(
-                "DecisionExecutionBridge not configured (missing handler/factory), dropping decision",
-                extra={"decision_type": event.decision_type, "decision_id": event.decision_id},
+                "decision_execution_bridge_unconfigured_drop",
+                extra={
+                    "decision_type": event.decision_type,
+                    "decision_id": event.decision_id,
+                    "correlation_id": getattr(event, "correlation_id", None),
+                },
             )
             return
 
         try:
             decision_type = event.decision_type
-            payload = event.payload
+            payload = event.payload if isinstance(event.payload, dict) else {}
+            correlation_id = getattr(event, "correlation_id", None)
 
             decision_data = {"decision_type": decision_type, **payload}
 
@@ -257,10 +306,11 @@ class DecisionExecutionBridge:
                 workflow_agent_factory = self.workflow_agent_factory
                 if workflow_agent_factory is None:
                     logger.warning(
-                        "DecisionExecutionBridge not configured (missing factory), dropping decision",
+                        "decision_execution_bridge_unconfigured_drop",
                         extra={
                             "decision_type": event.decision_type,
                             "decision_id": event.decision_id,
+                            "correlation_id": correlation_id,
                         },
                     )
                     return
@@ -276,9 +326,17 @@ class DecisionExecutionBridge:
             # 发布执行结果
             await self._publish_result(event, "completed", result)
 
-        except Exception as e:
-            logger.error(f"Execution error for decision {event.decision_id}: {e}")
-            await self._publish_result(event, "failed", {}, str(e))
+        except Exception as exc:
+            logger.error(
+                "decision_execution_failed",
+                extra={
+                    "decision_type": event.decision_type,
+                    "decision_id": event.decision_id,
+                    "correlation_id": getattr(event, "correlation_id", None),
+                    "error_type": type(exc).__name__,
+                },
+            )
+            await self._publish_result(event, "failed", {}, type(exc).__name__)
 
     async def _execute_workflow_plan(
         self, workflow_agent: Any, payload: dict[str, Any]
@@ -321,14 +379,25 @@ class DecisionExecutionBridge:
         """
         result_event = ExecutionResultEvent(
             source="decision_execution_bridge",
+            correlation_id=getattr(event, "correlation_id", None),
             decision_id=event.decision_id,
             decision_type=event.decision_type,
             status=status,
             result=result,
             error=error,
+            run_id=event.payload.get("run_id") if isinstance(event.payload, dict) else None,
         )
         await self.event_bus.publish(result_event)
-        logger.info(f"Execution result: {event.decision_id} -> {status}")
+        logger.info(
+            "decision_execution_result",
+            extra={
+                "decision_type": event.decision_type,
+                "decision_id": event.decision_id,
+                "correlation_id": getattr(event, "correlation_id", None),
+                "run_id": event.payload.get("run_id") if isinstance(event.payload, dict) else None,
+                "status": status,
+            },
+        )
 
 
 # 导出

@@ -223,6 +223,8 @@ async def test_allow_decision_persists_events_and_replay_matches(
     )
 
     assert len(results) == 1
+    assert results[0].correlation_id == run_id
+    assert results[0].run_id == run_id
     sse_events = results[0].result.get("events", [])
     assert [e.get("type") for e in sse_events] == ["node_start", "workflow_complete"]
     assert all(e.get("run_id") == run_id for e in sse_events)
@@ -330,6 +332,8 @@ async def test_bridge_exception_is_fail_closed(
 
     assert len(results) == 1
     assert results[0].status == "failed"
+    assert results[0].correlation_id == run_id
+    assert results[0].run_id == run_id
     with SessionLocal() as db:
         assert _count_execution_events(db, run_id=run_id) == 0
 

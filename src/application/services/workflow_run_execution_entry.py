@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncGenerator, Callable, Mapping
 from typing import Any
 
@@ -26,6 +27,8 @@ from src.domain.ports.workflow_execution_kernel import WorkflowExecutionKernelPo
 from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.services.workflow_save_validator import WorkflowSaveValidator
 from src.domain.value_objects.run_status import RunStatus
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowRunExecutionEntry:
@@ -178,6 +181,15 @@ class WorkflowRunExecutionEntry:
                 target_status=RunStatus.RUNNING,
             )
             if not claimed:
+                logger.info(
+                    "run_execution_duplicate_dropped",
+                    extra={
+                        "workflow_id": workflow_id,
+                        "run_id": run_id,
+                        "correlation_id": correlation_id,
+                        "original_decision_id": original_decision_id,
+                    },
+                )
                 raise RunGateError(
                     "duplicate execution dropped (run already claimed)",
                     code="duplicate_execution",
@@ -228,6 +240,14 @@ class WorkflowRunExecutionEntry:
                     validate_workflow_execution_sse_event(event)
                 except ExecutionEventContractError:
                     invalid_type = event.get("type")
+                    logger.warning(
+                        "run_execution_event_contract_violation",
+                        extra={
+                            "workflow_id": workflow_id,
+                            "run_id": run_id,
+                            "invalid_type": str(invalid_type),
+                        },
+                    )
                     violation_event = self._normalize_sse_event(
                         raw_event={
                             "type": "workflow_error",
@@ -252,6 +272,15 @@ class WorkflowRunExecutionEntry:
                                 "invalid_type": str(invalid_type),
                             },
                         )
+                        logger.info(
+                            "run_execution_terminal_persisted",
+                            extra={
+                                "workflow_id": workflow_id,
+                                "run_id": run_id,
+                                "event_type": "workflow_error",
+                                "reason": "invalid_execution_event_type",
+                            },
+                        )
                         terminal_persisted = True
                     yield violation_event
                     return
@@ -269,6 +298,14 @@ class WorkflowRunExecutionEntry:
                         run_id=run_id,
                         event_type=event_type,
                         workflow_id=workflow_id,
+                    )
+                    logger.info(
+                        "run_execution_terminal_persisted",
+                        extra={
+                            "workflow_id": workflow_id,
+                            "run_id": run_id,
+                            "event_type": event_type,
+                        },
                     )
                     terminal_persisted = True
                 yield event

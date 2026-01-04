@@ -76,12 +76,31 @@ class CoordinatorPolicyChain:
 
         key = (decision_type, correlation_id, original_decision_id)
         if key in self._dedupe_keys:
+            logger.info(
+                "coordinator_duplicate_dropped",
+                extra={
+                    "source": self._source,
+                    "decision_type": decision_type,
+                    "original_decision_id": original_decision_id,
+                    "correlation_id": correlation_id,
+                },
+            )
             return
         self._dedupe_keys.add(key)
 
         if self._coordinator is None or self._event_bus is None:
             if not self._fail_closed:
                 return
+            logger.warning(
+                "coordinator_reject_missing",
+                extra={
+                    "source": self._source,
+                    "decision_type": decision_type,
+                    "original_decision_id": original_decision_id,
+                    "correlation_id": correlation_id,
+                    "reason": "coordinator_or_event_bus_not_configured",
+                },
+            )
             raise CoordinatorRejectedError(
                 decision_type=decision_type,
                 correlation_id=correlation_id,
@@ -106,6 +125,7 @@ class CoordinatorPolicyChain:
             logger.info(
                 "coordinator_allow",
                 extra={
+                    "source": self._source,
                     "decision_type": decision_type,
                     "original_decision_id": original_decision_id,
                     "correlation_id": correlation_id,
@@ -127,6 +147,7 @@ class CoordinatorPolicyChain:
         logger.info(
             "coordinator_deny",
             extra={
+                "source": self._source,
                 "decision_type": decision_type,
                 "original_decision_id": original_decision_id,
                 "correlation_id": correlation_id,
