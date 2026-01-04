@@ -135,6 +135,13 @@ class Settings(BaseSettings):
         default=False,
         description="回滚开关：忽略 run_id 且禁用 Runs API（切回 legacy execute/stream）。",
     )
+    enable_internal_workflow_create_endpoints: bool = Field(
+        default=False,
+        description=(
+            "Feature flag：是否启用内部 workflow 创建入口（/workflows/import、/workflows/generate-from-form）。"
+            "默认关闭（fail-closed；对产品流量不可达）。"
+        ),
+    )
     enable_langgraph_workflow_executor: bool = Field(
         default=True,
         description="回滚开关：是否启用 LangGraph workflow executor（关闭可紧急回滚到 legacy workflow engine）。",

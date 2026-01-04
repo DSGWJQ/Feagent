@@ -61,6 +61,54 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 logger = logging.getLogger(__name__)
 
+_INTERNAL_CREATE_GONE_DETAIL = (
+    "Internal workflow create endpoints are disabled by feature flag "
+    "(enable_internal_workflow_create_endpoints)."
+)
+
+
+def _require_internal_workflow_create_access(
+    *,
+    current_user,
+    source: str,
+) -> None:
+    if not settings.enable_internal_workflow_create_endpoints:
+        headers = {
+            "Deprecation": "true",
+            "Warning": '299 - "Internal workflow create endpoints disabled by feature flag"',
+        }
+        logger.info(
+            "workflow_internal_create_blocked",
+            extra={
+                "source": source,
+                "audit_at_ms": int(time.time() * 1000),
+                "user_id": getattr(current_user, "id", None),
+                "role": getattr(getattr(current_user, "role", None), "value", None),
+                "reason": "feature_flag_off",
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail=_INTERNAL_CREATE_GONE_DETAIL,
+            headers=headers,
+        )
+
+    if not current_user or not getattr(current_user, "is_admin", lambda: False)():
+        logger.info(
+            "workflow_internal_create_forbidden",
+            extra={
+                "source": source,
+                "audit_at_ms": int(time.time() * 1000),
+                "user_id": getattr(current_user, "id", None),
+                "role": getattr(getattr(current_user, "role", None), "value", None),
+                "reason": "admin_required",
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: internal workflow create requires admin permission.",
+        )
+
 
 class _ReactStepEvent(BaseModel):
     step_number: int = 0
@@ -1090,13 +1138,20 @@ Rules:
     "/import",
     response_model=ImportWorkflowResponse,
     status_code=status.HTTP_201_CREATED,
+    deprecated=True,
 )
 def import_workflow(
     request: ImportWorkflowRequest,
     container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
+    current_user=Depends(get_current_user_optional),
 ) -> ImportWorkflowResponse:
     """Import a workflow from a Coze JSON payload."""
+
+    _require_internal_workflow_create_access(
+        current_user=current_user,
+        source="import",
+    )
 
     repository = container.workflow_repository(db)
     use_case = ImportWorkflowUseCase(workflow_repository=repository)
@@ -1105,6 +1160,16 @@ def import_workflow(
         input_data = ImportWorkflowInput(coze_json=request.coze_json)
         result = use_case.execute(input_data)
         db.commit()
+        logger.info(
+            "workflow_internal_create_succeeded",
+            extra={
+                "source": "import",
+                "audit_at_ms": int(time.time() * 1000),
+                "workflow_id": result.workflow_id,
+                "user_id": getattr(current_user, "id", None),
+                "role": getattr(getattr(current_user, "role", None), "value", None),
+            },
+        )
         return ImportWorkflowResponse(
             workflow_id=result.workflow_id,
             name=result.name,
@@ -1123,13 +1188,20 @@ def import_workflow(
     "/generate-from-form",
     response_model=GenerateWorkflowResponse,
     status_code=status.HTTP_201_CREATED,
+    deprecated=True,
 )
 async def generate_workflow_from_form(
     request: GenerateWorkflowRequest,
     container: ApiContainer = Depends(get_container),
     db: Session = Depends(get_db_session),
+    current_user=Depends(get_current_user_optional),
 ) -> GenerateWorkflowResponse:
     """Generate a workflow structure using the supplied form inputs."""
+
+    _require_internal_workflow_create_access(
+        current_user=current_user,
+        source="generate-from-form",
+    )
 
     if not settings.openai_api_key:
         raise HTTPException(
@@ -1157,6 +1229,16 @@ async def generate_workflow_from_form(
         )
         workflow = await use_case.execute(input_data)
         db.commit()
+        logger.info(
+            "workflow_internal_create_succeeded",
+            extra={
+                "source": "generate-from-form",
+                "audit_at_ms": int(time.time() * 1000),
+                "workflow_id": workflow.id,
+                "user_id": getattr(current_user, "id", None),
+                "role": getattr(getattr(current_user, "role", None), "value", None),
+            },
+        )
         return GenerateWorkflowResponse(
             workflow_id=workflow.id,
             name=workflow.name,
