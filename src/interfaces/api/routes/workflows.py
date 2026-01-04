@@ -82,6 +82,7 @@ def _require_internal_workflow_create_access(
             extra={
                 "source": source,
                 "audit_at_ms": int(time.time() * 1000),
+                "workflow_id": None,
                 "user_id": getattr(current_user, "id", None),
                 "role": getattr(getattr(current_user, "role", None), "value", None),
                 "reason": "feature_flag_off",
@@ -99,6 +100,7 @@ def _require_internal_workflow_create_access(
             extra={
                 "source": source,
                 "audit_at_ms": int(time.time() * 1000),
+                "workflow_id": None,
                 "user_id": getattr(current_user, "id", None),
                 "role": getattr(getattr(current_user, "role", None), "value", None),
                 "reason": "admin_required",
@@ -770,19 +772,6 @@ async def chat_stream_with_workflow(
             # 发送开始思考
             await emitter.emit_thinking(f"正在分析请求: {request.message[:50]}...")
 
-            from src.application.services.coordinator_policy_chain import (
-                CoordinatorPolicyChain,
-                CoordinatorRejectedError,
-            )
-
-            coordinator = getattr(http_request.app.state, "coordinator", None)
-            event_bus = getattr(http_request.app.state, "event_bus", None)
-            policy = CoordinatorPolicyChain(
-                coordinator=coordinator,
-                event_bus=event_bus,
-                source="workflow_chat_stream_react",
-            )
-
             # Stream events from the use case
             async for event in use_case.execute_streaming(input_data):
                 # 检查客户端是否断开
@@ -810,33 +799,6 @@ async def chat_stream_with_workflow(
 
                     if step.action:
                         action_type = step.action.get("type", "unknown")
-
-                        decision = {
-                            "type": action_type,
-                            "session_id": session_id,
-                            "workflow_id": workflow_id,
-                            "tool_id": step.tool_id,
-                            **step.action,
-                        }
-                        try:
-                            await policy.enforce_action_or_raise(
-                                decision_type=action_type,
-                                decision=decision,
-                                correlation_id=session_id,
-                                original_decision_id=step.tool_id,
-                            )
-                        except CoordinatorRejectedError as exc:
-                            await emitter.emit_error(
-                                error_message=str(exc),
-                                error_code="COORDINATOR_REJECTED",
-                                recoverable=False,
-                                decision_type=action_type,
-                                tool_id=step.tool_id,
-                                correlation_id=session_id,
-                            )
-                            await emitter.complete()
-                            db.rollback()
-                            return
 
                         await emitter.emit_tool_call(
                             tool_name=action_type,
