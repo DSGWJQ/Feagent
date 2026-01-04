@@ -5,7 +5,7 @@
 2. 验证每个步骤的完整流程
 """
 
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy import create_engine
@@ -13,7 +13,8 @@ from sqlalchemy.orm import sessionmaker
 
 from src.domain.entities.scheduled_workflow import ScheduledWorkflow
 from src.infrastructure.database.base import Base
-from src.infrastructure.database.models import WorkflowModel
+from src.infrastructure.database.models import ProjectModel, WorkflowModel
+from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
 from src.infrastructure.database.repositories.scheduled_workflow_repository import (
     SQLAlchemyScheduledWorkflowRepository,
 )
@@ -37,8 +38,11 @@ class TestWorkflowExecutionIntegration:
         session = Session()
 
         # 创建测试工作流
+        project = ProjectModel(id="proj_exec_test", name="Test Project")
+        session.add(project)
         workflow = WorkflowModel(
             id="wf_exec_test",
+            project_id=project.id,
             name="Test Execution Workflow",
             description="用于执行测试",
             nodes=[],
@@ -74,7 +78,24 @@ class TestWorkflowExecutionIntegration:
         workflow_repo = SQLAlchemyWorkflowRepository(db_setup)
 
         # 1. 通过 UseCase 创建定时工作流
-        executor = WorkflowExecutorAdapter(session_factory=lambda: db_setup)
+        SessionLocal = sessionmaker(bind=db_setup.get_bind())
+
+        class _StubRunEntry:
+            async def execute_with_results(self, *, workflow_id: str, run_id: str, **_kwargs):
+                return {
+                    "success": True,
+                    "workflow_id": workflow_id,
+                    "run_id": run_id,
+                    "status": "completed",
+                    "events": [{"type": "workflow_complete", "run_id": run_id}],
+                }
+
+        executor = WorkflowExecutorAdapter(
+            session_factory=SessionLocal,
+            workflow_run_execution_entry_factory=lambda _s: _StubRunEntry(),
+            workflow_repository_factory=lambda s: SQLAlchemyWorkflowRepository(s),
+            run_repository_factory=lambda s: SQLAlchemyRunRepository(s),
+        )
         scheduler = ScheduleWorkflowService(
             scheduled_workflow_repo=scheduled_repo,
             workflow_executor=executor,
@@ -135,7 +156,7 @@ class TestWorkflowExecutionIntegration:
 
         # 创建会失败的执行器
         failing_executor = Mock()
-        failing_executor.execute_workflow = Mock(side_effect=Exception("模拟执行失败"))
+        failing_executor.execute = AsyncMock(side_effect=Exception("模拟执行失败"))
 
         scheduler = ScheduleWorkflowService(
             scheduled_workflow_repo=scheduled_repo,
@@ -146,13 +167,15 @@ class TestWorkflowExecutionIntegration:
 
         try:
             # 第 1 次失败
-            scheduler.trigger_execution(scheduled.id)
+            with pytest.raises(Exception, match="模拟执行失败"):
+                scheduler.trigger_execution(scheduled.id)
             after_first_failure = scheduled_repo.get_by_id(scheduled.id)
             assert after_first_failure.consecutive_failures == 1
             assert after_first_failure.status == "active"  # 1 < 2，仍然 active
 
             # 第 2 次失败 → 自动禁用（2 >= 2）
-            scheduler.trigger_execution(scheduled.id)
+            with pytest.raises(Exception, match="模拟执行失败"):
+                scheduler.trigger_execution(scheduled.id)
             after_second_failure = scheduled_repo.get_by_id(scheduled.id)
             assert after_second_failure.consecutive_failures == 2
             assert after_second_failure.status == "disabled"  # 自动禁用
@@ -187,7 +210,7 @@ class TestWorkflowExecutionIntegration:
 
         # 创建成功的执行器
         success_executor = Mock()
-        success_executor.execute_workflow = Mock(return_value={"status": "success"})
+        success_executor.execute = AsyncMock(return_value={"status": "success"})
 
         scheduler = ScheduleWorkflowService(
             scheduled_workflow_repo=scheduled_repo,

@@ -230,14 +230,17 @@ def _build_container(
     )
 
 
-def _init_scheduler(executor_registry: NodeExecutorRegistry) -> ScheduleWorkflowService:
+def _init_scheduler(container: ApiContainer) -> ScheduleWorkflowService:
     from src.infrastructure.database.repositories.scheduled_workflow_repository import (
         SQLAlchemyScheduledWorkflowRepository,
     )
 
     workflow_executor = WorkflowExecutorAdapter(
         session_factory=_create_session,
-        executor_registry=executor_registry,
+        executor_registry=container.executor_registry,
+        workflow_run_execution_entry_factory=container.workflow_run_execution_entry,
+        workflow_repository_factory=container.workflow_repository,
+        run_repository_factory=container.run_repository,
     )
 
     # Create repository instance for scheduler (用于启动时加载任务)
@@ -315,7 +318,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
 
     try:
-        _scheduler_service = _init_scheduler(executor_registry)
+        _scheduler_service = _init_scheduler(app.state.container)
         _scheduler_service.start()
         set_scheduler_service(_scheduler_service)
     except SQLAlchemyError as exc:
