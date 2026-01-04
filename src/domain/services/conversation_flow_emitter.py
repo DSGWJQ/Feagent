@@ -52,6 +52,7 @@ class StepKind(str, Enum):
     REASONING = "reasoning"
     ACTION = "action"
     OBSERVATION = "observation"
+    PLANNING_STEP = "planning_step"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     DELTA = "delta"
@@ -66,6 +67,7 @@ STEP_TO_STREAM_TYPE: dict[StepKind, StreamMessageType] = {
     StepKind.REASONING: StreamMessageType.THINKING_DELTA,
     StepKind.ACTION: StreamMessageType.STATUS_UPDATE,
     StepKind.OBSERVATION: StreamMessageType.STATUS_UPDATE,
+    StepKind.PLANNING_STEP: StreamMessageType.STATUS_UPDATE,
     StepKind.TOOL_CALL: StreamMessageType.TOOL_CALL_START,
     StepKind.TOOL_RESULT: StreamMessageType.TOOL_RESULT,
     StepKind.DELTA: StreamMessageType.CONTENT_DELTA,
@@ -257,6 +259,16 @@ class ConversationFlowEmitter:
         """
         step = ConversationStep(
             kind=StepKind.REASONING,
+            content=content,
+            metadata=metadata,
+        )
+        await self.emit_step(step)
+
+    async def emit_planning_step(self, content: str = "", **metadata: Any) -> None:
+        """发送规划步骤（仅用于解释/规划展示，不代表真实工具执行）。"""
+
+        step = ConversationStep(
+            kind=StepKind.PLANNING_STEP,
             content=content,
             metadata=metadata,
         )

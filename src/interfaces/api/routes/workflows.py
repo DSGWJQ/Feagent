@@ -654,24 +654,17 @@ async def chat_create_stream(
                         await emitter.emit_thinking(event["thought"], **base_metadata)
 
                     action = event.get("action") or {}
-                    if action:
-                        tool_name = action.get("type", "unknown")
-                        tool_id = f"action_{event.get('step_number', 0)}"
-                        await emitter.emit_tool_call(
-                            tool_name=tool_name,
-                            tool_id=tool_id,
-                            arguments=action,
-                            **base_metadata,
-                        )
-
-                    if event.get("observation"):
-                        tool_id = f"action_{event.get('step_number', 0)}"
-                        await emitter.emit_tool_result(
-                            tool_id=tool_id,
-                            result={"observation": event["observation"]},
-                            success=True,
-                            **base_metadata,
-                        )
+                    await emitter.emit_planning_step(
+                        "",
+                        **base_metadata,
+                        simulated=True,
+                        source="workflow_chat_llm",
+                        step_number=event.get("step_number", 0),
+                        tool_id=event.get("tool_id", ""),
+                        thought=event.get("thought", ""),
+                        action=action,
+                        observation=event.get("observation", ""),
+                    )
 
                 elif event_type == "modifications_preview":
                     await emitter.emit_thinking(
@@ -788,8 +781,7 @@ async def chat_stream_with_workflow(
 
     返回事件类型:
     - thinking: 思考过程
-    - tool_call: 工具调用
-    - tool_result: 工具执行结果
+    - planning_step: 规划/解释步骤（simulated=true，不代表真实工具执行）
     - final: 最终响应
     - error: 错误信息
 
@@ -857,42 +849,27 @@ async def chat_stream_with_workflow(
                         )
                         continue
 
-                    if step.thought:
-                        await emitter.emit_thinking(step.thought)
-
-                    if step.action:
-                        action_type = step.action.get("type", "unknown")
-
-                        await emitter.emit_tool_call(
-                            tool_name=action_type,
-                            tool_id=step.tool_id,
-                            arguments=step.action,
-                        )
-
-                    if step.observation:
-                        await emitter.emit_tool_result(
-                            tool_id=step.tool_id,
-                            result={"observation": step.observation},
-                            success=True,
-                        )
-                elif event_type == "modifications_preview":
-                    await emitter.emit_tool_call(
-                        tool_name="modifications_preview",
-                        tool_id="modifications",
-                        arguments={
-                            "modifications_count": event.get("modifications_count", 0),
-                            "intent": event.get("intent", ""),
-                            "confidence": event.get("confidence", 0.0),
-                        },
+                    await emitter.emit_planning_step(
+                        step.thought or "",
+                        simulated=True,
+                        source="workflow_chat_llm",
+                        workflow_id=workflow_id,
+                        step_number=step.step_number,
+                        tool_id=step.tool_id,
+                        thought=step.thought,
+                        action=step.action,
+                        observation=step.observation,
                     )
-                    await emitter.emit_tool_result(
-                        tool_id="modifications",
-                        result={
-                            "count": event.get("modifications_count", 0),
-                            "intent": event.get("intent", ""),
-                            "confidence": event.get("confidence", 0.0),
-                        },
-                        success=True,
+                elif event_type == "modifications_preview":
+                    modifications_count = int(event.get("modifications_count", 0) or 0)
+                    await emitter.emit_planning_step(
+                        f"Planned modifications: {modifications_count}",
+                        simulated=True,
+                        source="workflow_chat_llm",
+                        workflow_id=workflow_id,
+                        modifications_count=modifications_count,
+                        intent=event.get("intent", ""),
+                        confidence=event.get("confidence", 0.0),
                     )
                 elif event_type == "workflow_updated":
                     await emitter.emit_final_response(

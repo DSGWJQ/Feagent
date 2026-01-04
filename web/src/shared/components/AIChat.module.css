@@ -58,6 +58,12 @@
     color: var(--neo-text);
 }
 
+.iconSystem {
+    background-color: var(--neo-surface-2);
+    color: var(--neo-text-2);
+    border-style: dashed;
+}
+
 .messageContent {
     flex: 1;
     max-width: 100%;
@@ -79,6 +85,12 @@
     background-color: var(--neo-surface-2);
     color: var(--neo-text);
     border: 1px solid var(--neo-border);
+}
+
+.textSystem {
+    background-color: var(--neo-surface-2);
+    color: var(--neo-text-2);
+    border: 1px dashed var(--neo-border);
 }
 
 .textArea {

@@ -177,24 +177,37 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
       )}
 
       <div className={styles.messageList}>
-        {displayedMessages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`${styles.message} ${msg.role === 'user' ? styles.messageUser : ''}`}
-          >
-            <div className={`${styles.messageIcon} ${msg.role === 'user' ? styles.iconUser : styles.iconAssistant}`}>
-              {msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
-            </div>
-            <div className={styles.messageContent}>
-              <div className={`${styles.messageText} ${msg.role === 'user' ? styles.textUser : styles.textAssistant}`}>
-                {msg.content}
+        {displayedMessages.map((msg) => {
+          const isUser = msg.role === 'user';
+          const isSystem = msg.role === 'system';
+          const iconClassName = isUser
+            ? styles.iconUser
+            : isSystem
+              ? styles.iconSystem
+              : styles.iconAssistant;
+          const textClassName = isUser
+            ? styles.textUser
+            : isSystem
+              ? styles.textSystem
+              : styles.textAssistant;
+
+          return (
+            <div
+              key={msg.id}
+              className={`${styles.message} ${msg.role === 'user' ? styles.messageUser : ''}`}
+            >
+              <div className={`${styles.messageIcon} ${iconClassName}`}>
+                {msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
               </div>
-              <div className={styles.messageTime}>
-                {new Date(msg.timestamp).toLocaleTimeString('zh-CN')}
+              <div className={styles.messageContent}>
+                <div className={`${styles.messageText} ${textClassName}`}>{msg.content}</div>
+                <div className={styles.messageTime}>
+                  {new Date(msg.timestamp).toLocaleTimeString('zh-CN')}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isProcessing && (
           <div className={styles.message}>

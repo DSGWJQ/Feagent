@@ -80,6 +80,30 @@ def client(test_engine):
             async def execute_streaming(self, input_data):
                 if workflow_id.startswith("nonexistent"):
                     raise NotFoundError(entity_type="Workflow", entity_id=workflow_id)
+                if getattr(input_data, "user_message", "") == "danger":
+                    from src.application.services.coordinator_policy_chain import (
+                        CoordinatorRejectedError,
+                    )
+                    from src.domain.services.decision_events import DecisionRejectedEvent
+
+                    if hasattr(app.state, "event_bus") and app.state.event_bus is not None:
+                        await app.state.event_bus.publish(
+                            DecisionRejectedEvent(
+                                source="test_stub_use_case",
+                                correlation_id="corr_danger",
+                                original_decision_id="orig_danger",
+                                decision_type="tool_call",
+                                reason="blocked by coordinator",
+                                errors=["blocked by coordinator"],
+                            )
+                        )
+
+                    raise CoordinatorRejectedError(
+                        decision_type="tool_call",
+                        correlation_id="corr_danger",
+                        original_decision_id="orig_danger",
+                        errors=["blocked by coordinator"],
+                    )
                 yield {
                     "type": "processing_started",
                     "workflow_id": workflow_id,
@@ -260,7 +284,7 @@ class TestChatStreamAPI:
     def test_stream_includes_all_event_types(self, client: TestClient, sample_workflow: Workflow):
         """测试：流式响应包含所有必需的事件类型
 
-        应该包含：thinking、tool_call、tool_result、final 事件
+        应该包含：thinking、planning_step、final 事件
         """
         response = client.post(
             f"/api/workflows/{sample_workflow.id}/chat-stream",
@@ -284,26 +308,15 @@ class TestChatStreamAPI:
 
         event_types = [e.get("type") for e in events]
         assert "thinking" in event_types
-        assert "tool_call" in event_types
-        assert "tool_result" in event_types
+        assert "planning_step" in event_types
         assert "final" in event_types
 
-        tool_calls = [e for e in events if e.get("type") == "tool_call"]
-        tool_results = [e for e in events if e.get("type") == "tool_result"]
-        tool_call_ids = {
-            e.get("metadata", {}).get("tool_id")
-            for e in tool_calls
-            if e.get("metadata", {}).get("tool_id")
-        }
-        tool_result_ids = {
-            e.get("metadata", {}).get("tool_id")
-            for e in tool_results
-            if e.get("metadata", {}).get("tool_id")
-        }
-        assert tool_call_ids, "tool_call 应该包含可审计的 tool_id"
-        assert tool_call_ids.issubset(
-            tool_result_ids
-        ), "tool_call 与 tool_result 应该可配对（tool_id）"
+        planning_steps = [e for e in events if e.get("type") == "planning_step"]
+        assert planning_steps, "planning_step should be emitted for react_step traces"
+        assert all(
+            e.get("metadata", {}).get("simulated") is True and e.get("metadata", {}).get("source")
+            for e in planning_steps
+        ), "planning_step must be marked simulated and include a source"
 
     def test_stream_event_types_are_whitelisted(
         self, client: TestClient, sample_workflow: Workflow
@@ -316,7 +329,7 @@ class TestChatStreamAPI:
 
         assert response.status_code == 200
 
-        allowed_types = {"thinking", "tool_call", "tool_result", "final", "error"}
+        allowed_types = {"thinking", "planning_step", "final", "error"}
         for line in response.text.strip().split("\n"):
             if not line.startswith("data: "):
                 continue
@@ -459,15 +472,15 @@ class TestChatStreamAPI:
                     except json.JSONDecodeError:
                         pass
 
-        tool_calls = [e for e in events if e.get("type") == "tool_call"]
-        tool_call_ids = [
+        planning_steps = [e for e in events if e.get("type") == "planning_step"]
+        planning_tool_ids = [
             e.get("metadata", {}).get("tool_id")
-            for e in tool_calls
+            for e in planning_steps
             if e.get("metadata", {}).get("tool_id")
         ]
-        assert tool_call_ids.count("react_1") == 1
-        assert tool_call_ids.count("react_2") == 1
-        assert tool_call_ids.count("react_3") == 1
+        assert planning_tool_ids.count("react_1") == 1
+        assert planning_tool_ids.count("react_2") == 1
+        assert planning_tool_ids.count("react_3") == 1
 
     def test_coordinator_rejection_emits_error_rollback_and_completes(
         self, client: TestClient, sample_workflow: Workflow

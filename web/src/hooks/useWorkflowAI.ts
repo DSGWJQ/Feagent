@@ -78,6 +78,25 @@ export const useWorkflowAI = ({
                 return;
               }
 
+              if (event.type === 'planning_step') {
+                const meta = (event.metadata ?? {}) as any;
+                const stepNumber = meta.step_number ?? meta.stepNumber;
+                const thought = meta.thought ?? event.content ?? '';
+                const action = meta.action;
+                const observation = meta.observation;
+                const label = `AI规划${stepNumber ? ` #${stepNumber}` : ''}`;
+
+                const parts: string[] = [];
+                if (thought) parts.push(thought);
+                if (action) parts.push(`action=${JSON.stringify(action)}`);
+                if (observation) parts.push(`observation=${String(observation)}`);
+
+                appendMessage(
+                  createMessage(`${label}: ${parts.join(' | ') || '(empty)'}`, 'system')
+                );
+                return;
+              }
+
               if (event.type === 'patch') {
                 const previewWorkflow = event.metadata?.workflow as Workflow | undefined;
                 if (previewWorkflow) {
