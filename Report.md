@@ -43,13 +43,13 @@
 | 执行只有一条且=WorkflowAgent | 所有执行入口复用 WorkflowAgent | ❌ 未满足：`/execute/stream` 走 `workflow_execution_kernel`，但尚无证据证明与 `WorkflowAgent` 执行语义/事件/成功判定同源。 | `src/interfaces/api/routes/workflows.py:359`、`src/interfaces/api/main.py:102`、`src/domain/agents/workflow_agent.py:2348` |
 | Tool 与 Node 统一且可识别 | 单一能力注册中心；tool_id 可解析 | ⚠️ 部分满足：保存/执行已强制 `tool_id` + executor 存在性校验（fail-closed），但能力真源仍多套并存，未形成“唯一映射”。 | `src/domain/services/workflow_save_validator.py:152`、`src/domain/services/tool_engine.py:248`、`src/interfaces/api/routes/tools.py:1` |
 | Coordinator 是核心入口并监督 | 所有对话进入监督域 | ⚠️ 部分满足：EventBus middleware 已接线，且 `/execute/stream` 在写入 Run 前强制 `CoordinatorPolicyChain`（fail-closed）；但对话入口的 policy chain 仍为 Noop，无法证明“全链路不可绕过”。 | `src/interfaces/api/main.py:224`、`src/interfaces/api/routes/workflows.py:415`、`src/interfaces/api/main.py:116` |
-| 严格 ReAct（对话） | Action 可执行；Observation 来自真实执行 | ❌ 未满足：`tool_call` 仍仅 emit（缺真实执行与可信 tool_result）；ConversationAgent 装配已可运行但未形成严格闭环。 | `src/domain/agents/conversation_agent_react_core.py:431`、`src/application/services/conversation_agent_factory.py:17` |
-| Run 一致（点击 Run=事实源） | run_id 落库/回放一致 | ⚠️ 部分满足：已提供 Run 创建（幂等）且 `/execute/stream` 强制 `run_id` 并落库关键事件；但缺少 `/api/runs/{run_id}/events` 回放 API（回放闭环未完成）。 | `src/interfaces/api/routes/runs.py:153`、`src/interfaces/api/routes/workflows.py:376`、`tests/integration/api/workflows/test_workflows.py:323` |
+| 严格 ReAct（对话） | Action 可执行；Observation 来自真实执行 | ✅ 满足：`tool_call` 会触发真实执行并 emit `tool_result`（success/failed 均闭环）；Observation 可审计。 | `src/domain/agents/conversation_agent_react_core.py:436`、`src/domain/services/conversation_flow_emitter.py:308`、`tests/unit/domain/agents/test_conversation_agent_react_core.py:216` |
+| Run 一致（点击 Run=事实源） | run_id 落库/回放一致 | ✅ 满足：已提供 Run 创建（幂等）+ `/execute/stream` 强制 `run_id` 并落库关键事件 + `/api/runs/{run_id}/events` 回放 API。 | `src/interfaces/api/routes/runs.py:93`、`src/interfaces/api/routes/runs.py:238`、`tests/integration/api/runs/test_run_events_replay_api.py:76` |
 | workflow 必须使用 LangGraph | workflow 执行由 LangGraph 驱动 | ⚠️ 未默认满足：LangGraph workflow executor 现为 feature-flag 路径（可开关），默认仍走 Domain workflow engine kernel。 | `src/infrastructure/lc_adapters/workflow/langgraph_workflow_executor_adapter.py:1`、`src/config.py:138` |
 | WorkflowAgent 验证计划可达成 | plan validation + 反馈闭环 | ❌ 未满足：仅存在编排器/子 Agent 机制雏形，但未见 API 主链路启动与闭环验收。 | `src/domain/services/agent_orchestrator.py:1`、`src/domain/agents/coordinator_agent.py:2619` |
 | DDD 不越界 | 单向依赖可强制 | ⚠️ 存量未清：仍存在跨层 import（需用 CI/contract 强制收敛），当前仅能保证“不新增越界”而非“已合规”。 | `.import-linter.toml:1`、`src/domain/services/workflow_chat_service_enhanced.py:247` |
 
-> **P0 结论（基于当前代码/测试证据）**：已落地 “保存前 fail-closed 校验” 与 “Run 创建 + run_id 强制 + 关键事件落库”，但 “回放 API / 严格 ReAct / 执行链路与 WorkflowAgent 同源 / workflow 默认 LangGraph / DDD 边界合规” 仍未闭环。
+> **P0 结论（基于当前代码/测试证据）**：已落地 “保存前 fail-closed 校验” 与 “Run 创建 + run_id 强制 + 关键事件落库 + 回放 API” 与 “严格 ReAct”，但 “执行链路与 WorkflowAgent 同源 / workflow 默认 LangGraph / DDD 边界合规” 仍未闭环。
 
 ### 3.1 不变式验收合同（入口/契约/实现/错误码/测试点）
 
@@ -88,28 +88,28 @@
    - 契约：在写入 Run 状态与事件前必须经过监督；被拒绝返回 `403` 且结构化错误（`coordinator_rejected`）。
    - 实现位置：`src/interfaces/api/main.py:224`、`src/interfaces/api/routes/workflows.py:415`
    - 错误码/结构：HTTP `403 detail.error=coordinator_rejected`。
-   - 测试点：手工验证（见 8 章 DoD 的回归项；当前未发现对应自动化用例）。
+   - 测试点：`tests/integration/api/workflows/test_workflows.py:409`、`tests/integration/api/workflow_chat/test_chat_stream_react_api.py:475`
 
 6) **严格 ReAct（Action→真实执行→Observation）**
    - 入口：对话 Agent ReAct core
    - 契约：每次 `tool_call` 必须产生来自真实执行的 `tool_result`（Observation 可信）。
-   - 实现位置：`src/domain/agents/conversation_agent_react_core.py:431`
-   - 错误码/结构：当前仅 emit `tool_call`，未见真实执行/可信 `tool_result` 合同。
-   - 测试点：暂无（需补“真实工具执行”契约测试）。
+   - 实现位置：`src/domain/agents/conversation_agent_react_core.py:436`
+   - 错误码/结构：SSE `tool_result.metadata={tool_id,result,success,error}`；未知工具会产生失败的 `tool_result`（fail-closed）。
+   - 测试点：`tests/unit/domain/agents/test_conversation_agent_react_core.py:216`、`tests/integration/api/workflow_chat/test_chat_stream_react_api.py:260`
 
 7) **Run 一致（点击 Run=事实源，可追踪）**
    - 入口：`POST /api/projects/{project_id}/workflows/{workflow_id}/runs` → `POST /api/workflows/{workflow_id}/execute/stream`
    - 契约：Run 创建失败则不执行（fail-closed）；执行关键事件写入 RunEvent（至少 start + terminal）。
-   - 实现位置：`src/interfaces/api/routes/runs.py:153`、`src/interfaces/api/routes/workflows.py:446`
+   - 实现位置：`src/interfaces/api/routes/runs.py:93`、`src/interfaces/api/routes/runs.py:238`、`src/interfaces/api/routes/workflows.py:446`
    - 错误码/结构：Run 创建 `410`（feature flag 关闭）或 `400/404/500`；执行 `400/409`（run_id 相关）。
-   - 测试点：`tests/integration/api/workflows/test_workflows.py:356`、`web/src/features/workflows/pages/__tests__/WorkflowRunFailClosed.test.tsx:50`
+   - 测试点：`tests/integration/api/runs/test_run_events_replay_api.py:133`、`tests/integration/api/runs/test_run_events_replay_api.py:76`、`tests/integration/api/workflows/test_run_event_persistence.py:1`、`web/src/features/workflows/pages/__tests__/WorkflowRunFailClosed.test.tsx:50`
 
 8) **LangGraph（workflow 执行）**
    - 入口：LangGraphWorkflowExecutorAdapter（feature flag）
    - 契约：关闭时不得走 NotImplemented；必须可一键回滚到 legacy workflow engine。
    - 实现位置：`src/infrastructure/lc_adapters/workflow/langgraph_workflow_executor_adapter.py:1`
    - 错误码/结构：关闭时抛 `feature_disabled: ...`（DomainError）。
-   - 测试点：暂无（需补开关回归）。
+   - 测试点：`tests/unit/lc/workflow/test_langgraph_workflow_executor_adapter.py:13`、`tests/unit/application/services/test_workflow_execution_facade_langgraph_toggle.py:14`
 
 9) **WorkflowAgent 协作（计划可达成性验证 + 反馈闭环）**
    - 入口：AgentOrchestrator / SubAgentOrchestrator
@@ -124,6 +124,50 @@
    - 实现位置：`.import-linter.toml:1`
    - 错误码/结构：CI 失败（import-linter 报告）。
    - 测试点：CI / 本地运行 import-linter（见后续 issue WF-080）。
+
+### 3.2 不变式 → 测试/手工验收映射（DoD）
+
+> 目标：让每条不变式都能被“持续验证”（优先自动化；无法自动化的部分给出可执行的手工步骤）。
+
+1) 创建（chat-create，唯一入口）
+   - 自动化：`pytest -q tests/integration/api/workflow_chat/test_chat_create_stream_api.py`
+   - 手工：`curl -N -H "Accept: text/event-stream" -X POST http://localhost:8000/api/workflows/chat-create/stream -d "{\"message\":\"hi\"}"`，首个事件应包含 `metadata.workflow_id`
+
+2) 修改（拖拽 + 对话，两条链路，落库前同校验）
+   - 自动化：`pytest -q tests/integration/api/workflows/test_workflow_validation_contract.py tests/unit/domain/services/test_workflow_save_validator.py`
+   - 手工：分别用拖拽与对话修改触发保存失败，错误应为结构化 `detail.errors[].code`（例如 `missing_tool_id/missing_executor/...`）
+
+3) 执行（execute/stream gate）
+   - 自动化：`pytest -q tests/integration/api/workflows/test_execute_stream_validation_gate.py`
+   - 手工：`curl -N -H "Accept: text/event-stream" -X POST http://localhost:8000/api/workflows/<workflow_id>/execute/stream -d "{\"initial_input\":{},\"run_id\":\"\"}"` 应 `400`
+
+4) Tool/Node 统一（tool_id + executor 可解析）
+   - 自动化：`pytest -q tests/unit/domain/services/test_workflow_save_validator.py`
+   - 手工：保存含 Tool 节点但缺少 `tool_id` 的 workflow，应被 fail-closed 拒绝（`missing_tool_id`）
+
+5) Coordinator reject（fail-closed）
+   - 自动化：`pytest -q tests/integration/api/workflows/test_workflows.py tests/integration/api/workflow_chat/test_chat_stream_react_api.py`
+   - 手工：制造被 policy chain 拒绝的 decision，HTTP 应 `403 detail.error=coordinator_rejected` 或 SSE `error_code=COORDINATOR_REJECTED`
+
+6) 严格 ReAct（Action→真实执行→Observation）
+   - 自动化：`pytest -q tests/unit/domain/agents/test_conversation_agent_react_core.py tests/integration/api/workflow_chat/test_chat_stream_react_api.py`
+   - 手工：对话触发工具调用，SSE 中应出现可配对的 `tool_call/tool_result`（相同 `metadata.tool_id`）
+
+7) Run 一致（创建幂等 + 事件落库 + 回放）
+   - 自动化：`pytest -q tests/integration/api/runs/test_run_events_replay_api.py tests/integration/api/workflows/test_run_event_persistence.py`
+   - 手工：先 `POST /api/projects/<project_id>/workflows/<workflow_id>/runs -H "Idempotency-Key: k"`，再用返回 `run_id` 执行 `/execute/stream`，最后 `GET /api/runs/<run_id>/events`
+
+8) LangGraph（workflow 执行）
+   - 自动化：`pytest -q tests/unit/lc/workflow/test_langgraph_workflow_executor_adapter.py tests/unit/application/services/test_workflow_execution_facade_langgraph_toggle.py`
+   - 手工：设置 `ENABLE_LANGGRAPH_WORKFLOW_EXECUTOR=true/false` 重启服务，确认可在 LangGraph/legacy 两条路径间切换且不会走 NotImplemented
+
+9) WorkflowAgent 协作（计划可达成性验证 + 反馈闭环）
+   - 自动化：暂无（需要主链路接线后补端到端用例）
+   - 手工：确认 API 主链路确实启动编排器并能将 validated decision → 执行反馈闭环（否则标记为未满足）
+
+10) DDD 边界（依赖方向可强制）
+   - 自动化：`import-linter`（或 `python -m importlinter`）
+   - 手工：在变更前后运行 import-linter，确保“不新增越界”且 CI 守门有效
 
 ---
 
@@ -185,12 +229,12 @@
 严格 ReAct 要求：Thought→Action→Observation 闭环；Observation 来自真实执行（工具/节点）。
 
 现状：
-- `tool_call` 只 emit，不执行工具，不生成 tool_result（Observation 不可信/缺失）。
-  证据：`src/domain/agents/conversation_agent_react_core.py:431`
-- ConversationAgent 已可通过工厂装配（fallback llm/session_context），但这并不等于严格 ReAct 已满足。
-  证据：`src/application/services/conversation_agent_factory.py:17`
+- ✅ `tool_call` 会触发真实执行并 emit `tool_result`（fail-closed：未知工具也会产生失败的 tool_result）。
+  证据：`src/domain/agents/conversation_agent_react_core.py:436`、`src/domain/services/conversation_flow_emitter.py:308`
+- ✅ SSE 流中 `tool_call` 与 `tool_result` 可按 `tool_id` 配对，具备可审计性。
+  证据：`tests/integration/api/workflow_chat/test_chat_stream_react_api.py:260`
 
-严格验收结论：**不满足严格 ReAct**（核心缺口：Action 未绑定真实执行与可信 Observation）。
+严格验收结论：**满足严格 ReAct**（Action→真实执行→Observation 闭环，且 Observation 可审计）。
 
 ### 4.6 “执行成功”是否与用户点击 Run 一致
 
@@ -232,9 +276,9 @@
 ## 5. 红队视角漏洞清单（可被触发的失败模式）
 
 1) **绕过监督（Bypass Coordinator）**：任何不经 middleware/policy chain 的直接执行路径都能绕过 Coordinator；当前 workflow REST 执行就是典型。
-2) **回放缺口（Missing Replay API）**：虽已落库 Run/RunEvent，但缺少回放 API 导致“可回放”无法闭环。
+2) **回放缺口（Replay is feature-gated）**：回放 API 已实现，但受 feature flag `disable_run_persistence` 影响（关闭时 410），回归必须覆盖开关。
 3) **不可执行但可保存（Poisoned Graph）**：已被保存前强校验（fail-closed）显著缓解，但仍需防止新增旁路写入口绕过校验。
-4) **ReAct 假闭环（No real Observation）**：tool_call 不执行，Observation 不可信，导致“计划验证”与“纠偏”无法建立事实基础。
+4) **ReAct 假闭环（No real Observation）**：已修复为真实执行 + `tool_result`；仍需确保生产工具执行器可注入并审计。
 5) **文档漂移（Human-process漏洞）**：开发者按文档推进会走错入口/错配协议（例如 chat 501），引入“影子实现”。
 
 ---

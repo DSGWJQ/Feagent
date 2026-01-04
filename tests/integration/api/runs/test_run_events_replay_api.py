@@ -17,6 +17,7 @@ from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.repositories.run_event_repository import (
     SQLAlchemyRunEventRepository,
 )
+from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
 from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
@@ -127,6 +128,32 @@ def test_list_run_events_paginates_and_preserves_sse_shape(client: TestClient, d
     assert len(payload2["events"]) == 1
     assert payload2["events"][0]["type"] == "workflow_complete"
     assert payload2["events"][0]["run_id"] == run_id
+
+
+def test_create_run_is_idempotent_with_idempotency_key(
+    client: TestClient, db_session: Session
+) -> None:
+    """INV-7: POST /runs is idempotent per (project_id, workflow_id, Idempotency-Key)."""
+
+    workflow = _create_simple_workflow(db_session)
+
+    resp1 = client.post(
+        f"/api/projects/proj_1/workflows/{workflow.id}/runs",
+        json={},
+        headers={"Idempotency-Key": "key_1"},
+    )
+    assert resp1.status_code == 200
+    run_id_1 = resp1.json()["id"]
+
+    resp2 = client.post(
+        f"/api/projects/proj_1/workflows/{workflow.id}/runs",
+        json={},
+        headers={"Idempotency-Key": "key_1"},
+    )
+    assert resp2.status_code == 200
+    assert resp2.json()["id"] == run_id_1
+
+    assert SQLAlchemyRunRepository(db_session).count_by_workflow_id(workflow.id) == 1
 
 
 def test_list_run_events_returns_404_when_run_missing(client: TestClient):

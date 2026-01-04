@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
 from src.config import settings
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
@@ -68,6 +69,22 @@ class _DummyExecutor:
 
 
 class _UnreachableKernel:
+    async def gate_execute(
+        self,
+        *,
+        workflow_id: str,
+        input_data=None,
+        correlation_id: str | None = None,
+        original_decision_id: str | None = None,
+        after_gate=None,
+    ) -> None:  # pragma: no cover
+        raise CoordinatorRejectedError(
+            decision_type="execute_workflow",
+            correlation_id=correlation_id or "",
+            original_decision_id=original_decision_id or "",
+            errors=["denied"],
+        )
+
     async def execute(self, *, workflow_id: str, input_data=None):  # pragma: no cover
         raise AssertionError("kernel must not be reached when gated")
 
