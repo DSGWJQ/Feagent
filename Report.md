@@ -3,6 +3,7 @@
 > 基线：仓库状态 `aa68c7e`（2026-01-04）。
 > 范围：围绕 **Workflow 核心业务**（创建/修改/执行/Run/事件回放/工具节点）与 **CoordinatorAgent 监督闭环**（对话、工具调用、执行门禁）。
 > 方法：只依据仓库可验证事实（代码/测试/配置/边界合同），并对关键假设做“红队”反证。
+> 合同冻结：`docs/architecture/workflow_closed_loop_contract.md`。
 
 ---
 

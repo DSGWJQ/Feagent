@@ -24,6 +24,7 @@ python scripts/ddd_boundary_checks.py
 Write-Host ""
 Write-Host "[3/4] Backend tests (targeted)..." -ForegroundColor Green
 pytest -q `
+    tests/unit/application/services/test_workflow_event_contract.py `
     tests/unit/domain/services/test_workflow_save_validator.py `
     tests/integration/api/workflow_chat/test_chat_stream_react_api.py
 
