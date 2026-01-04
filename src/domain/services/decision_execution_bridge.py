@@ -20,7 +20,7 @@
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -102,6 +102,9 @@ class DecisionExecutionBridge:
         event_bus: EventBus,
         decision_validator: Any | None = None,
         workflow_agent_factory: Callable[[], Any] | None = None,
+        workflow_decision_handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+        | None = None,
+        actionable_decision_types: set[str] | None = None,
     ):
         """初始化桥接器
 
@@ -113,6 +116,10 @@ class DecisionExecutionBridge:
         self.event_bus = event_bus
         self.decision_validator = decision_validator
         self.workflow_agent_factory = workflow_agent_factory
+        self.workflow_decision_handler = workflow_decision_handler
+        self._actionable_decision_types = actionable_decision_types or set(
+            ACTIONABLE_DECISION_TYPES
+        )
         self._handler = None
         self._running = False
 
@@ -124,7 +131,15 @@ class DecisionExecutionBridge:
         self._handler = self._handle_decision
         self.event_bus.subscribe(DecisionMadeEvent, self._handler)
         self._running = True
-        logger.info("DecisionExecutionBridge started")
+        logger.info(
+            "DecisionExecutionBridge started",
+            extra={
+                "actionable_decision_types": sorted(self._actionable_decision_types),
+                "has_validator": self.decision_validator is not None,
+                "has_agent_factory": self.workflow_agent_factory is not None,
+                "has_decision_handler": self.workflow_decision_handler is not None,
+            },
+        )
 
     async def stop(self) -> None:
         """停止桥接器，取消订阅"""
@@ -137,12 +152,15 @@ class DecisionExecutionBridge:
         self._running = False
         logger.info("DecisionExecutionBridge stopped")
 
-    async def _handle_decision(self, event: DecisionMadeEvent) -> None:
+    async def _handle_decision(self, event: Event) -> None:
         """处理决策事件
 
         参数：
             event: 决策事件
         """
+        if not isinstance(event, DecisionMadeEvent):
+            return
+
         decision_type = event.decision_type
         decision_id = event.decision_id
         # payload is available via event.payload when needed
@@ -150,7 +168,7 @@ class DecisionExecutionBridge:
         logger.debug(f"Received decision: {decision_type} ({decision_id})")
 
         # 检查是否是可执行的决策类型
-        if decision_type not in ACTIONABLE_DECISION_TYPES:
+        if decision_type not in self._actionable_decision_types:
             logger.debug(f"Ignoring non-actionable decision type: {decision_type}")
             return
 
@@ -220,28 +238,40 @@ class DecisionExecutionBridge:
         参数：
             event: 决策事件
         """
-        if not self.workflow_agent_factory:
-            logger.warning("No workflow_agent_factory configured, cannot execute")
+        if self.workflow_decision_handler is None and not self.workflow_agent_factory:
+            logger.warning(
+                "DecisionExecutionBridge not configured (missing handler/factory), dropping decision",
+                extra={"decision_type": event.decision_type, "decision_id": event.decision_id},
+            )
             return
 
         try:
-            workflow_agent = self.workflow_agent_factory()
-
             decision_type = event.decision_type
             payload = event.payload
 
-            # 根据决策类型执行不同操作
-            if decision_type == DecisionType.CREATE_WORKFLOW_PLAN.value:
-                # 执行工作流规划
-                result = await self._execute_workflow_plan(workflow_agent, payload)
+            decision_data = {"decision_type": decision_type, **payload}
+
+            if self.workflow_decision_handler is not None:
+                result = await self.workflow_decision_handler(decision_data)
             else:
-                # 其他决策类型使用 handle_decision
-                result = await workflow_agent.handle_decision(
-                    {
-                        "decision_type": decision_type,
-                        **payload,
-                    }
-                )
+                workflow_agent_factory = self.workflow_agent_factory
+                if workflow_agent_factory is None:
+                    logger.warning(
+                        "DecisionExecutionBridge not configured (missing factory), dropping decision",
+                        extra={
+                            "decision_type": event.decision_type,
+                            "decision_id": event.decision_id,
+                        },
+                    )
+                    return
+                workflow_agent = workflow_agent_factory()
+                # 根据决策类型执行不同操作
+                if decision_type == DecisionType.CREATE_WORKFLOW_PLAN.value:
+                    # 执行工作流规划
+                    result = await self._execute_workflow_plan(workflow_agent, payload)
+                else:
+                    # 其他决策类型使用 handle_decision
+                    result = await workflow_agent.handle_decision(decision_data)
 
             # 发布执行结果
             await self._publish_result(event, "completed", result)

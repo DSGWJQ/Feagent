@@ -316,6 +316,48 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         event_bus,
         cast(CoordinatorPort, app.state.coordinator),
     )
+    # DecisionExecutionBridge: validated decision (allow) -> WorkflowAgent execution.
+    #
+    # Red-team note:
+    # - We wire only `execute_workflow` here to avoid implicit side effects for plan/create decisions.
+    # - CoordinatorAgent middleware is already attached to EventBus; denied decisions won't reach subscribers.
+    try:
+        from src.domain.agents.conversation_agent import DecisionType
+        from src.domain.agents.workflow_agent import WorkflowAgent
+        from src.domain.services.decision_execution_bridge import DecisionExecutionBridge
+
+        if not getattr(event_bus, "_coordinator_middleware_attached", False):
+            raise RuntimeError(
+                "coordinator middleware not attached; refuse to start DecisionExecutionBridge"
+            )
+
+        async def _handle_workflow_decision(decision: dict[str, Any]) -> dict[str, Any]:
+            session = _create_session()
+            try:
+                agent = WorkflowAgent(
+                    event_bus=event_bus,
+                    coordinator_agent=app.state.coordinator,
+                    workflow_execution_kernel=app.state.container.workflow_execution_kernel(
+                        session
+                    ),
+                    workflow_run_execution_entry=app.state.container.workflow_run_execution_entry(
+                        session
+                    ),
+                )
+                return await agent.handle_decision(decision)
+            finally:
+                session.close()
+
+        decision_bridge = DecisionExecutionBridge(
+            event_bus=event_bus,
+            workflow_decision_handler=_handle_workflow_decision,
+            actionable_decision_types={DecisionType.EXECUTE_WORKFLOW.value},
+        )
+        await decision_bridge.start()
+        app.state.decision_execution_bridge = decision_bridge
+        print("[BRIDGE] DecisionExecutionBridge 已启动（execute_workflow only）")
+    except Exception as exc:  # pragma: no cover - best effort startup wiring
+        print(f"[BRIDGE] DecisionExecutionBridge 启动失败（已禁用）: {exc}")
 
     try:
         _scheduler_service = _init_scheduler(app.state.container)
@@ -335,6 +377,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         yield
     finally:
+        # Stop DecisionExecutionBridge (if enabled).
+        bridge = getattr(app.state, "decision_execution_bridge", None)
+        if bridge is not None:
+            try:
+                await bridge.stop()
+            except Exception:
+                pass
         # 停止异步事件录制器
         if hasattr(app.state, "event_recorder"):
             await app.state.event_recorder.stop()
