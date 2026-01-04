@@ -4,6 +4,7 @@
 - POST /api/workflows/chat-create/stream 端点可用
 - SSE 前 1 个事件内包含 metadata.workflow_id
 - 输入为空返回 422（pydantic 校验）
+- coordinator 缺失时 fail-closed（403 + 稳定错误体 + 无 DB 副作用）
 - LLM 不可用返回 503（依赖注入阶段）
 - LLM/处理报错时，通过 SSE error 事件可诊断（不泄露敏感信息）
 """
@@ -102,6 +103,7 @@ def client(test_engine):
         run_repository=_fake_repo,
         scheduled_workflow_repository=_fake_repo,
     )
+    test_app.state.coordinator = _AllowingCoordinator()
 
     test_app.dependency_overrides[get_db_session] = override_get_db_session
     test_app.dependency_overrides[get_rag_service] = override_get_rag_service
@@ -129,6 +131,11 @@ class _FakeCoordinatorValidation:
     def __init__(self, *, is_valid: bool, errors: list[str] | None = None) -> None:
         self.is_valid = is_valid
         self.errors = errors or []
+
+
+class _AllowingCoordinator:
+    def validate_decision(self, decision: dict) -> _FakeCoordinatorValidation:
+        return _FakeCoordinatorValidation(is_valid=True)
 
 
 class _RejectingCoordinator:
@@ -199,6 +206,39 @@ class TestChatCreateStreamAPI:
             json={"message": ""},
         )
         assert response.status_code == 422
+
+    def test_missing_coordinator_is_fail_closed_and_has_zero_db_side_effects(
+        self, client: TestClient, test_engine
+    ):
+        def override_use_case_factory() -> Callable[[str], object]:
+            def factory(_workflow_id: str):
+                raise AssertionError("use case factory should not be called when gate rejects")
+
+            return factory
+
+        client.app.state.coordinator = None
+        client.app.dependency_overrides[
+            workflows_routes.get_update_workflow_by_chat_use_case_factory
+        ] = override_use_case_factory
+
+        response = client.post(
+            "/api/workflows/chat-create/stream",
+            json={"message": "hello", "project_id": "proj_1", "run_id": "run_1"},
+        )
+
+        assert response.status_code == 403
+        detail = response.json().get("detail", {})
+        assert detail.get("error") == "coordinator_rejected"
+        assert detail.get("errors") == ["coordinator or event_bus not configured"]
+
+        # No DB side effects (workflow not persisted).
+        TestingSessionLocal = sessionmaker(bind=test_engine)
+        db: Session = TestingSessionLocal()
+        try:
+            repo = SQLAlchemyWorkflowRepository(db)
+            assert repo.find_all() == []
+        finally:
+            db.close()
 
     def test_coordinator_rejection_has_zero_db_side_effects_and_no_plaintext_leak(
         self, client: TestClient, test_engine

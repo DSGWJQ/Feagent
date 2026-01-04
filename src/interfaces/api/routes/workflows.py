@@ -606,7 +606,7 @@ async def chat_create_stream(
             coordinator=coordinator,
             event_bus=event_bus,
             source="chat_create",
-            fail_closed=False,
+            fail_closed=True,
             supervised_decision_types={"api_request"},
         )
         correlation_id = request.run_id or workflow.id
