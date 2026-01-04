@@ -377,6 +377,8 @@ class ConversationAgentReActCoreMixin:
             try:
                 if hasattr(self.llm, "get_token_usage"):
                     tokens = self.llm.get_token_usage()  # type: ignore[attr-defined]
+                    if asyncio.iscoroutine(tokens):
+                        tokens = await tokens
                     if isinstance(tokens, dict):
                         # 支持 dict 格式: {"prompt_tokens": X, "completion_tokens": Y}
                         prompt_tokens = int(tokens.get("prompt_tokens", 0))
@@ -389,6 +391,8 @@ class ConversationAgentReActCoreMixin:
                         completion_tokens = total  # 假定全部是 completion tokens
                 if hasattr(self.llm, "get_cost"):
                     cost = self.llm.get_cost()  # type: ignore[attr-defined]
+                    if asyncio.iscoroutine(cost):
+                        cost = await cost
                     if isinstance(cost, int | float):
                         result.total_cost += float(cost)
             except (TypeError, AttributeError):
@@ -429,12 +433,68 @@ class ConversationAgentReActCoreMixin:
                 return result
 
             # Phase 2: 处理工具调用
-            if action_type == "tool_call" and self.emitter:
-                await self.emitter.emit_tool_call(
-                    tool_name=action.get("tool_name", ""),
-                    tool_id=action.get("tool_id", ""),
-                    arguments=action.get("arguments", {}),
+            if action_type == "tool_call":
+                tool_name = str(action.get("tool_name", "") or "").strip()
+                tool_call_id = str(action.get("tool_id", "") or "").strip()
+                arguments = action.get("arguments", {})
+                if not isinstance(arguments, dict):
+                    arguments = {}
+
+                if not tool_call_id:
+                    tool_call_id = f"tool_{iteration_count + 1}"
+
+                if self.emitter:
+                    await self.emitter.emit_tool_call(
+                        tool_name=tool_name,
+                        tool_id=tool_call_id,
+                        arguments=arguments,
+                    )
+
+                success, tool_result, error_message = await self._execute_tool_call(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    arguments=arguments,
+                    timeout_seconds=action.get("timeout_seconds"),
                 )
+                observation = (
+                    f"error: {error_message}"
+                    if not success
+                    else f"ok: {tool_result}"
+                    if tool_result
+                    else "ok"
+                )
+
+                # Record observation for this ReAct iteration and feed it back into the loop.
+                step.observation = observation
+                context["last_observation"] = observation
+
+                # Best-effort audit trail (equivalent to a persisted observation record in session context).
+                try:
+                    add_message = getattr(self.session_context, "add_message", None)
+                    if callable(add_message):
+                        add_message(
+                            {
+                                "role": "tool",
+                                "tool_name": tool_name,
+                                "tool_call_id": tool_call_id,
+                                "arguments": arguments,
+                                "content": observation,
+                                "timestamp": datetime.now().isoformat(),
+                                "success": success,
+                            }
+                        )
+                except Exception:
+                    # Never let audit recording break the ReAct loop (fail-closed applies to tool execution).
+                    pass
+
+                if self.emitter:
+                    await self.emitter.emit_tool_result(
+                        tool_id=tool_call_id,
+                        result=tool_result,
+                        success=success,
+                        error=error_message,
+                        tool_name=tool_name,
+                    )
 
             # 记录决策并发布事件（P0-2 Phase 2: 使用async staged版本）
             if action_type in ["create_node", "execute_workflow", "request_clarification"]:
@@ -485,6 +545,74 @@ class ConversationAgentReActCoreMixin:
             await self.emitter.complete()
 
         return result
+
+    async def _execute_tool_call(
+        self,
+        *,
+        tool_name: str,
+        tool_call_id: str,
+        arguments: dict[str, Any],
+        timeout_seconds: Any = None,
+    ) -> tuple[bool, dict[str, Any], str | None]:
+        """Execute a tool call and return (success, result, error_message).
+
+        KISS:
+        - Provide a minimal, offline-safe built-in execution path.
+        - Host apps can override by injecting `tool_call_executor.execute(...)`.
+        """
+
+        # Prefer an injected executor if present (DIP).
+        executor = getattr(self, "tool_call_executor", None)
+        if executor is not None and hasattr(executor, "execute"):
+            execute = executor.execute
+            try:
+                timeout = float(timeout_seconds) if timeout_seconds is not None else None
+            except (TypeError, ValueError):
+                timeout = None
+
+            async def _call() -> tuple[bool, dict[str, Any], str | None]:
+                payload = await execute(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    arguments=arguments,
+                )
+                if not isinstance(payload, dict):
+                    return False, {}, "tool executor returned non-dict payload"
+                success = bool(payload.get("success", False))
+                result = payload.get("result", {})
+                if not isinstance(result, dict):
+                    result = {"value": result}
+                error = payload.get("error")
+                return success, result, str(error) if error else None
+
+            try:
+                if timeout is not None and timeout > 0:
+                    return await asyncio.wait_for(_call(), timeout=timeout)
+                return await _call()
+            except TimeoutError:
+                return False, {}, "tool execution timed out"
+            except Exception as exc:  # noqa: BLE001 - tool boundary
+                return False, {}, str(exc)
+
+        # Built-in offline-safe tools (used in unit tests and fallback runs).
+        # These are intentionally small and deterministic.
+        try:
+            if tool_name == "calculator":
+                a = arguments.get("a", arguments.get("x"))
+                b = arguments.get("b", arguments.get("y"))
+                if not isinstance(a, int | float) or not isinstance(b, int | float):
+                    return False, {}, "calculator requires numeric a/b (or x/y)"
+                return True, {"value": a + b}, None
+
+            if tool_name == "echo":
+                return True, {"echo": arguments}, None
+
+            if tool_name == "noop" or not tool_name:
+                return True, {}, None
+
+            return False, {}, f"unknown tool: {tool_name}"
+        except Exception as exc:  # noqa: BLE001 - tool boundary
+            return False, {}, str(exc)
 
     # =========================================================================
     # Decision Making and Recording

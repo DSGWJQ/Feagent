@@ -213,7 +213,7 @@ class TestRunAsync:
 
     @pytest.mark.asyncio
     async def test_run_async_emits_tool_call_for_tool_call_action(self, mock_agent):
-        """Test: run_async emits tool_call when action_type is 'tool_call'"""
+        """Test: run_async executes tool_call and emits tool_result observation (strict ReAct)"""
         mock_agent.llm.think = AsyncMock(return_value="thinking")
         mock_agent.llm.decide_action = AsyncMock(
             side_effect=[
@@ -233,6 +233,15 @@ class TestRunAsync:
         mock_agent.emitter.emit_tool_call.assert_called_once_with(
             tool_name="calculator", tool_id="calc_1", arguments={"a": 1, "b": 2}
         )
+        mock_agent.emitter.emit_tool_result.assert_called_once_with(
+            tool_id="calc_1",
+            result={"value": 3},
+            success=True,
+            error=None,
+            tool_name="calculator",
+        )
+        assert result.steps[0].observation is not None
+        assert "ok:" in result.steps[0].observation
         assert result.completed is True
 
     @pytest.mark.asyncio

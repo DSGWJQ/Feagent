@@ -266,7 +266,7 @@ class TestToolCallEmission:
 
     @pytest.mark.asyncio
     async def test_tool_call_decision_emits_tool_call(self, session_context, emitter):
-        """测试：工具调用决策应发送 TOOL_CALL 步骤"""
+        """测试：tool_call 必须触发真实执行并产生 TOOL_RESULT（严格 ReAct）"""
         from src.domain.agents.conversation_agent import ConversationAgent
         from src.domain.services.conversation_flow_emitter import StepKind
 
@@ -304,6 +304,13 @@ class TestToolCallEmission:
         tool_steps = [s for s in steps if s.kind == StepKind.TOOL_CALL]
         assert len(tool_steps) == 1
         assert tool_steps[0].metadata["tool_name"] == "search"
+
+        # 应有工具结果步骤（search 在默认内置工具里不存在 -> 失败 observation 也要落盘）
+        result_steps = [s for s in steps if s.kind == StepKind.TOOL_RESULT]
+        assert len(result_steps) == 1
+        assert result_steps[0].metadata["tool_id"] == "tc_001"
+        assert result_steps[0].metadata["success"] is False
+        assert "unknown tool" in (result_steps[0].metadata.get("error") or "")
 
 
 # ==================== 错误处理测试 ====================
