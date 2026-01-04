@@ -169,6 +169,24 @@ class WorkflowRunExecutionEntry:
 
         # Gate must run before persisting any run events to keep rejection paths side-effect free.
         async def _after_gate() -> None:
+            # Concurrency-safe claim (WFCL-040):
+            # - Duplicate requests may pass the pre-gate status check concurrently.
+            # - Claim the run atomically (CAS) after gate, before persisting any events.
+            claimed = self._run_repository.update_status_if_current(
+                run_id,
+                current_status=RunStatus.CREATED,
+                target_status=RunStatus.RUNNING,
+            )
+            if not claimed:
+                raise RunGateError(
+                    "duplicate execution dropped (run already claimed)",
+                    code="duplicate_execution",
+                    details={
+                        "workflow_id": workflow_id,
+                        "run_id": run_id,
+                        "original_decision_id": original_decision_id,
+                    },
+                )
             self._append_lifecycle_event(
                 run_id=run_id,
                 event_type="workflow_start",
