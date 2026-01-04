@@ -322,8 +322,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # - We wire only `execute_workflow` here to avoid implicit side effects for plan/create decisions.
     # - CoordinatorAgent middleware is already attached to EventBus; denied decisions won't reach subscribers.
     try:
-        from src.domain.agents.conversation_agent import DecisionType
-        from src.domain.agents.workflow_agent import WorkflowAgent
         from src.domain.services.decision_execution_bridge import DecisionExecutionBridge
 
         if not getattr(event_bus, "_coordinator_middleware_attached", False):
@@ -332,26 +330,41 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
 
         async def _handle_workflow_decision(decision: dict[str, Any]) -> dict[str, Any]:
+            decision_type = decision.get("decision_type")
+            if decision_type != "execute_workflow":
+                return {"success": False, "status": "ignored", "error": "unsupported decision_type"}
+
+            workflow_id = decision.get("workflow_id")
+            run_id = decision.get("run_id")
+            if not isinstance(workflow_id, str) or not workflow_id.strip():
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "error": "workflow_id is required for execute_workflow",
+                }
+            if not isinstance(run_id, str) or not run_id.strip():
+                return {"success": False, "status": "failed", "error": "run_id is required"}
+
+            input_data = decision.get("initial_input", decision.get("input_data"))
+
             session = _create_session()
             try:
-                agent = WorkflowAgent(
-                    event_bus=event_bus,
-                    coordinator_agent=app.state.coordinator,
-                    workflow_execution_kernel=app.state.container.workflow_execution_kernel(
-                        session
-                    ),
-                    workflow_run_execution_entry=app.state.container.workflow_run_execution_entry(
-                        session
-                    ),
+                entry = app.state.container.workflow_run_execution_entry(session)
+                return await entry.execute_with_results(
+                    workflow_id=workflow_id.strip(),
+                    run_id=run_id.strip(),
+                    input_data=input_data,
+                    correlation_id=run_id.strip(),
+                    original_decision_id=run_id.strip(),
+                    record_execution_events=True,
                 )
-                return await agent.handle_decision(decision)
             finally:
                 session.close()
 
         decision_bridge = DecisionExecutionBridge(
             event_bus=event_bus,
             workflow_decision_handler=_handle_workflow_decision,
-            actionable_decision_types={DecisionType.EXECUTE_WORKFLOW.value},
+            actionable_decision_types={"execute_workflow"},
         )
         await decision_bridge.start()
         app.state.decision_execution_bridge = decision_bridge
