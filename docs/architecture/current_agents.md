@@ -4,6 +4,11 @@
 > 审计范围：ConversationAgent / WorkflowAgent / CoordinatorAgent
 > 状态：Phase 5 完成，知识库集成已实现
 
+> 重要说明（WFPLAN-050 / OptionB）：
+> - 本文为 Agent 子系统“现状审计/实验链路”文档，不作为 Workflow 主链路的运行手册或架构契约。
+> - Workflow 主链路以 `UseCase + gate + validator + RunEntry` 为事实源（详见 `README.md` 的 “Workflow 创建与对话（推荐链路）” 与 “主链路声明”）。
+> - 未接线的桥接器（例如 `src/domain/services/decision_execution_bridge.py`）不在生产主链路中启用；对外入口以 `src/interfaces/api/main.py` 实际挂载为准。
+
 ---
 
 ## 1. 系统概览

@@ -402,6 +402,9 @@ app.include_router(llm_providers.router, prefix="/api", tags=["LLM Providers"])
 app.include_router(scheduled_workflows.router, prefix="/api", tags=["Scheduled Workflows"])
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(coordinator_status.router, prefix="/api/coordinator", tags=["Coordinator"])
+
+# Note (WFPLAN-050 / OptionB): conversation stream is an Agent-side experimental entrypoint,
+# not the Workflow main chain (which lives under /api/workflows/* and /api/runs/*).
 app.include_router(conversation_stream.router, prefix="/api")
 app.include_router(memory_metrics.router, tags=["Memory"])
 app.include_router(knowledge.router, tags=["Knowledge"])

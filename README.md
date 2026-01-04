@@ -109,6 +109,12 @@ pnpm dev
 - **增量修改（SSE）**：`POST /api/workflows/{workflow_id}/chat-stream`
 - **Legacy（Deprecated）**：`POST /api/workflows`（兼容期保留；响应会返回 deprecation 提示，优先迁移到 chat-create）
 
+## 主链路声明（Workflow vs Agent 实验入口）
+
+- **Workflow 主链路**：以 `UseCase + gate + validator + RunEntry` 为事实源（对应 `/api/workflows/*` 与 `/api/runs/*`）。
+- **多 Agent 闭环**（ConversationAgent / WorkflowAgent / CoordinatorAgent）：属于 Agent 子系统能力审计与实验入口，不作为 Workflow 主链路；相关文档以“现状审计/实验”口径解读。
+- **可观测性区分**：API 级指标以路由路径维度区分（例如 `/api/workflows/*` vs `/api/conversation/*`），避免将实验入口误判为 Workflow 主链路故障。
+
 ## 灰度发布与回滚（Chat-Create）
 
 ### 观测项与阈值（示例）
@@ -132,7 +138,6 @@ agent_data/
 │   ├── application/           # 应用层（用例编排、事务边界）
 │   ├── interfaces/            # 接口层（FastAPI 路由、DTO）
 │   │   └── api/
-│   ├── lc/                    # LangChain（chains/agents/tools）
 │   └── infrastructure/        # 基础设施（ORM、队列、缓存）
 ├── web/                       # 前端源码
 │   └── src/
@@ -160,8 +165,8 @@ agent_data/
 - 📋 [需求分析](docs/需求分析.md) - 项目需求与技术选型
 
 ### 架构与运维
-- 🏗️ [多Agent协作架构](docs/architecture/current_agents.md) - 三Agent系统架构详解
-- 📖 [复杂分析任务 Runbook](docs/architecture/current_agents.md#11-复杂分析任务运行手册runbook) - 需求采集→规划→委派→监控→异常→结果汇报全流程
+- 🏗️ [多Agent协作架构](docs/architecture/current_agents.md) - Agent 子系统现状审计（不作为 Workflow 主链路）
+- 📖 [复杂分析任务 Runbook](docs/architecture/current_agents.md#11-复杂分析任务运行手册runbook) - Agent 实验链路运行手册（不作为 Workflow 主链路）
 - 🔧 [运维操作手册](docs/architecture/current_agents.md#118-运维操作手册) - 常见问题排查与手动干预
 - 📋 [Coordinator 运维 Runbook](docs/architecture/current_agents.md#23-coordinator-运维-runbook) - 模块配置、指标观测、异常干预、知识库维护、告警追溯
 - 📄 [通用节点 YAML 规范](docs/architecture/current_agents.md#14-通用节点-yaml-规范node-definition-specification) - 自描述节点定义、Schema 校验、示例模板
