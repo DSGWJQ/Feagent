@@ -80,6 +80,9 @@
      - `workflow_create_base_entry_unique`：禁止新增未批准的 `Workflow.create_base(...)` 创建入口（最多 1 个）
      - `internal_workflow_create_guard_max_2`：限制内部 workflow create guard 的入口扩散（最多 2 个）
 
+3) 内部创建入口默认不可达（WFCL-060）
+   - `python -m pytest -q tests/integration/api/workflows/test_internal_create_endpoints_access.py`
+
 ### 5.2 将在后续 issue 固化为绿色（当前可能未完全满足）
 
 - Coordinator 缺失时 chat-create 必须 fail-closed 且无副作用（WFCL-050）
