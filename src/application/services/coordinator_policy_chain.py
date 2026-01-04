@@ -44,6 +44,7 @@ class CoordinatorPolicyChain:
         self._event_bus = event_bus
         self._source = source
         self._fail_closed = fail_closed
+        self._dedupe_keys: set[tuple[str, str, str]] = set()
         self._supervised_decision_types = supervised_decision_types or {
             "api_request",
             "create_node",
@@ -65,6 +66,11 @@ class CoordinatorPolicyChain:
     ) -> None:
         if not self.is_supervised(decision_type):
             return
+
+        key = (decision_type, correlation_id, original_decision_id)
+        if key in self._dedupe_keys:
+            return
+        self._dedupe_keys.add(key)
 
         if self._coordinator is None or self._event_bus is None:
             if not self._fail_closed:

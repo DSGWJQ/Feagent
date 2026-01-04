@@ -770,6 +770,19 @@ async def chat_stream_with_workflow(
             # 发送开始思考
             await emitter.emit_thinking(f"正在分析请求: {request.message[:50]}...")
 
+            from src.application.services.coordinator_policy_chain import (
+                CoordinatorPolicyChain,
+                CoordinatorRejectedError,
+            )
+
+            coordinator = getattr(http_request.app.state, "coordinator", None)
+            event_bus = getattr(http_request.app.state, "event_bus", None)
+            policy = CoordinatorPolicyChain(
+                coordinator=coordinator,
+                event_bus=event_bus,
+                source="workflow_chat_stream_react",
+            )
+
             # Stream events from the use case
             async for event in use_case.execute_streaming(input_data):
                 # 检查客户端是否断开
@@ -798,14 +811,6 @@ async def chat_stream_with_workflow(
                     if step.action:
                         action_type = step.action.get("type", "unknown")
 
-                        from src.application.services.coordinator_policy_chain import (
-                            CoordinatorPolicyChain,
-                            CoordinatorRejectedError,
-                        )
-
-                        coordinator = getattr(http_request.app.state, "coordinator", None)
-                        event_bus = getattr(http_request.app.state, "event_bus", None)
-
                         decision = {
                             "type": action_type,
                             "session_id": session_id,
@@ -813,11 +818,6 @@ async def chat_stream_with_workflow(
                             "tool_id": step.tool_id,
                             **step.action,
                         }
-                        policy = CoordinatorPolicyChain(
-                            coordinator=coordinator,
-                            event_bus=event_bus,
-                            source="workflow_chat_stream_react",
-                        )
                         try:
                             await policy.enforce_action_or_raise(
                                 decision_type=action_type,

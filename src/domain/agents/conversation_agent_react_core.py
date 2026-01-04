@@ -443,6 +443,59 @@ class ConversationAgentReActCoreMixin:
                 if not tool_call_id:
                     tool_call_id = f"tool_{iteration_count + 1}"
 
+                if self.coordinator is not None:
+                    from src.application.services.coordinator_policy_chain import (
+                        CoordinatorPolicyChain,
+                        CoordinatorRejectedError,
+                    )
+
+                    policy = getattr(self, "_tool_call_policy", None)
+                    if policy is None:
+                        policy = CoordinatorPolicyChain(
+                            coordinator=self.coordinator,
+                            event_bus=self.event_bus,
+                            source="conversation_agent_tool_call",
+                            fail_closed=True,
+                            supervised_decision_types={"tool_call"},
+                        )
+                        self._tool_call_policy = policy
+
+                    args_keys = sorted(str(key) for key in arguments.keys())[:20]
+                    args_types = {
+                        str(key): type(value).__name__
+                        for key, value in list(arguments.items())[:20]
+                    }
+
+                    session_id = str(getattr(self.session_context, "session_id", "") or "").strip()
+                    correlation_id = session_id or tool_call_id
+                    try:
+                        await policy.enforce_action_or_raise(
+                            decision_type="tool_call",
+                            decision={
+                                "decision_type": "tool_call",
+                                "action": "tool_call",
+                                "tool_name": tool_name,
+                                "tool_call_id": tool_call_id,
+                                "args_keys": args_keys,
+                                "args_types": args_types,
+                                "args_count": len(arguments),
+                            },
+                            correlation_id=correlation_id,
+                            original_decision_id=tool_call_id,
+                        )
+                    except CoordinatorRejectedError as exc:
+                        if self.emitter:
+                            await self.emitter.emit_error(
+                                str(exc),
+                                error_code="COORDINATOR_REJECTED",
+                                recoverable=False,
+                                decision_type="tool_call",
+                                tool_id=tool_call_id,
+                                correlation_id=correlation_id,
+                            )
+                            await self.emitter.complete()
+                        raise
+
                 if self.emitter:
                     await self.emitter.emit_tool_call(
                         tool_name=tool_name,

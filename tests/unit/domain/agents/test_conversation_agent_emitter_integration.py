@@ -312,6 +312,62 @@ class TestToolCallEmission:
         assert result_steps[0].metadata["success"] is False
         assert "unknown tool" in (result_steps[0].metadata.get("error") or "")
 
+    @pytest.mark.asyncio
+    async def test_tool_call_rejected_by_coordinator_emits_error_and_raises(
+        self, session_context, emitter
+    ):
+        from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
+        from src.domain.agents.conversation_agent import ConversationAgent
+        from src.domain.services.conversation_flow_emitter import StepKind
+        from src.domain.services.decision_events import DecisionRejectedEvent
+        from src.domain.services.event_bus import EventBus
+
+        class _FakeValidationResult:
+            is_valid = False
+            errors = ["blocked by coordinator"]
+
+        class _FakeCoordinator:
+            def validate_decision(self, _decision):
+                return _FakeValidationResult()
+
+        mock_llm = MagicMock()
+        mock_llm.think = AsyncMock(return_value="Need to call tool...")
+        mock_llm.decide_action = AsyncMock(
+            side_effect=[
+                {
+                    "action_type": "tool_call",
+                    "tool_name": "search",
+                    "tool_id": "tc_rejected",
+                    "arguments": {"query": "Python"},
+                }
+            ]
+        )
+        mock_llm.should_continue = AsyncMock(return_value=False)
+
+        event_bus = EventBus()
+        agent = ConversationAgent(
+            session_context=session_context,
+            llm=mock_llm,
+            emitter=emitter,
+            event_bus=event_bus,
+            coordinator=_FakeCoordinator(),
+            max_iterations=3,
+        )
+
+        with pytest.raises(CoordinatorRejectedError):
+            await agent.run_async("Search Python")
+
+        steps = []
+        while not emitter._queue.empty():
+            steps.append(await emitter._queue.get())
+
+        assert any(
+            s.kind == StepKind.ERROR and s.metadata.get("error_code") == "COORDINATOR_REJECTED"
+            for s in steps
+        )
+        assert not any(s.kind == StepKind.TOOL_CALL for s in steps)
+        assert any(isinstance(e, DecisionRejectedEvent) for e in event_bus.event_log)
+
 
 # ==================== 错误处理测试 ====================
 
