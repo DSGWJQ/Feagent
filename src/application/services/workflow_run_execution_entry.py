@@ -15,6 +15,10 @@ import asyncio
 from collections.abc import AsyncGenerator, Callable, Mapping
 from typing import Any
 
+from src.application.services.workflow_event_contract import (
+    ExecutionEventContractError,
+    validate_workflow_execution_sse_event,
+)
 from src.application.use_cases.append_run_event import AppendRunEventInput, AppendRunEventUseCase
 from src.domain.exceptions import DomainValidationError, NotFoundError, RunGateError
 from src.domain.ports.run_repository import RunRepository
@@ -201,6 +205,39 @@ class WorkflowRunExecutionEntry:
                 original_decision_id=original_decision_id,
             ):
                 event = self._normalize_sse_event(raw_event=raw_event, run_id=run_id)
+
+                try:
+                    validate_workflow_execution_sse_event(event)
+                except ExecutionEventContractError:
+                    invalid_type = event.get("type")
+                    violation_event = self._normalize_sse_event(
+                        raw_event={
+                            "type": "workflow_error",
+                            "error": "invalid_execution_event_type",
+                            "invalid_type": invalid_type,
+                        },
+                        run_id=run_id,
+                    )
+                    self._record_execution_event_best_effort(
+                        run_id=run_id,
+                        sse_event={**violation_event, "channel": "execution"},
+                        execution_event_sink=execution_event_sink,
+                        record_execution_events=record_execution_events,
+                    )
+                    if not terminal_persisted:
+                        self._append_lifecycle_event(
+                            run_id=run_id,
+                            event_type="workflow_error",
+                            workflow_id=workflow_id,
+                            payload={
+                                "error": "invalid_execution_event_type",
+                                "invalid_type": str(invalid_type),
+                            },
+                        )
+                        terminal_persisted = True
+                    yield violation_event
+                    return
+
                 self._record_execution_event_best_effort(
                     run_id=run_id,
                     sse_event={**event, "channel": "execution"},
