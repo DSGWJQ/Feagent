@@ -243,6 +243,7 @@ def get_workflow_chat_service(
             workflow_id=workflow_id,
             llm=llm,
             chat_message_repository=chat_message_repository,
+            tool_repository=container.tool_repository(db),
             history=MemoryServiceAdapter(workflow_id=workflow_id, service=memory_service),
         )
     else:
@@ -271,16 +272,18 @@ def get_update_workflow_by_chat_use_case(
     from src.application.services.memory_service_adapter import MemoryServiceAdapter
 
     # 为每个请求创建新的对话服务实例（使用高性能内存系统）
+    tool_repository = container.tool_repository(db)
     chat_service = EnhancedWorkflowChatService(
         workflow_id=workflow_id,
         llm=llm,
         chat_message_repository=chat_message_repository,
+        tool_repository=tool_repository,
         rag_service=rag_service,
         history=MemoryServiceAdapter(workflow_id=workflow_id, service=memory_service),
     )
     save_validator = WorkflowSaveValidator(
         executor_registry=container.executor_registry,
-        tool_repository=container.tool_repository(db),
+        tool_repository=tool_repository,
     )
 
     return UpdateWorkflowByChatUseCase(
@@ -308,14 +311,16 @@ def get_update_workflow_by_chat_use_case_factory(
         workflow_repository = container.workflow_repository(db)
         chat_message_repository = container.chat_message_repository(db)
         memory_service = get_composite_memory_service(session=db, container=container)
+        tool_repository = container.tool_repository(db)
         save_validator = WorkflowSaveValidator(
             executor_registry=container.executor_registry,
-            tool_repository=container.tool_repository(db),
+            tool_repository=tool_repository,
         )
         chat_service = EnhancedWorkflowChatService(
             workflow_id=workflow_id,
             llm=llm,
             chat_message_repository=chat_message_repository,
+            tool_repository=tool_repository,
             rag_service=rag_service,
             history=MemoryServiceAdapter(workflow_id=workflow_id, service=memory_service),
         )

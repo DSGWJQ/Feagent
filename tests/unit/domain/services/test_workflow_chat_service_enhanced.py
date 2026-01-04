@@ -18,12 +18,15 @@ import pytest
 from src.domain.entities.chat_message import ChatMessage
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
+from src.domain.entities.tool import Tool
 from src.domain.entities.workflow import Workflow
 from src.domain.services.workflow_chat_service_enhanced import (
     EnhancedWorkflowChatService,
 )
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
+from src.domain.value_objects.tool_category import ToolCategory
+from src.domain.value_objects.tool_status import ToolStatus
 from src.domain.value_objects.workflow_modification_result import ModificationResult
 
 
@@ -192,6 +195,43 @@ def test_modification_result_contains_detailed_info(mock_llm, mock_repository, s
     assert result.success is True
     assert result.ai_message is not None
     assert result.modifications_count > 0
+
+
+def test_build_system_prompt_includes_tool_id_constraints_and_candidates(
+    mock_llm, mock_repository, sample_workflow
+):
+    tool_repo = Mock()
+    tool_repo.find_published.return_value = [
+        Tool(
+            id="tool_alpha",
+            name="Weather API",
+            description="Fetch weather data",
+            category=ToolCategory.HTTP,
+            status=ToolStatus.PUBLISHED,
+            version="1.0.0",
+        ),
+        Tool(
+            id="tool_beta",
+            name="Echo",
+            description="Echo back input",
+            category=ToolCategory.CUSTOM,
+            status=ToolStatus.PUBLISHED,
+            version="1.0.0",
+        ),
+    ]
+
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test",
+        llm=mock_llm,
+        chat_message_repository=mock_repository,
+        tool_repository=tool_repo,
+    )
+
+    prompt = service._build_system_prompt(sample_workflow, rag_context="")
+    assert "- tool: 工具节点（必须在 config.tool_id 指定 Tool ID）" in prompt
+    assert "config.tool_id" in prompt
+    assert 'tool_id="tool_alpha"' in prompt
+    assert 'tool_id="tool_beta"' in prompt
 
 
 def test_chat_service_identifies_intent_correctly(mock_llm, mock_repository, sample_workflow):

@@ -20,6 +20,7 @@ from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError
 from src.domain.ports.chat_message_repository import ChatMessageRepository
+from src.domain.ports.tool_repository import ToolRepository
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
@@ -227,6 +228,7 @@ class EnhancedWorkflowChatService:
         workflow_id: str,
         llm: WorkflowChatLLM,
         chat_message_repository: ChatMessageRepository,
+        tool_repository: ToolRepository | None = None,
         rag_service=None,
         memory_service=None,
         history=None,
@@ -242,6 +244,7 @@ class EnhancedWorkflowChatService:
         """
         self.workflow_id = workflow_id
         self.llm = llm
+        self.tool_repository = tool_repository
 
         # 注意：Domain 层不应依赖 Application/Infrastructure 具体实现。
         # 若需要高性能内存系统，请在外部注入一个兼容 ChatHistory 的 adapter（Ports/Adapters）。
@@ -253,6 +256,35 @@ class EnhancedWorkflowChatService:
             self.history = ChatHistory(workflow_id=workflow_id, repository=chat_message_repository)
 
         self.rag_service = rag_service
+
+    def _build_tool_candidates_prompt(self) -> str:
+        repository = self.tool_repository
+        if repository is None:
+            return "（不可用：tool repository unavailable）"
+
+        tools = repository.find_published()
+        if not tools:
+            return "（空：no published tools available）"
+
+        def _sanitize(value: str, *, limit: int) -> str:
+            normalized = (value or "").replace("\r", " ").replace("\n", " ").strip()
+            if len(normalized) <= limit:
+                return normalized
+            return f"{normalized[: max(0, limit - 1)]}…"
+
+        ordered = sorted(tools, key=lambda tool: (tool.name.casefold(), tool.id))
+        max_items = 50
+        lines = []
+        for tool in ordered[:max_items]:
+            lines.append(
+                f'- tool_id="{tool.id}" name="{_sanitize(tool.name, limit=60)}" '
+                f'category="{tool.category.value}" description="{_sanitize(tool.description, limit=120)}"'
+            )
+
+        if len(ordered) > max_items:
+            lines.append(f"- ... ({len(ordered) - max_items} more tools omitted)")
+
+        return "\n".join(lines)
 
     def add_message(self, content: str, is_user: bool) -> None:
         """添加消息到历史
@@ -452,6 +484,7 @@ class EnhancedWorkflowChatService:
             ],
         }
 
+        tool_candidates = self._build_tool_candidates_prompt()
         base_prompt = f"""你是一个工作流编辑助手。用户会告诉你如何修改工作流，你需要：
 
 1. 理解用户意图
@@ -477,6 +510,15 @@ class EnhancedWorkflowChatService:
 - prompt: 提示词节点
 - file: 文件操作节点
 - notification: 消息通知节点
+- tool: 工具节点（必须在 config.tool_id 指定 Tool ID）
+
+工具节点约束：
+- 工具节点（type=\"tool\"）必须包含 config.tool_id，且 tool_id 必须来自“允许工具列表”
+- 严禁把工具 name 当作 tool_id；严禁根据 name 猜测/映射 tool_id
+- 如果用户只描述了工具名称/功能但无法确定 tool_id，请返回 intent 为 \"ask_clarification\" 并在 ai_message 中要求用户提供 tool_id
+
+允许工具列表（仅 id/name/category/description，不包含任何实现配置）：
+{tool_candidates}
 
 返回格式（JSON）：
 {{

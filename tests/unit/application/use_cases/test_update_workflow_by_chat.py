@@ -23,7 +23,7 @@ from src.application.use_cases.update_workflow_by_chat import (
 )
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
-from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.exceptions import DomainError, DomainValidationError, NotFoundError
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
 from src.domain.value_objects.workflow_modification_result import ModificationResult
@@ -363,6 +363,27 @@ def test_execute_enhanced_service_modified_workflow_none_raises_domain_error(
     )
 
     with pytest.raises(DomainError, match="修改工作流失败：返回的工作流为空"):
+        use_case_enhanced.execute(input_data)
+
+    mock_repo.save.assert_not_called()
+
+
+def test_execute_validation_error_propagates_and_does_not_save(
+    use_case_enhanced, mock_repo, enhanced_chat_service, mock_save_validator, workflow
+):
+    mock_repo.get_by_id.return_value = workflow
+    mock_save_validator.validate_or_raise.side_effect = DomainValidationError(
+        "Workflow validation failed",
+        code="workflow_invalid",
+        errors=[{"code": "missing_tool_id"}],
+    )
+
+    input_data = UpdateWorkflowByChatInput(
+        workflow_id=workflow.id,
+        user_message="Add tool node without tool_id",
+    )
+
+    with pytest.raises(DomainValidationError, match="Workflow validation failed"):
         use_case_enhanced.execute(input_data)
 
     mock_repo.save.assert_not_called()
