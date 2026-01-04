@@ -83,6 +83,10 @@
 3) 内部创建入口默认不可达（WFCL-060）
    - `python -m pytest -q tests/integration/api/workflows/test_internal_create_endpoints_access.py`
 
+4) 灰度/回滚开关（WFCL-100）
+   - `ENABLE_DECISION_EXECUTION_BRIDGE=false`（默认关闭；需要灰度时开启）
+   - 回滚优先级：先关 `ENABLE_DECISION_EXECUTION_BRIDGE`，必要时再关 `ENABLE_LANGGRAPH_WORKFLOW_EXECUTOR` 或启用 `DISABLE_RUN_PERSISTENCE`
+
 ### 5.2 将在后续 issue 固化为绿色（当前可能未完全满足）
 
 - Coordinator 缺失时 chat-create 必须 fail-closed 且无副作用（WFCL-050）

@@ -135,6 +135,13 @@ class Settings(BaseSettings):
         default=False,
         description="回滚开关：忽略 run_id 且禁用 Runs API（切回 legacy execute/stream）。",
     )
+    enable_decision_execution_bridge: bool = Field(
+        default=False,
+        description=(
+            "Feature flag：是否启用 DecisionExecutionBridge（validated decision → executor）。"
+            "默认关闭（灰度/回滚；关闭时不会通过 EventBus 自动执行 decision）。"
+        ),
+    )
     enable_internal_workflow_create_endpoints: bool = Field(
         default=False,
         description=(
