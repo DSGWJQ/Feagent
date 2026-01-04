@@ -583,6 +583,85 @@ class TestWorkflowChatAPI:
         finally:
             app.dependency_overrides.pop(get_workflow_chat_llm, None)
 
+    def test_chat_with_workflow_emits_coordinator_audit_event(
+        self, test_db: Session, client: TestClient
+    ):
+        from src.domain.services.decision_events import DecisionValidatedEvent
+
+        captured: list[DecisionValidatedEvent] = []
+
+        async def _capture(event: DecisionValidatedEvent) -> None:
+            captured.append(event)
+
+        event_bus = client.app.state.event_bus
+        event_bus.subscribe(DecisionValidatedEvent, _capture)
+
+        node1 = Node.create(
+            type=NodeType.START,
+            name="开始",
+            config={},
+            position=Position(x=0, y=0),
+        )
+        node2 = Node.create(
+            type=NodeType.END,
+            name="结束",
+            config={},
+            position=Position(x=200, y=0),
+        )
+        edge1 = Edge.create(source_node_id=node1.id, target_node_id=node2.id)
+        workflow = Workflow.create(
+            name="测试工作流",
+            description="简单的开始到结束工作流",
+            nodes=[node1, node2],
+            edges=[edge1],
+        )
+
+        repository = SQLAlchemyWorkflowRepository(test_db)
+        repository.save(workflow)
+        test_db.commit()
+
+        response_payload = {
+            "action": "add_node",
+            "nodes_to_add": [
+                {
+                    "type": "http",
+                    "name": "获取天气数据",
+                    "config": {"url": "https://api.weather.com", "method": "GET"},
+                    "position": {"x": 100, "y": 0},
+                }
+            ],
+            "edges_to_add": [],
+            "edges_to_delete": [edge1.id],
+            "ai_message": "ok",
+        }
+
+        class FakeWorkflowChatLLM:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict:
+                return self.payload
+
+        app.dependency_overrides[get_workflow_chat_llm] = lambda: FakeWorkflowChatLLM(
+            response_payload
+        )
+
+        try:
+            response = client.post(
+                f"/api/workflows/{workflow.id}/chat",
+                json={"message": "添加一个HTTP请求节点"},
+            )
+            assert response.status_code == 200
+
+            assert any(
+                event.decision_type == "api_request"
+                and event.payload.get("action") == "workflow_edit"
+                and event.payload.get("workflow_id") == workflow.id
+                for event in captured
+            )
+        finally:
+            app.dependency_overrides.pop(get_workflow_chat_llm, None)
+
     def test_chat_with_nonexistent_workflow_should_fail(self, client: TestClient):
         """测试：对不存在的工作流发送消息应该失败
 

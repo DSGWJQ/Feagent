@@ -13,10 +13,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import DomainError, NotFoundError
@@ -81,6 +83,10 @@ class UpdateWorkflowByChatUseCase:
         workflow_repository: WorkflowRepository,
         chat_service: WorkflowChatServicePort,
         save_validator: WorkflowSaveValidator,
+        *,
+        coordinator: Any | None = None,
+        event_bus: Any | None = None,
+        fail_closed: bool = True,
     ):
         """初始化用例
 
@@ -91,6 +97,61 @@ class UpdateWorkflowByChatUseCase:
         self.workflow_repository = workflow_repository
         self.chat_service = chat_service
         self.save_validator = save_validator
+        self._coordinator = coordinator
+        self._event_bus = event_bus
+        self._fail_closed = fail_closed
+        self._authorized = False
+
+    def _authorization_ids(self, workflow_id: str) -> tuple[str, str]:
+        correlation_id = f"workflow_edit:{workflow_id}"
+        original_decision_id = f"{correlation_id}:{uuid4().hex[:12]}"
+        return correlation_id, original_decision_id
+
+    async def authorize_edit(self, input_data: UpdateWorkflowByChatInput) -> None:
+        """Fail-closed coordinator guard for workflow modifications (WFCORE-060).
+
+        Security:
+        - Avoid sending user_message plaintext to coordinator; only share message length.
+        """
+
+        if self._authorized:
+            return
+
+        from src.application.services.coordinator_policy_chain import CoordinatorPolicyChain
+
+        policy = CoordinatorPolicyChain(
+            coordinator=self._coordinator,
+            event_bus=self._event_bus,
+            source="workflow_chat",
+            fail_closed=self._fail_closed,
+            supervised_decision_types={"api_request"},
+        )
+        correlation_id, original_decision_id = self._authorization_ids(input_data.workflow_id)
+        await policy.enforce_action_or_raise(
+            decision_type="api_request",
+            decision={
+                "decision_type": "api_request",
+                "action": "workflow_edit",
+                "workflow_id": input_data.workflow_id,
+                "message_len": len(input_data.user_message or ""),
+                "correlation_id": correlation_id,
+            },
+            correlation_id=correlation_id,
+            original_decision_id=original_decision_id,
+        )
+        self._authorized = True
+
+    def _authorize_edit_sync(self, input_data: UpdateWorkflowByChatInput) -> None:
+        """Sync wrapper for coordinator guard (best effort, fail-closed)."""
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(self.authorize_edit(input_data))
+            return
+        raise DomainError(
+            "authorize_edit requires async context; use execute_streaming in async flows"
+        )
 
     def execute(self, input_data: UpdateWorkflowByChatInput) -> UpdateWorkflowByChatOutput:
         """执行用例
@@ -108,6 +169,9 @@ class UpdateWorkflowByChatUseCase:
         # 1. 验证输入
         if not input_data.user_message or not input_data.user_message.strip():
             raise DomainError("消息不能为空")
+
+        # 1.5 Coordinator gate (fail-closed, no side effects).
+        self._authorize_edit_sync(input_data)
 
         # 2. 获取工作流
         workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
@@ -167,6 +231,9 @@ class UpdateWorkflowByChatUseCase:
         # 1. 验证输入
         if not input_data.user_message or not input_data.user_message.strip():
             raise DomainError("消息不能为空")
+
+        # 1.5 Coordinator gate (fail-closed, no side effects).
+        await self.authorize_edit(input_data)
 
         # 2. 获取工作流
         workflow = self.workflow_repository.get_by_id(input_data.workflow_id)

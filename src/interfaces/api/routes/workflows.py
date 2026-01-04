@@ -256,11 +256,13 @@ def get_workflow_chat_service(
 
 def get_update_workflow_by_chat_use_case(
     workflow_id: str,  # 从路径参数注入
+    http_request: Request,
     container: ApiContainer = Depends(get_container),
     workflow_repository: WorkflowRepository = Depends(get_workflow_repository),
     chat_message_repository: ChatMessageRepository = Depends(get_chat_message_repository),
     llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
     rag_service=Depends(get_rag_service),
+    event_bus: EventBus = Depends(get_event_bus),
     db: Session = Depends(get_db_session),
 ) -> UpdateWorkflowByChatUseCase:
     """Assemble the chat update use case with its dependencies (using CompositeMemoryService)."""
@@ -287,18 +289,24 @@ def get_update_workflow_by_chat_use_case(
         executor_registry=container.executor_registry,
         tool_repository=tool_repository,
     )
+    coordinator = getattr(http_request.app.state, "coordinator", None)
 
     return UpdateWorkflowByChatUseCase(
         workflow_repository=workflow_repository,
         chat_service=chat_service,
         save_validator=save_validator,
+        coordinator=coordinator,
+        event_bus=event_bus,
+        fail_closed=True,
     )
 
 
 def get_update_workflow_by_chat_use_case_factory(
+    http_request: Request,
     container: ApiContainer = Depends(get_container),
     llm: WorkflowChatLLM = Depends(get_workflow_chat_llm),
     rag_service=Depends(get_rag_service),
+    event_bus: EventBus = Depends(get_event_bus),
     db: Session = Depends(get_db_session),
 ) -> Callable[[str], UpdateWorkflowByChatUseCase]:
     """Return a factory that can build UpdateWorkflowByChatUseCase for a given workflow_id.
@@ -308,6 +316,8 @@ def get_update_workflow_by_chat_use_case_factory(
 
     from src.application.services.memory_service_adapter import MemoryServiceAdapter
     from src.interfaces.api.dependencies.memory import get_composite_memory_service
+
+    coordinator = getattr(http_request.app.state, "coordinator", None)
 
     def factory(workflow_id: str) -> UpdateWorkflowByChatUseCase:
         workflow_repository = container.workflow_repository(db)
@@ -330,6 +340,9 @@ def get_update_workflow_by_chat_use_case_factory(
             workflow_repository=workflow_repository,
             chat_service=chat_service,
             save_validator=save_validator,
+            coordinator=coordinator,
+            event_bus=event_bus,
+            fail_closed=True,
         )
 
     return factory
@@ -714,6 +727,8 @@ def chat_with_workflow(
 ) -> ChatResponse:
     """Modify a workflow through conversational input."""
 
+    from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
+
     try:
         input_data = UpdateWorkflowByChatInput(
             workflow_id=workflow_id,
@@ -730,6 +745,16 @@ def chat_with_workflow(
             rag_sources=output.rag_sources,
             react_steps=output.react_steps,
         )
+    except CoordinatorRejectedError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "coordinator_rejected",
+                "reason": str(exc),
+                "errors": list(exc.errors),
+            },
+        ) from exc
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -770,10 +795,35 @@ async def chat_stream_with_workflow(
 
     Returns: Server-Sent Events stream of ReAct reasoning steps
     """
+    from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
     from src.domain.services.conversation_flow_emitter import (
         ConversationFlowEmitter,
     )
     from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler
+
+    input_data = UpdateWorkflowByChatInput(
+        workflow_id=workflow_id,
+        user_message=request.message,
+    )
+    authorize = getattr(use_case, "authorize_edit", None)
+    if callable(authorize):
+        from collections.abc import Awaitable, Callable
+        from typing import cast
+
+        try:
+            await cast(Callable[[UpdateWorkflowByChatInput], Awaitable[None]], authorize)(
+                input_data
+            )
+        except CoordinatorRejectedError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "coordinator_rejected",
+                    "reason": str(exc),
+                    "errors": list(exc.errors),
+                },
+            ) from exc
 
     # 创建 emitter
     session_id = f"wf_{workflow_id}_{id(http_request)}"
@@ -782,11 +832,6 @@ async def chat_stream_with_workflow(
     async def run_workflow_chat():
         """运行工作流聊天逻辑，通过 emitter 发送事件"""
         try:
-            input_data = UpdateWorkflowByChatInput(
-                workflow_id=workflow_id,
-                user_message=request.message,
-            )
-
             # 发送开始思考
             await emitter.emit_thinking(f"正在分析请求: {request.message[:50]}...")
 
@@ -868,6 +913,16 @@ async def chat_stream_with_workflow(
             await emitter.complete()
             db.commit()
 
+        except CoordinatorRejectedError as exc:
+            await emitter.emit_error(
+                str(exc),
+                error_code="COORDINATOR_REJECTED",
+                recoverable=False,
+                decision_type=exc.decision_type,
+                correlation_id=exc.correlation_id,
+            )
+            await emitter.complete()
+            db.rollback()
         except NotFoundError as exc:
             await emitter.emit_error(
                 f"{exc.entity_type} not found: {exc.entity_id}",
