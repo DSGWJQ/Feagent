@@ -5,6 +5,11 @@ Infrastructure 层：节点执行器实现
 导出所有执行器和工厂函数
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
 from src.domain.agents.workflow_agent import register_default_container_executor_factory
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.infrastructure.executors.base_executor import EndExecutor, StartExecutor
@@ -21,6 +26,7 @@ from src.infrastructure.executors.loop_executor import LoopExecutor
 from src.infrastructure.executors.notification_executor import NotificationExecutor
 from src.infrastructure.executors.prompt_executor import PromptExecutor
 from src.infrastructure.executors.python_executor import PythonExecutor
+from src.infrastructure.executors.tool_node_executor import ToolNodeExecutor
 from src.infrastructure.executors.transform_executor import TransformExecutor
 
 register_default_container_executor_factory(DefaultContainerExecutor)
@@ -46,6 +52,7 @@ __all__ = [
 def create_executor_registry(
     openai_api_key: str | None = None,
     anthropic_api_key: str | None = None,
+    session_factory: Callable[[], Any] | None = None,
 ) -> NodeExecutorRegistry:
     """创建执行器注册表
 
@@ -100,8 +107,10 @@ def create_executor_registry(
     # TODO: 注册其他执行器
     # - imageGeneration
     # - audio
-    # - tool
     # - embeddingModel
     # - structuredOutput
+
+    if session_factory is not None:
+        registry.register("tool", ToolNodeExecutor(session_factory=session_factory))
 
     return registry

@@ -296,6 +296,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     executor_registry = create_executor_registry(
         openai_api_key=settings.openai_api_key or None,
         anthropic_api_key=getattr(settings, "anthropic_api_key", None),
+        session_factory=_create_session,
     )
 
     catalog = CapabilityCatalogService(

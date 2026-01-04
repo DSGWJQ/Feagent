@@ -43,7 +43,7 @@ class WorkflowExecutorAdapter:
     ):
         self._session_factory = session_factory
         if executor_registry is None:
-            executor_registry = create_executor_registry()
+            executor_registry = create_executor_registry(session_factory=session_factory)
         self.executor_registry = executor_registry
 
     @contextmanager
