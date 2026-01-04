@@ -51,4 +51,10 @@ def create_conversation_agent(
         ),
         user_message_provider=lambda a=agent: getattr(a, "_current_input", None),
     )
+
+    # WFCORE-090: Listen for plan/execute feedback events to enable replanning loops.
+    try:
+        cast(Any, agent).start_feedback_listening()
+    except Exception:
+        pass
     return agent

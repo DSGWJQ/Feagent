@@ -2396,6 +2396,142 @@ class WorkflowAgent:
                     record_execution_events=True,
                 )
             except Exception as exc:
+                # WFCORE-090: Plan reachability validation feedback (fail-closed, no tool/input leakage).
+                from src.domain.exceptions import (
+                    DomainError,
+                    DomainValidationError,
+                    NotFoundError,
+                    RunGateError,
+                )
+
+                async def _publish_unreachable_feedback(
+                    *,
+                    code: str,
+                    message: str,
+                    details: dict[str, Any] | None = None,
+                ) -> None:
+                    if not self.event_bus:
+                        return
+                    try:
+                        from src.domain.services.workflow_failure_orchestrator import (
+                            WorkflowAdjustmentRequestedEvent,
+                        )
+
+                        await self.event_bus.publish(
+                            WorkflowAdjustmentRequestedEvent(
+                                source="workflow_agent_plan_validation",
+                                correlation_id=run_id,
+                                workflow_id=workflow_id,
+                                failed_node_id="plan_validation",
+                                failure_reason=f"{code}: {message}",
+                                suggested_action="replan_workflow",
+                                execution_context={
+                                    "run_id": run_id,
+                                    "error": {
+                                        "code": code,
+                                        "message": message,
+                                        "details": details or {},
+                                    },
+                                },
+                            )
+                        )
+                    except Exception:
+                        return
+
+                if isinstance(exc, DomainValidationError):
+                    logger.warning(
+                        "workflow_agent_execute_workflow_validation_failed",
+                        extra={"workflow_id": workflow_id, "run_id": run_id, "code": exc.code},
+                    )
+                    await _publish_unreachable_feedback(
+                        code=exc.code,
+                        message=exc.message,
+                        details={"errors": exc.errors},
+                    )
+                    return {
+                        "success": False,
+                        "status": "rejected",
+                        "workflow_id": workflow_id,
+                        "run_id": run_id,
+                        "requires_replan": True,
+                        "suggested_action": "replan_workflow",
+                        "error": exc.to_dict(),
+                    }
+
+                if isinstance(exc, RunGateError):
+                    logger.warning(
+                        "workflow_agent_execute_workflow_run_gate_rejected",
+                        extra={"workflow_id": workflow_id, "run_id": run_id, "code": exc.code},
+                    )
+                    await _publish_unreachable_feedback(
+                        code=exc.code,
+                        message=str(exc),
+                        details=exc.details,
+                    )
+                    return {
+                        "success": False,
+                        "status": "rejected",
+                        "workflow_id": workflow_id,
+                        "run_id": run_id,
+                        "requires_replan": True,
+                        "suggested_action": "replan_workflow",
+                        "error": {
+                            "code": exc.code,
+                            "message": str(exc),
+                            "details": exc.details,
+                        },
+                    }
+
+                if isinstance(exc, NotFoundError):
+                    code = f"{exc.entity_type.lower()}_not_found"
+                    logger.warning(
+                        "workflow_agent_execute_workflow_not_found",
+                        extra={
+                            "workflow_id": workflow_id,
+                            "run_id": run_id,
+                            "entity_type": exc.entity_type,
+                            "entity_id": exc.entity_id,
+                        },
+                    )
+                    await _publish_unreachable_feedback(
+                        code=code,
+                        message=str(exc),
+                        details={"entity_type": exc.entity_type, "entity_id": exc.entity_id},
+                    )
+                    return {
+                        "success": False,
+                        "status": "rejected",
+                        "workflow_id": workflow_id,
+                        "run_id": run_id,
+                        "requires_replan": True,
+                        "suggested_action": "replan_workflow",
+                        "error": {
+                            "code": code,
+                            "message": str(exc),
+                            "details": {"entity_type": exc.entity_type, "entity_id": exc.entity_id},
+                        },
+                    }
+
+                if isinstance(exc, DomainError):
+                    logger.warning(
+                        "workflow_agent_execute_workflow_domain_error",
+                        extra={"workflow_id": workflow_id, "run_id": run_id},
+                    )
+                    await _publish_unreachable_feedback(
+                        code="domain_error",
+                        message=str(exc),
+                    )
+                    return {
+                        "success": False,
+                        "status": "failed",
+                        "workflow_id": workflow_id,
+                        "run_id": run_id,
+                        "error": {
+                            "code": "domain_error",
+                            "message": str(exc),
+                        },
+                    }
+
                 logger.warning(
                     "workflow_agent_execute_workflow_failed",
                     extra={"workflow_id": workflow_id, "run_id": run_id},
