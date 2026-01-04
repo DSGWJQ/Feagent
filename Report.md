@@ -14,7 +14,7 @@
 6) **严格审查 ConversationAgent 的 ReAct 范式**：Thought→Action→Observation 必须闭环且 Observation 来自真实执行。
 7) **“执行成功”与用户点击 Run 一致**：前后端对 Run 的事实源一致，可追踪可回放。
 8) **必须使用 LangGraph**：尤其是 Workflow 执行链路（不是只在 Agent Run 用例里使用）。
-9) **WorkflowAgent ↔ ConversationAgent 协作**：WorkflowAgent 必须验证对话 Agent 的计划可达成（plan validation），并在执行中回馈纠偏。
+9) **WorkflowAgent ↔ ConversationAgent 协作**：WFPLAN-050 选择 OptionB（不作为 workflow 主链路验收项）；保留为 Agent 子系统能力审计与实验入口。
 10) **DDD 分层不越界**：Interface/Application/Domain/Infrastructure 依赖方向正确，入口唯一性可被强制。
 
 ---
@@ -38,29 +38,55 @@
 
 | 前提条款 | 期望实现 | 当前验收 | 关键证据（可点击定位） |
 |---|---|---|---|
-| 创建只有对话创建 | 仅保留 chat-create | ✅ 满足：仅保留 `POST /api/workflows/chat-create/stream`（未发现 legacy `POST /api/workflows`）。 | `src/interfaces/api/routes/workflows.py:618`、`web/src/features/workflows/api/workflowsApi.ts:164` |
+| 创建只有对话创建 | 仅保留 chat-create | ✅ 满足：仅保留 `POST /api/workflows/chat-create/stream`；并在落库前执行 coordinator preflight gate（拒绝=0 副作用边界）。 | `src/interfaces/api/routes/workflows.py:563`、`tests/integration/api/workflow_chat/test_chat_create_stream_api.py:1` |
 | 修改两条链路（拖拽+对话） | 拖拽 + 对话均可增删节点/边 | ✅ 满足：拖拽 `PATCH` 与对话 `chat/chat-stream` 均存在；落库前统一走 `WorkflowSaveValidator`（fail-closed）。 | `src/interfaces/api/routes/workflows.py:301`、`src/interfaces/api/routes/chat_workflows.py:24`、`src/domain/services/workflow_save_validator.py:65`、`tests/integration/api/workflows/test_workflow_validation_contract.py:108` |
 | 执行只有一条且=WorkflowAgent | 所有执行入口复用 WorkflowAgent | ❌ 未满足：`/execute/stream` 走 `workflow_execution_kernel`，但尚无证据证明与 `WorkflowAgent` 执行语义/事件/成功判定同源。 | `src/interfaces/api/routes/workflows.py:359`、`src/interfaces/api/main.py:102`、`src/domain/agents/workflow_agent.py:2348` |
 | Tool 与 Node 统一且可识别 | 单一能力注册中心；tool_id 可解析 | ⚠️ 部分满足：保存/执行已强制 `tool_id` + executor 存在性校验（fail-closed），但能力真源仍多套并存，未形成“唯一映射”。 | `src/domain/services/workflow_save_validator.py:152`、`src/domain/services/tool_engine.py:248`、`src/interfaces/api/routes/tools.py:1` |
-| Coordinator 是核心入口并监督 | 所有对话进入监督域 | ⚠️ 部分满足：EventBus middleware 已接线，且 `/execute/stream` 在写入 Run 前强制 `CoordinatorPolicyChain`（fail-closed）；但对话入口的 policy chain 仍为 Noop，无法证明“全链路不可绕过”。 | `src/interfaces/api/main.py:224`、`src/interfaces/api/routes/workflows.py:415`、`src/interfaces/api/main.py:116` |
+| Coordinator 是核心入口并监督 | 所有对话进入监督域 | ✅ 满足：chat-create/chat-stream/execute/stream 均有 `CoordinatorPolicyChain`；拒绝语义统一为 `403 detail.error=coordinator_rejected` 或 SSE `error_code=COORDINATOR_REJECTED`，且 chat-create 拒绝不落库。 | `src/interfaces/api/routes/workflows.py:427`、`src/interfaces/api/routes/workflows.py:563`、`src/application/use_cases/update_workflow_by_chat.py:110`、`src/interfaces/api/services/event_bus_sse_bridge.py:1` |
 | 严格 ReAct（对话） | Action 可执行；Observation 来自真实执行 | ✅ 满足：`tool_call` 会触发真实执行并 emit `tool_result`（success/failed 均闭环）；Observation 可审计。 | `src/domain/agents/conversation_agent_react_core.py:436`、`src/domain/services/conversation_flow_emitter.py:308`、`tests/unit/domain/agents/test_conversation_agent_react_core.py:216` |
 | Run 一致（点击 Run=事实源） | run_id 落库/回放一致 | ✅ 满足：已提供 Run 创建（幂等）+ `/execute/stream` 强制 `run_id` 并落库关键事件 + `/api/runs/{run_id}/events` 回放 API。 | `src/interfaces/api/routes/runs.py:93`、`src/interfaces/api/routes/runs.py:238`、`tests/integration/api/runs/test_run_events_replay_api.py:76` |
 | workflow 必须使用 LangGraph | workflow 执行由 LangGraph 驱动 | ⚠️ 未默认满足：LangGraph workflow executor 现为 feature-flag 路径（可开关），默认仍走 Domain workflow engine kernel。 | `src/infrastructure/lc_adapters/workflow/langgraph_workflow_executor_adapter.py:1`、`src/config.py:138` |
-| WorkflowAgent 验证计划可达成 | plan validation + 反馈闭环 | ❌ 未满足：仅存在编排器/子 Agent 机制雏形，但未见 API 主链路启动与闭环验收。 | `src/domain/services/agent_orchestrator.py:1`、`src/domain/agents/coordinator_agent.py:2619` |
+| WorkflowAgent 验证计划可达成 | plan validation + 反馈闭环 | ⚠️ 非主链路：WFPLAN-050 选择 OptionB（多智能体闭环不作为 workflow 主链路验收项）；保留为 Agent 子系统能力审计与实验入口。 | `docs/architecture/current_agents.md:1`、`src/domain/services/decision_execution_bridge.py:1` |
 | DDD 不越界 | 单向依赖可强制 | ⚠️ 存量未清：仍存在跨层 import（需用 CI/contract 强制收敛），当前仅能保证“不新增越界”而非“已合规”。 | `.import-linter.toml:1`、`src/domain/services/workflow_chat_service_enhanced.py:247` |
 
-> **P0 结论（基于当前代码/测试证据）**：已落地 “保存前 fail-closed 校验” 与 “Run 创建 + run_id 强制 + 关键事件落库 + 回放 API” 与 “严格 ReAct”，但 “执行链路与 WorkflowAgent 同源 / workflow 默认 LangGraph / DDD 边界合规” 仍未闭环。
+> **P0 结论（基于当前代码/测试证据）**：已落地 “保存前 fail-closed 校验 / 事件语义契约（execute/stream 仅允许 node_*/workflow_*）/ chat-stream 伪 ReAct 纠正（planning_step simulated）/ chat-create 前置 coordinator gate（拒绝=0 副作用）/ Run 创建 + run_id 强制 + 关键事件落库 + 回放 API”；同时 WFPLAN-050 选择 OptionB（多智能体闭环不作为 workflow 主链路）。但 “workflow 执行链路与 WorkflowAgent 同源 / workflow 默认 LangGraph / DDD 边界存量清零” 仍未闭环。
+
+### 3.0 修复状态索引（WFPLAN）
+
+- ✅ `WFPLAN-010`：冻结 execute/stream 事件契约（仅 `node_*`/`workflow_*`），违约 fail-closed 输出 `workflow_error`（`error=invalid_execution_event_type`）并终态落库；测试：`tests/integration/api/workflows/test_run_event_persistence.py:304`
+- ✅ `WFPLAN-020`：workflow chat 的 “react_steps” 统一走 `planning_step`（`metadata.simulated=true`），不再伪装 `tool_call/tool_result`；关键词：`planning_step`；测试：`tests/integration/api/workflow_chat/test_chat_stream_react_api.py:1`
+- ✅ `WFPLAN-030`：chat-create 在落库前执行 coordinator preflight gate（拒绝=0 副作用，不落库，不透传 message 明文）；关键词：`coordinator_allow`/`coordinator_deny`、`COORDINATOR_REJECTED`；测试：`tests/integration/api/workflow_chat/test_chat_create_stream_api.py:1`
+- ✅ `WFPLAN-040`：legacy bypass（`disable_run_persistence=true`）必须审计日志（`run_persistence_rollback_active`）；测试：`tests/unit/interfaces/api/test_workflow_executor_adapter.py:1`
+- ✅ `WFPLAN-050`：明确多智能体闭环不作为 workflow 主链路（OptionB）；主链路以 `/api/workflows/*` + `/api/runs/*` 为准（文档已更新：`README.md:1`、`docs/architecture/current_agents.md:1`）
+- ✅ `WFPLAN-060`：补齐 guardrails 测试与本地检查脚本（`scripts/workflow_core_checks.ps1`）；注意：`pytest tests/unit` 目前存在大量存量失败，详见 issue notes
 
 ### 3.1 不变式验收合同（入口/契约/实现/错误码/测试点）
 
 > 目的：把每条不变式收敛为“可验证合同”，避免报告只剩观点而无证据。
 
+#### 3.1.1 事件语义表（三类）
+
+1) **Workflow Chat SSE（/chat-create/stream 与 /chat-stream）**
+   - `thinking`：系统侧过程提示（可用于前端占位/跳转）
+   - `planning_step`：解释性回放（`metadata.simulated=true`），不得伪装为真实 `tool_call/tool_result`
+   - `final`：最终结果（含 workflow 结构）
+   - `error`：可诊断失败（不泄露敏感信息）
+
+2) **Workflow Execute SSE（/execute/stream）与 RunEvent 落库**
+   - `execute/stream` 的事件契约：仅允许 `node_*` / `workflow_*`（违约 fail-closed：输出 `workflow_error` 并终态落库）
+   - 回放事实源：`GET /api/runs/{run_id}/events`（以事件序列还原执行过程与终态）
+
+3) **Coordinator 拒绝语义（监督与 0 副作用边界）**
+   - HTTP：`403 detail.error=coordinator_rejected`
+   - SSE：`error_code=COORDINATOR_REJECTED`（由 `EventBus -> SSE bridge` 转发给活跃会话）
+   - chat-create：拒绝发生在 DB commit 前（0 副作用边界）；execute/stream：拒绝发生在 Run 写入前（不产生执行副作用）
+
 1) **创建 Workflow（chat-create，唯一入口）**
    - 入口：`POST /api/workflows/chat-create/stream`
-   - 契约：首个 SSE 事件必须包含 `metadata.workflow_id`；使用 fetch-friendly SSE（`data: <json>\\n\\n`）。
-   - 实现位置：`src/interfaces/api/routes/workflows.py:618`
+   - 契约：首个 SSE 事件必须包含 `metadata.workflow_id`；在写入 DB 前执行 coordinator preflight gate（拒绝=0 副作用边界，不落库）。
+   - 实现位置：`src/interfaces/api/routes/workflows.py:563`
    - 错误码/结构：HTTP `400`（`DomainValidationError.to_dict()`）；SSE error `DOMAIN_ERROR`/`SERVER_ERROR`。
-   - 测试点：前端调用入口存在性（`web/src/features/workflows/api/workflowsApi.ts:164`）。
+   - 测试点：`tests/integration/api/workflow_chat/test_chat_create_stream_api.py:1`（含 coordinator 拒绝=0 副作用 + 不泄露 message 明文）；`web/src/features/workflows/api/workflowsApi.ts:164`。
 
 2) **修改 Workflow（拖拽 + 对话，两条链路，落库前同校验）**
    - 入口：`PATCH /api/workflows/{workflow_id}`；`POST /api/workflows/{workflow_id}/chat`；`POST /api/workflows/{workflow_id}/chat-stream`

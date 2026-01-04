@@ -107,7 +107,7 @@ pnpm dev
   - Body：`{ message: string, project_id?: string, run_id?: string }`
   - 契约：SSE 前 1 个事件内包含 `metadata.workflow_id`（用于前端跳转到 `/workflows/{id}/edit`）
 - **增量修改（SSE）**：`POST /api/workflows/{workflow_id}/chat-stream`
-- **Legacy（Deprecated）**：`POST /api/workflows`（兼容期保留；响应会返回 deprecation 提示，优先迁移到 chat-create）
+- **内部创建（Deprecated）**：`POST /api/workflows/import`、`POST /api/workflows/generate-from-form`（仅内部/受控使用；对外推荐使用 chat-create）
 
 ## 主链路声明（Workflow vs Agent 实验入口）
 
