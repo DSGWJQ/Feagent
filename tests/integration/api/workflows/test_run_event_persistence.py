@@ -104,9 +104,34 @@ def test_t_run_1_execute_stream_persists_key_events(
         def get_by_id(self, workflow_id: str):
             return workflow
 
+    def workflow_run_execution_entry_factory(session: Session):
+        from src.application.services.workflow_run_execution_entry import WorkflowRunExecutionEntry
+        from src.application.use_cases.append_run_event import AppendRunEventUseCase
+        from src.application.use_cases.execute_workflow import WORKFLOW_EXECUTION_KERNEL_ID
+        from src.domain.services.workflow_save_validator import WorkflowSaveValidator
+        from src.infrastructure.database.repositories.run_event_repository import (
+            SQLAlchemyRunEventRepository,
+        )
+        from src.infrastructure.database.transaction_manager import SQLAlchemyTransactionManager
+
+        run_repo = SQLAlchemyRunRepository(session)
+        return WorkflowRunExecutionEntry(
+            workflow_repository=_FakeWorkflowRepository(),
+            run_repository=run_repo,
+            save_validator=WorkflowSaveValidator(executor_registry=NodeExecutorRegistry()),
+            run_event_use_case=AppendRunEventUseCase(
+                run_repository=run_repo,
+                run_event_repository=SQLAlchemyRunEventRepository(session),
+                transaction_manager=SQLAlchemyTransactionManager(session),
+            ),
+            kernel=orchestrator_factory(session),
+            executor_id=WORKFLOW_EXECUTION_KERNEL_ID,
+        )
+
     test_app.state.container = ApiContainer(
         executor_registry=NodeExecutorRegistry(),
         workflow_execution_kernel=orchestrator_factory,
+        workflow_run_execution_entry=workflow_run_execution_entry_factory,
         conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
         user_repository=_noop_repo,
         agent_repository=_noop_repo,
@@ -115,7 +140,7 @@ def test_t_run_1_execute_stream_persists_key_events(
         chat_message_repository=_noop_repo,
         llm_provider_repository=_noop_repo,
         tool_repository=_noop_repo,
-        run_repository=_noop_repo,
+        run_repository=lambda s: SQLAlchemyRunRepository(s),
         scheduled_workflow_repository=_noop_repo,
     )
     test_app.dependency_overrides[get_db_session] = override_get_db_session
@@ -208,9 +233,34 @@ def test_t_run_1_terminal_event_is_not_duplicated_by_error_after_completion(
         def get_by_id(self, workflow_id: str):
             return workflow
 
+    def workflow_run_execution_entry_factory(session: Session):
+        from src.application.services.workflow_run_execution_entry import WorkflowRunExecutionEntry
+        from src.application.use_cases.append_run_event import AppendRunEventUseCase
+        from src.application.use_cases.execute_workflow import WORKFLOW_EXECUTION_KERNEL_ID
+        from src.domain.services.workflow_save_validator import WorkflowSaveValidator
+        from src.infrastructure.database.repositories.run_event_repository import (
+            SQLAlchemyRunEventRepository,
+        )
+        from src.infrastructure.database.transaction_manager import SQLAlchemyTransactionManager
+
+        run_repo = SQLAlchemyRunRepository(session)
+        return WorkflowRunExecutionEntry(
+            workflow_repository=_FakeWorkflowRepository(),
+            run_repository=run_repo,
+            save_validator=WorkflowSaveValidator(executor_registry=NodeExecutorRegistry()),
+            run_event_use_case=AppendRunEventUseCase(
+                run_repository=run_repo,
+                run_event_repository=SQLAlchemyRunEventRepository(session),
+                transaction_manager=SQLAlchemyTransactionManager(session),
+            ),
+            kernel=orchestrator_factory(session),
+            executor_id=WORKFLOW_EXECUTION_KERNEL_ID,
+        )
+
     test_app.state.container = ApiContainer(
         executor_registry=NodeExecutorRegistry(),
         workflow_execution_kernel=orchestrator_factory,
+        workflow_run_execution_entry=workflow_run_execution_entry_factory,
         conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
         user_repository=_noop_repo,
         agent_repository=_noop_repo,
@@ -219,7 +269,7 @@ def test_t_run_1_terminal_event_is_not_duplicated_by_error_after_completion(
         chat_message_repository=_noop_repo,
         llm_provider_repository=_noop_repo,
         tool_repository=_noop_repo,
-        run_repository=_noop_repo,
+        run_repository=lambda s: SQLAlchemyRunRepository(s),
         scheduled_workflow_repository=_noop_repo,
     )
     test_app.dependency_overrides[get_db_session] = override_get_db_session

@@ -126,6 +126,37 @@ def _build_container(
 
     _idempotency = IdempotencyCoordinator(store=InMemoryIdempotencyStore())
 
+    def workflow_run_execution_entry(session: Session):
+        from src.application.services.workflow_run_execution_entry import (
+            WorkflowRunExecutionEntry,
+        )
+        from src.application.use_cases.append_run_event import AppendRunEventUseCase
+        from src.application.use_cases.execute_workflow import WORKFLOW_EXECUTION_KERNEL_ID
+        from src.domain.services.workflow_save_validator import WorkflowSaveValidator
+        from src.infrastructure.database.repositories.run_event_repository import (
+            SQLAlchemyRunEventRepository,
+        )
+        from src.infrastructure.database.transaction_manager import SQLAlchemyTransactionManager
+
+        run_repo = run_repository(session)
+        run_event_use_case = AppendRunEventUseCase(
+            run_repository=run_repo,
+            run_event_repository=SQLAlchemyRunEventRepository(session),
+            transaction_manager=SQLAlchemyTransactionManager(session),
+        )
+        save_validator = WorkflowSaveValidator(
+            executor_registry=executor_registry,
+            tool_repository=tool_repository(session),
+        )
+        return WorkflowRunExecutionEntry(
+            workflow_repository=workflow_repository(session),
+            run_repository=run_repo,
+            save_validator=save_validator,
+            run_event_use_case=run_event_use_case,
+            kernel=workflow_execution_kernel(session),
+            executor_id=WORKFLOW_EXECUTION_KERNEL_ID,
+        )
+
     def conversation_turn_orchestrator() -> ConversationTurnOrchestrator:
         conversation_agent = create_conversation_agent(
             event_bus=event_bus,
@@ -185,6 +216,7 @@ def _build_container(
     return ApiContainer(
         executor_registry=executor_registry,
         workflow_execution_kernel=workflow_execution_kernel,
+        workflow_run_execution_entry=workflow_run_execution_entry,
         conversation_turn_orchestrator=conversation_turn_orchestrator,
         user_repository=user_repository,
         agent_repository=agent_repository,

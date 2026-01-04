@@ -99,3 +99,18 @@ class NotFoundError(DomainError):
 
 # EntityNotFoundError是NotFoundError的别名，用于Repository层
 EntityNotFoundError = NotFoundError
+
+
+class RunGateError(DomainError):
+    """Run 执行门禁失败（语义上对应 HTTP 409 冲突）。"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "run_gate_rejected",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.code = code
+        self.details = details or {}
+        super().__init__(message)

@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
 from src.domain.ports.workflow_execution_kernel import WorkflowExecutionKernelPort
+from src.domain.ports.workflow_run_execution_entry import WorkflowRunExecutionEntryPort
 from src.domain.services.context_manager import WorkflowContext
 from src.domain.services.event_bus import Event, EventBus
 from src.domain.services.execution_result import (
@@ -46,7 +47,6 @@ from src.domain.services.expression_evaluator import (
 from src.domain.services.node_hierarchy_service import NodeHierarchyService
 from src.domain.services.node_registry import Node, NodeFactory, NodeType
 from src.domain.services.workflow_engine import topological_sort_ids
-from src.domain.value_objects.run_status import RunStatus
 
 logger = logging.getLogger(__name__)
 
@@ -386,6 +386,7 @@ class WorkflowAgent:
         container_executor_factory: Callable[[], Any] | None = None,
         coordinator_agent: Any | None = None,
         workflow_execution_kernel: WorkflowExecutionKernelPort | None = None,
+        workflow_run_execution_entry: WorkflowRunExecutionEntryPort | None = None,
     ):
         """初始化工作流Agent
 
@@ -406,6 +407,7 @@ class WorkflowAgent:
         self.event_bus = event_bus
         self.coordinator_agent = coordinator_agent
         self.workflow_execution_kernel = workflow_execution_kernel
+        self.workflow_run_execution_entry = workflow_run_execution_entry
 
         # Phase 16: 新增执行器和 LLM
         self.executor = executor
@@ -2356,10 +2358,10 @@ class WorkflowAgent:
                     "workflow_id": "unknown",
                     "error": "workflow_id is required for execute_workflow",
                 }
-            kernel = self.workflow_execution_kernel
-            if kernel is None:
+            entry = self.workflow_run_execution_entry
+            if entry is None:
                 logger.warning(
-                    "WorkflowAgent execute_workflow requires WorkflowExecutionKernelPort; workflow_id=%s",
+                    "WorkflowAgent execute_workflow requires WorkflowRunExecutionEntryPort; workflow_id=%s",
                     workflow_id,
                 )
                 return {
@@ -2367,9 +2369,9 @@ class WorkflowAgent:
                     "status": "not_supported",
                     "workflow_id": workflow_id,
                     "error": (
-                        "WorkflowAgent execution requires a WorkflowExecutionKernelPort to enforce a single "
-                        "workflow execution kernel. Please inject WorkflowExecutionKernelPort (API uses "
-                        "POST /api/workflows/{workflow_id}/execute/stream with run_id)."
+                        "WorkflowAgent execution requires a WorkflowRunExecutionEntryPort to enforce a single "
+                        "authoritative run execution entry. Please inject WorkflowRunExecutionEntryPort "
+                        "(API uses POST /api/workflows/{workflow_id}/execute/stream with run_id)."
                     ),
                 }
 
@@ -2384,27 +2386,27 @@ class WorkflowAgent:
             run_id = run_id.strip()
 
             initial_input = decision.get("initial_input", decision.get("input_data"))
-            events: list[dict[str, Any]] = []
-            async for event in kernel.execute_streaming(
-                workflow_id=workflow_id, input_data=initial_input
-            ):
-                events.append({**event, "run_id": run_id})
-
-            terminal_type = events[-1].get("type") if events else None
-            if terminal_type == "workflow_complete":
-                run_status = RunStatus.COMPLETED
-            else:
-                run_status = RunStatus.FAILED
-
-            return {
-                "success": terminal_type == "workflow_complete"
-                and run_status is RunStatus.COMPLETED,
-                "status": run_status.value,
-                "workflow_id": workflow_id,
-                "run_id": run_id,
-                "executor_id": (events[-1].get("executor_id") if events else None),
-                "events": events,
-            }
+            try:
+                return await entry.execute_with_results(
+                    workflow_id=workflow_id,
+                    run_id=run_id,
+                    input_data=initial_input,
+                    correlation_id=run_id,
+                    original_decision_id=run_id,
+                    record_execution_events=True,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "workflow_agent_execute_workflow_failed",
+                    extra={"workflow_id": workflow_id, "run_id": run_id},
+                )
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "workflow_id": workflow_id,
+                    "run_id": run_id,
+                    "error": str(exc),
+                }
 
         elif decision_type == "connect_nodes":
             edge = self.connect_nodes(

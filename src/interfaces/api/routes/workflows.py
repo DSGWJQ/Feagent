@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Mapping
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -429,26 +429,29 @@ async def execute_workflow_streaming(
         )
 
     assert run_id is not None
-    from src.application.use_cases.execute_workflow import WORKFLOW_EXECUTION_KERNEL_ID
+    from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
+    from src.domain.exceptions import RunGateError
 
-    executor_id = WORKFLOW_EXECUTION_KERNEL_ID
+    entry = container.workflow_run_execution_entry(db)
 
-    # Hard gate: validate workflow executability before any side effects (fail-closed).
-    repository = container.workflow_repository(db)
     try:
-        workflow = repository.get_by_id(workflow_id)
+        await entry.prepare(
+            workflow_id=workflow_id,
+            run_id=run_id,
+            input_data=request.initial_input,
+            correlation_id=run_id,
+            original_decision_id=run_id,
+        )
+    except RunGateError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{exc.entity_type} not found: {exc.entity_id}",
         ) from exc
-
-    save_validator = WorkflowSaveValidator(
-        executor_registry=container.executor_registry,
-        tool_repository=container.tool_repository(db),
-    )
-    try:
-        save_validator.validate_or_raise(workflow)
     except DomainValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -459,72 +462,6 @@ async def execute_workflow_streaming(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-
-    # Fail-closed: ensure run exists before any state transitions.
-    from src.application.use_cases.append_run_event import (
-        AppendRunEventInput,
-        AppendRunEventUseCase,
-    )
-    from src.domain.value_objects.run_status import RunStatus
-    from src.infrastructure.database.repositories.run_event_repository import (
-        SQLAlchemyRunEventRepository,
-    )
-    from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
-    from src.infrastructure.database.transaction_manager import SQLAlchemyTransactionManager
-
-    run_repository = SQLAlchemyRunRepository(db)
-    try:
-        run = run_repository.get_by_id(run_id)
-    except NotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"run_id not found: {exc.entity_id}",
-        ) from exc
-
-    if run.workflow_id != workflow_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="run_id does not belong to this workflow",
-        )
-    if run.status is not RunStatus.CREATED:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"run is not executable (status={run.status.value})",
-        )
-
-    run_event_use_case = AppendRunEventUseCase(
-        run_repository=run_repository,
-        run_event_repository=SQLAlchemyRunEventRepository(db),
-        transaction_manager=SQLAlchemyTransactionManager(db),
-    )
-
-    # Fail-closed: Coordinator supervision is enforced by WorkflowExecutionOrchestrator policy chain.
-    # Gate must run before persisting any run events to keep rejection paths side-effect free.
-    from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
-
-    kernel = container.workflow_execution_kernel(db)
-
-    async def _after_gate() -> None:
-        run_event_use_case.execute(
-            AppendRunEventInput(
-                run_id=run_id,
-                event_type="workflow_start",
-                channel="lifecycle",
-                payload={
-                    "workflow_id": workflow_id,
-                    "executor_id": executor_id,
-                },
-            )
-        )
-
-    try:
-        await kernel.gate_execute(
-            workflow_id=workflow_id,
-            input_data=request.initial_input,
-            correlation_id=run_id,
-            original_decision_id=run_id,
-            after_gate=_after_gate,
-        )
     except CoordinatorRejectedError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -539,133 +476,35 @@ async def execute_workflow_streaming(
         event_recorder = getattr(http_request.app.state, "event_recorder", None)
         started = time.perf_counter()
         events_sent = 0
-        terminal_persisted = False
+        last_executor_id: str | None = None
         try:
-            event_iter = kernel.stream_after_gate(
+
+            def _sink(sink_run_id: str, sse_event: Mapping[str, Any]) -> None:
+                if event_recorder is None:
+                    return
+                try:
+                    event_recorder.enqueue(run_id=sink_run_id, sse_event=sse_event)
+                except Exception:
+                    return
+
+            async for event in entry.stream_after_gate(
                 workflow_id=workflow_id,
+                run_id=run_id,
                 input_data=request.initial_input,
                 correlation_id=run_id,
                 original_decision_id=run_id,
-            )
-
-            async for event in event_iter:
-                event_type = event.get("type", "")
-                if not terminal_persisted and event_type in {"workflow_complete", "workflow_error"}:
-                    run_event_use_case.execute(
-                        AppendRunEventInput(
-                            run_id=run_id,
-                            event_type=event_type,
-                            channel="lifecycle",
-                            payload={
-                                "workflow_id": workflow_id,
-                                "executor_id": executor_id,
-                            },
-                        )
-                    )
-                    terminal_persisted = True
-
-                event = {
-                    **event,
-                    "run_id": run_id,
-                    "executor_id": event.get("executor_id", executor_id),
-                }
-                if event_recorder is not None:
-                    try:
-                        event_recorder.enqueue(
-                            run_id=run_id,
-                            sse_event={**event, "channel": "execution"},
-                        )
-                    except Exception:
-                        pass
+                execution_event_sink=_sink,
+            ):
+                last_executor_id = event.get("executor_id") if isinstance(event, dict) else None
                 events_sent += 1
                 yield f"data: {json.dumps(event)}\n\n"
-        except asyncio.CancelledError:
-            if not terminal_persisted:
-                run_event_use_case.execute(
-                    AppendRunEventInput(
-                        run_id=run_id,
-                        event_type="workflow_error",
-                        channel="lifecycle",
-                        payload={
-                            "workflow_id": workflow_id,
-                            "executor_id": executor_id,
-                            "error": "client_disconnected",
-                        },
-                    )
-                )
-                terminal_persisted = True
-            raise
-        except NotFoundError as exc:
-            if terminal_persisted:
-                return
-            error_event = {
-                "type": "workflow_error",
-                "error": f"{exc.entity_type} not found: {exc.entity_id}",
-            }
-            if not terminal_persisted:
-                run_event_use_case.execute(
-                    AppendRunEventInput(
-                        run_id=run_id,
-                        event_type="workflow_error",
-                        channel="lifecycle",
-                        payload={
-                            "workflow_id": workflow_id,
-                            "executor_id": executor_id,
-                            "error": error_event["error"],
-                        },
-                    )
-                )
-                terminal_persisted = True
-            error_event["run_id"] = run_id
-            error_event["executor_id"] = executor_id
-            if event_recorder is not None:
-                try:
-                    event_recorder.enqueue(
-                        run_id=run_id,
-                        sse_event={**error_event, "channel": "execution"},
-                    )
-                except Exception:
-                    pass
-            yield f"data: {json.dumps(error_event)}\n\n"
-        except Exception as exc:  # pragma: no cover - best-effort error reporting
-            if terminal_persisted:
-                return
-            error_event = {
-                "type": "workflow_error",
-                "error": f"Workflow execution failed: {exc}",
-            }
-            if not terminal_persisted:
-                run_event_use_case.execute(
-                    AppendRunEventInput(
-                        run_id=run_id,
-                        event_type="workflow_error",
-                        channel="lifecycle",
-                        payload={
-                            "workflow_id": workflow_id,
-                            "executor_id": executor_id,
-                            "error": "workflow execution failed",
-                        },
-                    )
-                )
-                terminal_persisted = True
-            error_event["run_id"] = run_id
-            error_event["executor_id"] = executor_id
-            if event_recorder is not None:
-                try:
-                    event_recorder.enqueue(
-                        run_id=run_id,
-                        sse_event={**error_event, "channel": "execution"},
-                    )
-                except Exception:
-                    pass
-            yield f"data: {json.dumps(error_event)}\n\n"
         finally:
             duration_ms = int((time.perf_counter() - started) * 1000)
             logger.info(
                 "workflow_execute_stream_done",
                 extra={
                     "workflow_id": workflow_id,
-                    "executor_id": executor_id,
+                    "executor_id": last_executor_id,
                     "duration_ms": duration_ms,
                     "events_sent": events_sent,
                     "run_id_present": True,

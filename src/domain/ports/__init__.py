@@ -20,6 +20,7 @@ from src.domain.ports.idempotency_store import IdempotencyStore
 from src.domain.ports.run_repository import RunRepository
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.ports.workflow_repository import WorkflowRepository
+from src.domain.ports.workflow_run_execution_entry import WorkflowRunExecutionEntryPort
 
 __all__ = [
     "AgentRepository",
@@ -27,6 +28,7 @@ __all__ = [
     "ExecutionEventSink",
     "IdempotencyStore",
     "RunRepository",
+    "WorkflowRunExecutionEntryPort",
     "WorkflowRepository",
     "WorkflowChatLLM",
 ]

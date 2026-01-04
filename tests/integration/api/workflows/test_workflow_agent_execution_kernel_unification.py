@@ -1,4 +1,4 @@
-"""WF-030: REST execute/stream and WorkflowAgent execute_workflow share one kernel surface."""
+"""WFCORE-030: REST execute/stream and WorkflowAgent execute_workflow share one authoritative entry."""
 
 import json
 
@@ -72,15 +72,15 @@ async def test_workflow_agent_matches_rest_stream_events_and_status(
     finally:
         db.close()
 
-    # Arrange - create run first (REST contract requires run_id)
+    # Arrange - REST run (REST contract requires run_id)
     run_resp = client.post(f"/api/projects/proj_1/workflows/{workflow.id}/runs", json={})
     assert run_resp.status_code == 200
-    run_id = run_resp.json()["id"]
+    run_id_rest = run_resp.json()["id"]
 
     # REST execute/stream (SSE)
     resp = client.post(
         f"/api/workflows/{workflow.id}/execute/stream",
-        json={"initial_input": {"message": "test"}, "run_id": run_id},
+        json={"initial_input": {"message": "test"}, "run_id": run_id_rest},
     )
     assert resp.status_code == 200
     sse_events = []
@@ -89,27 +89,49 @@ async def test_workflow_agent_matches_rest_stream_events_and_status(
             sse_events.append(json.loads(line[6:]))
     assert sse_events
 
-    # WorkflowAgent uses the same kernel port (from the API container)
+    # Gate sanity: completed run cannot be re-executed by WorkflowAgent.
     db2 = TestingSessionLocal()
     try:
-        kernel = app.state.container.workflow_execution_kernel(db2)
-        agent = WorkflowAgent(workflow_execution_kernel=kernel)
-        result = await agent.handle_decision(
+        entry = app.state.container.workflow_run_execution_entry(db2)
+        agent = WorkflowAgent(workflow_run_execution_entry=entry)
+        rejected = await agent.handle_decision(
             {
                 "decision_type": "execute_workflow",
                 "workflow_id": workflow.id,
-                "run_id": run_id,
+                "run_id": run_id_rest,
                 "initial_input": {"message": "test"},
             }
         )
     finally:
         db2.close()
 
+    assert rejected["success"] is False
+
+    # Agent run (fresh run_id) - events/status must match REST semantics.
+    run_resp_2 = client.post(f"/api/projects/proj_1/workflows/{workflow.id}/runs", json={})
+    assert run_resp_2.status_code == 200
+    run_id_agent = run_resp_2.json()["id"]
+
+    db3 = TestingSessionLocal()
+    try:
+        entry = app.state.container.workflow_run_execution_entry(db3)
+        agent = WorkflowAgent(workflow_run_execution_entry=entry)
+        result = await agent.handle_decision(
+            {
+                "decision_type": "execute_workflow",
+                "workflow_id": workflow.id,
+                "run_id": run_id_agent,
+                "initial_input": {"message": "test"},
+            }
+        )
+    finally:
+        db3.close()
+
     assert result["workflow_id"] == workflow.id
-    assert result["run_id"] == run_id
+    assert result["run_id"] == run_id_agent
     assert [e["type"] for e in result["events"]] == [e["type"] for e in sse_events]
 
     # Success判定：终态事件 + RunStatus（REST: Run.status; Agent: derived status value）
-    run_get = client.get(f"/api/runs/{run_id}")
-    assert run_get.status_code == 200
-    assert run_get.json()["status"] == result["status"]
+    run_get_agent = client.get(f"/api/runs/{run_id_agent}")
+    assert run_get_agent.status_code == 200
+    assert run_get_agent.json()["status"] == result["status"]

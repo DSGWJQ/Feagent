@@ -22,6 +22,7 @@ from src.domain.ports.tool_repository import ToolRepository
 from src.domain.ports.user_repository import UserRepository
 from src.domain.ports.workflow_execution_kernel import WorkflowExecutionKernelPort
 from src.domain.ports.workflow_repository import WorkflowRepository
+from src.domain.ports.workflow_run_execution_entry import WorkflowRunExecutionEntryPort
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +31,7 @@ class ApiContainer:
 
     executor_registry: NodeExecutorRegistry
     workflow_execution_kernel: Callable[[Session], WorkflowExecutionKernelPort]
+    workflow_run_execution_entry: Callable[[Session], WorkflowRunExecutionEntryPort]
     conversation_turn_orchestrator: Callable[[], ConversationTurnOrchestrator]
 
     user_repository: Callable[[Session], UserRepository]
