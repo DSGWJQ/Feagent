@@ -147,3 +147,105 @@ def test_t_run_1_execute_stream_persists_key_events(
         assert event_types[:2] == ["workflow_start", "workflow_complete"]
     finally:
         db.close()
+
+
+def test_t_run_1_terminal_event_is_not_duplicated_by_error_after_completion(
+    monkeypatch: pytest.MonkeyPatch, test_engine
+) -> None:
+    monkeypatch.setattr(settings, "disable_run_persistence", False)
+    monkeypatch.setattr(settings, "enable_langgraph_workflow_executor", False)
+
+    class FakeFacade:
+        async def execute_streaming(self, *, workflow_id: str, input_data=None):
+            yield {"type": "node_start", "metadata": {"workflow_id": workflow_id}}
+            yield {"type": "workflow_complete", "metadata": {"workflow_id": workflow_id}}
+            raise RuntimeError("boom")
+
+    def orchestrator_factory(_: Session) -> WorkflowExecutionOrchestrator:
+        return WorkflowExecutionOrchestrator(facade=FakeFacade())
+
+    def override_get_db_session():
+        TestingSessionLocal = sessionmaker(bind=test_engine)
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    TestingSessionLocal = sessionmaker(bind=test_engine)
+    db: Session = TestingSessionLocal()
+    try:
+        run = Run.create(project_id="proj_1", workflow_id="wf_123")
+        SQLAlchemyRunRepository(db).save(run)
+        db.commit()
+    finally:
+        db.close()
+
+    def _noop_repo(_: Session):
+        return None
+
+    test_app = FastAPI()
+    test_app.state.event_bus = EventBus()
+
+    class _AllowCoordinator:
+        def validate_decision(self, decision: dict):
+            return type("Validation", (), {"is_valid": True, "errors": []})()
+
+    test_app.state.coordinator = _AllowCoordinator()
+
+    workflow = Workflow.create(
+        name="test",
+        description="",
+        nodes=[
+            Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)),
+            Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0)),
+        ],
+        edges=[],
+    )
+    workflow.id = "wf_123"
+
+    class _FakeWorkflowRepository:
+        def get_by_id(self, workflow_id: str):
+            return workflow
+
+    test_app.state.container = ApiContainer(
+        executor_registry=NodeExecutorRegistry(),
+        workflow_execution_kernel=orchestrator_factory,
+        conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
+        user_repository=_noop_repo,
+        agent_repository=_noop_repo,
+        task_repository=_noop_repo,
+        workflow_repository=lambda _s: _FakeWorkflowRepository(),
+        chat_message_repository=_noop_repo,
+        llm_provider_repository=_noop_repo,
+        tool_repository=_noop_repo,
+        run_repository=_noop_repo,
+        scheduled_workflow_repository=_noop_repo,
+    )
+    test_app.dependency_overrides[get_db_session] = override_get_db_session
+    test_app.include_router(workflows_routes.router, prefix="/api")
+
+    with TestClient(test_app) as client:
+        response = client.post(
+            "/api/workflows/wf_123/execute/stream",
+            json={"initial_input": {"k": "v"}, "run_id": run.id},
+            headers={"Accept": "text/event-stream"},
+        )
+
+    assert response.status_code == 200
+    events = [
+        json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")
+    ]
+    assert [e["type"] for e in events] == ["node_start", "workflow_complete"]
+
+    db = TestingSessionLocal()
+    try:
+        rows = db.execute(
+            select(RunEventModel.type)
+            .where(RunEventModel.run_id == run.id)
+            .order_by(RunEventModel.id.asc())
+        ).all()
+        event_types = [r[0] for r in rows]
+        assert "workflow_error" not in event_types
+    finally:
+        db.close()

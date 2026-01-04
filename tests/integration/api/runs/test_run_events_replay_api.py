@@ -2,7 +2,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -14,6 +14,7 @@ from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.models import RunEventModel
 from src.infrastructure.database.repositories.run_event_repository import (
     SQLAlchemyRunEventRepository,
 )
@@ -104,7 +105,25 @@ def test_list_run_events_paginates_and_preserves_sse_shape(client: TestClient, d
             payload={"result": {"ok": True}},
         )
     )
+    # terminal event should be unique per (run_id, type, channel)
+    run_event_repo.append(
+        RunEvent.create(
+            run_id=run_id,
+            type="workflow_complete",
+            channel="execution",
+            payload={"result": {"ok": True, "dup": True}},
+        )
+    )
     db_session.commit()
+
+    terminal_count = db_session.execute(
+        select(func.count(RunEventModel.id)).where(
+            RunEventModel.run_id == run_id,
+            RunEventModel.type == "workflow_complete",
+            RunEventModel.channel == "execution",
+        )
+    ).scalar_one()
+    assert terminal_count == 1
 
     page1 = client.get(f"/api/runs/{run_id}/events?limit=2")
     assert page1.status_code == 200

@@ -579,23 +579,43 @@ async def execute_workflow_streaming(
                         pass
                 events_sent += 1
                 yield f"data: {json.dumps(event)}\n\n"
+        except asyncio.CancelledError:
+            if not terminal_persisted:
+                run_event_use_case.execute(
+                    AppendRunEventInput(
+                        run_id=run_id,
+                        event_type="workflow_error",
+                        channel="lifecycle",
+                        payload={
+                            "workflow_id": workflow_id,
+                            "executor_id": executor_id,
+                            "error": "client_disconnected",
+                        },
+                    )
+                )
+                terminal_persisted = True
+            raise
         except NotFoundError as exc:
+            if terminal_persisted:
+                return
             error_event = {
                 "type": "workflow_error",
                 "error": f"{exc.entity_type} not found: {exc.entity_id}",
             }
-            run_event_use_case.execute(
-                AppendRunEventInput(
-                    run_id=run_id,
-                    event_type="workflow_error",
-                    channel="lifecycle",
-                    payload={
-                        "workflow_id": workflow_id,
-                        "executor_id": executor_id,
-                        "error": error_event["error"],
-                    },
+            if not terminal_persisted:
+                run_event_use_case.execute(
+                    AppendRunEventInput(
+                        run_id=run_id,
+                        event_type="workflow_error",
+                        channel="lifecycle",
+                        payload={
+                            "workflow_id": workflow_id,
+                            "executor_id": executor_id,
+                            "error": error_event["error"],
+                        },
+                    )
                 )
-            )
+                terminal_persisted = True
             error_event["run_id"] = run_id
             error_event["executor_id"] = executor_id
             if event_recorder is not None:
@@ -608,22 +628,26 @@ async def execute_workflow_streaming(
                     pass
             yield f"data: {json.dumps(error_event)}\n\n"
         except Exception as exc:  # pragma: no cover - best-effort error reporting
+            if terminal_persisted:
+                return
             error_event = {
                 "type": "workflow_error",
                 "error": f"Workflow execution failed: {exc}",
             }
-            run_event_use_case.execute(
-                AppendRunEventInput(
-                    run_id=run_id,
-                    event_type="workflow_error",
-                    channel="lifecycle",
-                    payload={
-                        "workflow_id": workflow_id,
-                        "executor_id": executor_id,
-                        "error": "workflow execution failed",
-                    },
+            if not terminal_persisted:
+                run_event_use_case.execute(
+                    AppendRunEventInput(
+                        run_id=run_id,
+                        event_type="workflow_error",
+                        channel="lifecycle",
+                        payload={
+                            "workflow_id": workflow_id,
+                            "executor_id": executor_id,
+                            "error": "workflow execution failed",
+                        },
+                    )
                 )
-            )
+                terminal_persisted = True
             error_event["run_id"] = run_id
             error_event["executor_id"] = executor_id
             if event_recorder is not None:
