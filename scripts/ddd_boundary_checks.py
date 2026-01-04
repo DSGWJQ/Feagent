@@ -125,7 +125,39 @@ def main() -> int:
         ),
     ]
 
+    count_limited_checks: list[tuple[str, Path, str, int]] = [
+        (
+            "workflow_create_base_entry_unique",
+            repo_root / "src" / "interfaces",
+            r"\bWorkflow\.create_base\s*\(",
+            1,
+        ),
+        (
+            "internal_workflow_create_guard_max_2",
+            repo_root / "src" / "interfaces",
+            r"(?<!def )_require_internal_workflow_create_access\s*\(",
+            2,
+        ),
+    ]
+
     all_violations: list[Violation] = []
+    count_limit_summaries: dict[str, str] = {}
+
+    for rule, root, pattern_string, max_count in count_limited_checks:
+        if not root.exists():
+            raise RuntimeError(f"Expected directory does not exist: {root}")
+        matches = _scan_tree(
+            rule=rule,
+            root=root,
+            patterns=[re.compile(pattern_string)],
+        )
+        if len(matches) > max_count:
+            all_violations.extend(matches)
+            count_limit_summaries[rule] = (
+                f"Expected <= {max_count} matches, found {len(matches)}. "
+                "If this is intentional, update the limit and document the new entrypoint."
+            )
+
     for rule, root, pattern_strings, allowed_files in checks:
         if not root.exists():
             raise RuntimeError(f"Expected directory does not exist: {root}")
@@ -138,6 +170,8 @@ def main() -> int:
         for v in all_violations:
             relative = v.file.relative_to(repo_root)
             print(f"[FAIL] {v.rule}: {relative}:{v.line_number}: {v.line}")
+        for rule, summary in count_limit_summaries.items():
+            print(f"[FAIL] {rule}: {summary}")
         return 1
 
     print("[OK] DDD boundary checks passed")

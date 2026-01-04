@@ -76,6 +76,9 @@
 
 2) 工作流核心检查（本地聚合脚本）
    - `powershell -ExecutionPolicy Bypass -File scripts/workflow_core_checks.ps1`
+   - 其中 `python scripts/ddd_boundary_checks.py` 包含 CI 静态门禁（WFCL-070）：
+     - `workflow_create_base_entry_unique`：禁止新增未批准的 `Workflow.create_base(...)` 创建入口（最多 1 个）
+     - `internal_workflow_create_guard_max_2`：限制内部 workflow create guard 的入口扩散（最多 2 个）
 
 ### 5.2 将在后续 issue 固化为绿色（当前可能未完全满足）
 
