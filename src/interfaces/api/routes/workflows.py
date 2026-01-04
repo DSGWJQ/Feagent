@@ -979,6 +979,15 @@ async def chat_stream_with_workflow(
             )
             await emitter.complete()
             db.rollback()
+        except DomainValidationError as exc:
+            await emitter.emit_error(
+                exc.message,
+                error_code=exc.code,
+                detail=exc.to_dict(),
+                workflow_id=workflow_id,
+            )
+            await emitter.complete()
+            db.rollback()
         except DomainError as exc:
             await emitter.emit_error(str(exc), error_code="DOMAIN_ERROR")
             await emitter.complete()

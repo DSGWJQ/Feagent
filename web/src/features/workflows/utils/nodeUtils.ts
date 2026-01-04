@@ -79,9 +79,11 @@ export function getDefaultNodeData(type: string): Record<string, any> {
       };
     case 'tool':
       return {
-        name: 'myTool',
-        description: 'Tool description',
-        code: 'async function execute(args) {\n  return result;\n}',
+        // Canonical: workflow tool nodes reference a persisted Tool by stable ID.
+        // Back-compat: keep optional name/description for display, but validation uses tool_id.
+        tool_id: '',
+        name: 'Tool',
+        description: 'Select a tool from the library',
       };
     case 'structuredOutput':
       return {

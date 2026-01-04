@@ -11,15 +11,18 @@ import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
 export interface ToolNodeData {
-  name: string;
-  description: string;
-  code: string;
+  tool_id?: string;
+  toolId?: string; // legacy key (will be normalized server-side)
+  name?: string;
+  description?: string;
+  code?: string; // legacy inline tool code (kept for backward compatibility display)
   status?: NodeStatus;
   output?: any;
 }
 
 function ToolNode({ data, selected }: NodeProps<ToolNodeData>) {
   const status = data.status || 'idle';
+  const toolId = data.tool_id || data.toolId || '';
 
   return (
     <Card
@@ -32,21 +35,26 @@ function ToolNode({ data, selected }: NodeProps<ToolNodeData>) {
         </div>
         <div className={styles.nodeTitleWrapper}>
           <h3 className={styles.nodeTitle}>
-            {data.name || 'Tool'}
+            {data.name || toolId || 'Tool'}
           </h3>
           <p className={styles.nodeDescription}>
-            {data.description || 'Custom tool'}
+            {data.description || (toolId ? 'Tool reference' : 'Select a tool')}
           </p>
         </div>
       </div>
 
       <div className={styles.nodeContent}>
         <div className={styles.nodeField}>
-          <span className={styles.nodeFieldLabel}>Code:</span>
-          <div className={styles.nodeCodeBlock}>
-            {data.code || 'async function execute(args) {\n  return result;\n}'}
-          </div>
+          <span className={styles.nodeFieldLabel}>Tool ID:</span>
+          <div className={styles.nodeCodeBlock}>{toolId || '(missing)'}</div>
         </div>
+
+        {data.code ? (
+          <div className={styles.nodeField}>
+            <span className={styles.nodeFieldLabel}>Legacy Code:</span>
+            <div className={styles.nodeCodeBlock}>{data.code}</div>
+          </div>
+        ) : null}
 
         {status === 'running' && (
           <div className={`${styles.nodeStatus} ${styles.nodeStatusRunning}`} style={{ padding: 0 }}>

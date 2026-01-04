@@ -113,3 +113,57 @@ def test_validator_rejects_deprecated_tool():
 
     codes = {err.get("code") for err in exc.value.errors}
     assert "tool_deprecated" in codes
+
+
+def test_validator_normalizes_tool_id_from_toolId_before_persisting_shape():
+    registry = create_executor_registry()
+
+    tool = Tool.create(
+        name="t",
+        description="",
+        category=ToolCategory.HTTP,
+        author="tester",
+    )
+    tool.id = "tool_123"
+    tool.status = ToolStatus.PUBLISHED
+
+    tool_repo = Mock()
+    tool_repo.exists.return_value = True
+    tool_repo.find_by_id.return_value = tool
+
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=tool_repo)
+    node = _node(NodeType.TOOL, config={"toolId": " tool_123 "})
+    workflow = Workflow.create(name="wf", description="", nodes=[node], edges=[])
+
+    with pytest.raises(DomainValidationError):
+        validator.validate_or_raise(workflow)
+
+    assert node.config.get("tool_id") == "tool_123"
+    assert "toolId" not in node.config
+
+
+def test_validator_prefers_non_empty_tool_id_over_blank_tool_id_field():
+    registry = create_executor_registry()
+
+    tool = Tool.create(
+        name="t",
+        description="",
+        category=ToolCategory.HTTP,
+        author="tester",
+    )
+    tool.id = "tool_123"
+    tool.status = ToolStatus.PUBLISHED
+
+    tool_repo = Mock()
+    tool_repo.exists.return_value = True
+    tool_repo.find_by_id.return_value = tool
+
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=tool_repo)
+    node = _node(NodeType.TOOL, config={"tool_id": "   ", "toolId": "tool_123"})
+    workflow = Workflow.create(name="wf", description="", nodes=[node], edges=[])
+
+    with pytest.raises(DomainValidationError):
+        validator.validate_or_raise(workflow)
+
+    assert node.config.get("tool_id") == "tool_123"
+    assert "toolId" not in node.config

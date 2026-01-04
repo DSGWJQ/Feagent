@@ -20,6 +20,9 @@ import {
   theme,
 } from 'antd';
 import type { Node } from '@xyflow/react';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '@/services/api';
+import type { Tool } from '@/types/workflow';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -39,9 +42,25 @@ export default function NodeConfigPanel({
 }: NodeConfigPanelProps) {
   const [form] = Form.useForm();
 
+  const isToolNode = node?.type === 'tool';
+  const { data: tools = [], isLoading: toolsLoading } = useQuery({
+    queryKey: ['tools', 'list'],
+    queryFn: async (): Promise<Tool[]> => {
+      const response = await apiClient.instance.get<{ tools: Tool[] }>('/tools');
+      return response.data.tools ?? [];
+    },
+    enabled: open && isToolNode,
+    staleTime: 30_000,
+  });
+
   useEffect(() => {
     if (node) {
-      form.setFieldsValue(node.data);
+      const data = (node.data ?? {}) as any;
+      form.setFieldsValue({
+        ...data,
+        // Back-compat: accept legacy toolId but persist tool_id.
+        tool_id: data.tool_id ?? data.toolId ?? '',
+      });
     }
   }, [node, form]);
 
@@ -302,28 +321,28 @@ export default function NodeConfigPanel({
         return (
           <>
             <Form.Item
-              label="Tool Name"
-              name="name"
-              rules={[{ required: true, message: 'Please enter tool name' }]}
+              label="Tool"
+              name="tool_id"
+              rules={[{ required: true, message: 'Please select a tool' }]}
             >
-              <Input placeholder="myTool" />
-            </Form.Item>
-            <Form.Item
-              label="Description"
-              name="description"
-              rules={[{ required: true, message: 'Please enter description' }]}
-            >
-              <TextArea rows={2} placeholder="Tool description" />
-            </Form.Item>
-            <Form.Item
-              label="Code"
-              name="code"
-              rules={[{ required: true, message: 'Please enter code' }]}
-            >
-              <TextArea
-                rows={10}
-                placeholder="async function execute(args) {&#10;  return result;&#10;}"
-                style={{ fontFamily: 'monospace' }}
+              <Select
+                showSearch
+                placeholder="Select a tool from library"
+                loading={toolsLoading}
+                optionFilterProp="label"
+                options={tools.map((tool) => ({
+                  value: tool.id,
+                  label: `${tool.name} (${tool.id})`,
+                }))}
+                onChange={(toolId) => {
+                  const selected = tools.find((tool) => tool.id === toolId);
+                  if (!selected) return;
+                  // Keep display fields in data for node renderers/UI, but backend validation is ID-based.
+                  form.setFieldsValue({
+                    name: selected.name,
+                    description: selected.description ?? '',
+                  });
+                }}
               />
             </Form.Item>
           </>

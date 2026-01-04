@@ -42,11 +42,14 @@ def _append_error(
 
 
 def _extract_tool_id(config: dict[str, Any]) -> str | None:
-    raw = config.get("tool_id")
-    if raw is None:
-        raw = config.get("toolId")
-    if isinstance(raw, str) and raw.strip():
-        return raw.strip()
+    # Accept legacy keys but always normalize to `tool_id` for persistence.
+    # KISS: keep the contract minimal and explicit; avoid name-based matching.
+    for key in ("tool_id", "toolId"):
+        raw = config.get(key)
+        if isinstance(raw, str):
+            value = raw.strip()
+            if value:
+                return value
     return None
 
 
@@ -65,6 +68,10 @@ class WorkflowSaveValidator:
     def validate_or_raise(self, workflow: Workflow) -> None:
         started = time.perf_counter()
         errors: list[dict[str, Any]] = []
+
+        # Normalize configs before validation so both drag-save and chat-modify
+        # persist the same canonical shape (fail-closed: still validates after).
+        self._normalize_workflow_node_configs(workflow)
 
         node_ids = [node.id for node in workflow.nodes]
         if not node_ids and workflow.edges:
@@ -97,6 +104,15 @@ class WorkflowSaveValidator:
                 code="workflow_invalid",
                 errors=errors,
             )
+
+    def _normalize_workflow_node_configs(self, workflow: Workflow) -> None:
+        for node in workflow.nodes:
+            if node.type == NodeType.TOOL and isinstance(node.config, dict):
+                tool_id = _extract_tool_id(node.config)
+                if tool_id is None:
+                    continue
+                node.config["tool_id"] = tool_id
+                node.config.pop("toolId", None)
 
     def _validate_unique_node_ids(
         self, node_ids: list[str], *, errors: list[dict[str, Any]]

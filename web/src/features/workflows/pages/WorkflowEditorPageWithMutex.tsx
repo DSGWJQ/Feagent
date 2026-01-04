@@ -448,6 +448,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       'database': 'httpRequest',
       'python': 'javascript',
       'condition': 'conditional',
+      'tool': 'tool',
     };
     return typeMap[backendType] || 'httpRequest';
   };
@@ -787,7 +788,38 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       return true;
     } catch (error: any) {
       console.error('Failed to save workflow:', error);
-      message.error(`保存失败: ${error.message}`);
+
+      const detail = error?.response?.data?.detail;
+      if (detail && typeof detail === 'object' && Array.isArray((detail as any).errors)) {
+        const payload = detail as any;
+        Modal.error({
+          title: '保存失败：工作流校验未通过',
+          width: 760,
+          content: (
+            <div>
+              <div style={{ marginBottom: 8 }}>
+                {payload.message || 'Workflow validation failed'}
+              </div>
+              <div style={{ maxHeight: 360, overflow: 'auto' }}>
+                <ul style={{ paddingLeft: 18, margin: 0 }}>
+                  {payload.errors.map((errItem: any, idx: number) => (
+                    <li key={`${errItem.code ?? 'error'}_${idx}`}>
+                      <code>{errItem.code ?? 'error'}</code>
+                      {errItem.path ? <span> @ {errItem.path}</span> : null}
+                      {errItem.message ? <span>: {errItem.message}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ),
+        });
+        message.error('保存失败：工作流校验未通过');
+      } else if (typeof detail === 'string' && detail.trim()) {
+        message.error(`保存失败: ${detail}`);
+      } else {
+        message.error(`保存失败: ${error?.message || '未知错误'}`);
+      }
       return false;
     } finally {
       setIsSaving(false);

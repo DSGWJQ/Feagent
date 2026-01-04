@@ -103,7 +103,22 @@ export const useWorkflowAI = ({
 
               if (event.type === 'error') {
                 setStreamingMessage(null);
-                reject(new Error(event.content || 'chat-stream failed'));
+
+                const detail = event.metadata?.detail as any;
+                if (detail && typeof detail === 'object' && Array.isArray(detail.errors)) {
+                  const preview = detail.errors
+                    .slice(0, 6)
+                    .map((e: any) => {
+                      const code = e?.code ?? 'error';
+                      const path = e?.path ? `@ ${e.path}` : '';
+                      return `${code} ${path}`.trim();
+                    })
+                    .join('; ');
+                  const message = detail.message || event.content || 'workflow validation failed';
+                  reject(new Error(preview ? `${message} (${preview})` : message));
+                } else {
+                  reject(new Error(event.content || 'chat-stream failed'));
+                }
                 cancel();
                 return;
               }
@@ -120,7 +135,7 @@ export const useWorkflowAI = ({
         });
       } catch (error) {
         const friendlyMessage =
-          error instanceof Error ? apiClient.handleError(error) : '处理失败';
+          error instanceof Error ? error.message : apiClient.handleError(error);
         setErrorMessage(friendlyMessage);
         appendMessage(createMessage(`处理失败：${friendlyMessage}`, 'assistant'));
       } finally {
