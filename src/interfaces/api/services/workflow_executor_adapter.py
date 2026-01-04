@@ -77,6 +77,20 @@ class WorkflowExecutorAdapter:
         finally:
             session.close()
 
+    def _audit_run_persistence_rollback(self, *, workflow_id: str, mode: str) -> None:
+        """Audit when rollback flag disables run persistence and legacy execution is used."""
+
+        env = getattr(settings, "env", "")
+        logger.warning(
+            "run_persistence_rollback_active",
+            extra={
+                "feature_flag": "disable_run_persistence",
+                "scope": f"workflow_id={workflow_id}",
+                "mode": mode,
+                "env": env,
+            },
+        )
+
     async def execute(
         self,
         workflow_id: str,
@@ -88,6 +102,7 @@ class WorkflowExecutorAdapter:
         """
         if not settings.disable_run_persistence:
             return await self._execute_via_run_entry(workflow_id=workflow_id, input_data=input_data)
+        self._audit_run_persistence_rollback(workflow_id=workflow_id, mode="execute")
         with self._create_facade() as facade:
             return await facade.execute(
                 workflow_id=workflow_id,
@@ -114,6 +129,7 @@ class WorkflowExecutorAdapter:
                 yield event
             return
 
+        self._audit_run_persistence_rollback(workflow_id=workflow_id, mode="execute_streaming")
         session = self._session_factory()
         repo = SQLAlchemyWorkflowRepository(session)
         facade = WorkflowExecutionFacade(
