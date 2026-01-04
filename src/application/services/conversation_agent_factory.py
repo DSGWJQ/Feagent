@@ -38,4 +38,17 @@ def create_conversation_agent(
         event_bus=event_bus,
         model_metadata_port=model_metadata_port,
     )
-    return ConversationAgent(config=config)
+    agent = ConversationAgent(config=config)
+
+    # WFCORE-080: Inject a real, offline-safe tool executor (DIP).
+    from typing import Any, cast
+
+    from src.application.services.tool_call_executor import ToolEngineToolCallExecutor
+
+    cast(Any, agent).tool_call_executor = ToolEngineToolCallExecutor(
+        conversation_id_provider=lambda a=agent: getattr(
+            getattr(a, "session_context", None), "session_id", None
+        ),
+        user_message_provider=lambda a=agent: getattr(a, "_current_input", None),
+    )
+    return agent

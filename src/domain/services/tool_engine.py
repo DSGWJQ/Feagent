@@ -987,6 +987,16 @@ class ToolEngine:
             try:
                 from src.domain.services.tool_knowledge_store import ToolCallRecord
 
+                metadata: dict[str, Any] = {}
+                if context.trace_id:
+                    metadata["trace_id"] = context.trace_id
+                    metadata["tool_call_id"] = context.trace_id
+                run_id = None
+                if isinstance(context.variables, dict):
+                    run_id = context.variables.get("run_id")
+                if isinstance(run_id, str) and run_id.strip():
+                    metadata["run_id"] = run_id.strip()
+
                 record = ToolCallRecord.from_execution_result(
                     result=result,
                     params=params or {},
@@ -994,6 +1004,7 @@ class ToolEngine:
                     caller_type=context.caller_type,
                     conversation_id=context.conversation_id,
                     workflow_id=context.workflow_id,
+                    metadata=metadata or None,
                 )
                 await self._knowledge_store.save(record)
             except Exception as e:

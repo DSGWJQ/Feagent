@@ -245,6 +245,46 @@ class TestRunAsync:
         assert result.completed is True
 
     @pytest.mark.asyncio
+    async def test_run_async_tool_call_uses_injected_executor_and_records_audit(self, mock_agent):
+        """Test: injected tool_call_executor executes via ToolEngine and records replayable audit."""
+        from src.application.services.tool_call_executor import ToolEngineToolCallExecutor
+
+        executor = ToolEngineToolCallExecutor(
+            conversation_id_provider=lambda: "conv_1",
+            user_message_provider=lambda: "test input",
+        )
+        mock_agent.tool_call_executor = executor
+
+        mock_agent.llm.think = AsyncMock(return_value="thinking")
+        mock_agent.llm.decide_action = AsyncMock(
+            side_effect=[
+                {
+                    "action_type": "tool_call",
+                    "tool_name": "echo",
+                    "tool_id": "tc_1",
+                    "arguments": {"message": "hi"},
+                },
+                {"action_type": "respond", "response": "Done"},
+            ]
+        )
+        mock_agent.llm.should_continue = AsyncMock(return_value=True)
+
+        await mock_agent.run_async("test input")
+
+        call = mock_agent.emitter.emit_tool_result.call_args
+        assert call is not None
+        kwargs = call.kwargs
+        assert kwargs["tool_id"] == "tc_1"
+        assert kwargs["tool_name"] == "echo"
+        assert kwargs["success"] is True
+        assert kwargs["result"] == {"echoed": "hi"}
+
+        records = await executor.engine.query_call_records(conversation_id="conv_1")
+        assert len(records) == 1
+        assert records[0].tool_name == "echo"
+        assert records[0].metadata.get("tool_call_id") == "tc_1"
+
+    @pytest.mark.asyncio
     async def test_run_async_records_decision_for_create_node_action(self, mock_agent):
         """Test: run_async records decision for 'create_node' action"""
         mock_agent.llm.think = AsyncMock(return_value="thinking")

@@ -642,6 +642,8 @@ class ConversationAgentReActCoreMixin:
                 if timeout is not None and timeout > 0:
                     return await asyncio.wait_for(_call(), timeout=timeout)
                 return await _call()
+            except asyncio.CancelledError:
+                raise
             except TimeoutError:
                 return False, {}, "tool execution timed out"
             except Exception as exc:  # noqa: BLE001 - tool boundary
