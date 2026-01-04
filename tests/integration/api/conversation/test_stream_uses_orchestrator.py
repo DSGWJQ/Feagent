@@ -67,6 +67,7 @@ def test_conversation_stream_endpoint_goes_through_orchestrator_and_policy_chain
     app.state.container = ApiContainer(
         executor_registry=NodeExecutorRegistry(),
         workflow_execution_kernel=_fake_workflow_orchestrator,
+        workflow_run_execution_entry=_fake_workflow_orchestrator,  # type: ignore[arg-type]
         conversation_turn_orchestrator=conversation_turn_orchestrator_factory,
         user_repository=_fake_repo,
         agent_repository=_fake_repo,

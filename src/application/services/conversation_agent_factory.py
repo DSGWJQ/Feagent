@@ -50,6 +50,8 @@ def create_conversation_agent(
             getattr(a, "session_context", None), "session_id", None
         ),
         user_message_provider=lambda a=agent: getattr(a, "_current_input", None),
+        workflow_id_provider=lambda a=agent: getattr(a, "_workflow_id", None),
+        run_id_provider=lambda a=agent: getattr(a, "_run_id", None),
     )
 
     # WFCORE-090: Listen for plan/execute feedback events to enable replanning loops.

@@ -100,10 +100,13 @@ async def stream_conversation(
     from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
 
     try:
+        merged_context = dict(body.context or {})
+        if body.workflow_id:
+            merged_context.setdefault("workflow_id", body.workflow_id)
         await orchestrator.start_streaming_turn(
             session_id=session_id,
             message=body.message,
-            context=body.context,
+            context=merged_context or None,
             emitter=emitter,
         )
     except CoordinatorRejectedError as exc:

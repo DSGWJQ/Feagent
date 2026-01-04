@@ -148,6 +148,14 @@ class ConversationAgentHelpersMixin:
             "pending_feedbacks": self.pending_feedbacks.copy(),
         }
 
+        workflow_id = getattr(self, "_workflow_id", None)
+        if isinstance(workflow_id, str) and workflow_id.strip():
+            context["workflow_id"] = workflow_id.strip()
+
+        run_id = getattr(self, "_run_id", None)
+        if isinstance(run_id, str) and run_id.strip():
+            context["run_id"] = run_id.strip()
+
         return context
 
     # =========================================================================

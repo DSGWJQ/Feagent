@@ -129,6 +129,13 @@ class ConversationTurnOrchestrator:
             session_context = getattr(agent, "session_context", None)
             if session_context is not None and hasattr(session_context, "session_id"):
                 session_context.session_id = session_id
+        if context:
+            workflow_id = context.get("workflow_id")
+            if isinstance(workflow_id, str) and workflow_id.strip():
+                cast(Any, agent)._workflow_id = workflow_id.strip()
+            run_id = context.get("run_id")
+            if isinstance(run_id, str) and run_id.strip():
+                cast(Any, agent)._run_id = run_id.strip()
 
         await self._safe_emit(
             session_id=session_id,

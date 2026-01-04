@@ -19,7 +19,8 @@ from src.interfaces.api.main import app
 @pytest.fixture
 def client():
     """创建测试客户端"""
-    return TestClient(app)
+    with TestClient(app) as client:
+        yield client
 
 
 class TestConversationStreamAPI:

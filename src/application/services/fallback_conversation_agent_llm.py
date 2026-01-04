@@ -31,6 +31,20 @@ class FallbackConversationAgentLLM:
                 "response": "已触发拒绝路径（deny/reject）。",
             }
 
+        workflow_id = context.get("workflow_id")
+        if isinstance(workflow_id, str) and workflow_id.strip():
+            workflow_id = workflow_id.strip()
+            return {
+                "action_type": "tool_call",
+                "tool_name": "echo",
+                "tool_id": f"tool_echo_{workflow_id}",
+                "arguments": {"message": f"workflow_id={workflow_id}"},
+                "response": f"（fallback）已通过工具完成工作流分析：{workflow_id}",
+                "intent": "workflow_analysis",
+                "confidence": 1.0,
+                "requires_followup": False,
+            }
+
         return {
             "action_type": "respond",
             "response": "（fallback）服务已启动，但未配置真实 LLM；当前为离线降级回复。",
