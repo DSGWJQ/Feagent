@@ -37,7 +37,7 @@ import { useWorkflowHistory } from '../hooks/useWorkflowHistory';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useConflictResolution, type Conflict } from '../hooks/useConflictResolution';
 import { wouldCreateCycle } from '../utils/graphUtils';
-import { updateWorkflow } from '../api/workflowsApi';
+import { confirmRunSideEffect, updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
 import { useWorkflow } from '@/hooks/useWorkflow';
 import type { WorkflowNode, WorkflowEdge } from '../types/workflow';
@@ -340,6 +340,36 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     },
   });
 
+  // PRD-030: side-effect confirm modal
+  const [pendingConfirm, setPendingConfirm] = useState<null | {
+    runId: string;
+    workflowId?: string;
+    nodeId?: string;
+    confirmId: string;
+  }>(null);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
+
+  const submitConfirmDecision = useCallback(
+    async (decision: 'allow' | 'deny') => {
+      if (!pendingConfirm) return;
+      setConfirmSubmitting(true);
+      try {
+        await confirmRunSideEffect(pendingConfirm.runId, {
+          confirm_id: pendingConfirm.confirmId,
+          decision,
+        });
+        setPendingConfirm(null);
+        message.success(decision === 'allow' ? '已允许执行外部副作用' : '已拒绝执行外部副作用');
+      } catch (err: any) {
+        console.warn('confirm side effect failed', err);
+        message.error(`确认失败: ${err?.message || '未知错误'}`);
+      } finally {
+        setConfirmSubmitting(false);
+      }
+    },
+    [pendingConfirm]
+  );
+
   const {
     execute,
     isExecuting,
@@ -383,6 +413,12 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
           ? `工作流执行成功！共执行 ${totalNodes} 个节点`
           : `工作流执行完成！成功 ${successNodes} 个，失败 ${errorNodes} 个`
       );
+    },
+    onConfirmRequired: ({ runId, workflowId, nodeId, confirmId }) => {
+      setPendingConfirm((prev) => {
+        if (prev && prev.confirmId === confirmId) return prev;
+        return { runId, workflowId, nodeId, confirmId };
+      });
     },
   });
 
@@ -1214,6 +1250,53 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         edges={edges}
         onClose={() => setExportModalOpen(false)}
       />
+
+      {/* PRD-030: Side-effect Confirm Modal */}
+      <Modal
+        title="需要确认外部副作用"
+        open={!!pendingConfirm}
+        onCancel={() => submitConfirmDecision('deny')}
+        maskClosable={false}
+        closable={!confirmSubmitting}
+        footer={[
+          <Button
+            key="deny"
+            danger
+            onClick={() => submitConfirmDecision('deny')}
+            loading={confirmSubmitting}
+          >
+            Deny
+          </Button>,
+          <Button
+            key="allow"
+            type="primary"
+            onClick={() => submitConfirmDecision('allow')}
+            loading={confirmSubmitting}
+          >
+            Allow
+          </Button>,
+        ]}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          message="该工作流将执行外部副作用操作（默认 deny）"
+          description="请选择 allow/deny 后才能继续同一 run 执行。"
+          style={{ marginBottom: 12 }}
+        />
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          <Typography.Text type="secondary">run_id:</Typography.Text>{' '}
+          <Typography.Text code>{pendingConfirm?.runId}</Typography.Text>
+        </Typography.Paragraph>
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          <Typography.Text type="secondary">workflow_id:</Typography.Text>{' '}
+          <Typography.Text code>{pendingConfirm?.workflowId || '-'}</Typography.Text>
+        </Typography.Paragraph>
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          <Typography.Text type="secondary">node_id:</Typography.Text>{' '}
+          <Typography.Text code>{pendingConfirm?.nodeId || '-'}</Typography.Text>
+        </Typography.Paragraph>
+      </Modal>
 
       {/* Conflict Resolution Modal */}
       <Modal

@@ -16,6 +16,7 @@ import logging
 from collections.abc import AsyncGenerator, Callable, Mapping
 from typing import Any
 
+from src.application.services.run_confirmation_store import run_confirmation_store
 from src.application.services.workflow_event_contract import (
     ExecutionEventContractError,
     validate_workflow_execution_sse_event,
@@ -25,10 +26,43 @@ from src.domain.exceptions import DomainValidationError, NotFoundError, RunGateE
 from src.domain.ports.run_repository import RunRepository
 from src.domain.ports.workflow_execution_kernel import WorkflowExecutionKernelPort
 from src.domain.ports.workflow_repository import WorkflowRepository
+from src.domain.services.workflow_engine import topological_sort_ids
 from src.domain.services.workflow_save_validator import WorkflowSaveValidator
+from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.run_status import RunStatus
 
 logger = logging.getLogger(__name__)
+
+_SIDE_EFFECT_NODE_TYPES: frozenset[NodeType] = frozenset(
+    {
+        NodeType.TOOL,
+        NodeType.HTTP,
+        NodeType.HTTP_REQUEST,
+        NodeType.DATABASE,
+        NodeType.FILE,
+        NodeType.NOTIFICATION,
+    }
+)
+_CONFIRM_TIMEOUT_S = 300.0
+
+
+def _find_first_side_effect_node_id(*, workflow: Any) -> str | None:
+    node_map = {node.id: node for node in getattr(workflow, "nodes", []) or []}
+    if not node_map:
+        return None
+
+    sorted_ids = topological_sort_ids(
+        node_ids=node_map.keys(),
+        edges=((e.source_node_id, e.target_node_id) for e in getattr(workflow, "edges", []) or []),
+    )
+    for node_id in sorted_ids:
+        node = node_map.get(node_id)
+        if node is None:
+            continue
+        node_type = getattr(node, "type", None)
+        if node_type in _SIDE_EFFECT_NODE_TYPES:
+            return node_id
+    return None
 
 
 class WorkflowRunExecutionEntry:
@@ -228,6 +262,106 @@ class WorkflowRunExecutionEntry:
 
         terminal_persisted = False
         try:
+            side_effect_node_id = _find_first_side_effect_node_id(
+                workflow=self._workflow_repository.get_by_id(workflow_id)
+            )
+            if side_effect_node_id:
+                pending = await run_confirmation_store.create_or_get_pending(
+                    run_id=run_id,
+                    workflow_id=workflow_id,
+                    node_id=side_effect_node_id,
+                )
+                confirm_required = self._normalize_sse_event(
+                    raw_event={
+                        "type": "workflow_confirm_required",
+                        "workflow_id": workflow_id,
+                        "node_id": side_effect_node_id,
+                        "confirm_id": pending.confirm_id,
+                        "default_decision": "deny",
+                    },
+                    run_id=run_id,
+                )
+                validate_workflow_execution_sse_event(confirm_required)
+                self._record_execution_event_best_effort(
+                    run_id=run_id,
+                    sse_event={**confirm_required, "channel": "execution"},
+                    execution_event_sink=execution_event_sink,
+                    record_execution_events=record_execution_events,
+                )
+                yield confirm_required
+
+                try:
+                    decision = await run_confirmation_store.wait_for_decision(
+                        confirm_id=pending.confirm_id,
+                        timeout_s=_CONFIRM_TIMEOUT_S,
+                    )
+                except TimeoutError:
+                    decision = "deny"
+                    deny_reason = "confirm_timeout"
+                except asyncio.CancelledError:
+                    decision = "deny"
+                    deny_reason = "stream_cancelled"
+                    self._append_lifecycle_event(
+                        run_id=run_id,
+                        event_type="workflow_error",
+                        workflow_id=workflow_id,
+                        payload={"error": deny_reason},
+                    )
+                    terminal_persisted = True
+                    raise
+                else:
+                    deny_reason = "user_denied"
+
+                confirmed_event = self._normalize_sse_event(
+                    raw_event={
+                        "type": "workflow_confirmed",
+                        "workflow_id": workflow_id,
+                        "node_id": side_effect_node_id,
+                        "confirm_id": pending.confirm_id,
+                        "decision": decision,
+                    },
+                    run_id=run_id,
+                )
+                validate_workflow_execution_sse_event(confirmed_event)
+                self._record_execution_event_best_effort(
+                    run_id=run_id,
+                    sse_event={**confirmed_event, "channel": "execution"},
+                    execution_event_sink=execution_event_sink,
+                    record_execution_events=record_execution_events,
+                )
+                yield confirmed_event
+
+                if decision != "allow":
+                    denied = self._normalize_sse_event(
+                        raw_event={
+                            "type": "workflow_error",
+                            "error": "side_effect_confirm_denied",
+                            "reason": deny_reason,
+                            "confirm_id": pending.confirm_id,
+                        },
+                        run_id=run_id,
+                    )
+                    validate_workflow_execution_sse_event(denied)
+                    self._record_execution_event_best_effort(
+                        run_id=run_id,
+                        sse_event={**denied, "channel": "execution"},
+                        execution_event_sink=execution_event_sink,
+                        record_execution_events=record_execution_events,
+                    )
+                    self._append_lifecycle_event(
+                        run_id=run_id,
+                        event_type="workflow_error",
+                        workflow_id=workflow_id,
+                        payload={
+                            "error": "side_effect_confirm_denied",
+                            "reason": deny_reason,
+                            "confirm_id": pending.confirm_id,
+                        },
+                    )
+                    terminal_persisted = True
+                    yield denied
+                    return
+
             async for raw_event in self._kernel.stream_after_gate(
                 workflow_id=workflow_id,
                 input_data=input_data,

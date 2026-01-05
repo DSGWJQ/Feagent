@@ -71,6 +71,17 @@ export async function executeWorkflow(
 }
 
 /**
+ * PRD-030: 提交外部副作用确认（allow/deny）
+ */
+export async function confirmRunSideEffect(
+  runId: string,
+  body: { confirm_id: string; decision: 'allow' | 'deny' }
+): Promise<{ ok: boolean }> {
+  const response = await axiosInstance.post<{ ok: boolean }>(`/runs/${runId}/confirm`, body);
+  return response.data;
+}
+
+/**
  * Chat-stream（流式 SSE，planning channel）
  *
  * @returns 取消函数

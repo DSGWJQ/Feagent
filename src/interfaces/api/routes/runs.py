@@ -10,15 +10,18 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from src.application.services.run_confirmation_store import Decision, run_confirmation_store
 from src.config import settings
 from src.domain.entities.run import Run
-from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.exceptions import DomainError, DomainValidationError, NotFoundError
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.database.models import RunEventModel
 from src.interfaces.api.container import ApiContainer
@@ -38,6 +41,15 @@ router = APIRouter(tags=["runs"])
 
 # 子路由 (包含 /runs/... 端点)
 _runs_router = APIRouter(prefix="/runs", tags=["runs"])
+
+
+class RunConfirmRequest(BaseModel):
+    confirm_id: str
+    decision: str
+
+
+class RunConfirmResponse(BaseModel):
+    ok: bool
 
 
 @_runs_router.get(
@@ -165,6 +177,48 @@ def list_run_events(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取 RunEvents 失败: {exc}",
         ) from exc
+
+
+@_runs_router.post(
+    "/{run_id}/confirm",
+    response_model=RunConfirmResponse,
+    summary="确认外部副作用执行（allow/deny）",
+    description="用于 PRD-030：当执行流触发 workflow_confirm_required 时，前端通过该 API 提交 allow/deny 决策。",
+)
+async def confirm_run_side_effect(
+    run_id: str,
+    body: RunConfirmRequest,
+    response: Response,
+) -> RunConfirmResponse:
+    if settings.disable_run_persistence:
+        response.headers["Deprecation"] = "true"
+        response.headers["Warning"] = '299 - "Runs API disabled by feature flag"'
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Runs API is disabled by feature flag (disable_run_persistence).",
+        )
+
+    decision_raw = (body.decision or "").strip()
+    if decision_raw not in {"allow", "deny"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="decision must be 'allow' or 'deny'",
+        )
+    decision = cast(Decision, decision_raw)
+
+    try:
+        await run_confirmation_store.resolve(
+            run_id=run_id,
+            confirm_id=body.confirm_id,
+            decision=decision,
+        )
+    except DomainValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=exc.to_dict(),
+        ) from exc
+
+    return RunConfirmResponse(ok=True)
 
 
 # ==================== 列出 Run (按 Workflow) ====================

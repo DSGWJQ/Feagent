@@ -21,6 +21,14 @@ export interface UseWorkflowExecutionWithCallbackProps {
     nodeStatusMap: Record<string, NodeExecutionStatus>;
     nodeOutputMap: Record<string, any>;
   }) => void;
+  /** PRD-030: 外部副作用确认弹窗触发 */
+  onConfirmRequired?: (payload: {
+    runId: string;
+    workflowId?: string;
+    nodeId?: string;
+    confirmId: string;
+    defaultDecision?: 'deny';
+  }) => void;
 }
 
 export interface UseWorkflowExecutionWithCallbackReturn {
@@ -51,6 +59,7 @@ export interface UseWorkflowExecutionWithCallbackReturn {
  */
 export function useWorkflowExecutionWithCallback({
   onWorkflowComplete,
+  onConfirmRequired,
 }: UseWorkflowExecutionWithCallbackProps = {}): UseWorkflowExecutionWithCallbackReturn {
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
@@ -142,8 +151,27 @@ export function useWorkflowExecutionWithCallback({
         setCurrentNodeId(null);
         setError(event.error || 'Workflow execution failed');
         break;
+
+      case 'workflow_confirm_required': {
+        const runId = event.run_id;
+        const confirmId = event.confirm_id;
+        if (runId && confirmId && onConfirmRequired) {
+          onConfirmRequired({
+            runId,
+            workflowId: event.workflow_id,
+            nodeId: event.node_id,
+            confirmId,
+            defaultDecision: event.default_decision,
+          });
+        }
+        break;
+      }
+
+      case 'workflow_confirmed':
+        // no-op: UI can rely on API call resolution; this event is mainly for observability/replay
+        break;
     }
-  }, [nodeStatusMap, nodeOutputMap, executionLog, onWorkflowComplete]);
+  }, [nodeStatusMap, nodeOutputMap, executionLog, onWorkflowComplete, onConfirmRequired]);
 
   /**
    * 处理错误

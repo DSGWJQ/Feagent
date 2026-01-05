@@ -84,6 +84,7 @@ export interface UpdateWorkflowRequest {
  */
 export interface ExecuteWorkflowRequest {
   initial_input?: any;
+  run_id?: string;
 }
 
 /**
@@ -111,20 +112,28 @@ export type SSEEventType =
   | 'node_complete'
   | 'node_error'
   | 'workflow_complete'
-  | 'workflow_error';
+  | 'workflow_error'
+  | 'workflow_confirm_required'
+  | 'workflow_confirmed';
 
 /**
  * SSE 事件
  */
 export interface SSEEvent {
   type: SSEEventType;
+  run_id?: string;
+  workflow_id?: string;
   node_id?: string;
   node_type?: string;
   node_name?: string;
   output?: any;
   error?: string;
+  reason?: string;
   result?: any;
   execution_log?: ExecutionLogEntry[];
+  confirm_id?: string;
+  default_decision?: 'deny';
+  decision?: 'allow' | 'deny';
 }
 
 /**
