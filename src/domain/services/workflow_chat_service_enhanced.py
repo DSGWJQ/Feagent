@@ -8,9 +8,11 @@ Domain 层：增强的工作流对话服务
 3. 修改验证 - 更详细的验证和错误反馈
 4. 工作流建议 - 根据工作流结构提供建议
 5. 修改回滚 - 记录原始工作流支持回滚
+6. 主连通子图提取 - 确保对话修改只作用于 start->end 主连通子图
 """
 
 import json
+from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,13 +20,103 @@ from src.domain.entities.chat_message import ChatMessage
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
-from src.domain.exceptions import DomainError
+from src.domain.exceptions import DomainError, DomainValidationError
 from src.domain.ports.chat_message_repository import ChatMessageRepository
 from src.domain.ports.tool_repository import ToolRepository
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
 from src.domain.value_objects.workflow_modification_result import ModificationResult
+
+
+def extract_main_subgraph(workflow: Workflow) -> tuple[set[str], set[str]]:
+    """提取 start->end 主连通子图（纯函数）
+
+    算法：BFS 正向遍历（从 start）+ BFS 反向遍历（从 end），取交集
+
+    Fail-Closed 策略：
+    - 缺 start 或 end → 返回空集
+    - start/end 无路径 → 返回空集
+    - 多个 start/end → 全连通（任意 start 能到任意 end）
+
+    参数：
+        workflow: 工作流实体
+
+    返回：
+        (主连通节点 IDs 集合, 主连通边 IDs 集合)
+
+    设计原则：
+    - 纯函数（无副作用）
+    - Fail-Closed（保守策略，宁可返回空集也不误包含孤立节点）
+    - 单一职责（只负责提取子图，不负责修改工作流）
+    """
+    # 1. 找到所有 start 和 end 节点
+    start_nodes = [node for node in workflow.nodes if node.type == NodeType.START]
+    end_nodes = [node for node in workflow.nodes if node.type == NodeType.END]
+
+    # Fail-Closed：缺 start 或 end 时返回空集
+    if not start_nodes or not end_nodes:
+        return set(), set()
+
+    # 2. 构建邻接表（正向和反向）
+    forward_graph: dict[str, list[str]] = {}  # source -> [targets]
+    backward_graph: dict[str, list[str]] = {}  # target -> [sources]
+    edge_map: dict[tuple[str, str], str] = {}  # (source, target) -> edge_id
+
+    for edge in workflow.edges:
+        # 正向邻接表
+        if edge.source_node_id not in forward_graph:
+            forward_graph[edge.source_node_id] = []
+        forward_graph[edge.source_node_id].append(edge.target_node_id)
+
+        # 反向邻接表
+        if edge.target_node_id not in backward_graph:
+            backward_graph[edge.target_node_id] = []
+        backward_graph[edge.target_node_id].append(edge.source_node_id)
+
+        # 边映射
+        edge_map[(edge.source_node_id, edge.target_node_id)] = edge.id
+
+    # 3. BFS 正向遍历：从所有 start 节点出发，找到所有可达节点
+    forward_reachable = set()
+    queue = deque([node.id for node in start_nodes])
+    forward_reachable.update(queue)
+
+    while queue:
+        current_id = queue.popleft()
+        neighbors = forward_graph.get(current_id, [])
+        for neighbor_id in neighbors:
+            if neighbor_id not in forward_reachable:
+                forward_reachable.add(neighbor_id)
+                queue.append(neighbor_id)
+
+    # 4. BFS 反向遍历：从所有 end 节点出发，找到所有可达节点（反向）
+    backward_reachable = set()
+    queue = deque([node.id for node in end_nodes])
+    backward_reachable.update(queue)
+
+    while queue:
+        current_id = queue.popleft()
+        neighbors = backward_graph.get(current_id, [])
+        for neighbor_id in neighbors:
+            if neighbor_id not in backward_reachable:
+                backward_reachable.add(neighbor_id)
+                queue.append(neighbor_id)
+
+    # 5. 取交集：同时满足"从 start 可达"且"可达 end"
+    main_node_ids = forward_reachable & backward_reachable
+
+    # Fail-Closed：如果交集为空，返回空集
+    if not main_node_ids:
+        return set(), set()
+
+    # 6. 提取主连通子图的边（只保留连接主连通节点的边）
+    main_edge_ids = set()
+    for edge in workflow.edges:
+        if edge.source_node_id in main_node_ids and edge.target_node_id in main_node_ids:
+            main_edge_ids.add(edge.id)
+
+    return main_node_ids, main_edge_ids
 
 
 @dataclass
@@ -215,12 +307,14 @@ class EnhancedWorkflowChatService:
     3. 应用修改到工作流
     4. 提供工作流建议
     5. 支持修改回滚
+    6. 确保对话修改只作用于 start->end 主连通子图
 
     增强点：
     - 多轮对话上下文支持（跨会话持久化）
     - 更详细的意图识别
     - 更好的错误反馈
     - 工作流优化建议
+    - 主连通子图防护（双层防御）
     """
 
     def __init__(
@@ -374,11 +468,16 @@ class EnhancedWorkflowChatService:
         try:
             modified_workflow, modifications_count = self._apply_modifications(workflow, llm_result)
         except DomainError as e:
+            error_details = (
+                [json.dumps(e.to_dict(), ensure_ascii=False)]
+                if isinstance(e, DomainValidationError)
+                else [str(e)]
+            )
             return ModificationResult(
                 success=False,
-                ai_message=llm_result.get("ai_message", "修改失败"),
+                ai_message="修改被拒绝",
                 error_message=str(e),
-                error_details=[str(e)],
+                error_details=error_details,
                 original_workflow=workflow,
             )
 
@@ -459,7 +558,9 @@ class EnhancedWorkflowChatService:
         返回：
             系统提示词
         """
-        # 序列化当前工作流状态
+        main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+        # 序列化当前工作流状态（仅包含 start->end 主连通子图）
         workflow_state = {
             "name": workflow.name,
             "description": workflow.description,
@@ -472,6 +573,7 @@ class EnhancedWorkflowChatService:
                     "position": {"x": node.position.x, "y": node.position.y},
                 }
                 for node in workflow.nodes
+                if node.id in main_node_ids
             ],
             "edges": [
                 {
@@ -481,6 +583,7 @@ class EnhancedWorkflowChatService:
                     "condition": edge.condition,
                 }
                 for edge in workflow.edges
+                if edge.id in main_edge_ids
             ],
         }
 
@@ -513,9 +616,9 @@ class EnhancedWorkflowChatService:
 - tool: 工具节点（必须在 config.tool_id 指定 Tool ID）
 
 工具节点约束：
-- 工具节点（type=\"tool\"）必须包含 config.tool_id，且 tool_id 必须来自“允许工具列表”
+- 工具节点（type="tool"）必须包含 config.tool_id，且 tool_id 必须来自"允许工具列表"
 - 严禁把工具 name 当作 tool_id；严禁根据 name 猜测/映射 tool_id
-- 如果用户只描述了工具名称/功能但无法确定 tool_id，请返回 intent 为 \"ask_clarification\" 并在 ai_message 中要求用户提供 tool_id
+- 如果用户只描述了工具名称/功能但无法确定 tool_id，请返回 intent 为 "ask_clarification" 并在 ai_message 中要求用户提供 tool_id
 
 允许工具列表（仅 id/name/category/description，不包含任何实现配置）：
 {tool_candidates}
@@ -630,12 +733,71 @@ class EnhancedWorkflowChatService:
         返回：
             (修改后的工作流，修改数量)
         """
+        main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+        nodes_to_delete = modifications.get("nodes_to_delete", [])
+        invalid_nodes_to_delete = [
+            node_id for node_id in nodes_to_delete if node_id not in main_node_ids
+        ]
+
+        edges_to_delete = modifications.get("edges_to_delete", [])
+        invalid_edges_to_delete = [
+            edge_id for edge_id in edges_to_delete if edge_id not in main_edge_ids
+        ]
+
+        edges_to_add = modifications.get("edges_to_add", [])
+        invalid_edges_to_add = []
+        for edge_data in edges_to_add:
+            source = edge_data.get("source", "")
+            target = edge_data.get("target", "")
+            if source and source not in main_node_ids:
+                invalid_edges_to_add.append(
+                    {"reason": "source_outside_main_subgraph", "id": source}
+                )
+            if target and target not in main_node_ids:
+                invalid_edges_to_add.append(
+                    {"reason": "target_outside_main_subgraph", "id": target}
+                )
+
+        validation_errors: list[dict[str, Any]] = []
+        if invalid_nodes_to_delete:
+            validation_errors.append(
+                {
+                    "field": "nodes_to_delete",
+                    "reason": "outside_main_subgraph",
+                    "ids": invalid_nodes_to_delete,
+                }
+            )
+        if invalid_edges_to_delete:
+            validation_errors.append(
+                {
+                    "field": "edges_to_delete",
+                    "reason": "outside_main_subgraph",
+                    "ids": invalid_edges_to_delete,
+                }
+            )
+
+        if invalid_edges_to_add:
+            validation_errors.append(
+                {
+                    "field": "edges_to_add",
+                    "reason": "outside_main_subgraph",
+                    "errors": invalid_edges_to_add,
+                }
+            )
+
+        if validation_errors:
+            raise DomainValidationError(
+                "修改被拒绝：仅允许操作 start->end 主连通子图",
+                code="workflow_modification_rejected",
+                errors=validation_errors,
+            )
+
         modifications_count = 0
         new_nodes = workflow.nodes.copy()
         new_edges = workflow.edges.copy()
 
         # 1. 删除节点
-        nodes_to_delete = modifications.get("nodes_to_delete", [])
         if nodes_to_delete:
             new_nodes = [node for node in new_nodes if node.id not in nodes_to_delete]
             # 同时删除相关的边
@@ -663,13 +825,11 @@ class EnhancedWorkflowChatService:
                 raise DomainError(f"无效的节点类型: {node_data.get('type')}") from e
 
         # 3. 删除边
-        edges_to_delete = modifications.get("edges_to_delete", [])
         if edges_to_delete:
             new_edges = [edge for edge in new_edges if edge.id not in edges_to_delete]
             modifications_count += len(edges_to_delete)
 
         # 4. 添加边
-        edges_to_add = modifications.get("edges_to_add", [])
         for edge_data in edges_to_add:
             source = edge_data.get("source", "")
             target = edge_data.get("target", "")

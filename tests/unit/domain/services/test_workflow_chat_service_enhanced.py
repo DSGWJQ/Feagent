@@ -22,6 +22,7 @@ from src.domain.entities.tool import Tool
 from src.domain.entities.workflow import Workflow
 from src.domain.services.workflow_chat_service_enhanced import (
     EnhancedWorkflowChatService,
+    extract_main_subgraph,
 )
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
@@ -197,6 +198,55 @@ def test_modification_result_contains_detailed_info(mock_llm, mock_repository, s
     assert result.modifications_count > 0
 
 
+def test_modification_rejects_outside_main_subgraph_fail_closed(mock_llm, mock_repository):
+    """测试：LLM 返回主连通子图外的 node_id 修改时应 fail-closed 拒绝（结构化错误）"""
+    # 主路径：start -> mid -> end
+    start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))
+    mid = Node.create(type=NodeType.HTTP, name="中间", config={}, position=Position(x=100, y=0))
+    end = Node.create(type=NodeType.END, name="结束", config={}, position=Position(x=200, y=0))
+    isolated = Node.create(
+        type=NodeType.PYTHON, name="孤立节点", config={}, position=Position(x=100, y=100)
+    )
+
+    start.id = "node_main_start"
+    mid.id = "node_main_mid"
+    end.id = "node_main_end"
+    isolated.id = "node_isolated"
+
+    edge1 = Edge.create(source_node_id=start.id, target_node_id=mid.id)
+    edge2 = Edge.create(source_node_id=mid.id, target_node_id=end.id)
+
+    workflow = Workflow.create(
+        name="测试工作流",
+        description="",
+        nodes=[start, mid, end, isolated],
+        edges=[edge1, edge2],
+    )
+
+    mock_llm.generate_modifications.return_value = {
+        "action": "delete_node",
+        "intent": "delete_node",
+        "confidence": 0.9,
+        "nodes_to_delete": ["node_isolated"],
+        "ai_message": "删除孤立节点",
+    }
+
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
+    result = service.process_message(workflow, "删除孤立节点")
+
+    assert result.success is False
+    assert result.error_message
+    assert result.error_details
+
+    import json
+
+    payload = json.loads(result.error_details[0])
+    assert payload["code"] == "workflow_modification_rejected"
+    assert any(err["field"] == "nodes_to_delete" for err in payload["errors"])
+
+
 def test_build_system_prompt_includes_tool_id_constraints_and_candidates(
     mock_llm, mock_repository, sample_workflow
 ):
@@ -232,6 +282,63 @@ def test_build_system_prompt_includes_tool_id_constraints_and_candidates(
     assert "config.tool_id" in prompt
     assert 'tool_id="tool_alpha"' in prompt
     assert 'tool_id="tool_beta"' in prompt
+
+
+def test_build_system_prompt_only_includes_main_subgraph_nodes_and_edges(mock_llm, mock_repository):
+    """测试：system prompt 的 workflow_state 仅包含 start->end 主连通子图"""
+    start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))
+    mid = Node.create(
+        type=NodeType.HTTP, name="主路径节点", config={}, position=Position(x=100, y=0)
+    )
+    end = Node.create(type=NodeType.END, name="结束", config={}, position=Position(x=200, y=0))
+
+    isolated = Node.create(
+        type=NodeType.PYTHON, name="孤立节点", config={}, position=Position(x=100, y=100)
+    )
+    sub_a = Node.create(
+        type=NodeType.PYTHON, name="子图A", config={}, position=Position(x=0, y=200)
+    )
+    sub_b = Node.create(
+        type=NodeType.PYTHON, name="子图B", config={}, position=Position(x=100, y=200)
+    )
+
+    start.id = "node_main_start"
+    mid.id = "node_main_mid"
+    end.id = "node_main_end"
+    isolated.id = "node_isolated"
+    sub_a.id = "node_sub_a"
+    sub_b.id = "node_sub_b"
+
+    edge1 = Edge.create(source_node_id=start.id, target_node_id=mid.id)
+    edge1.id = "edge_main_1"
+    edge2 = Edge.create(source_node_id=mid.id, target_node_id=end.id)
+    edge2.id = "edge_main_2"
+
+    sub_edge = Edge.create(source_node_id=sub_a.id, target_node_id=sub_b.id)
+    sub_edge.id = "edge_sub"
+
+    workflow = Workflow.create(
+        name="测试工作流",
+        description="",
+        nodes=[start, mid, end, isolated, sub_a, sub_b],
+        edges=[edge1, edge2, sub_edge],
+    )
+
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
+    prompt = service._build_system_prompt(workflow, rag_context="")
+
+    assert "node_main_start" in prompt
+    assert "node_main_mid" in prompt
+    assert "node_main_end" in prompt
+    assert "edge_main_1" in prompt
+    assert "edge_main_2" in prompt
+
+    assert "node_isolated" not in prompt
+    assert "node_sub_a" not in prompt
+    assert "node_sub_b" not in prompt
+    assert "edge_sub" not in prompt
 
 
 def test_chat_service_identifies_intent_correctly(mock_llm, mock_repository, sample_workflow):
@@ -704,3 +811,269 @@ def test_chat_service_uses_compressed_history_in_prompt(mock_llm, mock_repositor
 
     # 应该成功处理，说明压缩工作正常
     assert result is not None
+
+
+# ============================================================================
+# TDD RED阶段：Story A - 主连通子图提取（extract_main_subgraph）
+# ============================================================================
+
+
+def test_extract_main_subgraph_with_simple_path():
+    """测试：提取简单的 start->node->end 主连通子图"""
+    # 创建 start -> node1 -> end 的工作流
+    start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))
+    node1 = Node.create(type=NodeType.HTTP, name="节点1", config={}, position=Position(x=100, y=0))
+    end = Node.create(type=NodeType.END, name="结束", config={}, position=Position(x=200, y=0))
+
+    edge1 = Edge.create(source_node_id=start.id, target_node_id=node1.id)
+    edge2 = Edge.create(source_node_id=node1.id, target_node_id=end.id)
+
+    workflow = Workflow.create(
+        name="测试工作流", description="", nodes=[start, node1, end], edges=[edge1, edge2]
+    )
+
+    main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+    # 所有节点都应该在主连通子图中
+    assert len(main_node_ids) == 3
+    assert start.id in main_node_ids
+    assert node1.id in main_node_ids
+    assert end.id in main_node_ids
+
+    # 所有边都应该在主连通子图中
+    assert len(main_edge_ids) == 2
+    assert edge1.id in main_edge_ids
+    assert edge2.id in main_edge_ids
+
+
+def test_extract_main_subgraph_excludes_isolated_node():
+    """测试：孤立节点不应该出现在主连通子图中"""
+    # 创建主路径：start -> node1 -> end
+    start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))
+    node1 = Node.create(type=NodeType.HTTP, name="节点1", config={}, position=Position(x=100, y=0))
+    end = Node.create(type=NodeType.END, name="结束", config={}, position=Position(x=200, y=0))
+
+    # 创建孤立节点（没有任何边连接）
+    isolated = Node.create(
+        type=NodeType.PYTHON, name="孤立节点", config={}, position=Position(x=100, y=100)
+    )
+
+    edge1 = Edge.create(source_node_id=start.id, target_node_id=node1.id)
+    edge2 = Edge.create(source_node_id=node1.id, target_node_id=end.id)
+
+    workflow = Workflow.create(
+        name="测试工作流",
+        description="",
+        nodes=[start, node1, end, isolated],
+        edges=[edge1, edge2],
+    )
+
+    main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+    # 孤立节点不应该在主连通子图中
+    assert isolated.id not in main_node_ids
+    # 主路径的所有节点应该在
+    assert start.id in main_node_ids
+    assert node1.id in main_node_ids
+    assert end.id in main_node_ids
+
+
+def test_extract_main_subgraph_excludes_isolated_subgraph():
+    """测试：孤立子图（有边连接但不连通 start/end）不应该出现在主连通子图中"""
+    # 主路径：start -> node1 -> end
+    start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))
+    node1 = Node.create(type=NodeType.HTTP, name="节点1", config={}, position=Position(x=100, y=0))
+    end = Node.create(type=NodeType.END, name="结束", config={}, position=Position(x=200, y=0))
+
+    # 孤立子图：nodeA -> nodeB（与主路径无连接）
+    nodeA = Node.create(
+        type=NodeType.PYTHON, name="节点A", config={}, position=Position(x=0, y=100)
+    )
+    nodeB = Node.create(
+        type=NodeType.DATABASE, name="节点B", config={}, position=Position(x=100, y=100)
+    )
+
+    edge_main1 = Edge.create(source_node_id=start.id, target_node_id=node1.id)
+    edge_main2 = Edge.create(source_node_id=node1.id, target_node_id=end.id)
+    edge_isolated = Edge.create(source_node_id=nodeA.id, target_node_id=nodeB.id)
+
+    workflow = Workflow.create(
+        name="测试工作流",
+        description="",
+        nodes=[start, node1, end, nodeA, nodeB],
+        edges=[edge_main1, edge_main2, edge_isolated],
+    )
+
+    main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+    # 孤立子图的节点不应该在主连通子图中
+    assert nodeA.id not in main_node_ids
+    assert nodeB.id not in main_node_ids
+    assert edge_isolated.id not in main_edge_ids
+
+    # 主路径应该完整
+    assert start.id in main_node_ids
+    assert node1.id in main_node_ids
+    assert end.id in main_node_ids
+    assert edge_main1.id in main_edge_ids
+    assert edge_main2.id in main_edge_ids
+
+
+def test_extract_main_subgraph_missing_start_returns_empty():
+    """测试：缺少 start 节点时返回空集（Fail-Closed）"""
+    # 只有 node1 -> end，缺少 start
+    node1 = Node.create(type=NodeType.HTTP, name="节点1", config={}, position=Position(x=100, y=0))
+    end = Node.create(type=NodeType.END, name="结束", config={}, position=Position(x=200, y=0))
+    edge = Edge.create(source_node_id=node1.id, target_node_id=end.id)
+
+    workflow = Workflow.create(name="测试工作流", description="", nodes=[node1, end], edges=[edge])
+
+    main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+    # 应该返回空集
+    assert len(main_node_ids) == 0
+    assert len(main_edge_ids) == 0
+
+
+def test_extract_main_subgraph_missing_end_returns_empty():
+    """测试：缺少 end 节点时返回空集（Fail-Closed）"""
+    # 只有 start -> node1，缺少 end
+    start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))
+    node1 = Node.create(type=NodeType.HTTP, name="节点1", config={}, position=Position(x=100, y=0))
+    edge = Edge.create(source_node_id=start.id, target_node_id=node1.id)
+
+    workflow = Workflow.create(
+        name="测试工作流", description="", nodes=[start, node1], edges=[edge]
+    )
+
+    main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+    # 应该返回空集
+    assert len(main_node_ids) == 0
+    assert len(main_edge_ids) == 0
+
+
+def test_extract_main_subgraph_no_path_returns_empty():
+    """测试：start 和 end 存在但无路径时返回空集（Fail-Closed）"""
+    # start 和 end 都存在，但没有边连接
+    start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))
+    end = Node.create(type=NodeType.END, name="结束", config={}, position=Position(x=200, y=0))
+
+    workflow = Workflow.create(name="测试工作流", description="", nodes=[start, end], edges=[])
+
+    main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+    # 应该返回空集
+    assert len(main_node_ids) == 0
+    assert len(main_edge_ids) == 0
+
+
+def test_extract_main_subgraph_multiple_starts_and_ends():
+    """测试：多个 start/end 节点时，提取全连通子图"""
+    # 创建两条路径：
+    # start1 -> node1 -> end1
+    # start2 -> node2 -> end2
+    # 以及交叉连接：node1 -> end2, start2 -> node1
+    start1 = Node.create(type=NodeType.START, name="开始1", config={}, position=Position(x=0, y=0))
+    start2 = Node.create(
+        type=NodeType.START, name="开始2", config={}, position=Position(x=0, y=100)
+    )
+    node1 = Node.create(type=NodeType.HTTP, name="节点1", config={}, position=Position(x=100, y=0))
+    node2 = Node.create(
+        type=NodeType.PYTHON, name="节点2", config={}, position=Position(x=100, y=100)
+    )
+    end1 = Node.create(type=NodeType.END, name="结束1", config={}, position=Position(x=200, y=0))
+    end2 = Node.create(type=NodeType.END, name="结束2", config={}, position=Position(x=200, y=100))
+
+    edge1 = Edge.create(source_node_id=start1.id, target_node_id=node1.id)
+    edge2 = Edge.create(source_node_id=node1.id, target_node_id=end1.id)
+    edge3 = Edge.create(source_node_id=start2.id, target_node_id=node2.id)
+    edge4 = Edge.create(source_node_id=node2.id, target_node_id=end2.id)
+    edge5 = Edge.create(source_node_id=node1.id, target_node_id=end2.id)  # 交叉
+    edge6 = Edge.create(source_node_id=start2.id, target_node_id=node1.id)  # 交叉
+
+    workflow = Workflow.create(
+        name="测试工作流",
+        description="",
+        nodes=[start1, start2, node1, node2, end1, end2],
+        edges=[edge1, edge2, edge3, edge4, edge5, edge6],
+    )
+
+    main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+    # 所有节点都应该在主连通子图中（因为有交叉连接）
+    assert len(main_node_ids) == 6
+    assert start1.id in main_node_ids
+    assert start2.id in main_node_ids
+    assert node1.id in main_node_ids
+    assert node2.id in main_node_ids
+    assert end1.id in main_node_ids
+    assert end2.id in main_node_ids
+
+
+def test_extract_main_subgraph_branch_that_doesnt_reach_end():
+    """测试：分支无法到达 end 的节点不应该出现在主连通子图中"""
+    # 主路径：start -> node1 -> end
+    # 分支：node1 -> deadend（无法到达 end）
+    start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))
+    node1 = Node.create(type=NodeType.HTTP, name="节点1", config={}, position=Position(x=100, y=0))
+    end = Node.create(type=NodeType.END, name="结束", config={}, position=Position(x=200, y=0))
+    deadend = Node.create(
+        type=NodeType.PYTHON, name="死胡同", config={}, position=Position(x=100, y=100)
+    )
+
+    edge1 = Edge.create(source_node_id=start.id, target_node_id=node1.id)
+    edge2 = Edge.create(source_node_id=node1.id, target_node_id=end.id)
+    edge3 = Edge.create(source_node_id=node1.id, target_node_id=deadend.id)
+
+    workflow = Workflow.create(
+        name="测试工作流",
+        description="",
+        nodes=[start, node1, end, deadend],
+        edges=[edge1, edge2, edge3],
+    )
+
+    main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+    # deadend 节点不应该在主连通子图中（因为它无法到达 end）
+    assert deadend.id not in main_node_ids
+    assert edge3.id not in main_edge_ids
+
+    # 主路径应该完整
+    assert start.id in main_node_ids
+    assert node1.id in main_node_ids
+    assert end.id in main_node_ids
+
+
+def test_extract_main_subgraph_node_unreachable_from_start():
+    """测试：从 start 无法到达的节点不应该出现在主连通子图中"""
+    # start -> node1 -> end
+    # orphan -> end（orphan 无法从 start 到达）
+    start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))
+    node1 = Node.create(type=NodeType.HTTP, name="节点1", config={}, position=Position(x=100, y=0))
+    end = Node.create(type=NodeType.END, name="结束", config={}, position=Position(x=200, y=0))
+    orphan = Node.create(
+        type=NodeType.PYTHON, name="孤儿节点", config={}, position=Position(x=100, y=100)
+    )
+
+    edge1 = Edge.create(source_node_id=start.id, target_node_id=node1.id)
+    edge2 = Edge.create(source_node_id=node1.id, target_node_id=end.id)
+    edge3 = Edge.create(source_node_id=orphan.id, target_node_id=end.id)
+
+    workflow = Workflow.create(
+        name="测试工作流",
+        description="",
+        nodes=[start, node1, end, orphan],
+        edges=[edge1, edge2, edge3],
+    )
+
+    main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+
+    # orphan 节点不应该在主连通子图中（因为它无法从 start 到达）
+    assert orphan.id not in main_node_ids
+    assert edge3.id not in main_edge_ids
+
+    # 主路径应该完整
+    assert start.id in main_node_ids
+    assert node1.id in main_node_ids
+    assert end.id in main_node_ids
