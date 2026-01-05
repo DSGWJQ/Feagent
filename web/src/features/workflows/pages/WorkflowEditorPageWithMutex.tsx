@@ -40,7 +40,7 @@ import { wouldCreateCycle } from '../utils/graphUtils';
 import { confirmRunSideEffect, updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
 import { useWorkflow } from '@/hooks/useWorkflow';
-import type { WorkflowNode, WorkflowEdge } from '../types/workflow';
+import type { Workflow, WorkflowNode, WorkflowEdge } from '../types/workflow';
 import NodePalette from '../components/NodePalette';
 import NodeConfigPanel from '../components/NodeConfigPanel';
 import CodeExportModal from '../components/CodeExportModal';
@@ -429,6 +429,34 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       strokeWidth: 2,
     },
   }), []);
+
+  // PRD-050: diff baseline = current canvas state (canvas is master)
+  const diffBaselineWorkflow = useMemo<Workflow | null>(() => {
+    if (!workflowId) return null;
+    const wf: Workflow = {
+      id: workflowId,
+      name: workflowData?.name ?? '',
+      description: workflowData?.description ?? '',
+      nodes: (nodes ?? []).map((n: any) => ({
+        id: n.id,
+        type: n.type,
+        position: n.position,
+        data: n.data ?? {},
+      })),
+      edges: (edges ?? []).map((e: any) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle,
+        label: e.label,
+        condition: (e as any).condition,
+      })),
+      status: (workflowData as any)?.status ?? ('draft' as any),
+      created_at: (workflowData as any)?.created_at ?? '',
+      updated_at: (workflowData as any)?.updated_at ?? '',
+    };
+    return wf;
+  }, [workflowId, workflowData, nodes, edges]);
 
   const connectionLineStyle = useMemo(() => ({
     stroke: 'var(--color-primary-400)',
@@ -1222,6 +1250,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
                   workflowId={workflowId}
                   onWorkflowUpdate={handleWorkflowUpdate}
                   showWelcome={true}
+                  diffBaselineWorkflow={diffBaselineWorkflow}
                 />
               ) : (
                 <Empty

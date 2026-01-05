@@ -13,6 +13,8 @@ import { useWorkflowInteraction } from '@/features/workflows/contexts/WorkflowIn
 import type { ChatMessage } from '@/shared/types/chat';
 import type { Workflow } from '@/features/workflows/types/workflow';
 import type { ExecutionLogEntry } from '@/features/workflows/types/workflow';
+import WorkflowDiffSummaryView from '@/features/workflows/components/WorkflowDiffSummary';
+import { diffWorkflowGraphs } from '@/features/workflows/utils/workflowDiff';
 import styles from './AIChat.module.css';
 
 const { TextArea } = Input;
@@ -22,6 +24,7 @@ interface WorkflowAIChatWithExecutionProps {
   workflowId: string;
   onWorkflowUpdate?: (workflow: unknown) => void;
   showWelcome?: boolean;
+  diffBaselineWorkflow?: Workflow | null;
   onExecutionSummary?: (summary: {
     success: boolean;
     totalNodes: number;
@@ -50,6 +53,7 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
   workflowId,
   onWorkflowUpdate,
   showWelcome = true,
+  diffBaselineWorkflow = null,
   onExecutionSummary,
 }) => {
   const [inputValue, setInputValue] = useState('');
@@ -186,6 +190,20 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
     return list;
   }, [messages, welcomeMessage, errorMessage, executionSummary]);
 
+  const diffSummary = useMemo(() => {
+    if (!pendingWorkflow || !diffBaselineWorkflow) return null;
+    return diffWorkflowGraphs(
+      {
+        nodes: diffBaselineWorkflow.nodes ?? [],
+        edges: diffBaselineWorkflow.edges ?? [],
+      },
+      {
+        nodes: pendingWorkflow.nodes ?? [],
+        edges: pendingWorkflow.edges ?? [],
+      }
+    );
+  }, [pendingWorkflow, diffBaselineWorkflow]);
+
   const handleSend = async () => {
     const trimmed = inputValue.trim();
     if (!trimmed) return;
@@ -247,9 +265,13 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
           message="AI 已生成新的工作流"
           description={
             <Space direction="vertical">
-              <Text type="secondary">
-                节点数：{pendingWorkflow?.nodes?.length ?? 0} · 边数：{pendingWorkflow?.edges?.length ?? 0}
-              </Text>
+              {diffSummary ? (
+                <WorkflowDiffSummaryView summary={diffSummary} />
+              ) : (
+                <Text type="secondary">
+                  节点数：{pendingWorkflow?.nodes?.length ?? 0} · 边数：{pendingWorkflow?.edges?.length ?? 0}
+                </Text>
+              )}
               <Button
                 size="small"
                 type="primary"
