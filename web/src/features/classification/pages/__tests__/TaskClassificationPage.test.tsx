@@ -66,7 +66,7 @@ describe('TaskClassificationPage', () => {
   });
 
   it('should call classification API with form data', async () => {
-    const mockClassify = vi.fn().mockResolvedValue({
+    const mockClassify = vi.mocked(classificationApi.classifyTask).mockResolvedValue({
       data: {
         taskType: 'data_analysis',
         confidence: 0.95,
@@ -74,8 +74,6 @@ describe('TaskClassificationPage', () => {
         suggestedTools: ['database', 'visualization'],
       },
     });
-
-    vi.spyOn(classificationApi, 'classifyTask').mockImplementation(mockClassify);
 
     const user = userEvent.setup();
     renderWithProviders(<TaskClassificationPage />);
@@ -147,8 +145,8 @@ describe('TaskClassificationPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<TaskClassificationPage />);
 
-    const startInput = screen.getByLabelText(/start/i);
-    const goalInput = screen.getByLabelText(/goal/i);
+    const startInput = screen.getByPlaceholderText(/I have a CSV file/i);
+    const goalInput = screen.getByPlaceholderText(/Analyze sales trends/i);
     const classifyButton = screen.getByRole('button', { name: /classify/i });
 
     await user.type(startInput, 'Start1');
