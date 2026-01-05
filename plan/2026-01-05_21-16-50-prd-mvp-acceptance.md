@@ -173,6 +173,15 @@ F1. 一键下载 `run_id` 对应事件 JSON（分页拉取直到 has_more=false�
 - 前端：关键 vitest 通过；SSE 解析容错测试通过；Timeline 内存边界通过。
 - 文档：仅更新必要文档（如 `API.md`、`docs/architecture/agents-and-protocols.md`）以反映 confirm 协议与闭环。
 
+发布前 Checklist（可勾选）
+- [ ] 后端：`pytest -q tests/integration/api/workflow_chat/test_chat_create_stream_api.py`
+- [ ] 后端：`pytest -q tests/integration/api/test_workflow_execution_error_classification.py`
+- [ ] 后端：`pytest -q tests/unit/infrastructure/executors/test_tool_node_executor.py`
+- [ ] 后端：`PYTHONUTF8=1 lint-imports --config .import-linter.toml`
+- [ ] 前端：`pnpm -C web test`
+- [ ] SSE 合同：`execute/stream` 事件类型保持 `workflow_*` / `node_*`（含 `node_error` 字段 `error_level/error_type/retryable/hint/message`）
+- [ ] 手工点验 1 次：创建 workflow → 修改 → run → 下载 events（并可回放/对齐 Timeline）
+
 ---
 
 ## ⚠️ 风险与注意事项
