@@ -166,6 +166,37 @@ class Settings(BaseSettings):
         description="审计：紧急回滚原因（可选）。",
     )
 
+    # E2E Test Support
+    enable_test_seed_api: bool = Field(
+        default=False,
+        description=(
+            "Feature flag：是否启用测试 Seed API（/api/test/workflows/seed 等）。"
+            "仅在测试/开发环境启用，生产环境必须保持 False。"
+        ),
+    )
+
+    # E2E Test Mode Switching (A/B/C模式切换)
+    e2e_test_mode: Literal["deterministic", "hybrid", "fullreal"] = Field(
+        default="deterministic",
+        description="E2E测试模式: deterministic(CI), hybrid(PR/Daily), fullreal(Nightly)",
+    )
+    llm_adapter: str = Field(
+        default="stub",
+        description="LLM适配器类型: stub(固定响应), replay(回放录制), openai(真实API)",
+    )
+    http_adapter: str = Field(
+        default="mock",
+        description="HTTP适配器类型: mock(本地mock), wiremock(WireMock服务器), httpx(真实HTTP)",
+    )
+    llm_replay_file: str = Field(
+        default="",
+        description="LLM回放文件路径(当llm_adapter=replay时必需)",
+    )
+    wiremock_url: str = Field(
+        default="http://localhost:8080",
+        description="WireMock服务器地址(当http_adapter=wiremock时使用)",
+    )
+
 
 # 全局配置实例
 settings = Settings()

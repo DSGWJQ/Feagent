@@ -493,6 +493,12 @@ app.include_router(memory_metrics.router, tags=["Memory"])
 app.include_router(knowledge.router, tags=["Knowledge"])
 app.include_router(runs.router, prefix="/api", tags=["Runs"])
 
+# Test Seed API（仅测试/开发环境启用）
+if settings.enable_test_seed_api:
+    from src.interfaces.api.routes import test_seeds
+
+    app.include_router(test_seeds.router, prefix="/api", tags=["Test Seeds"])
+
 
 if __name__ == "__main__":
     import uvicorn
