@@ -82,6 +82,63 @@ $env:enable_test_seed_api = "true"
 - **Full-real（模式 C）默认 Nightly-only**：需要 `OPENAI_API_KEY` 且需要网络访问；本地不建议频繁运行（有费用）。
 - **Playwright 浏览器首次安装需要网络**：如果你的环境网络受限，请优先在允许网络的环境执行一次 `npx playwright install`，或在 CI 环境完成安装/缓存后再本地复用。
 
+---
+
+## 环境基线（deterministic 从零可复现）
+
+> 目标：在 Windows PowerShell 下，从零把 deterministic E2E 跑到 “Playwright 开始执行测试”。
+
+### 0) 版本要求（最低）
+
+- Python：`>=3.11`（见 `pyproject.toml`）
+- Node.js：建议 `>=20`（运行 `node -v`/`npm -v` 自检）
+- 端口：`8000`（backend）、`5173`（web）
+
+### 1) 后端启动（PowerShell）
+
+> 在仓库根目录执行（新终端窗口）。
+
+```powershell
+python -m venv .venv
+. .venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install -e ".[dev]"
+
+$env:enable_test_seed_api = "true"
+$env:E2E_TEST_MODE = "deterministic"
+$env:LLM_ADAPTER = "stub"
+$env:HTTP_ADAPTER = "mock"
+
+python -m uvicorn src.interfaces.api.main:app --host 127.0.0.1 --port 8000
+```
+
+### 2) 前端启动（PowerShell）
+
+> 在 `web/` 目录执行（新终端窗口）。
+
+```powershell
+Set-Location web
+npm ci
+
+# Playwright 首次安装浏览器可能需要网络；离线环境可复用已安装的浏览器缓存（默认在 %USERPROFILE%\\AppData\\Local\\ms-playwright）
+npx playwright install
+
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+### 3) 运行 deterministic（PowerShell）
+
+> 在 `web/` 目录执行（第三个终端窗口）。
+
+```powershell
+Set-Location web
+$env:PLAYWRIGHT_API_URL = "http://127.0.0.1:8000"
+$env:PLAYWRIGHT_BASE_URL = "http://127.0.0.1:5173"
+
+# 冒烟：仅跑 UX-WF-001（验证链路跑通）
+npm run test:e2e:deterministic -- --grep "UX-WF-001" --reporter=list
+```
+
 ## 步骤 0: 前置验证 ✅ 已完成
 
 ### 验证结果
