@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncGenerator, Callable, Mapping
 from typing import Any
 
@@ -44,6 +45,11 @@ _SIDE_EFFECT_NODE_TYPES: frozenset[NodeType] = frozenset(
     }
 )
 _CONFIRM_TIMEOUT_S = 300.0
+
+_REACT_MAX_ATTEMPTS = 6
+_REACT_MAX_CONSECUTIVE_FAILURES = 3
+_REACT_MAX_SECONDS = 600.0
+_REACT_MAX_LLM_CALLS = 20
 
 
 def _find_first_side_effect_node_id(*, workflow: Any) -> str | None:
@@ -362,63 +368,28 @@ class WorkflowRunExecutionEntry:
                     yield denied
                     return
 
-            async for raw_event in self._kernel.stream_after_gate(
-                workflow_id=workflow_id,
-                input_data=input_data,
-                correlation_id=correlation_id,
-                original_decision_id=original_decision_id,
-            ):
-                event = self._normalize_sse_event(raw_event=raw_event, run_id=run_id)
+            started_at = time.monotonic()
+            react_started = False
+            attempt = 1
+            consecutive_failures = 0
+            llm_calls = 0
+            patches: list[dict[str, Any]] = []
 
-                try:
-                    validate_workflow_execution_sse_event(event)
-                except ExecutionEventContractError:
-                    invalid_type = event.get("type")
-                    logger.warning(
-                        "run_execution_event_contract_violation",
-                        extra={
-                            "workflow_id": workflow_id,
-                            "run_id": run_id,
-                            "invalid_type": str(invalid_type),
-                        },
-                    )
-                    violation_event = self._normalize_sse_event(
-                        raw_event={
-                            "type": "workflow_error",
-                            "error": "invalid_execution_event_type",
-                            "invalid_type": invalid_type,
-                        },
-                        run_id=run_id,
-                    )
-                    self._record_execution_event_best_effort(
-                        run_id=run_id,
-                        sse_event={**violation_event, "channel": "execution"},
-                        execution_event_sink=execution_event_sink,
-                        record_execution_events=record_execution_events,
-                    )
-                    if not terminal_persisted:
-                        self._append_lifecycle_event(
-                            run_id=run_id,
-                            event_type="workflow_error",
-                            workflow_id=workflow_id,
-                            payload={
-                                "error": "invalid_execution_event_type",
-                                "invalid_type": str(invalid_type),
-                            },
-                        )
-                        logger.info(
-                            "run_execution_terminal_persisted",
-                            extra={
-                                "workflow_id": workflow_id,
-                                "run_id": run_id,
-                                "event_type": "workflow_error",
-                                "reason": "invalid_execution_event_type",
-                            },
-                        )
-                        terminal_persisted = True
-                    yield violation_event
-                    return
+            def _should_stop(
+                *, attempt: int, consecutive_failures: int, llm_calls: int
+            ) -> str | None:
+                if attempt >= _REACT_MAX_ATTEMPTS:
+                    return "max_attempts"
+                if consecutive_failures >= _REACT_MAX_CONSECUTIVE_FAILURES:
+                    return "consecutive_failures"
+                if llm_calls >= _REACT_MAX_LLM_CALLS:
+                    return "max_llm_calls"
+                if (time.monotonic() - started_at) >= _REACT_MAX_SECONDS:
+                    return "max_elapsed"
+                return None
 
+            def _emit_execution_event(event: dict[str, Any]) -> None:
+                validate_workflow_execution_sse_event(event)
                 self._record_execution_event_best_effort(
                     run_id=run_id,
                     sse_event={**event, "channel": "execution"},
@@ -426,23 +397,279 @@ class WorkflowRunExecutionEntry:
                     record_execution_events=record_execution_events,
                 )
 
-                event_type = event.get("type", "")
-                if not terminal_persisted and event_type in {"workflow_complete", "workflow_error"}:
-                    self._append_lifecycle_event(
+            def _build_termination_report(
+                *,
+                stop_reason: str,
+                stop_condition: str,
+                last_error: Mapping[str, Any] | None,
+            ) -> dict[str, Any]:
+                elapsed_ms = int((time.monotonic() - started_at) * 1000)
+                last_error_payload: dict[str, Any] = {}
+                if isinstance(last_error, Mapping):
+                    for key in (
+                        "type",
+                        "node_id",
+                        "node_type",
+                        "error",
+                        "error_type",
+                        "error_level",
+                        "retryable",
+                        "hint",
+                        "message",
+                        "attempt",
+                    ):
+                        value = last_error.get(key)
+                        if value is not None:
+                            last_error_payload[key] = value
+
+                return {
+                    "type": "workflow_termination_report",
+                    "workflow_id": workflow_id,
+                    "patch_scope": "config-only",
+                    "stop_reason": stop_reason,
+                    "stop_condition": stop_condition,
+                    "attempts_total": attempt,
+                    "consecutive_failures": consecutive_failures,
+                    "llm_calls": llm_calls,
+                    "elapsed_ms": elapsed_ms,
+                    "last_error": last_error_payload,
+                    "patches": list(patches),
+                }
+
+            while True:
+                last_node_error: dict[str, Any] | None = None
+                terminal_error: dict[str, Any] | None = None
+
+                async for raw_event in self._kernel.stream_after_gate(
+                    workflow_id=workflow_id,
+                    input_data=input_data,
+                    correlation_id=correlation_id,
+                    original_decision_id=original_decision_id,
+                ):
+                    event = self._normalize_sse_event(raw_event=raw_event, run_id=run_id)
+                    event.setdefault("attempt", attempt)
+
+                    try:
+                        validate_workflow_execution_sse_event(event)
+                    except ExecutionEventContractError:
+                        invalid_type = event.get("type")
+                        logger.warning(
+                            "run_execution_event_contract_violation",
+                            extra={
+                                "workflow_id": workflow_id,
+                                "run_id": run_id,
+                                "invalid_type": str(invalid_type),
+                            },
+                        )
+                        violation_event = self._normalize_sse_event(
+                            raw_event={
+                                "type": "workflow_error",
+                                "error": "invalid_execution_event_type",
+                                "invalid_type": invalid_type,
+                                "attempt": attempt,
+                            },
+                            run_id=run_id,
+                        )
+                        _emit_execution_event(violation_event)
+                        if not terminal_persisted:
+                            self._append_lifecycle_event(
+                                run_id=run_id,
+                                event_type="workflow_error",
+                                workflow_id=workflow_id,
+                                payload={
+                                    "error": "invalid_execution_event_type",
+                                    "invalid_type": str(invalid_type),
+                                },
+                            )
+                            logger.info(
+                                "run_execution_terminal_persisted",
+                                extra={
+                                    "workflow_id": workflow_id,
+                                    "run_id": run_id,
+                                    "event_type": "workflow_error",
+                                    "reason": "invalid_execution_event_type",
+                                },
+                            )
+                            terminal_persisted = True
+                        yield violation_event
+                        return
+
+                    event_type = event.get("type", "")
+                    if event_type == "node_error":
+                        last_node_error = event
+
+                    if event_type == "workflow_complete":
+                        self._record_execution_event_best_effort(
+                            run_id=run_id,
+                            sse_event={**event, "channel": "execution"},
+                            execution_event_sink=execution_event_sink,
+                            record_execution_events=record_execution_events,
+                        )
+                        if not terminal_persisted:
+                            self._append_lifecycle_event(
+                                run_id=run_id,
+                                event_type="workflow_complete",
+                                workflow_id=workflow_id,
+                            )
+                            logger.info(
+                                "run_execution_terminal_persisted",
+                                extra={
+                                    "workflow_id": workflow_id,
+                                    "run_id": run_id,
+                                    "event_type": "workflow_complete",
+                                },
+                            )
+                            terminal_persisted = True
+                        yield event
+                        return
+
+                    if event_type == "workflow_error":
+                        terminal_error = event
+                        break
+
+                    self._record_execution_event_best_effort(
                         run_id=run_id,
-                        event_type=event_type,
-                        workflow_id=workflow_id,
+                        sse_event={**event, "channel": "execution"},
+                        execution_event_sink=execution_event_sink,
+                        record_execution_events=record_execution_events,
                     )
-                    logger.info(
-                        "run_execution_terminal_persisted",
-                        extra={
-                            "workflow_id": workflow_id,
-                            "run_id": run_id,
-                            "event_type": event_type,
+                    yield event
+
+                if terminal_error is None:
+                    # Defensive close: kernel ended without terminal event.
+                    missing_terminal = self._normalize_sse_event(
+                        raw_event={
+                            "type": "workflow_error",
+                            "error": "missing_terminal_event",
+                            "attempt": attempt,
                         },
+                        run_id=run_id,
                     )
-                    terminal_persisted = True
-                yield event
+                    _emit_execution_event(missing_terminal)
+                    if not terminal_persisted:
+                        self._append_lifecycle_event(
+                            run_id=run_id,
+                            event_type="workflow_error",
+                            workflow_id=workflow_id,
+                            payload={"error": "missing_terminal_event"},
+                        )
+                        terminal_persisted = True
+                    yield missing_terminal
+                    return
+
+                # Attempt failed. Enter ReAct-style repair loop (config-only).
+                consecutive_failures += 1
+                last_error = last_node_error or terminal_error
+
+                if not react_started:
+                    react_started = True
+                    react_started_event = self._normalize_sse_event(
+                        raw_event={
+                            "type": "workflow_react_loop_started",
+                            "workflow_id": workflow_id,
+                            "patch_scope": "config-only",
+                            "max_attempts": _REACT_MAX_ATTEMPTS,
+                            "max_consecutive_failures": _REACT_MAX_CONSECUTIVE_FAILURES,
+                            "max_seconds": _REACT_MAX_SECONDS,
+                            "max_llm_calls": _REACT_MAX_LLM_CALLS,
+                            "attempt": attempt,
+                        },
+                        run_id=run_id,
+                    )
+                    _emit_execution_event(react_started_event)
+                    yield react_started_event
+
+                attempt_failed_event = self._normalize_sse_event(
+                    raw_event={
+                        "type": "workflow_attempt_failed",
+                        "workflow_id": workflow_id,
+                        "attempt": attempt,
+                        "error": terminal_error.get("error"),
+                        "error_type": last_error.get("error_type"),
+                        "retryable": last_error.get("retryable"),
+                        "node_id": last_error.get("node_id"),
+                    },
+                    run_id=run_id,
+                )
+                _emit_execution_event(attempt_failed_event)
+                yield attempt_failed_event
+
+                stop_reason = _should_stop(
+                    attempt=attempt,
+                    consecutive_failures=consecutive_failures,
+                    llm_calls=llm_calls,
+                )
+                if stop_reason is not None:
+                    report_event = self._normalize_sse_event(
+                        raw_event=_build_termination_report(
+                            stop_reason=stop_reason,
+                            stop_condition=stop_reason,
+                            last_error=last_error,
+                        ),
+                        run_id=run_id,
+                    )
+                    _emit_execution_event(report_event)
+                    yield report_event
+
+                    if not terminal_persisted:
+                        self._append_lifecycle_event(
+                            run_id=run_id,
+                            event_type="workflow_error",
+                            workflow_id=workflow_id,
+                            payload={"error": "react_stop", "reason": stop_reason},
+                        )
+                        terminal_persisted = True
+
+                    final_error = terminal_error
+                    final_error.setdefault("attempt", attempt)
+                    _emit_execution_event(final_error)
+                    yield final_error
+                    return
+
+                patch_applied, patch_info = self._apply_react_config_only_patch(
+                    workflow_id=workflow_id,
+                    error_event=last_error,
+                )
+                if not patch_applied:
+                    report_event = self._normalize_sse_event(
+                        raw_event=_build_termination_report(
+                            stop_reason="unrepairable_error",
+                            stop_condition="no_applicable_patch",
+                            last_error=last_error,
+                        ),
+                        run_id=run_id,
+                    )
+                    _emit_execution_event(report_event)
+                    yield report_event
+
+                    final_error = terminal_error
+                    _emit_execution_event(final_error)
+                    if not terminal_persisted:
+                        self._append_lifecycle_event(
+                            run_id=run_id,
+                            event_type="workflow_error",
+                            workflow_id=workflow_id,
+                            payload={"error": "react_unrepairable"},
+                        )
+                        terminal_persisted = True
+                    yield final_error
+                    return
+
+                patches.append({**patch_info, "attempt": attempt})
+                patch_event = self._normalize_sse_event(
+                    raw_event={
+                        "type": "workflow_react_patch_applied",
+                        "workflow_id": workflow_id,
+                        "attempt": attempt,
+                        "patch": patch_info,
+                        "patch_scope": "config-only",
+                    },
+                    run_id=run_id,
+                )
+                _emit_execution_event(patch_event)
+                yield patch_event
+
+                attempt += 1
         except asyncio.CancelledError:
             if not terminal_persisted:
                 self._append_lifecycle_event(
@@ -509,6 +736,95 @@ class WorkflowRunExecutionEntry:
                     )
                 except Exception:
                     pass
+
+    def _apply_react_config_only_patch(
+        self,
+        *,
+        workflow_id: str,
+        error_event: Mapping[str, Any],
+    ) -> tuple[bool, dict[str, Any]]:
+        """Best-effort config-only patching for PRD-040.
+
+        Constraints:
+        - Must not add/remove nodes or edges (config-only).
+        - Must fail-closed when uncertain.
+        """
+        node_id = error_event.get("node_id")
+        if not isinstance(node_id, str) or not node_id.strip():
+            return False, {"reason": "missing_node_id"}
+
+        error_type = error_event.get("error_type")
+        if not isinstance(error_type, str):
+            error_type = ""
+        error_type = error_type.strip()
+
+        workflow = self._workflow_repository.get_by_id(workflow_id)
+        node_ids_before = [n.id for n in getattr(workflow, "nodes", []) or []]
+        edge_ids_before = [e.id for e in getattr(workflow, "edges", []) or []]
+
+        node = next((n for n in workflow.nodes if n.id == node_id), None)
+        if node is None:
+            return False, {"reason": "node_not_found", "node_id": node_id}
+
+        if not isinstance(node.config, dict):
+            node_config: dict[str, Any] = {}
+        else:
+            node_config = dict(node.config)
+
+        patch: dict[str, Any] = {"node_id": node_id, "error_type": error_type, "changes": {}}
+
+        if error_type == "timeout" or bool(error_event.get("retryable")):
+            before = node_config.get("timeout")
+            current = float(before) if isinstance(before, int | float) else 30.0
+            target = current * 2.0
+            if target < 10.0:
+                target = 10.0
+            if target > 300.0:
+                target = 300.0
+            node_config["timeout"] = target
+            patch["changes"]["timeout"] = {"from": before, "to": target}
+        elif error_type == "tool_not_found":
+            if getattr(node, "type", None) is not NodeType.TOOL:
+                return False, {"reason": "tool_not_found_non_tool_node", "node_id": node_id}
+            repository = getattr(self._save_validator, "tool_repository", None)
+            if repository is None:
+                return False, {"reason": "tool_repository_unavailable"}
+            tools = []
+            if hasattr(repository, "find_published"):
+                tools = list(repository.find_published())  # type: ignore[no-untyped-call]
+            elif hasattr(repository, "find_all"):
+                tools = list(repository.find_all())  # type: ignore[no-untyped-call]
+            if not tools:
+                return False, {"reason": "no_fallback_tools"}
+
+            from src.domain.value_objects.tool_status import ToolStatus
+
+            candidates = [t for t in tools if getattr(t, "status", None) != ToolStatus.DEPRECATED]
+            if not candidates:
+                return False, {"reason": "no_non_deprecated_tools"}
+
+            before = node_config.get("tool_id") or node_config.get("toolId")
+            fallback = next(
+                (t for t in candidates if getattr(t, "id", None) != before), candidates[0]
+            )
+            node_config["tool_id"] = fallback.id
+            node_config.pop("toolId", None)
+            patch["changes"]["tool_id"] = {"from": before, "to": fallback.id}
+        else:
+            return False, {"reason": "unsupported_error_type", "error_type": error_type}
+
+        node.update_config(node_config)
+
+        # Defensive: verify config-only (no node/edge topology change).
+        node_ids_after = [n.id for n in getattr(workflow, "nodes", []) or []]
+        edge_ids_after = [e.id for e in getattr(workflow, "edges", []) or []]
+        if node_ids_after != node_ids_before or edge_ids_after != edge_ids_before:
+            return False, {"reason": "patch_scope_violation"}
+
+        # Fail-closed: patched workflow must still be executable.
+        self._save_validator.validate_or_raise(workflow)
+        self._workflow_repository.save(workflow)
+        return True, patch
 
     async def execute_streaming(
         self,
