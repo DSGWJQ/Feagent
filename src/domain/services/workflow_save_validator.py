@@ -53,6 +53,41 @@ def _extract_tool_id(config: dict[str, Any]) -> str | None:
     return None
 
 
+def _extract_main_subgraph_node_ids(workflow: Workflow) -> set[str]:
+    start_ids = {node.id for node in workflow.nodes if node.type == NodeType.START}
+    end_ids = {node.id for node in workflow.nodes if node.type == NodeType.END}
+    if not start_ids or not end_ids:
+        return set()
+
+    forward: dict[str, list[str]] = {}
+    backward: dict[str, list[str]] = {}
+    for edge in workflow.edges:
+        forward.setdefault(edge.source_node_id, []).append(edge.target_node_id)
+        backward.setdefault(edge.target_node_id, []).append(edge.source_node_id)
+
+    from collections import deque
+
+    forward_reachable = set(start_ids)
+    queue = deque(start_ids)
+    while queue:
+        current = queue.popleft()
+        for nxt in forward.get(current, []):
+            if nxt not in forward_reachable:
+                forward_reachable.add(nxt)
+                queue.append(nxt)
+
+    backward_reachable = set(end_ids)
+    queue = deque(end_ids)
+    while queue:
+        current = queue.popleft()
+        for prev in backward.get(current, []):
+            if prev not in backward_reachable:
+                backward_reachable.add(prev)
+                queue.append(prev)
+
+    return forward_reachable & backward_reachable
+
+
 @dataclass(frozen=True, slots=True)
 class WorkflowSaveValidator:
     """校验 workflow 在当前能力集合下是否“可执行”。
@@ -72,6 +107,8 @@ class WorkflowSaveValidator:
         # Normalize configs before validation so both drag-save and chat-modify
         # persist the same canonical shape (fail-closed: still validates after).
         self._normalize_workflow_node_configs(workflow)
+
+        self._validate_main_subgraph(workflow, errors=errors)
 
         node_ids = [node.id for node in workflow.nodes]
         if not node_ids and workflow.edges:
@@ -180,6 +217,14 @@ class WorkflowSaveValidator:
             if node.type in builtin_types:
                 continue
 
+            if node.type in {NodeType.JAVASCRIPT, NodeType.PYTHON, NodeType.TRANSFORM}:
+                self._validate_code_node(node_index=idx, node_config=node.config, errors=errors)
+
+            if node.type in {NodeType.HTTP, NodeType.HTTP_REQUEST}:
+                self._validate_http_request_node(
+                    node_index=idx, node_config=node.config, errors=errors
+                )
+
             if not self.executor_registry.has(node.type.value):
                 _append_error(
                     errors,
@@ -190,6 +235,96 @@ class WorkflowSaveValidator:
 
             if node.type == NodeType.TOOL:
                 self._validate_tool_node(node_index=idx, node_config=node.config, errors=errors)
+
+    def _validate_main_subgraph(self, workflow: Workflow, *, errors: list[dict[str, Any]]) -> None:
+        if not workflow.nodes:
+            _append_error(
+                errors,
+                code="empty_workflow",
+                message="workflow must contain at least one start->end path",
+                path="nodes",
+            )
+            return
+
+        start_ids = {node.id for node in workflow.nodes if node.type == NodeType.START}
+        end_ids = {node.id for node in workflow.nodes if node.type == NodeType.END}
+        if not start_ids:
+            _append_error(
+                errors,
+                code="missing_start",
+                message="missing start node",
+                path="nodes",
+            )
+        if not end_ids:
+            _append_error(
+                errors,
+                code="missing_end",
+                message="missing end node",
+                path="nodes",
+            )
+        if not start_ids or not end_ids:
+            return
+
+        main_node_ids = _extract_main_subgraph_node_ids(workflow)
+        if not main_node_ids:
+            _append_error(
+                errors,
+                code="no_start_to_end_path",
+                message="no path from start to end",
+                path="edges",
+            )
+            return
+
+        intermediate = main_node_ids - start_ids - end_ids
+        if not intermediate:
+            _append_error(
+                errors,
+                code="missing_intermediate_nodes",
+                message="workflow must include at least one node between start and end",
+                path="nodes",
+            )
+
+    def _validate_code_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        code = node_config.get("code") if isinstance(node_config, dict) else None
+        if not isinstance(code, str) or not code.strip():
+            _append_error(
+                errors,
+                code="missing_code",
+                message="code is required for code nodes",
+                path=f"nodes[{node_index}].config.code",
+            )
+
+    def _validate_http_request_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for http nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        url = node_config.get("url")
+        if not isinstance(url, str) or not url.strip():
+            _append_error(
+                errors,
+                code="missing_url",
+                message="url is required for http nodes",
+                path=f"nodes[{node_index}].config.url",
+            )
+
+        method = node_config.get("method")
+        if not isinstance(method, str) or not method.strip():
+            _append_error(
+                errors,
+                code="missing_method",
+                message="method is required for http nodes",
+                path=f"nodes[{node_index}].config.method",
+            )
 
     def _validate_tool_node(
         self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]

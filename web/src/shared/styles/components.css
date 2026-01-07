@@ -392,7 +392,8 @@
   background: var(--paper);
   border: 1px solid var(--ink-primary);
   box-shadow: 4px 4px 0 0 rgba(0,0,0,0.1);
-  position: absolute;
+  /* ReactFlow positions the node wrapper; keep node content in normal flow so it can be measured. */
+  position: relative;
 }
 
 .node-header {

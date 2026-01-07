@@ -125,7 +125,10 @@ def _create_main_subgraph() -> Workflow:
     process = Node.create(
         type=NodeType.JAVASCRIPT,
         name="Process Data",
-        config={"code": "return { output: (input_data?.value || 0) * 2 };"},
+        # Deterministic baseline: keep code compatible with our simplified Python-based executor.
+        config={
+            "code": "result = {'output': (input1.get('value', 0) if isinstance(input1, dict) else 0) * 2}"
+        },
         position=Position(x=300, y=100),
     )
     end = Node.create(

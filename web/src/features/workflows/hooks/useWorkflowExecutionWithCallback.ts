@@ -71,6 +71,29 @@ export function useWorkflowExecutionWithCallback({
 
   const cancelFnRef = useRef<(() => void) | null>(null);
   const previousNodeStatusMap = useRef<Record<string, NodeExecutionStatus>>({});
+  const executeStartedAtRef = useRef<number | null>(null);
+  const executionUiFinishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const finishExecutionUi = useCallback(() => {
+    const MIN_EXECUTION_UI_MS = 300;
+    const startedAt = executeStartedAtRef.current;
+    const elapsed = startedAt == null ? MIN_EXECUTION_UI_MS : Date.now() - startedAt;
+    const remaining = Math.max(0, MIN_EXECUTION_UI_MS - elapsed);
+
+    if (executionUiFinishTimerRef.current) {
+      clearTimeout(executionUiFinishTimerRef.current);
+      executionUiFinishTimerRef.current = null;
+    }
+
+    if (remaining > 0) {
+      executionUiFinishTimerRef.current = setTimeout(() => {
+        setIsExecuting(false);
+        executionUiFinishTimerRef.current = null;
+      }, remaining);
+    } else {
+      setIsExecuting(false);
+    }
+  }, []);
 
   /**
    * 处理 SSE 事件
@@ -121,9 +144,9 @@ export function useWorkflowExecutionWithCallback({
         break;
 
       case 'workflow_complete':
-        setIsExecuting(false);
         setCurrentNodeId(null);
         setFinalResult(event.result);
+        finishExecutionUi();
 
         // 保存当前状态
         const currentStatusMap = { ...nodeStatusMap };
@@ -147,9 +170,9 @@ export function useWorkflowExecutionWithCallback({
         break;
 
       case 'workflow_error':
-        setIsExecuting(false);
         setCurrentNodeId(null);
         setError(event.error || 'Workflow execution failed');
+        finishExecutionUi();
         break;
 
       case 'workflow_confirm_required': {
@@ -171,16 +194,16 @@ export function useWorkflowExecutionWithCallback({
         // no-op: UI can rely on API call resolution; this event is mainly for observability/replay
         break;
     }
-  }, [nodeStatusMap, nodeOutputMap, executionLog, onWorkflowComplete, onConfirmRequired]);
+  }, [finishExecutionUi, nodeStatusMap, nodeOutputMap, executionLog, onWorkflowComplete, onConfirmRequired]);
 
   /**
    * 处理错误
    */
   const handleError = useCallback((err: Error) => {
-    setIsExecuting(false);
     setCurrentNodeId(null);
     setError(err.message);
-  }, []);
+    finishExecutionUi();
+  }, [finishExecutionUi]);
 
   /**
    * 执行工作流
@@ -188,7 +211,12 @@ export function useWorkflowExecutionWithCallback({
   const execute = useCallback(
     (workflowId: string, request: ExecuteWorkflowRequest) => {
       // 重置状态
+      if (executionUiFinishTimerRef.current) {
+        clearTimeout(executionUiFinishTimerRef.current);
+        executionUiFinishTimerRef.current = null;
+      }
       setIsExecuting(true);
+      executeStartedAtRef.current = Date.now();
       setExecutionLog([]);
       setError(null);
       setCurrentNodeId(null);

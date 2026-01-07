@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/e2e-m4-metrics.schema.json",
+  "title": "E2E M4 Metrics",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "updated_at", "runs"],
+  "properties": {
+    "schema_version": { "type": "string", "minLength": 1 },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "runs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/run" }
+    }
+  },
+  "$defs": {
+    "run": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["run_id", "generated_at", "seed_passed", "deterministic_overall", "artifacts"],
+      "properties": {
+        "run_id": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "meta": { "type": "object", "additionalProperties": true },
+        "seed_passed": { "type": "boolean" },
+        "deterministic_overall": { "$ref": "#/$defs/deterministic_overall" },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["run_dir"],
+          "properties": {
+            "run_dir": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "deterministic_overall": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["executed", "passed", "failed", "pass_rate", "flaky", "flaky_rate"],
+      "properties": {
+        "executed": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "flaky": { "type": "integer", "minimum": 0 },
+        "flaky_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "failure_categories": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "flaky_tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["key", "flaky_occurrences", "max_retries_used"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "flaky_occurrences": { "type": "integer", "minimum": 0 },
+              "max_retries_used": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "top_failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["key", "failures"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "failures": { "type": "integer", "minimum": 0 },
+              "sample_error_category": { "type": ["string", "null"] },
+              "sample_error_message": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

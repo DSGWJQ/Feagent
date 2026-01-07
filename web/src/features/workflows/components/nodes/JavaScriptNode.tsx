@@ -16,13 +16,14 @@ export interface JavaScriptNodeData {
   output?: any;
 }
 
-function JavaScriptNode({ data, selected }: NodeProps<JavaScriptNodeData>) {
+function JavaScriptNode({ id, data, selected }: NodeProps<JavaScriptNodeData>) {
   const status = data.status || 'idle';
 
   return (
     <Card
       className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCardWide}`}
       styles={{ body: { padding: 0 } }}
+      data-testid={`workflow-node-${id}`}
     >
       <div className={styles.nodeHeaderWrapper}>
         <div className={`${styles.nodeIcon} ${styles.nodeTypeJavaScript}`}>

@@ -22,6 +22,7 @@ function EndNode({ data, selected }: NodeProps<EndNodeData>) {
     <Card
       className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCard}`}
       styles={{ body: { padding: 0 } }}
+      data-testid="workflow-node-end"
     >
       <div className={styles.nodeHeaderWrapper}>
         <div className={`${styles.nodeIcon} ${styles.nodeTypeEnd}`}>

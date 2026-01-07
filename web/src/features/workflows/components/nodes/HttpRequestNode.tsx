@@ -19,7 +19,7 @@ export interface HttpRequestNodeData {
   output?: any;
 }
 
-function HttpRequestNode({ data, selected }: NodeProps<HttpRequestNodeData>) {
+function HttpRequestNode({ data, selected, id }: NodeProps<HttpRequestNodeData>) {
   const status = data.status || 'idle';
 
   const getMethodColor = (method: string) => {
@@ -43,6 +43,7 @@ function HttpRequestNode({ data, selected }: NodeProps<HttpRequestNodeData>) {
     <Card
       className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCardWide}`}
       styles={{ body: { padding: 0 } }}
+      data-testid={`workflow-node-${id}`}
     >
       <div className={styles.nodeHeaderWrapper}>
         <div className={`${styles.nodeIcon} ${styles.nodeTypeHttp}`}>

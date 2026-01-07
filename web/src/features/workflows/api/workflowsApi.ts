@@ -277,7 +277,7 @@ export function executeWorkflowStreaming(
       }
 
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+      const decoder = new TextDecoder('utf-8');
       let buffer = '';
 
       while (true) {
@@ -286,18 +286,35 @@ export function executeWorkflowStreaming(
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        const findBoundary = (input: string): { index: number; length: number } | null => {
+          const lf = input.indexOf('\n\n');
+          if (lf !== -1) return { index: lf, length: 2 };
+          const crlf = input.indexOf('\r\n\r\n');
+          if (crlf !== -1) return { index: crlf, length: 4 };
+          return null;
+        };
 
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith('data: ')) continue;
+        let boundary = findBoundary(buffer);
+        while (boundary !== null) {
+          const chunk = buffer.slice(0, boundary.index);
+          buffer = buffer.slice(boundary.index + boundary.length);
+          boundary = findBoundary(buffer);
+
+          if (!chunk.startsWith('data:')) {
+            continue;
+          }
+
+          const data = chunk.replace(/^data:\s*/, '').trim();
+          if (!data || data === '[DONE]') {
+            continue;
+          }
 
           try {
-            const data: SSEEvent = JSON.parse(line.substring(6)); // 去掉 "data: " 前缀
-            onEvent(data);
+            const event = JSON.parse(data) as SSEEvent;
+            onEvent(event);
 
             // 如果收到完成或错误事件，停止读取
-            if (data.type === 'workflow_complete' || data.type === 'workflow_error') {
+            if (event.type === 'workflow_complete' || event.type === 'workflow_error') {
               reader.cancel();
               return;
             }

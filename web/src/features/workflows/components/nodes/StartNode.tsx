@@ -22,6 +22,7 @@ function StartNode({ data, selected }: NodeProps<StartNodeData>) {
     <Card
       className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCard}`}
       styles={{ body: { padding: 0 } }}
+      data-testid="workflow-node-start"
     >
       <div className={styles.nodeHeaderWrapper}>
         <div className={`${styles.nodeIcon} ${styles.nodeTypeStart}`}>

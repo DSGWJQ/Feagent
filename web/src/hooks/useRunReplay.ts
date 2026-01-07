@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { API_BASE_URL } from '@/services/api';
 
+const MIN_REPLAY_UI_MS = 500;
+
 export type RunEvent = {
   type: string;
   run_id: string;
@@ -43,6 +45,8 @@ export function useRunReplay(options: UseRunReplayOptions) {
 
   const startReplay = useCallback(async () => {
     if (!runId) return;
+    const replayStartAt = Date.now();
+    let aborted = false;
     try {
       abortRef.current?.abort();
       const abortController = new AbortController();
@@ -92,12 +96,20 @@ export function useRunReplay(options: UseRunReplayOptions) {
       onCompleteRef.current?.();
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
+        aborted = true;
         return;
       }
       const err = e instanceof Error ? e : new Error(String(e));
       onErrorRef.current?.(err);
     } finally {
       abortRef.current = null;
+      if (!aborted) {
+        const elapsedMs = Date.now() - replayStartAt;
+        const remainingMs = MIN_REPLAY_UI_MS - elapsedMs;
+        if (remainingMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, remainingMs));
+        }
+      }
       setIsReplaying(false);
     }
   }, [pageSize, runId]);

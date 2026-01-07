@@ -152,6 +152,7 @@ class WorkflowResponse(BaseModel):
 
     字段：
     - id: Workflow ID
+    - project_id: 关联的项目 ID（可选）
     - name: 工作流名称
     - description: 工作流描述
     - nodes: 节点列表
@@ -162,6 +163,7 @@ class WorkflowResponse(BaseModel):
     """
 
     id: str
+    project_id: str | None = None
     name: str
     description: str
     nodes: list[NodeDTO]
@@ -182,6 +184,7 @@ class WorkflowResponse(BaseModel):
         """
         return cls(
             id=workflow.id,
+            project_id=workflow.project_id,
             name=workflow.name,
             description=workflow.description,
             nodes=[NodeDTO.from_entity(node) for node in workflow.nodes],

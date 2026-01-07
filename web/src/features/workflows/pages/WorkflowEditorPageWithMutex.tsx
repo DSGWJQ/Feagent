@@ -190,6 +190,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   // Step F.8: Replay hook - MVP Step 3: 增强事件处理
   // 使用 ref 防止 workflow_complete + RESEARCH_END 双重触发
   const resultHandledRef = useRef(false);
+  const [replayEvents, setReplayEvents] = useState<RunEvent[]>([]);
 
   const {
     isReplaying,
@@ -198,6 +199,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   } = useRunReplay({
     runId: lastRunId ?? '',
     onEvent: (event: RunEvent) => {
+      setReplayEvents((prev) => [...prev, event]);
       // 处理成功完成事件（防止双重触发）
       if ((event.type === 'workflow_complete' || event.type === 'RESEARCH_END') && !resultHandledRef.current) {
         const rr = extractResearchResult(event);
@@ -232,6 +234,11 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       resultHandledRef.current = false;
     },
   });
+
+  const handleStartReplay = useCallback(async () => {
+    setReplayEvents([]);
+    await startReplay();
+  }, [startReplay]);
 
   // 本地草稿模式：不从后端加载数据
   const isLocalDraft = workflowId === 'local-draft' || workflowId === 'demo-draft';
@@ -375,7 +382,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     isExecuting,
     currentNodeId,
     executionLog,
-    executionError,
+    error: executionError,
     nodeStatusMap,
     nodeOutputMap,
   } = useWorkflowExecutionWithCallback({
@@ -503,18 +510,26 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
    * 映射后端节点类型到前端节点类型
    */
   const mapBackendNodeTypeToFrontend = (backendType: string): string => {
+    const trimmed = backendType?.trim();
+    if (!trimmed) {
+      return 'default';
+    }
+
+    // If backend already matches a registered ReactFlow node type, keep it.
+    if (trimmed in nodeTypes) {
+      return trimmed;
+    }
+
+    // Backward-compatible aliases / legacy naming from backend or older frontends.
     const typeMap: Record<string, string> = {
-      'start': 'start',
-      'end': 'end',
-      'http': 'httpRequest',
-      'llm': 'textModel',
-      'transform': 'javascript',
-      'database': 'httpRequest',
-      'python': 'javascript',
-      'condition': 'conditional',
-      'tool': 'tool',
+      http: 'httpRequest',
+      llm: 'textModel',
+      transform: 'javascript',
+      python: 'javascript',
+      condition: 'conditional',
     };
-    return typeMap[backendType] || 'httpRequest';
+
+    return typeMap[trimmed] || 'default';
   };
 
   /**
@@ -1108,6 +1123,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             onClick={handleSave}
             loading={isSaving}
             disabled={isExecuting || isGenerating || isCompiling}
+            data-testid="workflow-save-button"
           >
             Save
           </NeoButton>
@@ -1117,6 +1133,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             onClick={handleExecute}
             loading={isExecuting}
             disabled={isGenerating || isCompiling}
+            data-testid="workflow-run-button"
           >
             Run
           </NeoButton>
@@ -1135,10 +1152,11 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
           <NeoButton
             variant="secondary"
             icon={<HistoryOutlined />}
-            onClick={() => (isReplaying ? stopReplay() : startReplay())}
+            onClick={() => (isReplaying ? stopReplay() : handleStartReplay())}
             loading={isReplaying}
             disabled={!lastRunId || isExecuting || isGenerating || isCompiling}
             title={!lastRunId ? 'No run session to replay' : `Replay run ${lastRunId.slice(0, 8)}`}
+            data-testid="replay-run-button"
           >
             {isReplaying ? 'Stop' : 'Replay'}
           </NeoButton>
@@ -1160,8 +1178,49 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
               {lastRunId.slice(0, 12)}
             </span>
           )}
+
+          {/* E2E Test: Execution Status Indicator */}
+           <span
+             data-testid="workflow-execution-status"
+             data-status={isExecuting ? 'running' : (executionError ? 'idle' : (lastRunId ? 'completed' : 'idle'))}
+             style={{ display: 'none' }}
+           />
         </div>
       </div>
+
+      {replayEvents.length > 0 && (
+        <div
+          data-testid="replay-event-list"
+          style={{
+            position: 'fixed',
+            right: 16,
+            bottom: 16,
+            width: 360,
+            maxHeight: 240,
+            overflow: 'auto',
+            background: 'rgba(10, 10, 10, 0.85)',
+            color: '#fff',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            borderRadius: 8,
+            padding: 8,
+            zIndex: 1000,
+            pointerEvents: 'none',
+            fontFamily: 'monospace',
+            fontSize: 12,
+          }}
+        >
+          {replayEvents.slice(-200).map((event, index) => (
+            <div
+              key={`${index}-${event.type}`}
+              data-testid={`execution-log-entry-${index}`}
+              style={{ padding: '2px 0' }}
+            >
+              {event.type}
+              {event.node_id ? `:${String(event.node_id).slice(0, 8)}` : ''}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Main Drafting Table */}
       <div className={styles.draftingTable}>
@@ -1169,7 +1228,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         <NodePalette onAddNode={handleAddNode} />
 
         {/* Center: Canvas */}
-        <div className={styles.canvasArea} ref={reactFlowWrapper}>
+        <div className={styles.canvasArea} ref={reactFlowWrapper} data-testid="workflow-canvas">
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -1293,6 +1352,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             danger
             onClick={() => submitConfirmDecision('deny')}
             loading={confirmSubmitting}
+            data-testid="confirm-deny-button"
           >
             Deny
           </Button>,
@@ -1301,30 +1361,40 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             type="primary"
             onClick={() => submitConfirmDecision('allow')}
             loading={confirmSubmitting}
+            data-testid="confirm-allow-button"
           >
             Allow
           </Button>,
         ]}
       >
-        <Alert
-          type="warning"
-          showIcon
-          message="该工作流将执行外部副作用操作（默认 deny）"
-          description="请选择 allow/deny 后才能继续同一 run 执行。"
-          style={{ marginBottom: 12 }}
-        />
-        <Typography.Paragraph style={{ marginBottom: 0 }}>
-          <Typography.Text type="secondary">run_id:</Typography.Text>{' '}
-          <Typography.Text code>{pendingConfirm?.runId}</Typography.Text>
-        </Typography.Paragraph>
-        <Typography.Paragraph style={{ marginBottom: 0 }}>
-          <Typography.Text type="secondary">workflow_id:</Typography.Text>{' '}
-          <Typography.Text code>{pendingConfirm?.workflowId || '-'}</Typography.Text>
-        </Typography.Paragraph>
-        <Typography.Paragraph style={{ marginBottom: 0 }}>
-          <Typography.Text type="secondary">node_id:</Typography.Text>{' '}
-          <Typography.Text code>{pendingConfirm?.nodeId || '-'}</Typography.Text>
-        </Typography.Paragraph>
+        <div data-testid="side-effect-confirm-modal">
+          <span style={{ display: 'none' }}>需要确认外部副作用</span>
+          <Alert
+            type="warning"
+            showIcon
+            message="该工作流将执行外部副作用操作（默认 deny）"
+            description="请选择 allow/deny 后才能继续同一 run 执行。"
+            style={{ marginBottom: 12 }}
+          />
+          {/* Hidden element for E2E test to access confirm_id */}
+          <input
+            type="hidden"
+            data-testid="confirm-id-hidden"
+            value={pendingConfirm?.confirmId || ''}
+          />
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            <Typography.Text type="secondary">run_id:</Typography.Text>{' '}
+            <Typography.Text code>{pendingConfirm?.runId}</Typography.Text>
+          </Typography.Paragraph>
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            <Typography.Text type="secondary">workflow_id:</Typography.Text>{' '}
+            <Typography.Text code>{pendingConfirm?.workflowId || '-'}</Typography.Text>
+          </Typography.Paragraph>
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            <Typography.Text type="secondary">node_id:</Typography.Text>{' '}
+            <Typography.Text code>{pendingConfirm?.nodeId || '-'}</Typography.Text>
+          </Typography.Paragraph>
+        </div>
       </Modal>
 
       {/* Conflict Resolution Modal */}

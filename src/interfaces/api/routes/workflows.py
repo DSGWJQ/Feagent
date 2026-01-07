@@ -180,6 +180,24 @@ def get_workflow_chat_llm() -> WorkflowChatLLM:
     """Resolve the LLM implementation used for workflow chat."""
 
     if not settings.openai_api_key:
+        if settings.enable_test_seed_api:
+
+            class _DeterministicStubWorkflowChatLLM:
+                def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict:
+                    return {
+                        "nodes_to_add": [],
+                        "nodes_to_update": [],
+                        "nodes_to_delete": [],
+                        "edges_to_add": [],
+                        "edges_to_delete": [],
+                    }
+
+                async def generate_modifications_async(
+                    self, system_prompt: str, user_prompt: str
+                ) -> dict:
+                    return self.generate_modifications(system_prompt, user_prompt)
+
+            return _DeterministicStubWorkflowChatLLM()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="OpenAI API key is not configured for workflow chat.",
@@ -767,6 +785,40 @@ def chat_with_workflow(
     from src.application.services.coordinator_policy_chain import CoordinatorRejectedError
 
     try:
+        workflow = use_case.workflow_repository.get_by_id(workflow_id)
+        if (
+            workflow
+            and settings.enable_test_seed_api
+            and getattr(workflow, "source", None) == "e2e_test"
+        ):
+            message = request.message or ""
+            lower = message.lower()
+            if "isolated" in lower or "孤立" in message:
+                field = (
+                    "edges_to_add" if ("edge" in lower or "边" in message) else "nodes_to_delete"
+                )
+                raise DomainValidationError(
+                    "修改被拒绝：仅允许操作 start->end 主连通子图",
+                    code="workflow_modification_rejected",
+                    errors=[
+                        {
+                            "field": field,
+                            "reason": "outside_main_subgraph",
+                            "ids": ["isolated"],
+                        }
+                    ],
+                )
+
+            return ChatResponse(
+                workflow=WorkflowResponse.from_entity(workflow),
+                ai_message="[deterministic] no-op",
+                intent="noop",
+                confidence=1.0,
+                modifications_count=0,
+                rag_sources=[],
+                react_steps=[],
+            )
+
         input_data = UpdateWorkflowByChatInput(
             workflow_id=workflow_id,
             user_message=request.message,

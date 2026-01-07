@@ -76,6 +76,7 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
               draggable
               onDragStart={(e) => handleDragStart(e, config.type)}
               onClick={() => onAddNode(config.type)}
+              data-testid={`node-palette-item-${config.type}`}
               style={{
                 display: 'flex',
                 alignItems: 'center',

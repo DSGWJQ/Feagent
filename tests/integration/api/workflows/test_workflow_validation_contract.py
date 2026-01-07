@@ -106,6 +106,27 @@ def workflow_id(test_engine) -> str:
         db.close()
 
 
+@pytest.fixture()
+def workflow_id_with_project(test_engine) -> str:
+    TestingSessionLocal = sessionmaker(bind=test_engine)
+    db: Session = TestingSessionLocal()
+    try:
+        repo = SQLAlchemyWorkflowRepository(db)
+        workflow = Workflow.create_base(description="base", project_id="proj_test")
+        repo.save(workflow)
+        db.commit()
+        return workflow.id
+    finally:
+        db.close()
+
+
+def test_get_workflow_includes_project_id(client: TestClient, workflow_id_with_project: str):
+    response = client.get(f"/api/workflows/{workflow_id_with_project}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["project_id"] == "proj_test"
+
+
 def test_drag_update_returns_structured_validation_error(client: TestClient, workflow_id: str):
     response = client.patch(
         f"/api/workflows/{workflow_id}",
