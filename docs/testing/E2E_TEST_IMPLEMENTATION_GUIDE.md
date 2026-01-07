@@ -63,13 +63,13 @@
 ```bash
 # bash
 export E2E_TEST_MODE=deterministic
-export enable_test_seed_api=true
+export ENABLE_TEST_SEED_API=true
 ```
 
 ```powershell
 # PowerShell
 $env:E2E_TEST_MODE = "deterministic"
-$env:enable_test_seed_api = "true"
+$env:ENABLE_TEST_SEED_API = "true"
 ```
 
 ### `curl` 多行命令说明
@@ -104,7 +104,7 @@ python -m venv .venv
 python -m pip install -U pip
 python -m pip install -e ".[dev]"
 
-$env:enable_test_seed_api = "true"
+$env:ENABLE_TEST_SEED_API = "true"
 $env:E2E_TEST_MODE = "deterministic"
 $env:LLM_ADAPTER = "stub"
 $env:HTTP_ADAPTER = "mock"
@@ -196,7 +196,7 @@ npm run test:e2e:deterministic -- --grep "UX-WF-001" --reporter=list
 
 - [ ] **1.1.5** 添加配置开关
   - 文件：`src/config.py`
-  - 配置：`enable_test_seed_api: bool = False`
+  - 配置：`enable_test_seed_api: bool = False`（env: `ENABLE_TEST_SEED_API=true`）
   - 仅在测试/开发环境启用
 
 - [ ] **1.1.6** 编写 Seed API 测试
@@ -209,7 +209,7 @@ npm run test:e2e:deterministic -- --grep "UX-WF-001" --reporter=list
 
 ```bash
 # 1. 启动后端（测试模式）
-export enable_test_seed_api=true
+export ENABLE_TEST_SEED_API=true
 uvicorn src.interfaces.api.main:app --reload
 
 # 2. 测试 Seed API
@@ -225,7 +225,7 @@ PowerShell 等价命令：
 
 ```powershell
 # 1. 启动后端（测试模式）
-$env:enable_test_seed_api = "true"
+$env:ENABLE_TEST_SEED_API = "true"
 uvicorn src.interfaces.api.main:app --reload
 
 # 2. 测试 Seed API（建议单行，避免 PowerShell 换行坑）

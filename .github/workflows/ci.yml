@@ -5,12 +5,15 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  schedule:
+    - cron: '0 2 * * *' # 2am UTC daily (nightly fullreal E2E)
 
 jobs:
   # Backend CI
   backend:
     name: Backend (Python)
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
@@ -81,6 +84,7 @@ jobs:
   frontend:
     name: Frontend (React + TypeScript)
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout code
@@ -117,6 +121,7 @@ jobs:
   database:
     name: Database Migration Check
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout code
@@ -147,6 +152,7 @@ jobs:
   security:
     name: Security Check
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout code
@@ -179,3 +185,169 @@ jobs:
           source .venv/bin/activate
           pip install safety
           safety check --json || true
+
+  e2e-deterministic:
+    name: E2E (Deterministic)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    needs: [backend, frontend]
+    env:
+      ENV: test
+      ENABLE_TEST_SEED_API: "true"
+      E2E_TEST_MODE: deterministic
+      LLM_ADAPTER: stub
+      HTTP_ADAPTER: mock
+      PLAYWRIGHT_API_URL: http://127.0.0.1:8000
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install backend dependencies
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+
+      - name: Start backend
+        run: |
+          source .venv/bin/activate
+          uvicorn src.interfaces.api.main:app --host 127.0.0.1 --port 8000 &
+          echo $! > backend.pid
+          sleep 2
+
+      - name: Wait for backend health
+        run: |
+          curl http://127.0.0.1:8000/health --retry 10 --retry-delay 2 --retry-connrefused
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./web
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: ./web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests (Deterministic)
+        working-directory: ./web
+        run: npx playwright test --project=deterministic
+
+      - name: Upload Playwright artifacts (Deterministic)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-deterministic-artifacts
+          path: |
+            web/playwright-report
+            web/test-results
+            web/test-results.json
+          retention-days: 7
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f backend.pid ]; then
+            kill "$(cat backend.pid)" || true
+          fi
+
+  e2e-fullreal:
+    name: E2E (Full-real Nightly)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    env:
+      ENV: test
+      ENABLE_TEST_SEED_API: "true"
+      E2E_TEST_MODE: fullreal
+      LLM_ADAPTER: openai
+      HTTP_ADAPTER: httpx
+      PLAYWRIGHT_API_URL: http://127.0.0.1:8000
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Ensure OpenAI key is configured
+        run: |
+          test -n "$OPENAI_API_KEY"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install backend dependencies
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+
+      - name: Start backend
+        run: |
+          source .venv/bin/activate
+          uvicorn src.interfaces.api.main:app --host 127.0.0.1 --port 8000 &
+          echo $! > backend.pid
+          sleep 2
+
+      - name: Wait for backend health
+        run: |
+          curl http://127.0.0.1:8000/health --retry 10 --retry-delay 2 --retry-connrefused
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./web
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: ./web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests (Full-real)
+        working-directory: ./web
+        run: npx playwright test --project=fullreal
+
+      - name: Upload Playwright artifacts (Full-real)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-fullreal-artifacts
+          path: |
+            web/playwright-report
+            web/test-results
+            web/test-results.json
+          retention-days: 14
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f backend.pid ]; then
+            kill "$(cat backend.pid)" || true
+          fi
