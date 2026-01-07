@@ -133,6 +133,7 @@ def seed_test_workflow(
     request: SeedWorkflowRequest,
     _: None = Depends(verify_test_mode),
     workflow_repository: WorkflowRepository = Depends(get_workflow_repository),
+    db: Session = Depends(get_db_session),
 ) -> SeedWorkflowResponse:
     """创建测试 Workflow（仅测试环境）
 
@@ -160,7 +161,9 @@ def seed_test_workflow(
                 custom_nodes=request.custom_nodes,
             )
         )
+        db.commit()
     except ValueError as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -170,6 +173,7 @@ def seed_test_workflow(
             },
         ) from e
     except Exception as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -198,6 +202,7 @@ def cleanup_test_workflows(
     request: CleanupWorkflowsRequest,
     _: None = Depends(verify_test_mode),
     workflow_repository: WorkflowRepository = Depends(get_workflow_repository),
+    db: Session = Depends(get_db_session),
 ) -> CleanupWorkflowsResponse:
     """清理测试 Workflow（仅测试环境）
 
@@ -207,12 +212,17 @@ def cleanup_test_workflows(
     """
     use_case = CleanupTestWorkflowsUseCase(workflow_repository=workflow_repository)
 
-    output = use_case.execute(
-        CleanupTestWorkflowsInput(
-            cleanup_tokens=request.cleanup_tokens,
-            delete_by_source=request.delete_by_source,
+    try:
+        output = use_case.execute(
+            CleanupTestWorkflowsInput(
+                cleanup_tokens=request.cleanup_tokens,
+                delete_by_source=request.delete_by_source,
+            )
         )
-    )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return CleanupWorkflowsResponse(
         deleted_count=output.deleted_count,

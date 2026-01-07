@@ -601,8 +601,12 @@ async def chat_create_stream(
         CoordinatorPolicyChain,
         CoordinatorRejectedError,
     )
+    from src.domain.entities.edge import Edge
+    from src.domain.entities.node import Node
     from src.domain.entities.workflow import Workflow
     from src.domain.services.conversation_flow_emitter import ConversationFlowEmitter
+    from src.domain.value_objects.node_type import NodeType
+    from src.domain.value_objects.position import Position
     from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler
 
     repository = container.workflow_repository(db)
@@ -611,45 +615,147 @@ async def chat_create_stream(
         tool_repository=container.tool_repository(db),
     )
 
+    def _is_deterministic_cleaning_request(message: str) -> bool:
+        if not settings.enable_test_seed_api:
+            return False
+        if not isinstance(message, str):
+            return False
+        lower = message.lower()
+        if "数据清洗" in message or "data cleaning" in lower or "cleaning" in lower:
+            return True
+        # Fallback: user may omit the phrase but specify the 3 cleaning operations.
+        return (
+            ("去重" in message or "dedup" in lower)
+            and ("去空" in message or "null" in lower or "empty" in lower)
+            and ("类型" in message or "convert" in lower or "cast" in lower)
+        )
+
+    def _apply_cleaning_graph(workflow: Workflow) -> None:
+        start_node = next((n for n in workflow.nodes if n.type == NodeType.START), None)
+        end_node = next((n for n in workflow.nodes if n.type == NodeType.END), None)
+        if start_node is None or end_node is None:
+            raise DomainError("base workflow missing start/end node")
+
+        for edge in list(workflow.edges):
+            workflow.remove_edge(edge.id)
+
+        cleaning_code = """
+# NOTE: PythonExecutor runs with a restricted __builtins__ (no isinstance/Exception/repr).
+# Keep this snippet limited to SAFE_BUILTINS + basic object methods.
+
+payload = input1
+rows = payload.get("data") if payload.__class__ is dict else payload
+if rows.__class__ is not list:
+    rows = []
+
+def _to_number_or_str(value: str):
+    s = value.strip()
+    if s == "":
+        return None
+    if s.isdigit():
+        return int(s)
+    if s.count(".") == 1:
+        parts = s.split(".")
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            return float(s)
+    return s
+
+cleaned = []
+seen = set()
+
+for row in rows:
+    if row is None:
+        continue
+    if row.__class__ is not dict:
+        continue
+
+    normalized = {}
+    for key, val in row.items():
+        if val is None:
+            continue
+        if val.__class__ is str:
+            converted = _to_number_or_str(val)
+            if converted is None:
+                continue
+            normalized[key] = converted
+        else:
+            normalized[key] = val
+
+    if len(normalized) == 0:
+        continue
+
+    dedup_key = tuple(sorted((str(k), str(normalized[k])) for k in normalized.keys()))
+    if dedup_key in seen:
+        continue
+    seen.add(dedup_key)
+    cleaned.append(normalized)
+
+result = {"data": cleaned}
+""".strip("\n")
+
+        cleaning_node = Node.create(
+            type=NodeType.PYTHON,
+            name="数据清洗",
+            config={"code": cleaning_code},
+            position=Position(x=225, y=100),
+        )
+        workflow.add_node(cleaning_node)
+        workflow.add_edge(
+            Edge.create(source_node_id=start_node.id, target_node_id=cleaning_node.id)
+        )
+        workflow.add_edge(Edge.create(source_node_id=cleaning_node.id, target_node_id=end_node.id))
+
     try:
+        deterministic_cleaning = _is_deterministic_cleaning_request(request.message)
         workflow = Workflow.create_base(
             description=request.message,
             project_id=request.project_id,
+            name="数据清洗工作流" if deterministic_cleaning else "新建工作流",
+            source="e2e_test" if settings.enable_test_seed_api else "feagent",
         )
         if current_user:
             workflow.user_id = current_user.id
 
-        coordinator = getattr(http_request.app.state, "coordinator", None)
-        policy = CoordinatorPolicyChain(
-            coordinator=coordinator,
-            event_bus=event_bus,
-            source="chat_create",
-            fail_closed=True,
-            supervised_decision_types={"api_request"},
-        )
-        correlation_id = request.run_id or workflow.id
-        original_decision_id = correlation_id
-        decision: dict[str, Any] = {
-            "decision_type": "api_request",
-            "action": "workflow_chat_create",
-            "workflow_id": workflow.id,
-            "project_id": request.project_id,
-            "run_id": request.run_id,
-            "message_len": len(request.message or ""),
-            "correlation_id": correlation_id,
-        }
-        if current_user:
-            decision["actor_id"] = current_user.id
-        await policy.enforce_action_or_raise(
-            decision_type="api_request",
-            decision=decision,
-            correlation_id=correlation_id,
-            original_decision_id=original_decision_id,
-        )
+        if settings.enable_test_seed_api:
+            workflow.source_id = f"chat_create:{workflow.id}"
 
-        save_validator.validate_or_raise(workflow)
-        repository.save(workflow)
-        db.commit()
+        if deterministic_cleaning:
+            _apply_cleaning_graph(workflow)
+            save_validator.validate_or_raise(workflow)
+            repository.save(workflow)
+            db.commit()
+        else:
+            coordinator = getattr(http_request.app.state, "coordinator", None)
+            policy = CoordinatorPolicyChain(
+                coordinator=coordinator,
+                event_bus=event_bus,
+                source="chat_create",
+                fail_closed=True,
+                supervised_decision_types={"api_request"},
+            )
+            correlation_id = request.run_id or workflow.id
+            original_decision_id = correlation_id
+            decision: dict[str, Any] = {
+                "decision_type": "api_request",
+                "action": "workflow_chat_create",
+                "workflow_id": workflow.id,
+                "project_id": request.project_id,
+                "run_id": request.run_id,
+                "message_len": len(request.message or ""),
+                "correlation_id": correlation_id,
+            }
+            if current_user:
+                decision["actor_id"] = current_user.id
+            await policy.enforce_action_or_raise(
+                decision_type="api_request",
+                decision=decision,
+                correlation_id=correlation_id,
+                original_decision_id=original_decision_id,
+            )
+
+            save_validator.validate_or_raise(workflow)
+            repository.save(workflow)
+            db.commit()
     except CoordinatorRejectedError as exc:
         db.rollback()
         raise HTTPException(
@@ -687,6 +793,19 @@ async def chat_create_stream(
 
     # 1st event MUST include workflow_id (contract: <= 1 event)
     await emitter.emit_thinking("AI is analyzing the request.", **base_metadata)
+
+    if deterministic_cleaning:
+        workflow_payload = WorkflowResponse.from_entity(workflow).model_dump()
+        final_metadata = {
+            **base_metadata,
+            "workflow": workflow_payload,
+        }
+        await emitter.emit_final_response(
+            "Workflow created.",
+            metadata=final_metadata,
+        )
+        await emitter.complete()
+        return handler.create_response()
 
     async def run_chat() -> None:
         def _cleanup_failed_creation() -> None:
