@@ -3,7 +3,7 @@
 > **文档性质**：战略规划 + 执行手册
 > **规划周期**：3个月（M4-M7）+ 6个月长期演进
 > **目标读者**：技术负责人、测试工程师、产品经理
-> **最后更新**：2026-01-06
+> **最后更新**：2026-01-07
 > **当前状态**：✅ M0-M3已完成，待启动M4验证阶段
 
 ---
@@ -54,6 +54,17 @@
 
 ---
 
+## ✅ M4-M7 可执行验收矩阵（可运行 / 可回滚 / 可追溯）
+
+> 说明：M5-M7 为未来里程碑，但仍需给出 **“现在就能跑”** 的最小验收命令（baseline），并明确 **“完成时新增/强化的门禁”**（to-be）。
+
+| 里程碑 | 负责人角色（建议） | 工时估算 | 验收命令 / CI job（至少 1 条可运行） | 失败处置 / 回滚策略（最小） | 仓库证据（至少 1 处） |
+|---|---|---:|---|---|---|
+| **M4 稳定化** | E2E 测试工程师 + 前端/后端各 1 | 2 周 | **baseline**：`cd web && npx playwright test --project=deterministic`；**门禁**：`cd web && npx playwright test --project=deterministic --repeat-each=10`；**CI**：PR `e2e-deterministic` | 达不到通过率：优先定位 flaky 根因（选择器/等待/外网依赖/残留）；必要时回滚到“更稳定但更慢”的等待/单线程策略 | [CI workflow](../../.github/workflows/ci.yml)、[Playwright config](../../web/playwright.config.ts)、[M4 verify 脚本](../../web/tests/e2e/scripts/m4-verify.sh) |
+| **M5 覆盖扩展** | E2E 测试工程师 + 产品/业务 Owner | 4 周 | **baseline**：`cd web && npx playwright test --project=deterministic`；**to-be**：按模块 grep（新增后）：`npx playwright test --project=deterministic --grep \"UX-WF-2\"` | 新增用例引入 flaky：先隔离到单独 spec + repeat-each 复测；必要时回滚到上一批稳定用例集（保证 PR 仍可回归） | [deterministic tests](../../web/tests/e2e/deterministic/README.md)、[闭环模板](./FAILURE_CLOSED_LOOP.md) |
+| **M6 质量深化** | QA 负责人 + 平台/架构支持 | 3 周 | **baseline**：`pytest tests/integration -v` + `cd web && npm run lint && npm run type-check`；**CI**：`backend`/`frontend` jobs | 新增质量门禁阻塞交付：先降级为“告警但不阻塞”（保留证据与整改入口），下个迭代引入 hard gate | [backend CI](../../.github/workflows/ci.yml)、[frontend CI](../../.github/workflows/ci.yml) |
+| **M7 效率优化** | DevOps/平台工程师 + E2E Owner | 2 周 | **baseline**：`cd web && npx playwright test --project=deterministic`；**CI 目标**：PR < 10min、nightly fullreal 可诊断 | 优化导致不稳定：优先回滚缓存/并行策略（保稳定性）；保留失败产物（trace/screenshot）以便诊断 | [Playwright artifacts upload](../../.github/workflows/ci.yml)、[collect-metrics.py](../../web/tests/e2e/scripts/collect-metrics.py) |
+
 ## 环境基线（deterministic 最小可复现）
 
 > 为避免“文档可读不可跑”，环境基线的命令以 `docs/testing/E2E_TEST_IMPLEMENTATION_GUIDE.md` 为准；本节只保留最小可复制版本，并要求两处内容保持一致。
@@ -68,7 +79,7 @@ python -m venv .venv
 python -m pip install -U pip
 python -m pip install -e ".[dev]"
 
-$env:enable_test_seed_api = "true"
+$env:ENABLE_TEST_SEED_API = "true"
 $env:E2E_TEST_MODE = "deterministic"
 $env:LLM_ADAPTER = "stub"
 $env:HTTP_ADAPTER = "mock"
@@ -1286,7 +1297,7 @@ Overall Progress: ███████████████░░░░░  
 - [ ] 验证Seed API（4种fixtures）
   ```bash
   # 启动后端
-  export enable_test_seed_api=true
+  export ENABLE_TEST_SEED_API=true
   uvicorn src.interfaces.api.main:app --reload
 
   # 测试4种fixtures
