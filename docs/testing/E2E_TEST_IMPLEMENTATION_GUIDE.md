@@ -845,6 +845,8 @@ for ($i = 1; $i -le 10; $i++) {
 
 📖 **完整故障排查**：参见 [P1_SUPPLEMENTS.md - P1-4](./P1_SUPPLEMENTS.md#p1-4-失败归因速查表前端-性能场景补充)
 
+🧩 **失败闭环模板**：参见 [FAILURE_CLOSED_LOOP.md](./FAILURE_CLOSED_LOOP.md)
+
 ---
 
 ## 附录 C: 验收清单总览
@@ -855,7 +857,7 @@ for ($i = 1; $i -le 10; $i++) {
 - [ ] Playwright 能通过 testid 定位所有 P0 控件
 - [ ] 模式 A 稳定通过率 ≥ 95%（连续 10 次运行；长期目标：≥ 99%）
 - [ ] 副作用确认流程：deny → 明确失败
-- [ ] Replay 能回放至少 10 个事件
+- [ ] Replay 能回放事件序列并可见（不硬编码数量；至少包含 `node_*` + `workflow_complete/workflow_error`）
 
 ### P1 验收标准（应该通过）
 
