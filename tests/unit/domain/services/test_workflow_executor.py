@@ -29,6 +29,13 @@ class _EchoExecutor(NodeExecutor):
         return {"node_id": node.id, "node_type": node.type.value, "inputs": inputs}
 
 
+class _ConditionalStubExecutor(NodeExecutor):
+    async def execute(self, node: Node, inputs: dict[str, Any], context: dict[str, Any]) -> Any:
+        value = next(iter(inputs.values())) if inputs else None
+        is_true = value == "test"
+        return {"result": is_true, "branch": "true" if is_true else "false"}
+
+
 class TestWorkflowExecutor:
     """测试工作流执行器"""
 
@@ -98,9 +105,7 @@ class TestWorkflowExecutor:
         - Start → Conditional → (True: Node A, False: Node B) → End
 
         验收标准：
-        - 所有节点都被执行（暂时不实现条件分支逻辑）
-
-        TODO: 完整实现条件分支逻辑（只执行满足条件的分支）
+        - 仅执行满足条件的分支（edge.condition）
         """
         # Arrange
         node1 = Node.create(
@@ -156,7 +161,7 @@ class TestWorkflowExecutor:
         )
 
         registry = NodeExecutorRegistry()
-        registry.register(NodeType.CONDITIONAL.value, _EchoExecutor())
+        registry.register(NodeType.CONDITIONAL.value, _ConditionalStubExecutor())
         registry.register(NodeType.TRANSFORM.value, _EchoExecutor())
         executor = WorkflowExecutor(executor_registry=registry)
 
@@ -165,8 +170,15 @@ class TestWorkflowExecutor:
 
         # Assert
         assert result is not None
-        # 暂时验证所有节点都被执行（未来实现条件分支后，只执行满足条件的分支）
-        assert len(executor.execution_log) == 5
+        executed_ids = [row["node_id"] for row in executor.execution_log]
+        assert node4.id not in executed_ids
+        assert len(executor.execution_log) == 4
+
+        result_2 = await executor.execute(workflow, initial_input="nope")
+        assert result_2 is not None
+        executed_ids_2 = [row["node_id"] for row in executor.execution_log]
+        assert node3.id not in executed_ids_2
+        assert len(executor.execution_log) == 4
 
     @pytest.mark.asyncio
     async def test_execute_workflow_with_cycle_should_raise_error(self):
@@ -272,3 +284,148 @@ class TestWorkflowExecutor:
         c_index = next(i for i, n in enumerate(sorted_nodes) if n.id == node_c.id)
         assert b_index > 0 and b_index < len(sorted_nodes) - 1
         assert c_index > 0 and c_index < len(sorted_nodes) - 1
+
+    @pytest.mark.asyncio
+    async def test_execute_skips_node_when_edge_condition_is_invalid_fail_closed(self):
+        """测试：edge.condition 非法时应 fail-closed 且跳过节点
+
+        场景：
+        - Start → End（主链路）
+        - Start -(invalid condition)-> Transform（应被跳过）
+
+        验收标准：
+        - Transform 节点不执行（不出现在 execution_log）
+        - 触发 node_skipped 事件（reason=incoming_edge_conditions_not_met）
+        """
+        node_start = Node.create(
+            type=NodeType.START,
+            name="开始",
+            config={},
+            position=Position(x=0, y=0),
+        )
+        node_end = Node.create(
+            type=NodeType.END,
+            name="结束",
+            config={},
+            position=Position(x=200, y=0),
+        )
+        node_should_skip = Node.create(
+            type=NodeType.TRANSFORM,
+            name="应跳过",
+            config={},
+            position=Position(x=100, y=100),
+        )
+
+        edge_main = Edge.create(source_node_id=node_start.id, target_node_id=node_end.id)
+        edge_invalid = Edge.create(
+            source_node_id=node_start.id,
+            target_node_id=node_should_skip.id,
+            condition="value ===",  # invalid expression after normalization
+        )
+
+        workflow = Workflow.create(
+            name="invalid_condition_should_skip",
+            description="",
+            nodes=[node_start, node_end, node_should_skip],
+            edges=[edge_main, edge_invalid],
+        )
+
+        events: list[tuple[str, dict[str, Any]]] = []
+        registry = NodeExecutorRegistry()
+        registry.register(NodeType.TRANSFORM.value, _EchoExecutor())
+        executor = WorkflowExecutor(executor_registry=registry)
+        executor.set_event_callback(lambda t, d: events.append((t, d)))
+
+        result = await executor.execute(workflow, initial_input="test")
+
+        assert result is not None
+        executed_ids = [row["node_id"] for row in executor.execution_log]
+        assert node_should_skip.id not in executed_ids
+        assert any(
+            t == "node_skipped"
+            and d.get("node_id") == node_should_skip.id
+            and d.get("reason") == "incoming_edge_conditions_not_met"
+            for t, d in events
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_filters_inputs_after_conditional_branch(self):
+        """测试：条件分支后 join 节点 inputs 仅包含满足条件的来源输出
+
+        场景：
+        - Start → Conditional
+        - Conditional -> (true) Branch A
+        - Conditional -> (false) Branch B
+        - Branch A/B → Join(Transform Echo) → End
+
+        验收标准：
+        - 当 true 分支命中时，Join.inputs 仅包含 Branch A 输出
+        - 当 false 分支命中时，Join.inputs 仅包含 Branch B 输出
+        """
+        node1 = Node.create(
+            type=NodeType.START,
+            name="开始",
+            config={},
+            position=Position(x=0, y=0),
+        )
+        node2 = Node.create(
+            type=NodeType.CONDITIONAL,
+            name="条件判断",
+            config={"condition": "input1 == 'test'"},
+            position=Position(x=100, y=0),
+        )
+        node3 = Node.create(
+            type=NodeType.TRANSFORM,
+            name="分支 A",
+            config={},
+            position=Position(x=200, y=-50),
+        )
+        node4 = Node.create(
+            type=NodeType.TRANSFORM,
+            name="分支 B",
+            config={},
+            position=Position(x=200, y=50),
+        )
+        node_join = Node.create(
+            type=NodeType.TRANSFORM,
+            name="Join",
+            config={},
+            position=Position(x=300, y=0),
+        )
+        node_end = Node.create(
+            type=NodeType.END,
+            name="结束",
+            config={},
+            position=Position(x=400, y=0),
+        )
+
+        edges = [
+            Edge.create(source_node_id=node1.id, target_node_id=node2.id),
+            Edge.create(source_node_id=node2.id, target_node_id=node3.id, condition="true"),
+            Edge.create(source_node_id=node2.id, target_node_id=node4.id, condition="false"),
+            Edge.create(source_node_id=node3.id, target_node_id=node_join.id),
+            Edge.create(source_node_id=node4.id, target_node_id=node_join.id),
+            Edge.create(source_node_id=node_join.id, target_node_id=node_end.id),
+        ]
+
+        workflow = Workflow.create(
+            name="branch_join_inputs_filtered",
+            description="",
+            nodes=[node1, node2, node3, node4, node_join, node_end],
+            edges=edges,
+        )
+
+        registry = NodeExecutorRegistry()
+        registry.register(NodeType.CONDITIONAL.value, _ConditionalStubExecutor())
+        registry.register(NodeType.TRANSFORM.value, _EchoExecutor())
+        executor = WorkflowExecutor(executor_registry=registry)
+
+        result_true = await executor.execute(workflow, initial_input="test")
+        assert isinstance(result_true, dict)
+        assert "inputs" in result_true
+        assert list(result_true["inputs"].keys()) == [node3.id]
+
+        result_false = await executor.execute(workflow, initial_input="nope")
+        assert isinstance(result_false, dict)
+        assert "inputs" in result_false
+        assert list(result_false["inputs"].keys()) == [node4.id]
