@@ -106,10 +106,10 @@ describe('workflow streaming SSE parsing', () => {
 
     const body = createSseReadableStream(
       [
-        'data: {"type":"node_start","node_id":"1"}\n',
-        'data: {"type":"workflow_complete","result":{"success":true}}\n',
+        'data: {"type":"node_start","node_id":"1"}\n\n',
+        'data: {"type":"workflow_complete","result":{"success":true}}\n\n',
         // should not be observed if reader.cancel() stops the loop
-        'data: {"type":"node_start","node_id":"SHOULD_NOT_HAPPEN"}\n',
+        'data: {"type":"node_start","node_id":"SHOULD_NOT_HAPPEN"}\n\n',
       ],
       0
     );

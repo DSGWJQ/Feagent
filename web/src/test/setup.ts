@@ -52,3 +52,8 @@ global.ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}
 } as any;
+
+// JSDOM 不支持 pseudo-elements 的 getComputedStyle 调用；部分 UI 库会传入第二参数（例如 '::before'）
+const __originalGetComputedStyle = window.getComputedStyle;
+window.getComputedStyle = ((elt: Element, _pseudoElt?: string | null) =>
+  __originalGetComputedStyle(elt)) as any;

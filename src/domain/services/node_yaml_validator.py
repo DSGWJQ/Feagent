@@ -146,13 +146,17 @@ class NodeYamlValidator:
         "data_process",  # Phase 5: 数据处理节点
         "transform",  # transform 是 data_process 的别名
         "human",  # Phase 5: 人机交互节点
+        # Legacy / workflow templates (kept for backward compatibility with existing definitions).
+        "workflow",
+        "sequential",
+        "generic",
     }
 
     # 有效的参数类型
     VALID_PARAM_TYPES = {"string", "number", "integer", "boolean", "array", "object"}
 
     # 有效的失败处理动作
-    VALID_ON_FAILURE_ACTIONS = {"retry", "skip", "abort", "replan", "fallback"}
+    VALID_ON_FAILURE_ACTIONS = {"retry", "skip", "abort", "replan", "fallback", "continue"}
 
     # 版本号正则
     VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$")
@@ -180,6 +184,7 @@ class NodeYamlValidator:
                     self._schema = json.load(f)
             else:
                 self._schema = {}
+        assert self._schema is not None
         return self._schema
 
     def validate_yaml_string(self, yaml_content: str) -> ValidationResult:
@@ -212,6 +217,15 @@ class NodeYamlValidator:
             return result
 
         # 校验数据
+        if not isinstance(data, dict):
+            result.add_error(
+                ValidationError(
+                    field="root",
+                    message="YAML 根节点必须是对象（mapping）",
+                    severity=ErrorSeverity.ERROR,
+                )
+            )
+            return result
         return self._validate_data(data)
 
     def validate_yaml_file(self, file_path: Path | str) -> ValidationResult:
