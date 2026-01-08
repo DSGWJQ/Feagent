@@ -126,6 +126,10 @@ class WorkflowEngine:
                         node.config,
                         inputs=inputs,
                         context=context,
+                        logger_extra={
+                            "node_id": node.id,
+                            "node_type": node.type.value,
+                        },
                     ),
                 )
                 output = await self._execute_node(
@@ -331,21 +335,38 @@ _PLACEHOLDER_RE = re.compile(r"\{(?P<path>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_
 
 
 def _render_config_templates(
-    config: Any, *, inputs: dict[str, Any], context: dict[str, Any]
+    config: Any,
+    *,
+    inputs: dict[str, Any],
+    context: dict[str, Any],
+    logger_extra: dict[str, Any] | None = None,
 ) -> Any:
     if isinstance(config, dict):
         return {
-            k: _render_config_templates(v, inputs=inputs, context=context)
+            k: _render_config_templates(
+                v, inputs=inputs, context=context, logger_extra=logger_extra
+            )
             for k, v in config.items()
         }
     if isinstance(config, list):
-        return [_render_config_templates(v, inputs=inputs, context=context) for v in config]
+        return [
+            _render_config_templates(v, inputs=inputs, context=context, logger_extra=logger_extra)
+            for v in config
+        ]
     if isinstance(config, str):
-        return _render_string_templates(config, inputs=inputs, context=context)
+        return _render_string_templates(
+            config, inputs=inputs, context=context, logger_extra=logger_extra
+        )
     return config
 
 
-def _render_string_templates(value: str, *, inputs: dict[str, Any], context: dict[str, Any]) -> str:
+def _render_string_templates(
+    value: str,
+    *,
+    inputs: dict[str, Any],
+    context: dict[str, Any],
+    logger_extra: dict[str, Any] | None = None,
+) -> str:
     if "{" not in value or "}" not in value:
         return value
 
@@ -360,6 +381,15 @@ def _render_string_templates(value: str, *, inputs: dict[str, Any], context: dic
         path = match.group("path")
         resolved = _resolve_path(variables, path)
         if resolved is None:
+            logger.debug(
+                "config_template_placeholder_unresolved",
+                extra={
+                    "placeholder": match.group(0),
+                    "path": path,
+                    "value": value,
+                    **(logger_extra or {}),
+                },
+            )
             return match.group(0)
         if isinstance(resolved, dict | list):
             try:
