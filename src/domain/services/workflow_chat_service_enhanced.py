@@ -637,6 +637,14 @@ class EnhancedWorkflowChatService:
     }}
   ],
   "nodes_to_delete": ["node_id"],
+  "nodes_to_update": [
+    {{
+      "id": "node_id",
+      "name": "可选：新名称",
+      "position": {{"x": 120, "y": 140}},
+      "config_patch": {{}}
+    }}
+  ],
   "edges_to_add": [
     {{
       "source": "node_id_1",
@@ -645,6 +653,12 @@ class EnhancedWorkflowChatService:
     }}
   ],
   "edges_to_delete": ["edge_id"],
+  "edges_to_update": [
+    {{
+      "id": "edge_id",
+      "condition": "可选：条件表达式或 null"
+    }}
+  ],
   "ai_message": "我已经添加了一个HTTP节点用于获取天气数据",
   "react_steps": [
     {{
@@ -669,6 +683,7 @@ class EnhancedWorkflowChatService:
 - confidence 字段表示你对这个意图的信心度（0-1）
 - 新节点的位置应该合理（避免重叠）
 - 添加节点时通常需要同时添加边
+- 修改节点配置必须优先使用 nodes_to_update.config_patch；如确需整体替换可使用 nodes_to_update.config
 - 删除节点时需要同时删除相关的边
 - ai_message 应该简洁地描述做了什么修改
 - react_steps 字段包含ReAct推理步骤（思考→行动→观察），用于展示AI的推理过程
@@ -745,6 +760,36 @@ class EnhancedWorkflowChatService:
             edge_id for edge_id in edges_to_delete if edge_id not in main_edge_ids
         ]
 
+        nodes_to_update = modifications.get("nodes_to_update", [])
+        invalid_nodes_to_update = []
+        invalid_nodes_to_update_fields: list[dict[str, Any]] = []
+        allowed_node_update_fields = {"id", "name", "position", "config", "config_patch"}
+        for patch in nodes_to_update:
+            node_id = patch.get("id") if isinstance(patch, dict) else None
+            if isinstance(patch, dict):
+                disallowed_fields = set(patch) - allowed_node_update_fields
+                if disallowed_fields:
+                    invalid_nodes_to_update_fields.append(
+                        {"id": node_id, "fields": sorted(disallowed_fields)}
+                    )
+            if isinstance(node_id, str) and node_id not in main_node_ids:
+                invalid_nodes_to_update.append(node_id)
+
+        edges_to_update = modifications.get("edges_to_update", [])
+        invalid_edges_to_update = []
+        invalid_edges_to_update_fields: list[dict[str, Any]] = []
+        allowed_edge_update_fields = {"id", "condition"}
+        for patch in edges_to_update:
+            edge_id = patch.get("id") if isinstance(patch, dict) else None
+            if isinstance(patch, dict):
+                disallowed_fields = set(patch) - allowed_edge_update_fields
+                if disallowed_fields:
+                    invalid_edges_to_update_fields.append(
+                        {"id": edge_id, "fields": sorted(disallowed_fields)}
+                    )
+            if isinstance(edge_id, str) and edge_id not in main_edge_ids:
+                invalid_edges_to_update.append(edge_id)
+
         edges_to_add = modifications.get("edges_to_add", [])
         invalid_edges_to_add = []
         for edge_data in edges_to_add:
@@ -774,6 +819,38 @@ class EnhancedWorkflowChatService:
                     "field": "edges_to_delete",
                     "reason": "outside_main_subgraph",
                     "ids": invalid_edges_to_delete,
+                }
+            )
+        if invalid_nodes_to_update:
+            validation_errors.append(
+                {
+                    "field": "nodes_to_update",
+                    "reason": "outside_main_subgraph",
+                    "ids": invalid_nodes_to_update,
+                }
+            )
+        if invalid_nodes_to_update_fields:
+            validation_errors.append(
+                {
+                    "field": "nodes_to_update",
+                    "reason": "disallowed_fields",
+                    "errors": invalid_nodes_to_update_fields,
+                }
+            )
+        if invalid_edges_to_update:
+            validation_errors.append(
+                {
+                    "field": "edges_to_update",
+                    "reason": "outside_main_subgraph",
+                    "ids": invalid_edges_to_update,
+                }
+            )
+        if invalid_edges_to_update_fields:
+            validation_errors.append(
+                {
+                    "field": "edges_to_update",
+                    "reason": "disallowed_fields",
+                    "errors": invalid_edges_to_update_fields,
                 }
             )
 
@@ -860,6 +937,56 @@ class EnhancedWorkflowChatService:
                 modifications_count += 1
             except DomainError:
                 continue
+
+        # 4.5 更新节点（仅允许修改 name/config/position；类型变更需 delete+add）
+        for patch in nodes_to_update:
+            if not isinstance(patch, dict):
+                continue
+            node_id = patch.get("id")
+            if not isinstance(node_id, str) or not node_id.strip():
+                continue
+
+            target_node = next((n for n in new_nodes if n.id == node_id), None)
+            if target_node is None:
+                continue
+
+            if "name" in patch and isinstance(patch.get("name"), str):
+                target_node.name = patch["name"]
+
+            if "position" in patch and isinstance(patch.get("position"), dict):
+                pos = patch["position"]
+                if isinstance(pos.get("x"), int | float) and isinstance(pos.get("y"), int | float):
+                    target_node.position = Position(x=float(pos["x"]), y=float(pos["y"]))
+
+            if "config_patch" in patch and isinstance(patch.get("config_patch"), dict):
+                merged = dict(target_node.config or {})
+                merged.update(patch["config_patch"])
+                target_node.update_config(merged)
+            elif "config" in patch and isinstance(patch.get("config"), dict):
+                target_node.update_config(patch["config"])
+
+            modifications_count += 1
+
+        # 4.6 更新边（目前仅支持更新 condition）
+        for patch in edges_to_update:
+            if not isinstance(patch, dict):
+                continue
+            edge_id = patch.get("id")
+            if not isinstance(edge_id, str) or not edge_id.strip():
+                continue
+
+            target_edge = next((e for e in new_edges if e.id == edge_id), None)
+            if target_edge is None:
+                continue
+
+            if "condition" in patch:
+                cond = patch.get("condition")
+                if cond is None:
+                    target_edge.condition = None
+                elif isinstance(cond, str):
+                    target_edge.condition = cond
+
+            modifications_count += 1
 
         # 5. 创建新的工作流实体
         modified_workflow = Workflow(
