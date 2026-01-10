@@ -12,7 +12,7 @@ if (-not (Test-Path ".import-linter.toml")) {
 
 Write-Host "[1/4] Import Linter (DDD boundaries)..." -ForegroundColor Green
 if (-not (Get-Command lint-imports -ErrorAction SilentlyContinue)) {
-    Write-Host "错误: 未找到 lint-imports，请先安装 dev 依赖（例如: uv pip install -e \".[dev]\"）" -ForegroundColor Red
+    Write-Host '错误: 未找到 lint-imports，请先安装 dev 依赖（例如: uv pip install -e ".[dev]"）' -ForegroundColor Red
     exit 1
 }
 lint-imports --config .import-linter.toml
