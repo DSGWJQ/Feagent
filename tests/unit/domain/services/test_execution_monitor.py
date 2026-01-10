@@ -268,6 +268,18 @@ class TestExecutionMonitor:
             ErrorHandlingAction.ABORT,
         ]
 
+    def test_on_node_skipped_should_update_context(self):
+        """节点跳过应更新上下文"""
+        from src.domain.services.execution_monitor import ExecutionMonitor
+
+        monitor = ExecutionMonitor()
+        monitor.on_workflow_start("wf_123", ["node_1", "node_2"])
+
+        monitor.on_node_skipped("wf_123", "node_2", reason="incoming_edge_conditions_not_met")
+
+        ctx = monitor.get_context("wf_123")
+        assert "node_2" in ctx.skipped_nodes
+
     def test_on_workflow_complete_should_finalize_context(self):
         """工作流完成应终结上下文"""
         from src.domain.services.execution_monitor import ExecutionMonitor

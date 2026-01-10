@@ -547,6 +547,29 @@ class ExecutionMonitor:
         logger.warning(f"节点错误: {node_id}, 动作: {action.value}, 错误: {error}")
         return action
 
+    def on_node_skipped(
+        self,
+        workflow_id: str,
+        node_id: str,
+        reason: str = "",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """节点跳过
+
+        参数：
+            workflow_id: 工作流ID
+            node_id: 节点ID
+            reason: 跳过原因（可选）
+            details: 额外调试信息（可选，例如 incoming_edge_conditions）
+        """
+        ctx = self.contexts.get(workflow_id)
+        if ctx:
+            ctx.mark_node_skipped(node_id, reason=reason)
+            if details:
+                logger.debug(f"节点跳过: {node_id} (工作流: {workflow_id}) details={details}")
+            else:
+                logger.debug(f"节点跳过: {node_id} (工作流: {workflow_id})")
+
     def on_workflow_complete(self, workflow_id: str, status: str = "completed") -> None:
         """工作流完成
 
