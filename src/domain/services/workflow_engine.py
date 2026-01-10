@@ -84,7 +84,9 @@ class WorkflowEngine:
 
         context = {"initial_input": initial_input}
         incoming_edges = _build_incoming_edges(workflow)
-        evaluator = ExpressionEvaluator(mode="safe")
+        # Edge conditions in repo definitions and UI commonly use helper functions like `len(...)`.
+        # "advanced" still enforces AST-based safety and a strict function allowlist.
+        evaluator = ExpressionEvaluator(mode="advanced")
 
         for node in sorted_nodes:
             if node.type not in {NodeType.INPUT, NodeType.START}:

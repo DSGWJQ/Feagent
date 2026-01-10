@@ -180,3 +180,45 @@ async def test_multi_incoming_edges_or_join_and_input_filtering():
     result = await executor.execute(workflow, initial_input={"unused": True})
     assert set(result["inputs"]) == {node_true.id}
     assert result["inputs"][node_true.id]["branch"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_edge_condition_supports_len_function_in_advanced_mode():
+    source = Node.create(
+        type=NodeType.PYTHON,
+        name="source",
+        config={},
+        position=Position(x=0, y=0),
+    )
+    target = Node.create(
+        type=NodeType.TRANSFORM,
+        name="target",
+        config={},
+        position=Position(x=100, y=0),
+    )
+    end = Node.create(type=NodeType.END, name="end", config={}, position=Position(x=200, y=0))
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[source, target, end],
+        edges=[
+            Edge.create(
+                source_node_id=source.id,
+                target_node_id=target.id,
+                condition="len(high_value_orders) > 0",
+            ),
+            Edge.create(source_node_id=target.id, target_node_id=end.id),
+        ],
+    )
+
+    registry = NodeExecutorRegistry()
+    registry.register(
+        NodeType.PYTHON.value,
+        _ReturnValueExecutor({"high_value_orders": [{"id": "o-1"}], "regular_orders": []}),
+    )
+    registry.register(NodeType.TRANSFORM.value, _EchoInputsExecutor())
+    executor = WorkflowExecutor(executor_registry=registry)
+
+    result = await executor.execute(workflow, initial_input={"unused": True})
+    assert result["inputs"][source.id]["high_value_orders"][0]["id"] == "o-1"
