@@ -123,7 +123,10 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [configPanelOpen, setConfigPanelOpen] = useState(false);
+  const [edgeConfigOpen, setEdgeConfigOpen] = useState(false);
+  const [edgeConditionDraft, setEdgeConditionDraft] = useState('');
   const [chatPanelCollapsed, setChatPanelCollapsed] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -456,7 +459,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         target: e.target,
         sourceHandle: e.sourceHandle,
         label: e.label,
-        condition: (e as any).condition,
+        condition: e?.data?.condition ?? null,
       })),
       status: (workflowData as any)?.status ?? ('draft' as any),
       created_at: (workflowData as any)?.created_at ?? '',
@@ -494,6 +497,9 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       source: edge.source,
       target: edge.target,
       label: edge.condition,
+      data: {
+        condition: edge.condition ?? null,
+      },
     }));
 
     setNodes(newNodes);
@@ -588,13 +594,52 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
       // Apply change and push snapshot after
       setEdges((eds) => {
-        const nextEdges = addEdge(params, eds);
+        const nextEdges = addEdge(
+          {
+            ...params,
+            data: { condition: null },
+          },
+          eds
+        );
         pushSnapshot(nodesRef.current, nextEdges);
         return nextEdges;
       });
     },
     [pushSnapshot]
   );
+
+  const handleEdgeClick = useCallback(
+    (_: unknown, edge: Edge) => {
+      setSelectedEdge(edge);
+      setEdgeConditionDraft(String((edge as any)?.data?.condition ?? ''));
+      setEdgeConfigOpen(true);
+      setConfigPanelOpen(false);
+    },
+    []
+  );
+
+  const handleSaveEdgeCondition = useCallback(() => {
+    if (!selectedEdge) return;
+
+    const nextCondition = edgeConditionDraft.trim();
+    const normalizedCondition = nextCondition ? nextCondition : null;
+
+    setEdges((eds) => {
+      const nextEdges = eds.map((edge) => {
+        if (edge.id !== selectedEdge.id) return edge;
+        return {
+          ...edge,
+          label: normalizedCondition,
+          data: { ...(edge.data ?? {}), condition: normalizedCondition },
+        };
+      });
+      pushSnapshot(nodesRef.current, nextEdges);
+      return nextEdges;
+    });
+
+    message.success('Edge condition 已更新');
+    setEdgeConfigOpen(false);
+  }, [edgeConditionDraft, pushSnapshot, selectedEdge]);
 
   /**
    * Undo handler
@@ -855,7 +900,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         target: edge.target,
         sourceHandle: edge.sourceHandle || undefined,
         label: (edge.label as string | undefined) || null,
-        condition: null,
+        condition:
+          (edge as any)?.data?.condition ?? (typeof edge.label === 'string' ? edge.label : null),
       }));
 
       await updateWorkflow(workflowId, {
@@ -1060,6 +1106,9 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         source: edge.source,
         target: edge.target,
         label: edge.condition,
+        data: {
+          condition: edge.condition ?? null,
+        },
       }));
 
       setNodes(loadedNodes);
@@ -1236,6 +1285,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
+            onEdgeClick={handleEdgeClick}
             onNodeDragStart={onNodeDragStart}
             onMoveStart={onMoveStart}
             onDrop={handleDrop}
@@ -1330,6 +1380,33 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         onClose={() => setConfigPanelOpen(false)}
         onSave={handleSaveNodeConfig}
       />
+
+      {/* Edge Condition Drawer */}
+      <Drawer
+        title="Edge Condition"
+        open={edgeConfigOpen}
+        onClose={() => setEdgeConfigOpen(false)}
+        width={420}
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          条件表达式用于控制目标节点是否执行（空值表示无条件通过）。示例：
+          <Typography.Text code style={{ marginLeft: 6 }}>
+            score &gt; 0.8
+          </Typography.Text>
+        </Typography.Paragraph>
+        <Input
+          value={edgeConditionDraft}
+          onChange={(e) => setEdgeConditionDraft(e.target.value)}
+          placeholder="(empty = unconditional)"
+          data-testid="edge-condition-input"
+        />
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+          <Button onClick={() => setEdgeConfigOpen(false)}>Cancel</Button>
+          <Button type="primary" onClick={handleSaveEdgeCondition} data-testid="edge-condition-save">
+            Save
+          </Button>
+        </div>
+      </Drawer>
 
       {/* Code Export Modal - Keep as is for now or refactor later */}
       <CodeExportModal
