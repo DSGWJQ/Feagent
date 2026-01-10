@@ -104,6 +104,10 @@ class WorkflowEngine:
                                 "node_id": node.id,
                                 "node_type": node.type.value,
                                 "reason": "incoming_edge_conditions_not_met",
+                                "incoming_edge_conditions": _collect_incoming_edge_condition_details(
+                                    incoming_edges=incoming_edges.get(node.id, []),
+                                    outputs=node_outputs,
+                                ),
                             },
                         )
                     continue
@@ -262,6 +266,36 @@ def _get_node_inputs(
             inputs[source_id] = outputs.get(source_id)
 
     return inputs
+
+
+def _collect_incoming_edge_condition_details(
+    *,
+    incoming_edges: list[Any],
+    outputs: dict[str, Any],
+) -> list[dict[str, Any]]:
+    details: list[dict[str, Any]] = []
+    for edge in incoming_edges:
+        source_id = getattr(edge, "source_node_id", None)
+        if not isinstance(source_id, str) or source_id not in outputs:
+            continue
+
+        condition = getattr(edge, "condition", None)
+        if condition is None or (isinstance(condition, str) and condition.strip() == ""):
+            continue
+
+        if not isinstance(condition, str):
+            continue
+
+        details.append(
+            {
+                "edge_id": getattr(edge, "id", None),
+                "source_node_id": source_id,
+                "expression": condition,
+                "normalized": _normalize_condition_expression(condition),
+            }
+        )
+
+    return details
 
 
 def _evaluate_edge_condition(

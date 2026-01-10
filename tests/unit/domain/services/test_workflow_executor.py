@@ -341,11 +341,19 @@ class TestWorkflowExecutor:
         assert result is not None
         executed_ids = [row["node_id"] for row in executor.execution_log]
         assert node_should_skip.id not in executed_ids
-        assert any(
-            t == "node_skipped"
+        skip_events = [
+            d
+            for t, d in events
+            if t == "node_skipped"
             and d.get("node_id") == node_should_skip.id
             and d.get("reason") == "incoming_edge_conditions_not_met"
-            for t, d in events
+        ]
+        assert skip_events
+        details = skip_events[0].get("incoming_edge_conditions")
+        assert isinstance(details, list)
+        assert any(
+            d.get("source_node_id") == node_start.id and d.get("expression") == "value ==="
+            for d in details
         )
 
     @pytest.mark.asyncio
