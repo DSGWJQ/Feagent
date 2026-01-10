@@ -141,6 +141,17 @@ class WorkflowEngine:
                 output = await self._execute_node(
                     node=rendered_node, inputs=inputs, context=context
                 )
+            except DomainError as exc:
+                if event_callback:
+                    event_callback(
+                        "node_error",
+                        {
+                            "node_id": node.id,
+                            "node_type": node.type.value,
+                            "error": str(exc),
+                        },
+                    )
+                raise
             except Exception as exc:  # noqa: BLE001 - Domain boundary for execution errors
                 if event_callback:
                     event_callback(
