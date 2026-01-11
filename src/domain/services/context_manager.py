@@ -31,6 +31,7 @@ from src.domain.entities.session_context import (
     GlobalContext,
     Goal,
     SessionContext,
+    ShortTermSaturatedEvent,  # noqa: F401
 )
 
 if TYPE_CHECKING:
