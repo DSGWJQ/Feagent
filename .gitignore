@@ -37,6 +37,8 @@ Thumbs.db
 Desktop.ini
 .obsidian/
 .augment/
+.ace-tool/
+.import_linter_cache/
 
 # Testing
 .pytest_cache/
@@ -49,6 +51,10 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
+*.sqlite-journal
+*.wal
+*.shm
 
 # Logs
 logs/
@@ -56,8 +62,14 @@ logs/
 
 # Environment
 .env
+.env.*
+!.env*.example
 .env.local
 .env.*.local
+
+# Local MCP config (may contain tokens)
+.mcp.json
+!.mcp.example.json
 
 # Local agent/CLI settings (may contain secrets)
 .claude/settings.local.json
@@ -100,3 +112,6 @@ nul
 backup/
 config/backup/
 uploads/
+
+# Generated data/artifacts
+data/metrics/

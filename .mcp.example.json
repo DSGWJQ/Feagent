@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "relace": {
+      "command": "uv",
+      "args": [
+        "tool",
+        "run",
+        "relace-mcp"
+      ],
+      "env": {
+        "RELACE_API_KEY": "__REPLACE_ME__",
+        "RELACE_BASE_DIR": "__REPLACE_ME__"
+      }
+    }
+  }
+}
