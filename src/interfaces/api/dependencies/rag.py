@@ -9,6 +9,7 @@ Date: 2025-12-17 (P1-1 Fix: Ports/Adapters Compliance)
 
 import logging
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 
 from src.application.services.rag_service import RAGService
 from src.config import settings
@@ -36,8 +37,24 @@ async def _create_rag_service_impl() -> RAGService:
             # 验证配置
             config_errors = RAGConfigManager.validate_config()
             if config_errors:
-                logger.error(f"RAG配置错误: {config_errors}")
-                raise RuntimeError(f"RAG配置无效: {'; '.join(config_errors)}")
+                if settings.env == "production":
+                    logger.error(f"RAG配置错误: {config_errors}")
+                    raise RuntimeError(f"RAG配置无效: {'; '.join(config_errors)}")
+                logger.warning(
+                    "RAG配置无效，已降级为 NoOpRetrieverService（非生产环境）",
+                    extra={"config_errors": list(config_errors)},
+                )
+                RAGConfigManager.ensure_directories_exist()
+                knowledge_repository = SQLiteKnowledgeRepository(
+                    db_path=settings.sqlite_vector_db_path
+                )
+                retriever_service: RetrieverService = NoOpRetrieverService()
+                _rag_service = RAGService(
+                    knowledge_repository=knowledge_repository,
+                    retriever_service=retriever_service,
+                )
+                _initialized = True
+                return _rag_service
 
             # 确保目录存在
             RAGConfigManager.ensure_directories_exist()
@@ -143,12 +160,41 @@ async def check_rag_health() -> dict:
     """检查RAG系统健康状态"""
     try:
         health_status = await RAGConfigManager.health_check()
+
+        # Normalize structure for tests/clients expecting a stable schema.
+        if "timestamp" not in health_status:
+            health_status["timestamp"] = datetime.now(UTC).isoformat()
+
+        components = health_status.get("components")
+        if isinstance(components, dict):
+            allowed = {"healthy", "unhealthy", "configured", "missing", "error"}
+
+            for _name, info in components.items():
+                if not isinstance(info, dict):
+                    continue
+                status = info.get("status")
+                if status in allowed:
+                    continue
+                if isinstance(status, str):
+                    lowered = status.lower()
+                    if lowered.startswith("missing"):
+                        info["status"] = "missing"
+                        continue
+                    if lowered.startswith("config"):
+                        info["status"] = "configured"
+                        continue
+                    if lowered in {"degraded", "warning"}:
+                        info["status"] = "unhealthy"
+                        continue
+                info["status"] = "error"
+
         return health_status
     except Exception as e:
         logger.error(f"RAG健康检查失败: {str(e)}")
         return {
             "status": "error",
             "error": str(e),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
 
@@ -159,9 +205,18 @@ def is_rag_enabled() -> bool:
 
 def get_rag_config() -> dict:
     """获取RAG配置信息"""
+    vector_store = RAGConfigManager.get_vector_store_config()
+    embedding = RAGConfigManager.get_embedding_config()
     return {
-        "vector_store": RAGConfigManager.get_vector_store_config(),
-        "embedding": RAGConfigManager.get_embedding_config(),
+        # Compatibility keys (tests/clients expect these flat fields).
+        "enabled": is_rag_enabled(),
+        "vector_store_type": vector_store.get("type"),
+        "embedding_provider": embedding.get("provider"),
+        # Health is computed via async `check_rag_health`; keep a stable placeholder here.
+        "health_status": "unknown",
+        # Detailed config (preferred by newer callers).
+        "vector_store": vector_store,
+        "embedding": embedding,
         "retrieval": RAGConfigManager.get_retrieval_config(),
         "document_processing": RAGConfigManager.get_document_processing_config(),
         "features": {

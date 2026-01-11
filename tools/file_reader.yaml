@@ -1,0 +1,20 @@
+name: file_reader
+description: Read a file from disk.
+category: file
+version: "1.0.0"
+parameters:
+  - name: path
+    type: string
+    description: File path to read.
+    required: true
+  - name: encoding
+    type: string
+    description: Text encoding (defaults to utf-8).
+    required: false
+    default: utf-8
+entry:
+  type: builtin
+  handler: file_reader
+returns:
+  type: object
+  description: File content and metadata.

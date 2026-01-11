@@ -49,6 +49,11 @@ class RAGConfigManager:
         return config
 
     @staticmethod
+    def get_vector_config() -> dict:
+        """Backward-compatible alias for older callers/tests."""
+        return RAGConfigManager.get_vector_store_config()
+
+    @staticmethod
     def get_embedding_config() -> dict:
         """获取嵌入模型配置"""
         config = {

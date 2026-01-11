@@ -656,7 +656,9 @@ class LifecycleAPI:
                     loop.run_until_complete(self.event_bus.publish(event))
             except RuntimeError:
                 # 没有运行的事件循环，创建新的
-                asyncio.run(self.event_bus.publish(event))
+                from src.domain.services.asyncio_compat import run_sync
+
+                run_sync(self.event_bus.publish(event))
 
     def spawn(
         self,

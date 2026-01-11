@@ -36,6 +36,7 @@ from src.interfaces.api.dto.llm_provider_dto import (
 )
 from src.interfaces.api.dto.run_dto import (
     CreateRunRequest,
+    ExecuteRunRequest,
     RunResponse,
 )
 from src.interfaces.api.dto.tool_dto import (
@@ -62,6 +63,7 @@ __all__ = [
     "AgentResponse",
     "TaskResponse",
     "CreateRunRequest",
+    "ExecuteRunRequest",
     "RunResponse",
     # Tool DTOs
     "CreateToolRequest",

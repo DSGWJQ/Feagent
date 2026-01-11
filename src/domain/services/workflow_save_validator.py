@@ -21,6 +21,7 @@ from src.domain.ports.tool_repository import ToolRepository
 from src.domain.services.workflow_engine import topological_sort_ids
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.tool_status import ToolStatus
+from src.domain.value_objects.workflow_status import WorkflowStatus
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +206,10 @@ class WorkflowSaveValidator:
     def _validate_node_executability(
         self, workflow: Workflow, *, errors: list[dict[str, Any]]
     ) -> None:
+        status_value = getattr(workflow, "status", None)
+        status_str = getattr(status_value, "value", status_value)
+        is_draft = status_value == WorkflowStatus.DRAFT or status_str == WorkflowStatus.DRAFT.value
+
         builtin_types: set[NodeType] = {
             NodeType.INPUT,
             NodeType.START,
@@ -217,14 +222,6 @@ class WorkflowSaveValidator:
             if node.type in builtin_types:
                 continue
 
-            if node.type in {NodeType.JAVASCRIPT, NodeType.PYTHON, NodeType.TRANSFORM}:
-                self._validate_code_node(node_index=idx, node_config=node.config, errors=errors)
-
-            if node.type in {NodeType.HTTP, NodeType.HTTP_REQUEST}:
-                self._validate_http_request_node(
-                    node_index=idx, node_config=node.config, errors=errors
-                )
-
             if not self.executor_registry.has(node.type.value):
                 _append_error(
                     errors,
@@ -236,6 +233,26 @@ class WorkflowSaveValidator:
             if node.type == NodeType.TOOL:
                 self._validate_tool_node(node_index=idx, node_config=node.config, errors=errors)
 
+            # Draft workflows are allowed to be incomplete: allow nodes with partially-filled
+            # configs while editing (chat/drag). Tool nodes stay fail-closed.
+            if is_draft:
+                continue
+
+            if node.type in {NodeType.JAVASCRIPT, NodeType.PYTHON}:
+                self._validate_code_node(node_index=idx, node_config=node.config, errors=errors)
+
+            if node.type == NodeType.TRANSFORM:
+                self._validate_transform_node(
+                    node_index=idx,
+                    node_config=node.config,
+                    errors=errors,
+                )
+
+            if node.type in {NodeType.HTTP, NodeType.HTTP_REQUEST}:
+                self._validate_http_request_node(
+                    node_index=idx, node_config=node.config, errors=errors
+                )
+
     def _validate_main_subgraph(self, workflow: Workflow, *, errors: list[dict[str, Any]]) -> None:
         if not workflow.nodes:
             _append_error(
@@ -246,6 +263,10 @@ class WorkflowSaveValidator:
             )
             return
 
+        status_value = getattr(workflow, "status", None)
+        status_str = getattr(status_value, "value", status_value)
+        is_draft = status_value == WorkflowStatus.DRAFT or status_str == WorkflowStatus.DRAFT.value
+
         start_ids = {node.id for node in workflow.nodes if node.type == NodeType.START}
         end_ids = {node.id for node in workflow.nodes if node.type == NodeType.END}
         if not start_ids:
@@ -255,14 +276,17 @@ class WorkflowSaveValidator:
                 message="missing start node",
                 path="nodes",
             )
-        if not end_ids:
+        if not end_ids and not is_draft:
             _append_error(
                 errors,
                 code="missing_end",
                 message="missing end node",
                 path="nodes",
             )
-        if not start_ids or not end_ids:
+        if not start_ids or (not end_ids and not is_draft):
+            return
+        if is_draft:
+            # Draft workflows are allowed to be incomplete (created first, refined later).
             return
 
         main_node_ids = _extract_main_subgraph_node_ids(workflow)
@@ -275,15 +299,6 @@ class WorkflowSaveValidator:
             )
             return
 
-        intermediate = main_node_ids - start_ids - end_ids
-        if not intermediate:
-            _append_error(
-                errors,
-                code="missing_intermediate_nodes",
-                message="workflow must include at least one node between start and end",
-                path="nodes",
-            )
-
     def _validate_code_node(
         self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
     ) -> None:
@@ -294,6 +309,124 @@ class WorkflowSaveValidator:
                 code="missing_code",
                 message="code is required for code nodes",
                 path=f"nodes[{node_index}].config.code",
+            )
+
+    def _validate_transform_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for transform nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        transform_type = node_config.get("type")
+        if not isinstance(transform_type, str) or not transform_type.strip():
+            _append_error(
+                errors,
+                code="missing_transform_type",
+                message="type is required for transform nodes",
+                path=f"nodes[{node_index}].config.type",
+            )
+            return
+
+        transform_type = transform_type.strip()
+        if transform_type == "field_mapping":
+            mapping = node_config.get("mapping")
+            if not isinstance(mapping, dict) or not mapping:
+                _append_error(
+                    errors,
+                    code="missing_mapping",
+                    message="mapping is required for field_mapping transform",
+                    path=f"nodes[{node_index}].config.mapping",
+                )
+        elif transform_type == "type_conversion":
+            conversions = node_config.get("conversions")
+            if not isinstance(conversions, dict) or not conversions:
+                _append_error(
+                    errors,
+                    code="missing_conversions",
+                    message="conversions is required for type_conversion transform",
+                    path=f"nodes[{node_index}].config.conversions",
+                )
+        elif transform_type == "field_extraction":
+            path_value = node_config.get("path")
+            if not isinstance(path_value, str) or not path_value.strip():
+                _append_error(
+                    errors,
+                    code="missing_path",
+                    message="path is required for field_extraction transform",
+                    path=f"nodes[{node_index}].config.path",
+                )
+        elif transform_type == "array_mapping":
+            field_value = node_config.get("field")
+            mapping = node_config.get("mapping")
+            if not isinstance(field_value, str) or not field_value.strip():
+                _append_error(
+                    errors,
+                    code="missing_field",
+                    message="field is required for array_mapping transform",
+                    path=f"nodes[{node_index}].config.field",
+                )
+            if not isinstance(mapping, dict) or not mapping:
+                _append_error(
+                    errors,
+                    code="missing_mapping",
+                    message="mapping is required for array_mapping transform",
+                    path=f"nodes[{node_index}].config.mapping",
+                )
+        elif transform_type == "filtering":
+            field_value = node_config.get("field")
+            condition = node_config.get("condition")
+            if not isinstance(field_value, str) or not field_value.strip():
+                _append_error(
+                    errors,
+                    code="missing_field",
+                    message="field is required for filtering transform",
+                    path=f"nodes[{node_index}].config.field",
+                )
+            if not isinstance(condition, str) or not condition.strip():
+                _append_error(
+                    errors,
+                    code="missing_condition",
+                    message="condition is required for filtering transform",
+                    path=f"nodes[{node_index}].config.condition",
+                )
+        elif transform_type == "aggregation":
+            field_value = node_config.get("field")
+            operations = node_config.get("operations")
+            if not isinstance(field_value, str) or not field_value.strip():
+                _append_error(
+                    errors,
+                    code="missing_field",
+                    message="field is required for aggregation transform",
+                    path=f"nodes[{node_index}].config.field",
+                )
+            if not isinstance(operations, list) or not operations:
+                _append_error(
+                    errors,
+                    code="missing_operations",
+                    message="operations is required for aggregation transform",
+                    path=f"nodes[{node_index}].config.operations",
+                )
+        elif transform_type == "custom":
+            function_name = node_config.get("function")
+            if not isinstance(function_name, str) or not function_name.strip():
+                _append_error(
+                    errors,
+                    code="missing_function",
+                    message="function is required for custom transform",
+                    path=f"nodes[{node_index}].config.function",
+                )
+        else:
+            _append_error(
+                errors,
+                code="unsupported_transform_type",
+                message=f"unsupported transform type: {transform_type}",
+                path=f"nodes[{node_index}].config.type",
             )
 
     def _validate_http_request_node(
@@ -309,12 +442,15 @@ class WorkflowSaveValidator:
             return
 
         url = node_config.get("url")
-        if not isinstance(url, str) or not url.strip():
+        path_value = node_config.get("path")
+        has_url = isinstance(url, str) and url.strip()
+        has_path = isinstance(path_value, str) and path_value.strip()
+        if not has_url and not has_path:
             _append_error(
                 errors,
                 code="missing_url",
-                message="url is required for http nodes",
-                path=f"nodes[{node_index}].config.url",
+                message="url (or path) is required for http nodes",
+                path=f"nodes[{node_index}].config",
             )
 
         method = node_config.get("method")

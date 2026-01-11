@@ -86,7 +86,7 @@ class UpdateWorkflowByChatUseCase:
         *,
         coordinator: Any | None = None,
         event_bus: Any | None = None,
-        fail_closed: bool = True,
+        fail_closed: bool = False,
     ):
         """初始化用例
 
@@ -170,13 +170,13 @@ class UpdateWorkflowByChatUseCase:
         if not input_data.user_message or not input_data.user_message.strip():
             raise DomainError("消息不能为空")
 
-        # 1.5 Coordinator gate (fail-closed, no side effects).
-        self._authorize_edit_sync(input_data)
-
         # 2. 获取工作流
         workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
         if not workflow:
             raise NotFoundError(entity_type="Workflow", entity_id=input_data.workflow_id)
+
+        # 2.5 Coordinator gate (fail-closed, no side effects).
+        self._authorize_edit_sync(input_data)
 
         # 3. 调用 Domain Service 处理消息
         result = self.chat_service.process_message(
@@ -232,13 +232,13 @@ class UpdateWorkflowByChatUseCase:
         if not input_data.user_message or not input_data.user_message.strip():
             raise DomainError("消息不能为空")
 
-        # 1.5 Coordinator gate (fail-closed, no side effects).
-        await self.authorize_edit(input_data)
-
         # 2. 获取工作流
         workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
         if not workflow:
             raise NotFoundError(entity_type="Workflow", entity_id=input_data.workflow_id)
+
+        # 2.5 Coordinator gate (fail-closed, no side effects).
+        await self.authorize_edit(input_data)
 
         # 3. 产生开始事件
         yield {

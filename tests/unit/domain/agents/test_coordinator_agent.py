@@ -888,4 +888,3 @@ class TestCoordinatorAgentRuleEngineFacadeIntegration:
         # 确保验证通过(所有规则condition返回True)
         assert result.is_valid is True
         assert result.errors == []
-

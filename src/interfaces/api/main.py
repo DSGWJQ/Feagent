@@ -31,7 +31,9 @@ from src.interfaces.api.dependencies.scheduler import (
     set_scheduler_service,
 )
 from src.interfaces.api.routes import (
+    agents,
     auth,
+    concurrent_workflows,
     conversation_stream,
     coordinator_status,
     health,
@@ -476,7 +478,11 @@ async def root() -> JSONResponse:
     )
 
 
+# NOTE: include "fixed" workflow subpaths before the catch-all `/{workflow_id}` routes,
+# otherwise Starlette will match `/{workflow_id}` first and return 405 for POST endpoints.
+app.include_router(concurrent_workflows.router, prefix="/api")
 app.include_router(workflows_routes.router, prefix="/api", tags=["Workflows"])
+app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
 app.include_router(auth.router, prefix="/api", tags=["Authentication"])
 app.include_router(workflows_rag_routes.router, prefix="/api", tags=["Workflows RAG"])
 

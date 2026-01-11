@@ -8,6 +8,7 @@
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 from src.domain.exceptions import NotFoundError
 
@@ -40,7 +41,7 @@ class EnhancedChatWorkflowUseCase:
     - 维护对话历史
     """
 
-    def __init__(self, workflow_repo, chat_service):
+    def __init__(self, workflow_repo, chat_service, *, save_validator: Any | None = None):
         """初始化用例
 
         参数：
@@ -49,15 +50,16 @@ class EnhancedChatWorkflowUseCase:
         """
         self.workflow_repo = workflow_repo
         self.chat_service = chat_service
+        self.save_validator = save_validator
 
-    def execute(self, input_data: EnhancedChatWorkflowInput) -> EnhancedChatWorkflowOutput:
+    def execute(self, input_data: EnhancedChatWorkflowInput) -> Any:
         """处理对话消息并更新工作流
 
         参数：
             input_data: 输入数据
 
         返回：
-            输出数据
+            对话服务的修改结果（兼容：可被 API DTO 适配为 success/response/...）
 
         抛出：
             NotFoundError: 工作流不存在
@@ -65,22 +67,22 @@ class EnhancedChatWorkflowUseCase:
         # 1. 获取工作流
         workflow = self.workflow_repo.get_by_id(input_data.workflow_id)
         if not workflow:
-            raise NotFoundError(f"工作流不存在: {input_data.workflow_id}")
+            raise NotFoundError("Workflow", input_data.workflow_id)
 
         # 2. 调用对话服务处理消息
         modification_result = self.chat_service.process_message(workflow, input_data.user_message)
 
-        # 3. 如果成功，保存修改后的工作流
-        if modification_result.success and modification_result.modified_workflow:
-            self.workflow_repo.save(modification_result.modified_workflow)
+        # 3. 如果成功，保存修改后的工作流（可选：保存前校验）
+        modified_workflow = getattr(modification_result, "modified_workflow", None)
+        if getattr(modification_result, "success", False) and modified_workflow:
+            if self.save_validator is not None:
+                validate = getattr(self.save_validator, "validate_or_raise", None)
+                if callable(validate):
+                    validate(modified_workflow)
+            self.workflow_repo.save(modified_workflow)
 
-        # 4. 返回结果
-        return EnhancedChatWorkflowOutput(
-            success=modification_result.success,
-            ai_message=modification_result.ai_message,
-            modifications_count=modification_result.modifications_count,
-            error_message=modification_result.error_message,
-        )
+        # 4. 返回修改结果（保留增强字段：rag_sources/react_steps/intent/confidence 等）
+        return modification_result
 
     def clear_conversation_history(self) -> None:
         """清空对话历史"""

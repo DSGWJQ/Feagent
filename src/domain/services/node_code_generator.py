@@ -432,9 +432,15 @@ class NodeCodeGenerator:
         }
 
         try:
-            yaml_content = yaml.dump(
+            dumped = yaml.dump(
                 yaml_dict, allow_unicode=True, default_flow_style=False, sort_keys=False
             )
+            if dumped is None:
+                yaml_content = ""
+            elif isinstance(dumped, bytes):
+                yaml_content = dumped.decode("utf-8", errors="replace")
+            else:
+                yaml_content = dumped
             return YamlGenerationResult(yaml_content=yaml_content, is_valid=True)
         except Exception as e:
             return YamlGenerationResult(yaml_content="", is_valid=False, errors=[str(e)])

@@ -50,6 +50,12 @@ class ContextInjectionManager:
         """
         self._injection_manager = injection_manager
         self._injection_logger = injection_logger
+        # 向后兼容：部分单测/旧代码直接读取 _injections（实现细节）。
+        self._injections = getattr(injection_manager, "_injections", {})
+
+    def get_pending_injections(self, session_id: str, injection_point: Any) -> list[Any]:
+        """获取待处理注入（代理到核心注入器，向后兼容）。"""
+        return self._injection_manager.get_pending_injections(session_id, injection_point)
 
     def inject_context(
         self,
@@ -125,8 +131,11 @@ class ContextInjectionManager:
     def inject_warning(
         self,
         session_id: str,
-        warning_message: str,
+        warning_message: str | None = None,
         rule_id: str | None = None,
+        content: str | None = None,
+        source: str = "coordinator",
+        reason: str | None = None,
     ) -> Any:
         """注入警告信息
 
@@ -134,25 +143,36 @@ class ContextInjectionManager:
 
         参数：
             session_id: 会话 ID
-            warning_message: 警告消息
+            warning_message: 警告消息（可选，向后兼容）
             rule_id: 触发警告的规则 ID（可选）
+            content: 警告内容（兼容旧接口：传 content=...）
+            source: 来源（可选）
+            reason: 原因（可选，默认由 rule_id 推导）
 
         返回：
             创建的 ContextInjection 实例
         """
-        reason = f"规则 {rule_id} 触发" if rule_id else "安全检测"
+        if warning_message is None:
+            warning_message = content
+        if not warning_message:
+            warning_message = ""
+
+        if reason is None:
+            reason = f"规则 {rule_id} 触发" if rule_id else "安全检测"
         return self._injection_manager.inject_warning(
             session_id=session_id,
             content=warning_message,
-            source="coordinator",
+            source=source,
             reason=reason,
         )
 
     def inject_intervention(
         self,
         session_id: str,
-        intervention_message: str,
+        intervention_message: str | None = None,
         reason: str = "需要干预",
+        content: str | None = None,
+        source: str = "coordinator",
     ) -> Any:
         """注入干预指令
 
@@ -160,58 +180,81 @@ class ContextInjectionManager:
 
         参数：
             session_id: 会话 ID
-            intervention_message: 干预消息
+            intervention_message: 干预消息（可选，向后兼容）
             reason: 干预原因
+            content: 干预内容（兼容旧接口：传 content=...）
+            source: 来源（可选）
 
         返回：
             创建的 ContextInjection 实例
         """
+        if intervention_message is None:
+            intervention_message = content
+        if not intervention_message:
+            intervention_message = ""
+
         return self._injection_manager.inject_intervention(
             session_id=session_id,
             content=intervention_message,
-            source="coordinator",
+            source=source,
             reason=reason,
         )
 
     def inject_memory(
         self,
         session_id: str,
-        memory_content: str,
+        memory_content: str | None = None,
         relevance_score: float = 0.0,
+        content: str | None = None,
+        source: str = "memory_system",
     ) -> Any:
         """注入长期记忆
 
         参数：
             session_id: 会话 ID
-            memory_content: 记忆内容
+            memory_content: 记忆内容（可选，向后兼容）
             relevance_score: 相关性分数
+            content: 记忆内容（兼容旧接口：传 content=...）
+            source: 来源（可选）
 
         返回：
             创建的 ContextInjection 实例
         """
+        if memory_content is None:
+            memory_content = content
+        if not memory_content:
+            memory_content = ""
+
         return self._injection_manager.inject_memory(
             session_id=session_id,
             content=memory_content,
-            source="memory_system",
+            source=source,
             relevance_score=relevance_score,
         )
 
     def inject_observation(
         self,
         session_id: str,
-        observation: str,
+        observation: str | None = None,
         source: str = "monitor",
+        content: str | None = None,
     ) -> Any:
         """注入观察信息
 
         参数：
             session_id: 会话 ID
-            observation: 观察内容
+            observation: 观察内容（可选，向后兼容）
             source: 来源（默认"monitor"）
+            content: 观察内容（兼容旧接口：传 content=...）
 
         返回：
             创建的 ContextInjection 实例
         """
+        if observation is None:
+            observation = content
+        if not observation:
+            observation = ""
+
         return self._injection_manager.inject_observation(
             session_id=session_id,
             content=observation,

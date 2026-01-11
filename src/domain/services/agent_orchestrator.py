@@ -44,7 +44,7 @@ from src.domain.agents.workflow_agent import (
     WorkflowExecutionCompletedEvent,
     WorkflowExecutionStartedEvent,
 )
-from src.domain.services.event_bus import EventBus
+from src.domain.services.event_bus import Event, EventBus
 
 logger = logging.getLogger(__name__)
 
@@ -169,11 +169,13 @@ class AgentOrchestrator:
         self._is_running = False
         logger.info("AgentOrchestrator stopped")
 
-    async def _handle_decision_validated(self, event: DecisionValidatedEvent) -> None:
+    async def _handle_decision_validated(self, event: Event) -> None:
         """处理验证通过的决策
 
         将决策转发给 WorkflowAgent。
         """
+        if not isinstance(event, DecisionValidatedEvent):
+            return
         logger.info(
             f"Decision validated: type={event.decision_type}, id={event.original_decision_id}"
         )
@@ -193,13 +195,17 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"WorkflowAgent failed to handle decision: {e}")
 
-    async def _handle_workflow_started(self, event: WorkflowExecutionStartedEvent) -> None:
+    async def _handle_workflow_started(self, event: Event) -> None:
         """处理工作流开始事件"""
+        if not isinstance(event, WorkflowExecutionStartedEvent):
+            return
         logger.info(f"Workflow started: workflow_id={event.workflow_id}, nodes={event.node_count}")
         self._statistics.workflows_started += 1
 
-    async def _handle_workflow_completed(self, event: WorkflowExecutionCompletedEvent) -> None:
+    async def _handle_workflow_completed(self, event: Event) -> None:
         """处理工作流完成事件"""
+        if not isinstance(event, WorkflowExecutionCompletedEvent):
+            return
         logger.info(f"Workflow completed: workflow_id={event.workflow_id}, status={event.status}")
         self._statistics.workflows_completed += 1
 
@@ -212,8 +218,10 @@ class AgentOrchestrator:
             }
             await self.conversation_agent.receive_execution_result(result_data)
 
-    async def _handle_node_execution(self, event: NodeExecutionEvent) -> None:
+    async def _handle_node_execution(self, event: Event) -> None:
         """处理节点执行事件"""
+        if not isinstance(event, NodeExecutionEvent):
+            return
         logger.debug(f"Node execution: node_id={event.node_id}, status={event.status}")
         if event.status in ("completed", "failed"):
             self._statistics.nodes_executed += 1

@@ -88,7 +88,9 @@ class ConversationAgentHelpersMixin:
             else:
                 subgoal_dicts = loop.run_until_complete(self.llm.decompose_goal(goal_description))
         except RuntimeError:
-            subgoal_dicts = asyncio.run(self.llm.decompose_goal(goal_description))
+            from src.domain.services.asyncio_compat import run_sync
+
+            subgoal_dicts = run_sync(self.llm.decompose_goal(goal_description))
 
         # 转换为Goal对象
         subgoals = []

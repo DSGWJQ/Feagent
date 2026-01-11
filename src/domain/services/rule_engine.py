@@ -295,6 +295,9 @@ class RuleEngine:
         with open(path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
+        if not isinstance(config, dict):
+            raise ValueError("规则配置文件格式错误：根节点必须为 dict")
+
         self.load_rules_from_dict(config)
         logger.info(f"从 {config_path} 加载了 {len(self._rules)} 条规则")
 

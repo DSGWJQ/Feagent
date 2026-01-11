@@ -453,6 +453,9 @@ class CanvasSyncService:
             NodeExecutionCompletedEvent,
         )
 
+        if self.event_bus is None:
+            return
+
         self.event_bus.subscribe(NodeCreatedEvent, self._on_node_created)
         self.event_bus.subscribe(NodeExecutionCompletedEvent, self._on_node_execution_completed)
 

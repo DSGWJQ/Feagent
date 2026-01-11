@@ -714,11 +714,16 @@ class NodeRegistry:
         return self._schemas.get(node_type, {})
 
     def get_all_types(self) -> list[NodeType]:
-        """获取所有已注册的节点类型
+        """获取对外可展示的节点类型（默认隐藏部分扩展类型）
 
         返回：
             节点类型列表
         """
+        hidden_types = {NodeType.FILE, NodeType.TRANSFORM, NodeType.HUMAN}
+        return [t for t in self._schemas.keys() if t not in hidden_types]
+
+    def get_all_registered_types(self) -> list[NodeType]:
+        """获取所有已注册的节点类型（包含扩展类型）"""
         return list(self._schemas.keys())
 
     def get_template(self, node_type: NodeType) -> dict[str, Any]:

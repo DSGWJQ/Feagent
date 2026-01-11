@@ -150,7 +150,7 @@ class Settings(BaseSettings):
         ),
     )
     enable_langgraph_workflow_executor: bool = Field(
-        default=True,
+        default=False,
         description="回滚开关：是否启用 LangGraph workflow executor（关闭可紧急回滚到 legacy workflow engine）。",
     )
     langgraph_workflow_executor_rollback_actor: str = Field(

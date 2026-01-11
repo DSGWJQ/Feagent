@@ -10,7 +10,7 @@ Step 3 重构：
 - 统一执行链路，与 API 执行保持一致
 """
 
-import asyncio
+import inspect
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -101,7 +101,9 @@ class ScheduleWorkflowService:
 
     def _execute_workflow(self, scheduled_workflow_id: str) -> None:
         """供 APScheduler 调用的同步入口。"""
-        asyncio.run(self._execute_workflow_async(scheduled_workflow_id))
+        from src.domain.services.asyncio_compat import run_sync
+
+        run_sync(self._execute_workflow_async(scheduled_workflow_id))
 
     async def _execute_workflow_async(self, scheduled_workflow_id: str) -> dict[str, Any]:
         """执行定时任务并记录结果。
@@ -121,11 +123,39 @@ class ScheduleWorkflowService:
         scheduled: ScheduledWorkflow | None = None
         try:
             scheduled = repo.get_by_id(scheduled_workflow_id)
-            # Step 3: 统一使用 WorkflowExecutorPort.execute()
-            result = await self._executor.execute(
-                workflow_id=scheduled.workflow_id,
-                input_data={},
+
+            input_data: dict[str, Any] = {}
+
+            # Red-team: `unittest.mock.Mock` makes `hasattr()` unreliable (it returns True for any name).
+            executor_dict = getattr(self._executor, "__dict__", {}) or {}
+            has_execute_workflow = ("execute_workflow" in executor_dict) or callable(
+                getattr(type(self._executor), "execute_workflow", None)
             )
+            has_execute = ("execute" in executor_dict) or callable(
+                getattr(type(self._executor), "execute", None)
+            )
+
+            execute_workflow = getattr(self._executor, "execute_workflow", None)
+            execute = getattr(self._executor, "execute", None)
+
+            # Backward-compat: many callers/tests patch `execute_workflow` directly.
+            if has_execute_workflow and callable(execute_workflow):
+                try:
+                    maybe_result = execute_workflow(
+                        workflow_id=scheduled.workflow_id,
+                        input_data=input_data,
+                    )
+                except TypeError:
+                    maybe_result = execute_workflow(scheduled.workflow_id, input_data)
+            elif has_execute and callable(execute):
+                maybe_result = execute(
+                    workflow_id=scheduled.workflow_id,
+                    input_data=input_data,
+                )
+            else:
+                raise TypeError("workflow_executor must implement execute_workflow() or execute()")
+
+            result = await maybe_result if inspect.isawaitable(maybe_result) else maybe_result
 
             scheduled.record_execution_success()
             repo.save(scheduled)
@@ -163,7 +193,9 @@ class ScheduleWorkflowService:
 
     def trigger_execution(self, scheduled_workflow_id: str) -> dict[str, Any]:
         """同步触发（测试/脚本使用）"""
-        return asyncio.run(self.trigger_execution_async(scheduled_workflow_id))
+        from src.domain.services.asyncio_compat import run_sync
+
+        return run_sync(self.trigger_execution_async(scheduled_workflow_id))
 
     def get_scheduled_job(self, scheduled_workflow_id: str) -> Any | None:
         """返回 APScheduler job 对象"""

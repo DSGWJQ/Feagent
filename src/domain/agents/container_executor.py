@@ -198,9 +198,10 @@ class MockContainerExecutor:
         inputs: dict[str, Any] | None = None,
     ) -> ContainerExecutionResult:
         """同步执行"""
-        import asyncio
 
-        return asyncio.run(self.execute_async(code, config, inputs))
+        from src.domain.services.asyncio_compat import run_sync
+
+        return run_sync(self.execute_async(code, config, inputs))
 
     async def execute_async(
         self,

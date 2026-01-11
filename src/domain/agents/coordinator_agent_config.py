@@ -116,6 +116,9 @@ class FailureHandlingConfig:
     """
 
     workflow_failure_orchestrator: Any | None = None
+    # Default strategy for WorkflowFailureOrchestrator (Phase 12)
+    # Stored here so CoordinatorBootstrap can map to the orchestrator config dict.
+    default_strategy: Any = None
     max_retry_attempts: int = 3
     retry_delay_seconds: float = 1.0
     enable_auto_recovery: bool = True
@@ -184,6 +187,9 @@ class RuntimeConfig:
     log_collector: Any | None = None
     enable_performance_monitoring: bool = True
     enable_debug_logging: bool = False
+    # When CoordinatorAgent.event_bus is intentionally not wired (legacy/no-arg construction),
+    # allow a local-only save request flow to keep persistence-control tooling usable in tests.
+    enable_local_save_request_flow: bool = False
 
 
 # =============================================================================

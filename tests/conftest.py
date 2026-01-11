@@ -1,17 +1,100 @@
 """Pytest 配置文件 - 全局 fixtures"""
 
+import asyncio
+from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from src.config import settings
 from src.interfaces.api.main import app
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client() -> Iterator[TestClient]:
     """FastAPI 测试客户端"""
-    return TestClient(app)
+    with TestClient(app) as client:
+        yield client
+
+
+@pytest.fixture(autouse=True)
+def ensure_sync_event_loop(request: pytest.FixtureRequest):
+    """Provide a default event loop for sync tests that call `asyncio.get_event_loop()`.
+
+    Red-team note:
+    - Some legacy sync tests still rely on `asyncio.get_event_loop().run_until_complete(...)`.
+    - Other tests may close/unset the global loop, causing order-dependent failures.
+    - We avoid touching async (`@pytest.mark.asyncio`) tests to prevent interfering with pytest-asyncio.
+    """
+
+    if request.node.get_closest_marker("asyncio") is not None:
+        yield
+        return
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("event loop is closed")
+        yield
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            yield
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def bootstrap_test_sqlite_schema() -> None:
+    """Ensure the configured SQLite DB has an up-to-date schema for tests.
+
+    Red-team note:
+    - Some integration tests validate the actual DB schema via raw SQL.
+    - These tests create their own engines and do not go through FastAPI lifespan hooks.
+    - To keep the suite deterministic, we reset and bootstrap the test SQLite database once per session.
+    """
+
+    if settings.env != "test":
+        return
+
+    url = settings.database_url
+    if not url.startswith("sqlite"):
+        return
+
+    sync_url = url.replace("+aiosqlite", "")
+    if sync_url.endswith(":memory:"):
+        return
+
+    path_prefix = "sqlite:///"
+    if not sync_url.startswith(path_prefix):
+        return
+
+    raw_path = sync_url[len(path_prefix) :]
+    if not raw_path or raw_path.startswith("file:"):
+        return
+
+    db_path = Path(raw_path)
+    if not db_path.is_absolute():
+        db_path = (Path.cwd() / db_path).resolve()
+
+    # Fail-closed safety guard: only reset clearly test-scoped DB files.
+    if not (db_path.name.startswith("test_") and db_path.suffix == ".db"):
+        return
+
+    try:
+        if db_path.exists():
+            db_path.unlink()
+    except OSError:
+        # If the DB is locked (e.g., by an IDE), avoid masking the error later.
+        raise
+
+    from src.infrastructure.database.schema import ensure_sqlite_schema
+
+    ensure_sqlite_schema()
 
 
 @pytest.fixture

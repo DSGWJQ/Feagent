@@ -3,6 +3,7 @@
 定义工作流调度 API 的期望行为
 """
 
+from collections.abc import Iterator
 from unittest.mock import Mock, patch
 
 import pytest
@@ -13,11 +14,12 @@ class TestScheduleWorkflowAPI:
     """测试工作流调度 API 端点"""
 
     @pytest.fixture
-    def client(self):
+    def client(self) -> Iterator[TestClient]:
         """创建测试客户端"""
         from src.interfaces.api.main import app
 
-        return TestClient(app)
+        with TestClient(app) as client:
+            yield client
 
     def test_schedule_workflow_post_creates_scheduled_workflow(self, client):
         """测试：POST /api/workflows/{workflow_id}/schedule 应该创建定时任务"""

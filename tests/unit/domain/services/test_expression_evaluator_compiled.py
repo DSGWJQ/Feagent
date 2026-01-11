@@ -67,9 +67,7 @@ class TestEvaluateCompiled:
         evaluator = ExpressionEvaluator()
         compiled = evaluator.compile_expression("score > 0.8")
 
-        result = evaluator.evaluate_compiled(
-            compiled_ast=compiled, context={"score": 0.9}
-        )
+        result = evaluator.evaluate_compiled(compiled_ast=compiled, context={"score": 0.9})
 
         assert result is True
 
@@ -107,9 +105,7 @@ class TestEvaluateCompiled:
         # 多次执行同一个编译后的表达式
         results = []
         for value in [40, 50, 60]:
-            result = evaluator.evaluate_compiled(
-                compiled_ast=compiled, context={"value": value}
-            )
+            result = evaluator.evaluate_compiled(compiled_ast=compiled, context={"value": value})
             results.append(result)
 
         assert results == [False, False, True]
@@ -119,9 +115,7 @@ class TestEvaluateCompiled:
         evaluator = ExpressionEvaluator()
         compiled = evaluator.compile_expression("price * 0.9")
 
-        result = evaluator.evaluate_compiled(
-            compiled_ast=compiled, context={"price": 100}
-        )
+        result = evaluator.evaluate_compiled(compiled_ast=compiled, context={"price": 100})
 
         assert result == 90.0
         assert isinstance(result, float)

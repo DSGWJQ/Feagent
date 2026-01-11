@@ -315,6 +315,7 @@ class RAGService:
         query: str,
         workflow_id: str | None = None,
         system_prompt: str | None = None,
+        use_rag: bool = True,
         max_context_length: int = 4000,
     ) -> RAGResult:
         """使用RAG进行查询
@@ -323,11 +324,21 @@ class RAGService:
             query: 用户查询
             workflow_id: 可选的工作流ID
             system_prompt: 可选的系统提示词
+            use_rag: 是否启用RAG检索（False 时返回空上下文）
             max_context_length: 最大上下文长度
 
         返回：
             RAG结果
         """
+        if not use_rag:
+            empty_context = RetrievedContext(
+                chunks=[],
+                formatted_context="",
+                total_tokens=0,
+                sources=[],
+            )
+            return RAGResult(query=query, context=empty_context, sources=[])
+
         # 构建查询上下文
         query_context = QueryContext(
             query=query,

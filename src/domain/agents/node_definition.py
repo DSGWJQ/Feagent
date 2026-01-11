@@ -724,6 +724,9 @@ class NodeDefinition:
         if data is None:
             raise ValueError("YAML content is empty or contains only comments")
 
+        if not isinstance(data, dict):
+            raise ValueError("YAML root must be a mapping/dict")
+
         return cls._from_yaml_data(data, depth)
 
     @classmethod
@@ -999,12 +1002,14 @@ class NodeDefinition:
 
         # 添加嵌套节点
         if self.children:
-            nested = {"children": []}
+            nested: dict[str, Any] = {"children": []}
+            nested_children: list[dict[str, Any]] = []
+            nested["children"] = nested_children
             if self.config.get("nested_parallel"):
                 nested["parallel"] = True
             for child in self.children:
                 child_yaml = child.to_yaml_dict()
-                nested["children"].append(child_yaml)
+                nested_children.append(child_yaml)
             data["nested"] = nested
 
         return data
@@ -1016,7 +1021,12 @@ class NodeDefinition:
             YAML 格式字符串
         """
         data = self.to_yaml_dict()
-        return yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        dumped = yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        if dumped is None:
+            return ""
+        if isinstance(dumped, bytes):
+            return dumped.decode("utf-8", errors="replace")
+        return dumped
 
     # ========== Phase 8.1 扩展: DAG 操作 ==========
 
@@ -1049,7 +1059,7 @@ class NodeDefinition:
         # 如果有 depends_on，需要进行拓扑排序
 
         # 构建依赖图
-        nodes = {self.name: self}
+        nodes: dict[str, NodeDefinition] = {self.name: self}
         for child in self.children:
             nodes[child.name] = child
 

@@ -96,7 +96,6 @@ class ContainerLogEvent(Event):
     node_id: str = ""
     log_level: str = "INFO"
     message: str = ""
-    timestamp: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property

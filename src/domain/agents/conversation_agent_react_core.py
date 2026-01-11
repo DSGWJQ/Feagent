@@ -170,7 +170,9 @@ class ConversationAgentReActCoreMixin:
                 return self._run_sync(user_input)
             return loop.run_until_complete(self.run_async(user_input))
         except RuntimeError:
-            return asyncio.run(self.run_async(user_input))
+            from src.domain.services.asyncio_compat import run_sync
+
+            return run_sync(self.run_async(user_input))
 
     def _run_sync(self, user_input: str) -> ReActResult:
         """同步方式运行（当事件循环已在运行时）"""
@@ -711,7 +713,9 @@ class ConversationAgentReActCoreMixin:
             else:
                 action = loop.run_until_complete(self.llm.decide_action(context))
         except RuntimeError:
-            action = asyncio.run(self.llm.decide_action(context))
+            from src.domain.services.asyncio_compat import run_sync
+
+            action = run_sync(self.llm.decide_action(context))
 
         # 获取 action_type
         action_type = action.get("action_type", "continue")

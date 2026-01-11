@@ -188,9 +188,7 @@ class WorkflowPlan:
         merged = self._deep_merge(self.default_error_strategy, node_strategy)
         return merged
 
-    def _deep_merge(
-        self, base: dict[str, Any], override: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """深度合并两个字典
 
         参数：
@@ -202,11 +200,7 @@ class WorkflowPlan:
         """
         result = base.copy()
         for key, value in override.items():
-            if (
-                key in result
-                and isinstance(result[key], dict)
-                and isinstance(value, dict)
-            ):
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = self._deep_merge(result[key], value)
             else:
                 result[key] = value

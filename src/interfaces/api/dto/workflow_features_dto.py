@@ -25,6 +25,16 @@ class ScheduledWorkflowResponse(BaseModel):
 
     @classmethod
     def from_entity(cls, entity: Any) -> "ScheduledWorkflowResponse":
+        def _safe_int(value: Any, default: int = 0) -> int:
+            if isinstance(value, bool):  # bool is a subclass of int
+                return int(value)
+            if isinstance(value, int):
+                return value
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
         return cls(
             id=entity.id,
             workflow_id=entity.workflow_id,
@@ -33,8 +43,11 @@ class ScheduledWorkflowResponse(BaseModel):
             next_execution_time=str(getattr(entity, "next_execution_time", "") or "")
             if getattr(entity, "next_execution_time", None)
             else None,
-            max_retries=entity.max_retries,
-            consecutive_failures=entity.consecutive_failures,
+            max_retries=_safe_int(getattr(entity, "max_retries", 0), default=0),
+            consecutive_failures=_safe_int(
+                getattr(entity, "consecutive_failures", 0),
+                default=0,
+            ),
         )
 
 

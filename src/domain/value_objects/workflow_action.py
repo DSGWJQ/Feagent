@@ -12,9 +12,10 @@ ActionType 枚举：
 这些模型作为 LLM 输出解析的目标，提供强类型保证。
 """
 
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ActionType(str, Enum):
@@ -27,8 +28,7 @@ class ActionType(str, Enum):
     ERROR_RECOVERY = "error_recovery"
 
 
-@dataclass(frozen=True, slots=True)
-class WorkflowAction:
+class WorkflowAction(BaseModel):
     """工作流动作模型
 
     表示工作流中 LLM 决定采取的单个动作。
@@ -41,37 +41,36 @@ class WorkflowAction:
     - retry_count: 重试次数（非负整数，默认 0）
     """
 
+    model_config = ConfigDict(
+        frozen=True,
+        use_enum_values=True,
+        extra="ignore",
+    )
+
     type: ActionType
     node_id: str | None = None
     reasoning: str | None = None
-    params: dict[str, Any] = field(default_factory=dict)
-    retry_count: int = 0
+    params: dict[str, Any] = Field(default_factory=dict)
+    retry_count: int = Field(default=0, ge=0)
 
-    def __post_init__(self) -> None:
-        action_type = self.type
-        if isinstance(action_type, str):
-            try:
-                action_type = ActionType(action_type)
-            except ValueError as e:
-                raise ValueError(f"无效的动作类型: {self.type!r}") from e
-            object.__setattr__(self, "type", action_type)
-        if not isinstance(action_type, ActionType):
-            raise TypeError("type 必须是 ActionType 或可转换为 ActionType 的字符串")
+    @field_validator("params", mode="before")
+    @classmethod
+    def _coerce_params(cls, v: Any) -> dict[str, Any]:
+        if v is None:
+            return {}
+        if isinstance(v, dict):
+            return v
+        raise TypeError("params 必须是 dict")
 
-        if self.retry_count < 0:
-            raise ValueError("retry_count 必须是非负整数")
-
-        if self.params is None:
-            object.__setattr__(self, "params", {})
-        elif not isinstance(self.params, dict):
-            raise TypeError("params 必须是 dict")
-
-        if action_type in (ActionType.EXECUTE_NODE, ActionType.ERROR_RECOVERY) and not self.node_id:
-            raise ValueError(f"{action_type.name} 类型必须提供 node_id")
+    @model_validator(mode="after")
+    def _validate_node_id_requirements(self) -> "WorkflowAction":
+        if self.type in (ActionType.EXECUTE_NODE, ActionType.ERROR_RECOVERY):
+            if self.node_id is None or not str(self.node_id).strip():
+                raise ValueError("node_id 是必填字段（execute_node / error_recovery）")
+        return self
 
 
-@dataclass(frozen=True, slots=True)
-class LLMResponse:
+class LLMResponse(BaseModel):
     """LLM 响应模型
 
     表示 LLM 的原始响应和解析结果。
@@ -84,19 +83,19 @@ class LLMResponse:
     - parse_attempt: 当前的解析尝试次数（1-3）
     """
 
+    model_config = ConfigDict(
+        frozen=True,
+        extra="ignore",
+    )
+
     raw_content: str
     action: WorkflowAction | None = None
     is_valid: bool = False
     error_message: str | None = None
-    parse_attempt: int = 1
-
-    def __post_init__(self) -> None:
-        if not (1 <= self.parse_attempt <= 3):
-            raise ValueError("parse_attempt 必须在 1-3 之间")
+    parse_attempt: int = Field(default=1, ge=1, le=3)
 
 
-@dataclass(frozen=True, slots=True)
-class WorkflowExecutionContext:
+class WorkflowExecutionContext(BaseModel):
     """工作流执行上下文
 
     在工作流执行过程中维护的上下文信息。
@@ -110,19 +109,22 @@ class WorkflowExecutionContext:
     - max_steps: 最大步骤限制（默认 50，防止无限循环）
     """
 
+    model_config = ConfigDict(
+        extra="ignore",
+    )
+
     workflow_id: str
     workflow_name: str
     available_nodes: list[str]
-    executed_nodes: dict[str, Any] = field(default_factory=dict)
-    current_step: int = 0
-    max_steps: int = 50
+    executed_nodes: dict[str, Any] = Field(default_factory=dict)
+    current_step: int = Field(default=0, ge=0)
+    max_steps: int = Field(default=50, ge=1)
 
-    def __post_init__(self) -> None:
-        if self.current_step < 0:
-            raise ValueError("current_step 必须是非负整数")
-        if self.max_steps < 1:
-            raise ValueError("max_steps 必须是正整数")
-        if self.executed_nodes is None:
-            object.__setattr__(self, "executed_nodes", {})
-        elif not isinstance(self.executed_nodes, dict):
-            raise TypeError("executed_nodes 必须是 dict")
+    @field_validator("executed_nodes", mode="before")
+    @classmethod
+    def _coerce_executed_nodes(cls, v: Any) -> dict[str, Any]:
+        if v is None:
+            return {}
+        if isinstance(v, dict):
+            return v
+        raise TypeError("executed_nodes 必须是 dict")

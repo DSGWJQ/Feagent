@@ -17,6 +17,12 @@ from src.domain.entities.run import Run
 from src.domain.entities.run_event import RunEvent
 
 
+class ExecuteRunRequest(BaseModel):
+    """触发 Agent Run 的请求 DTO（当前为空 body）。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CreateRunRequest(BaseModel):
     """创建 Run 请求 DTO
 
@@ -39,17 +45,20 @@ class RunResponse(BaseModel):
     """Run 响应 DTO"""
 
     id: str = Field(..., description="Run ID (run_ 前缀)")
-    project_id: str = Field(..., description="Project ID")
-    workflow_id: str = Field(..., description="Workflow ID")
+    project_id: str | None = Field(default=None, description="Project ID")
+    workflow_id: str | None = Field(default=None, description="Workflow ID")
+    agent_id: str | None = Field(default=None, description="Legacy agent identifier (compat)")
     status: str = Field(
         ...,
-        description="Run status (created/running/completed/failed)",
+        description="Run status (created/pending/running/completed/succeeded/failed)",
     )
-    created_at: datetime = Field(..., description="创建时间 (UTC)")
+    created_at: datetime | None = Field(default=None, description="创建时间 (UTC)")
+    started_at: datetime | None = Field(default=None, description="启动时间 (可选, UTC)")
     finished_at: datetime | None = Field(
         default=None,
         description="结束时间 (仅终态有值)",
     )
+    error: str | None = Field(default=None, description="错误信息（可选）")
     duration_seconds: float | None = Field(
         default=None,
         description="执行时长 (秒，仅终态有值)",
@@ -71,9 +80,12 @@ class RunResponse(BaseModel):
             id=run.id,
             project_id=run.project_id,
             workflow_id=run.workflow_id,
+            agent_id=run.agent_id,
             status=run.status.value,
             created_at=run.created_at,
+            started_at=getattr(run, "started_at", None),
             finished_at=run.finished_at,
+            error=getattr(run, "error", None),
             duration_seconds=run.duration_seconds,
         )
 

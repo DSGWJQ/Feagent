@@ -180,9 +180,9 @@ class TestAgentCreation:
         # Assert
         assert agent.name is not None, "必须自动生成名称"
         assert agent.name.startswith("Agent-"), "自动生成的名称应该以 'Agent-' 开头"
-        assert len(agent.name) == len("Agent-20240101-123456"), (
-            "名称格式应该是 'Agent-YYYYMMDD-HHMMSS'"
-        )
+        assert len(agent.name) == len(
+            "Agent-20240101-123456"
+        ), "名称格式应该是 'Agent-YYYYMMDD-HHMMSS'"
 
     def test_create_multiple_agents_should_have_unique_ids(self):
         """测试：创建多个 Agent 应该有唯一的 ID

@@ -62,6 +62,29 @@ class WorkflowStateMonitor:
         self._is_compressing_context = is_compressing_context
         self._compression_callback = compression_callback
         self._subscriptions: list[tuple[type, Callable]] = []
+        # Backward-compatible workflow attribution:
+        # Some legacy tests/events omit workflow_id in NodeExecutionEvent and expect the monitor
+        # to attribute it to "the current workflow". To avoid concurrency mis-attribution, we
+        # only resolve when exactly one workflow is active.
+        self._active_workflow_ids: set[str] = set()
+        self._current_workflow_id: str | None = None
+
+    def _resolve_workflow_id(self, event: Any) -> str | None:
+        """Resolve workflow_id for an event (fail-closed).
+
+        - Prefer explicit event.workflow_id when provided.
+        - If missing, only attribute when exactly one workflow is active.
+        """
+        explicit = getattr(event, "workflow_id", None)
+        if explicit:
+            return explicit
+
+        with self._lock:
+            if self._current_workflow_id:
+                return self._current_workflow_id
+            if len(self._active_workflow_ids) == 1:
+                return next(iter(self._active_workflow_ids))
+        return None
 
     def _compressing(self) -> bool:
         """检查是否启用压缩"""
@@ -95,6 +118,11 @@ class WorkflowStateMonitor:
             if self._compressing()
             else self._handle_workflow_started
         )
+        completed_handler = (
+            self._handle_workflow_completed_with_compression
+            if self._compressing()
+            else self._handle_workflow_completed
+        )
         node_handler = (
             self._handle_node_execution_with_compression
             if self._compressing()
@@ -104,7 +132,7 @@ class WorkflowStateMonitor:
         # 订阅事件并记录（修复订阅残留bug）
         subscriptions = [
             (WorkflowExecutionStartedEvent, started_handler),
-            (WorkflowExecutionCompletedEvent, self._handle_workflow_completed),
+            (WorkflowExecutionCompletedEvent, completed_handler),
             (NodeExecutionEvent, node_handler),
         ]
 
@@ -144,6 +172,8 @@ class WorkflowStateMonitor:
             return  # 忽略缺失 workflow_id 的事件（并发安全）
 
         with self._lock:
+            self._active_workflow_ids.add(workflow_id)
+            self._current_workflow_id = workflow_id if len(self._active_workflow_ids) == 1 else None
             self.workflow_states[workflow_id] = {
                 "workflow_id": workflow_id,
                 "status": "running",
@@ -175,6 +205,12 @@ class WorkflowStateMonitor:
         result = getattr(event, "result", None)
 
         with self._lock:
+            self._active_workflow_ids.discard(workflow_id)
+            self._current_workflow_id = (
+                next(iter(self._active_workflow_ids))
+                if len(self._active_workflow_ids) == 1
+                else None
+            )
             state = self.workflow_states.get(workflow_id)
 
             # 错误防御：缺失状态时创建最小状态
@@ -197,6 +233,22 @@ class WorkflowStateMonitor:
             state["completed_at"] = datetime.now()
             state["result"] = result
 
+    async def _handle_workflow_completed_with_compression(self, event: Any) -> None:
+        """处理工作流完成事件（带压缩）"""
+        await self._handle_workflow_completed(event)
+
+        if self._compressing() and self._compression_callback:
+            workflow_id = getattr(event, "workflow_id", None)
+            if not workflow_id:
+                return
+            status = getattr(event, "status", "completed")
+            payload: dict[str, Any] = {"workflow_status": status}
+            if getattr(event, "result", None) is not None:
+                payload["result"] = event.result
+            if status in {"completed", "failed"}:
+                payload["progress"] = 1.0
+            await self._compression_callback(workflow_id, "execution", payload)
+
     async def _handle_node_execution(self, event: Any) -> None:
         """处理节点执行事件
 
@@ -205,9 +257,9 @@ class WorkflowStateMonitor:
         参数：
             event: NodeExecutionEvent 实例
         """
-        workflow_id = getattr(event, "workflow_id", None)
+        workflow_id = self._resolve_workflow_id(event)
         if not workflow_id:
-            return  # 忽略缺失 workflow_id 的事件
+            return  # fail-closed: 无法安全归因
 
         node_id = getattr(event, "node_id", None)
         status = getattr(event, "status", None)
@@ -218,7 +270,22 @@ class WorkflowStateMonitor:
         with self._lock:
             state = self.workflow_states.get(workflow_id)
             if not state:
-                return  # 状态不存在，忽略
+                # 防御：允许先收到节点事件（或 legacy 缺 workflow_id）时创建最小状态
+                state = {
+                    "workflow_id": workflow_id,
+                    "status": "running",
+                    "node_count": 0,
+                    "started_at": datetime.now(),
+                    "completed_at": None,
+                    "result": None,
+                    "executed_nodes": [],
+                    "running_nodes": [],
+                    "failed_nodes": [],
+                    "node_inputs": {},
+                    "node_outputs": {},
+                    "node_errors": {},
+                }
+                self.workflow_states[workflow_id] = state
 
             # 记录节点输入
             if getattr(event, "inputs", None):
@@ -272,7 +339,7 @@ class WorkflowStateMonitor:
         await self._handle_node_execution(event)
 
         if self._compressing() and self._compression_callback:
-            workflow_id = getattr(event, "workflow_id", None)
+            workflow_id = self._resolve_workflow_id(event)
             if workflow_id:
                 # 构建压缩数据
                 payload = {

@@ -31,10 +31,12 @@ from datetime import datetime
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from src.domain.entities.run import Run
 from src.domain.entities.task import Task, TaskStatus
 from src.domain.exceptions import NotFoundError
 from src.domain.value_objects.task_event import TaskEvent
 from src.infrastructure.database.models import TaskModel
+from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
 
 
 class SQLAlchemyTaskRepository:
@@ -166,6 +168,8 @@ class SQLAlchemyTaskRepository:
 
         # 更新字段
         model.agent_id = entity.agent_id
+        if entity.run_id is None:
+            raise ValueError("Task.run_id must be set before persisting TaskModel")
         model.run_id = entity.run_id
         model.name = entity.name
         model.description = entity.description
@@ -201,6 +205,13 @@ class SQLAlchemyTaskRepository:
         - Task 和 TaskEvent 作为一个整体保存
         - 不会出现 Task 保存成功但 TaskEvent 丢失的情况
         """
+        # DB contract: tasks.run_id is required (NOT NULL + FK).
+        # Some callers/tests create "planned" tasks with run_id=None; we synthesize a run to persist them.
+        if task.run_id is None:
+            run = Run.create(agent_id=task.agent_id)
+            SQLAlchemyRunRepository(self.session).save(run)
+            task.run_id = run.id
+
         # 查询是否存在
         stmt = select(TaskModel).where(TaskModel.id == task.id)
         result = self.session.execute(stmt)

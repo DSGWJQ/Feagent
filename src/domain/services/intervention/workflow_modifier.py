@@ -59,6 +59,9 @@ class WorkflowModifier:
         modified_nodes = nodes.copy()
 
         # 创建替换节点
+        if request.replacement_node_config is None:
+            return self.remove_node(workflow_definition, request)
+
         replacement_node = request.replacement_node_config.copy()
         if "id" not in replacement_node:
             replacement_node["id"] = request.original_node_id  # 保持原 ID

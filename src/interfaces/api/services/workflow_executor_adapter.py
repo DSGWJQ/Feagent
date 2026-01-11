@@ -10,7 +10,9 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator, Callable, Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,7 @@ from src.domain.exceptions import DomainError
 from src.domain.ports.run_repository import RunRepository
 from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.ports.workflow_run_execution_entry import WorkflowRunExecutionEntryPort
+from src.infrastructure.database.models import AgentModel
 from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
@@ -109,6 +112,10 @@ class WorkflowExecutorAdapter:
                 input_data=input_data,
             )
 
+    async def execute_workflow(self, workflow_id: str, input_data: Any = None) -> dict[str, Any]:
+        """Legacy-compatible alias used by scheduler/tests."""
+        return await self.execute(workflow_id=workflow_id, input_data=input_data)
+
     async def execute_streaming(
         self,
         workflow_id: str,
@@ -166,7 +173,24 @@ class WorkflowExecutorAdapter:
             raise DomainError(
                 "scheduled workflow execution requires workflow.project_id (runs require project_id)"
             )
-        return Run.create(project_id=project_id, workflow_id=workflow_id)
+        run = Run.create(project_id=project_id, workflow_id=workflow_id)
+
+        # DB contract: runs.agent_id is required (and FK to agents.id).
+        if not run.agent_id:
+            agent_id = str(uuid4())
+            session.add(
+                AgentModel(
+                    id=agent_id,
+                    start=f"execute workflow {workflow_id}",
+                    goal=f"run workflow {workflow_id}",
+                    status="active",
+                    name=f"WorkflowRunAgent-{workflow_id[:8]}",
+                    created_at=datetime.now(),
+                )
+            )
+            run.agent_id = agent_id
+
+        return run
 
     async def _execute_via_run_entry(self, *, workflow_id: str, input_data: Any) -> dict[str, Any]:
         session = self._session_factory()

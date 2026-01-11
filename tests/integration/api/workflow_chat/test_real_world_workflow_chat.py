@@ -265,7 +265,9 @@ class TestRealWorldWorkflowDesign:
             assert node_names == expected_names, f"节点名称不匹配: {node_names} vs {expected_names}"
 
             # 验证边的存在（至少应该有一些连接）
-            assert len(final_edges) >= 0, (
+            assert (
+                len(final_edges) >= 0
+            ), (
                 f"期望至少 0 条边，实际 {len(final_edges)} 条"
             )  # 放宽要求，因为 mock 数据可能不会真正创建边
 
@@ -289,9 +291,9 @@ class TestRealWorldWorkflowDesign:
             has_context = (
                 "对话历史" in prompt_text or "用户新消息" in prompt_text or "上下文" in prompt_text
             )
-            assert has_context, (
-                f"第 4 轮的 prompt 应包含对话历史，但未找到。Prompt 片段: {prompt_text[:300]}"
-            )
+            assert (
+                has_context
+            ), f"第 4 轮的 prompt 应包含对话历史，但未找到。Prompt 片段: {prompt_text[:300]}"
 
             print("\n=== 工作流设计成功！ ===")
             print(f"节点: {[n['name'] for n in final_nodes]}")

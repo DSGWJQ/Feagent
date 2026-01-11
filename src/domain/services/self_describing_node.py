@@ -306,6 +306,8 @@ class YamlNodeLoader:
         try:
             content = yaml_path.read_text(encoding="utf-8")
             data = yaml.safe_load(content)
+            if not isinstance(data, dict):
+                return None
             return SelfDescribingNodeDefinition.from_dict(data)
         except Exception:
             return None
@@ -674,7 +676,7 @@ def main(**kwargs):
 
         results: dict[str, NodeExecutionResult] = {}
         for item in task_results:
-            if isinstance(item, Exception):
+            if isinstance(item, BaseException):
                 continue
             name, result = item
             results[name] = result

@@ -201,7 +201,7 @@ class ParallelOptimizer:
             # 快速失败模式
             completed = await asyncio.gather(*tasks, return_exceptions=True)
             for item in completed:
-                if isinstance(item, Exception):
+                if isinstance(item, BaseException):
                     continue
                 node_id, result = item
                 results[node_id] = result

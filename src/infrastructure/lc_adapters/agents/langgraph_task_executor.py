@@ -27,9 +27,6 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
-from src.infrastructure.lc_adapters.llm_client import get_llm_for_execution
-from src.infrastructure.lc_adapters.tools import get_all_tools
-
 
 class AgentState(TypedDict):
     """ReAct Agent 的状态定义
@@ -60,6 +57,10 @@ def reason_node(state: AgentState) -> dict[str, Any]:
         更新的状态字典
     """
     try:
+        # Lazily resolve the public LLM getter so test patches against
+        # `src.lc.agents.langgraph_task_executor.get_llm_for_execution` take effect.
+        from src.lc.agents.langgraph_task_executor import get_llm_for_execution
+
         llm = get_llm_for_execution()
 
         # 调用 LLM 进行推理
@@ -98,6 +99,10 @@ def action_node(state: AgentState) -> dict[str, Any]:
         更新的状态字典
     """
     try:
+        # Lazily resolve the public tools getter so test patches against
+        # `src.lc.agents.langgraph_task_executor.get_all_tools` take effect.
+        from src.lc.agents.langgraph_task_executor import get_all_tools
+
         messages = state.get("messages", [])
 
         # 获取最后一条消息（应该是 LLM 的工具调用响应）

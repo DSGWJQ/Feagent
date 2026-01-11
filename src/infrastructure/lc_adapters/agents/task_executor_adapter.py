@@ -29,7 +29,6 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from src.infrastructure.lc_adapters.agents.langgraph_task_executor import (
     AgentState,
-    create_langgraph_task_executor,
 )
 
 
@@ -112,6 +111,10 @@ def create_langgraph_task_executor_adapter():
         """
         try:
             # 创建 LangGraph TaskExecutor
+            # Resolve via the public wrapper so integration tests can patch:
+            # `src.lc.agents.task_executor_adapter.create_langgraph_task_executor`.
+            from src.lc.agents.task_executor_adapter import create_langgraph_task_executor
+
             executor = create_langgraph_task_executor()
 
             # 构造初始状态

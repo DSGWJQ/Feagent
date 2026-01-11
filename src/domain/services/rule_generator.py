@@ -99,9 +99,12 @@ def extract_chinese_keywords(text: str) -> list[str]:
         if len(seg) >= 2:
             words.append(seg)
 
-    # 去重并过滤常见词
+    # 去重并过滤常见词（保持稳定顺序）
     stopwords = {"我有", "一份", "需要", "进行", "并且", "以及", "或者", "可以", "应该"}
-    keywords = list({w for w in words if w not in stopwords and len(w) >= 2})
+    filtered = [w for w in words if w not in stopwords and len(w) >= 2]
+
+    # Deterministic + meaningful: preserve first-seen order from the original text.
+    keywords = list(dict.fromkeys(filtered))
 
     return keywords[:20]  # 限制关键词数量
 

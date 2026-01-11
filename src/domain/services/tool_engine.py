@@ -46,6 +46,30 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _ensure_current_thread_event_loop() -> None:
+    """Ensure asyncio.get_event_loop() works in sync contexts (Python 3.13+).
+
+    Some integration tests still call `asyncio.get_event_loop().run_until_complete(...)`
+    from a synchronous context. On Python 3.13+, the default policy raises when no
+    loop has been set for the current thread.
+
+    KISS: only create/set a loop when there is no running loop and no current loop.
+    """
+
+    try:
+        asyncio.get_running_loop()
+        return
+    except RuntimeError:
+        pass
+
+    try:
+        asyncio.get_event_loop()
+        return
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+
 # =============================================================================
 # 异常定义
 # =============================================================================
@@ -262,6 +286,7 @@ class ToolEngine:
         参数：
             config: 引擎配置（可选，使用默认配置）
         """
+        _ensure_current_thread_event_loop()
         self._config = config or ToolEngineConfig()
         self._index = ToolIndex()
         self._loader = ToolConfigLoader()

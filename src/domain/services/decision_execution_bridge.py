@@ -336,7 +336,7 @@ class DecisionExecutionBridge:
                     "error_type": type(exc).__name__,
                 },
             )
-            await self._publish_result(event, "failed", {}, type(exc).__name__)
+            await self._publish_result(event, "failed", {}, f"{type(exc).__name__}: {exc}")
 
     async def _execute_workflow_plan(
         self, workflow_agent: Any, payload: dict[str, Any]

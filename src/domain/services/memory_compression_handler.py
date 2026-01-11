@@ -14,7 +14,7 @@
 import logging
 from typing import TYPE_CHECKING, Any
 
-from src.domain.services.context_manager import SessionContext, ShortTermSaturatedEvent
+from src.domain.entities.session_context import SessionContext, ShortTermSaturatedEvent
 from src.domain.services.event_bus import EventBus
 from src.domain.services.structured_dialogue_summary import StructuredDialogueSummary
 

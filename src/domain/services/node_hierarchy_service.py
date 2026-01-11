@@ -167,6 +167,8 @@ class NodeHierarchyService:
         node_type = config.get("type")
         if isinstance(node_type, str):
             node_type = NodeType(node_type)
+        if not isinstance(node_type, NodeType):
+            raise ValueError("Node config missing valid 'type'")
 
         node = Node(
             id=config.get("id") or self._generate_id(),
@@ -469,9 +471,16 @@ class NodeHierarchyService:
         返回：
             树结构字典
         """
+        name = ""
+        if isinstance(node.config, dict):
+            name_value = node.config.get("name")
+            if isinstance(name_value, str):
+                name = name_value
+
         return {
             "id": node.id,
             "type": node.type.value,
+            "name": name,
             "config": node.config,
             "collapsed": node.collapsed,
             "children": [self._node_to_tree(child) for child in node.children],
@@ -498,6 +507,8 @@ class NodeHierarchyService:
             child_type = config.get("type")
             if isinstance(child_type, str):
                 child_type = NodeType(child_type)
+            if not isinstance(child_type, NodeType):
+                raise ValueError("Child config missing valid 'type'")
 
             child = self.add_child_to_parent(
                 parent_id=parent_id,

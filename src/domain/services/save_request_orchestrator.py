@@ -74,6 +74,7 @@ class SaveRequestOrchestrator:
         self._save_request_queue = SaveRequestQueueManager()
         self._save_request_handler_enabled = False
         self._is_listening_save_requests = False
+        self._save_request_subscription_handler: Any | None = None
 
         # 审核与执行（懒加载）
         self._save_auditor: Any | None = None
@@ -101,7 +102,34 @@ class SaveRequestOrchestrator:
 
         # 订阅 SaveRequest 事件（使用类型）
         if self.event_bus and not self._is_listening_save_requests:
-            self.event_bus.subscribe(SaveRequest, self._handle_save_request)
+            import asyncio
+            import inspect
+
+            publish = getattr(self.event_bus, "publish", None)
+            is_async_bus = inspect.iscoroutinefunction(publish)
+
+            subscription_handler: Any
+            if is_async_bus:
+                subscription_handler = self._handle_save_request
+            else:
+
+                def sync_handler(event: Any) -> None:
+                    coro = self._handle_save_request(event)
+                    try:
+                        asyncio.get_running_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        try:
+                            loop.run_until_complete(coro)
+                        finally:
+                            loop.close()
+                    else:
+                        asyncio.create_task(coro)
+
+                subscription_handler = sync_handler
+
+            self._save_request_subscription_handler = subscription_handler
+            self.event_bus.subscribe(SaveRequest, subscription_handler)
             self._is_listening_save_requests = True
 
     def disable_save_request_handler(self) -> None:
@@ -110,8 +138,21 @@ class SaveRequestOrchestrator:
         if self.event_bus and self._is_listening_save_requests:
             from src.domain.services.save_request_channel import SaveRequest
 
-            self.event_bus.unsubscribe(SaveRequest, self._handle_save_request)
+            handler = self._save_request_subscription_handler or self._handle_save_request
+            self.event_bus.unsubscribe(SaveRequest, handler)
+            self._save_request_subscription_handler = None
             self._is_listening_save_requests = False
+
+    async def _publish_event(self, event: Any) -> None:
+        """发布事件（同时兼容 async/sync EventBus 实现）。"""
+        if not self.event_bus:
+            return
+
+        import inspect
+
+        result = self.event_bus.publish(event)
+        if inspect.isawaitable(result):
+            await result
 
     async def _handle_save_request(self, event: Any) -> None:
         """处理 SaveRequest 事件
@@ -136,7 +177,7 @@ class SaveRequestOrchestrator:
                 request_id=event.request_id,
                 queue_position=queue_position,
             )
-            await self.event_bus.publish(received_event)
+            await self._publish_event(received_event)
 
     # ==================== 队列查询 ====================
 
@@ -305,7 +346,7 @@ class SaveRequestOrchestrator:
 
             # 发布完成事件
             if self.event_bus:
-                await self.event_bus.publish(
+                await self._publish_event(
                     SaveRequestCompletedEvent(
                         request_id=request_id,
                         success=False,
@@ -334,7 +375,7 @@ class SaveRequestOrchestrator:
 
         # 发布完成事件
         if self.event_bus:
-            await self.event_bus.publish(
+            await self._publish_event(
                 SaveRequestCompletedEvent(
                     request_id=request_id,
                     success=exec_result.success,
@@ -448,7 +489,7 @@ class SaveRequestOrchestrator:
                 session_id=session_id,
                 source="save_request_orchestrator",
             )
-            await self.event_bus.publish(event)
+            await self._publish_event(event)
 
         logger.info(
             "[RECEIPT SENT] request_id=%s session_id=%s status=%s written_to_kb=%s",

@@ -115,6 +115,7 @@ class RAGServicePort(Protocol):
         query: str,
         workflow_id: str | None = None,
         system_prompt: str | None = None,
+        use_rag: bool = True,
         max_context_length: int = 4000,
     ) -> Any:
         """使用RAG进行查询
@@ -123,6 +124,7 @@ class RAGServicePort(Protocol):
             query: 用户查询
             workflow_id: 可选的工作流ID
             system_prompt: 可选的系统提示词
+            use_rag: 是否启用RAG检索（默认True）
             max_context_length: 最大上下文长度
 
         Returns:

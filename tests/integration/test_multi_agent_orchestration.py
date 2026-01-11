@@ -162,9 +162,9 @@ class TestMultiAgentOrchestration:
         assert "DecisionMadeEvent" in event_types, f"Missing DecisionMadeEvent in {event_types}"
 
         # 应该看到验证通过事件（如果验证通过）
-        assert "DecisionValidatedEvent" in event_types, (
-            f"Missing DecisionValidatedEvent in {event_types}"
-        )
+        assert (
+            "DecisionValidatedEvent" in event_types
+        ), f"Missing DecisionValidatedEvent in {event_types}"
 
         # 验证统计信息
         stats = orchestrator.get_statistics()
@@ -243,9 +243,9 @@ class TestMultiAgentOrchestration:
         # 这是正确的行为 - 中间件返回 None 时阻止事件记录
 
         # 应该看到拒绝事件（因为节点类型无效）
-        assert "DecisionRejectedEvent" in event_types, (
-            f"Expected DecisionRejectedEvent in {event_types}"
-        )
+        assert (
+            "DecisionRejectedEvent" in event_types
+        ), f"Expected DecisionRejectedEvent in {event_types}"
 
         # 验证协调者统计
         coordinator_stats = coordinator_agent.get_statistics()
@@ -448,27 +448,27 @@ class TestEventSequence:
         assert len(validated_events) >= 1, "Should have at least one DecisionValidatedEvent"
 
         # 验证事件来源（source 可能是类名或实例名）
-        assert "conversation" in decision_events[0].source.lower(), (
-            f"DecisionMadeEvent source should contain 'conversation', got: {decision_events[0].source}"
-        )
-        assert "coordinator" in validated_events[0].source.lower(), (
-            f"DecisionValidatedEvent source should contain 'coordinator', got: {validated_events[0].source}"
-        )
+        assert (
+            "conversation" in decision_events[0].source.lower()
+        ), f"DecisionMadeEvent source should contain 'conversation', got: {decision_events[0].source}"
+        assert (
+            "coordinator" in validated_events[0].source.lower()
+        ), f"DecisionValidatedEvent source should contain 'coordinator', got: {validated_events[0].source}"
 
         # 验证事件结构正确
-        assert hasattr(decision_events[0], "decision_id"), (
-            "DecisionMadeEvent should have decision_id"
-        )
-        assert hasattr(validated_events[0], "original_decision_id"), (
-            "DecisionValidatedEvent should have original_decision_id"
-        )
+        assert hasattr(
+            decision_events[0], "decision_id"
+        ), "DecisionMadeEvent should have decision_id"
+        assert hasattr(
+            validated_events[0], "original_decision_id"
+        ), "DecisionValidatedEvent should have original_decision_id"
 
         # 验证事件决策类型一致
         # 注：由于中间件处理和事件发布的时序，ID可能不完全匹配，
         # 但决策类型应该一致
-        assert decision_events[0].decision_type == validated_events[0].decision_type, (
-            f"Decision types should match: {decision_events[0].decision_type} vs {validated_events[0].decision_type}"
-        )
+        assert (
+            decision_events[0].decision_type == validated_events[0].decision_type
+        ), f"Decision types should match: {decision_events[0].decision_type} vs {validated_events[0].decision_type}"
 
         logger.info("Event sequence verification completed successfully")
 

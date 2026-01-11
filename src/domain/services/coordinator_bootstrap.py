@@ -191,6 +191,42 @@ class _ContextGateway:
 
             ctx["knowledge_references"] = existing_refs
 
+    def update_error_log(self, workflow_id: str, error: dict[str, Any]) -> None:
+        """添加错误日志（供 KnowledgeRetrievalOrchestrator 调用）"""
+        if workflow_id not in self._contexts:
+            return
+
+        ctx = self._contexts[workflow_id]
+
+        if hasattr(ctx, "error_log"):
+            error_log = getattr(ctx, "error_log", [])
+            if not isinstance(error_log, list):
+                error_log = []
+            error_log.append(error)
+            ctx.error_log = error_log
+        elif isinstance(ctx, dict):
+            error_log = ctx.get("error_log", [])
+            if not isinstance(error_log, list):
+                error_log = []
+            error_log.append(error)
+            ctx["error_log"] = error_log
+
+    def update_reflection(self, workflow_id: str, reflection: dict[str, Any]) -> None:
+        """更新反思摘要（供 KnowledgeRetrievalOrchestrator 调用）"""
+        if workflow_id not in self._contexts:
+            return
+
+        ctx = self._contexts[workflow_id]
+
+        if hasattr(ctx, "reflection_summary"):
+            ctx.reflection_summary = reflection
+            if "recommendations" in reflection and hasattr(ctx, "next_actions"):
+                ctx.next_actions = reflection["recommendations"]
+        elif isinstance(ctx, dict):
+            ctx["reflection_summary"] = reflection
+            if "recommendations" in reflection:
+                ctx["next_actions"] = reflection["recommendations"]
+
 
 # =====================================================================
 # 配置与装配结果数据类
@@ -230,6 +266,7 @@ class CoordinatorConfig:
     # P1-1 Step 3 新增字段（放末尾保持兼容）
     rule_engine_facade: Any | None = None
     alert_rule_manager_enabled: bool = True
+    enable_local_save_request_flow: bool = False
 
 
 @dataclass
@@ -372,7 +409,7 @@ class CoordinatorBootstrap:
         - context → context_bridge, context_compressor, snapshot_manager
         - failure → failure_strategy_config (转换为旧 schema)
         - knowledge → knowledge_retriever
-        - runtime → 暂不映射（保留未来扩展）
+        - runtime → enable_local_save_request_flow（用于无主 EventBus 时启用本地保存流程）
 
         参数：
             agent_config: CoordinatorAgentConfig 实例
@@ -428,6 +465,10 @@ class CoordinatorBootstrap:
         # 提取 event_bus（顶层字段）
         event_bus = agent_config.event_bus
 
+        enable_local_save_request_flow = bool(
+            getattr(getattr(agent_config, "runtime", None), "enable_local_save_request_flow", False)
+        )
+
         return CoordinatorConfig(
             event_bus=event_bus,
             rejection_rate_threshold=rejection_rate_threshold,
@@ -439,6 +480,7 @@ class CoordinatorBootstrap:
             context_compressor=context_compressor,
             snapshot_manager=snapshot_manager,
             knowledge_retriever=knowledge_retriever,
+            enable_local_save_request_flow=enable_local_save_request_flow,
         )
 
     def _map_failure_config_to_dict(self, failure: Any) -> dict[str, Any] | None:
@@ -463,8 +505,18 @@ class CoordinatorBootstrap:
               目前不被 WorkflowFailureOrchestrator 消费，因此不包含在映射中
         """
         # P1-1 Step 2 Critical Fix #4: 只映射实际被消费的字段
+        default_strategy = (
+            getattr(failure, "default_strategy", None) or FailureHandlingStrategy.RETRY
+        )
+        if not isinstance(default_strategy, FailureHandlingStrategy):
+            candidate = getattr(default_strategy, "value", default_strategy)
+            try:
+                default_strategy = FailureHandlingStrategy(candidate)
+            except Exception:
+                default_strategy = FailureHandlingStrategy.RETRY
+
         bootstrap_dict = {
-            "default_strategy": FailureHandlingStrategy.RETRY,
+            "default_strategy": default_strategy,
             "max_retries": failure.max_retry_attempts,
             "retry_delay": failure.retry_delay_seconds,
         }
@@ -810,12 +862,17 @@ class CoordinatorBootstrap:
         save_request_queue = None
         save_receipt_system = None
         save_receipt_logger = None
+        save_request_orchestrator = None
 
-        if self.config.event_bus is not None:
+        if self.config.event_bus is not None or self.config.enable_local_save_request_flow:
+            from src.domain.services.event_bus import EventBus
             from src.domain.services.save_request_orchestrator import SaveRequestOrchestrator
 
+            # When the coordinator's main event bus is not wired, create a local-only bus
+            # so that the persistence-control/save tooling can still run end-to-end in tests.
+            event_bus = self.config.event_bus or EventBus()
             save_request_orchestrator = SaveRequestOrchestrator(
-                event_bus=self.config.event_bus,
+                event_bus=event_bus,
                 knowledge_manager=knowledge_layer["knowledge_manager"],
                 log_collector=infra["log_collector"],
             )
@@ -824,25 +881,15 @@ class CoordinatorBootstrap:
             save_request_queue = save_request_orchestrator._save_request_queue
             save_receipt_system = save_request_orchestrator.save_receipt_system
             save_receipt_logger = save_receipt_system.receipt_logger
-        else:
-            # P1-2: 无EventBus时使用Null Object，消除调用方的18处None检查
-            from src.domain.services.null_save_request_orchestrator import (
-                NullSaveRequestOrchestrator,
-            )
-
-            save_request_orchestrator = NullSaveRequestOrchestrator()
 
         # 更新 base 中的别名（向后兼容）
         base["_save_request_queue"] = save_request_queue
         base["save_receipt_system"] = save_receipt_system
         base["_save_receipt_logger"] = save_receipt_logger
+        if save_request_orchestrator is None:
+            return {}
 
-        return {
-            "save_request_orchestrator": save_request_orchestrator,
-            "_save_request_queue": save_request_queue,
-            "save_receipt_system": save_receipt_system,
-            "_save_receipt_logger": save_receipt_logger,
-        }
+        return {"save_request_orchestrator": save_request_orchestrator}
 
     def build_guardians(self, infra: dict[str, Any], agent_layer: dict[str, Any]) -> dict[str, Any]:
         """构建守护层
@@ -1048,10 +1095,10 @@ class CoordinatorBootstrap:
             "conversation_supervision": supervision_coordinator.conversation_supervision,
             "efficiency_monitor": supervision_coordinator.efficiency_monitor,
             "strategy_repository": supervision_coordinator.strategy_repository,
-            # SaveRequest 相关别名
-            "_save_request_queue": save["_save_request_queue"],
-            "save_receipt_system": save["save_receipt_system"],
-            "_save_receipt_logger": save["_save_receipt_logger"],
+            # SaveRequest 相关别名（从 base 读取，允许 save_flow 缺省）
+            "_save_request_queue": base["_save_request_queue"],
+            "save_receipt_system": base["save_receipt_system"],
+            "_save_receipt_logger": base["_save_receipt_logger"],
         }
 
     def _collect_orchestrators(
@@ -1099,8 +1146,6 @@ class CoordinatorBootstrap:
             # 提示词与实验层
             "prompt_facade": prompt["prompt_facade"],
             "experiment_orchestrator": prompt["experiment_orchestrator"],
-            # 保存请求流程
-            "save_request_orchestrator": save["save_request_orchestrator"],
             # 守护层
             "context_injection_manager": guardian["context_injection_manager"],
             "injection_logger": guardian["injection_logger"],
@@ -1115,6 +1160,10 @@ class CoordinatorBootstrap:
             # 规则引擎层（P1-1 Step 3）
             "rule_engine_facade": rule_engine["rule_engine_facade"],
         }
+
+        # 保存请求流程（可选）
+        if save.get("save_request_orchestrator") is not None:
+            orchestrators["save_request_orchestrator"] = save["save_request_orchestrator"]
 
         # 添加可选组件
         if agent.get("alert_rule_manager") is not None:

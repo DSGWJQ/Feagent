@@ -30,15 +30,30 @@ class RunEvent:
         cls,
         *,
         run_id: str,
-        type: str,
+        type: str | None = None,
+        event_type: str | None = None,
         channel: str,
         payload: dict[str, Any] | None = None,
         sequence: int | None = None,
+        event_id: int | str | None = None,
+        id: int | str | None = None,  # noqa: A002 - compat alias for tests/legacy callers
     ) -> RunEvent:
+        effective_type = type or event_type
+        if not isinstance(effective_type, str) or not effective_type.strip():
+            raise ValueError("RunEvent.create requires `type` (or legacy `event_type`)")
+
+        effective_id: int | str
+        if event_id is not None:
+            effective_id = event_id
+        elif id is not None:
+            effective_id = id
+        else:
+            effective_id = f"evt_{uuid4().hex[:8]}"
+
         return cls(
-            id=f"evt_{uuid4().hex[:8]}",
+            id=effective_id,
             run_id=run_id,
-            type=type,
+            type=effective_type,
             channel=channel,
             payload=payload or {},
             created_at=datetime.now(UTC),

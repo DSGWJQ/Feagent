@@ -8,12 +8,16 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-from src.application.use_cases.execute_concurrent_workflows import (
-    ExecuteConcurrentWorkflowsInput,
-    ExecuteConcurrentWorkflowsUseCase,
-)
+from src.application.use_cases import execute_concurrent_workflows as execute_concurrent_uc
+from src.config import settings
 from src.domain.exceptions import DomainError, NotFoundError
+from src.domain.services.concurrent_execution_manager import ConcurrentExecutionManager
+from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
+from src.interfaces.api.container import ApiContainer
+from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dto.workflow_features_dto import (
     ExecuteConcurrentWorkflowsRequest,
     ExecutionResultResponse,
@@ -23,11 +27,19 @@ from src.interfaces.api.dto.workflow_features_dto import (
 router = APIRouter(tags=["Concurrent Workflows"])
 
 
-def get_execute_concurrent_use_case() -> ExecuteConcurrentWorkflowsUseCase:
-    """当前并发执行尚未开放，直接 501。"""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Concurrent workflow execution is temporarily unavailable.",
+def _get_execute_concurrent_use_case(
+    container: ApiContainer = Depends(get_container),
+    db: Session = Depends(get_db_session),
+) -> execute_concurrent_uc.ExecuteConcurrentWorkflowsUseCase:
+    workflow_repo = container.workflow_repository(db)
+    run_repo = SQLAlchemyRunRepository(db)
+    execution_manager = ConcurrentExecutionManager(
+        max_concurrent_tasks=settings.max_concurrent_tasks
+    )
+    return execute_concurrent_uc.ExecuteConcurrentWorkflowsUseCase(
+        workflow_repo=workflow_repo,
+        execution_manager=execution_manager,
+        run_repo=run_repo,
     )
 
 
@@ -38,11 +50,13 @@ def get_execute_concurrent_use_case() -> ExecuteConcurrentWorkflowsUseCase:
 )
 async def execute_concurrent_workflows(
     request: ExecuteConcurrentWorkflowsRequest,
-    use_case: ExecuteConcurrentWorkflowsUseCase = Depends(get_execute_concurrent_use_case),
+    use_case: execute_concurrent_uc.ExecuteConcurrentWorkflowsUseCase = Depends(
+        _get_execute_concurrent_use_case
+    ),
 ) -> list[ExecutionResultResponse]:
     """并发执行多个工作流"""
     try:
-        input_data = ExecuteConcurrentWorkflowsInput(
+        input_data = execute_concurrent_uc.ExecuteConcurrentWorkflowsInput(
             workflow_ids=request.workflow_ids,
             max_concurrent=request.max_concurrent,
         )
@@ -71,7 +85,9 @@ async def execute_concurrent_workflows(
 )
 async def wait_for_concurrent_completion(
     timeout: int | None = None,
-    use_case: ExecuteConcurrentWorkflowsUseCase = Depends(get_execute_concurrent_use_case),
+    use_case: execute_concurrent_uc.ExecuteConcurrentWorkflowsUseCase = Depends(
+        _get_execute_concurrent_use_case
+    ),
 ) -> dict:
     """等待所有并发执行完成"""
     try:
@@ -89,7 +105,9 @@ async def wait_for_concurrent_completion(
     status_code=status.HTTP_200_OK,
 )
 async def cancel_all_concurrent_executions(
-    use_case: ExecuteConcurrentWorkflowsUseCase = Depends(get_execute_concurrent_use_case),
+    use_case: execute_concurrent_uc.ExecuteConcurrentWorkflowsUseCase = Depends(
+        _get_execute_concurrent_use_case
+    ),
 ) -> dict:
     """取消所有并发执行"""
     try:

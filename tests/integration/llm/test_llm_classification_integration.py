@@ -140,9 +140,9 @@ class TestLLMClassificationIntegration:
         result = use_case.execute(input_data)
 
         # 主要验证类型是否正确
-        assert result.task_type == expected_type, (
-            f"任务 {start} -> {goal} 分类错误: 期望 {expected_type}, 实际 {result.task_type}"
-        )
+        assert (
+            result.task_type == expected_type
+        ), f"任务 {start} -> {goal} 分类错误: 期望 {expected_type}, 实际 {result.task_type}"
 
         # 置信度应该合理
         assert 0.0 <= result.confidence <= 1.0

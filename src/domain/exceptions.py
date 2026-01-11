@@ -114,3 +114,86 @@ class RunGateError(DomainError):
         self.code = code
         self.details = details or {}
         super().__init__(message)
+
+
+class _ToolErrorBase(DomainError):
+    """Structured tool-related execution errors (SSE contract friendly)."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        tool_id: str,
+        error_type: str,
+        error_level: str,
+        retryable: bool,
+        hint: str,
+    ) -> None:
+        self.tool_id = tool_id
+        self.error_type = error_type
+        self.error_level = error_level
+        self.retryable = retryable
+        self.hint = hint
+        self.message = message
+        super().__init__(message)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error_level": self.error_level,
+            "error_type": self.error_type,
+            "retryable": self.retryable,
+            "hint": self.hint,
+            "message": self.message,
+        }
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.message
+
+
+class ToolNotFoundError(_ToolErrorBase):
+    def __init__(self, tool_id: str):
+        super().__init__(
+            f"Tool not found: {tool_id}",
+            tool_id=tool_id,
+            error_type="tool_not_found",
+            error_level="user_action_required",
+            retryable=False,
+            hint=f"未找到工具: {tool_id}（请检查 tool_id 或重新选择工具）",
+        )
+
+
+class ToolDeprecatedError(_ToolErrorBase):
+    def __init__(self, tool_id: str):
+        super().__init__(
+            f"Tool is deprecated: {tool_id}",
+            tool_id=tool_id,
+            error_type="tool_deprecated",
+            error_level="user_action_required",
+            retryable=False,
+            hint=f"工具已废弃: {tool_id}（请替换为未废弃的工具版本）",
+        )
+
+
+class ToolExecutionError(_ToolErrorBase):
+    def __init__(
+        self,
+        tool_id: str,
+        error_type: str = "execution_error",
+        error_message: str = "Tool execution failed",
+    ):
+        normalized_type = (error_type or "execution_error").strip() or "execution_error"
+        retryable = normalized_type in {"timeout", "execution_error"}
+        level = "retryable" if retryable else "system_error"
+        hint = (
+            f"工具执行超时: {tool_id}"
+            if normalized_type == "timeout"
+            else f"工具执行失败: {tool_id}"
+        )
+        super().__init__(
+            error_message,
+            tool_id=tool_id,
+            error_type=normalized_type,
+            error_level=level,
+            retryable=retryable,
+            hint=hint,
+        )

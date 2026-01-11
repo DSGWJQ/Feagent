@@ -175,14 +175,13 @@ class RuleEngineFacade:
         """列出所有决策规则
 
         返回：
-            决策规则列表（按优先级排序，低数字=高优先级）
+            决策规则列表（按优先级降序排列；数值越大优先级越高）
 
         注意：
             线程安全 - 使用锁保护
-            优先级约定：数字越小优先级越高 (1 > 2 > 3...)
         """
         with self._lock:
-            return sorted(self._rules, key=lambda r: r.priority)
+            return sorted(self._rules, key=lambda r: r.priority, reverse=True)
 
     def add_decision_rule(self, rule: DecisionRule) -> None:
         """添加决策规则
@@ -252,8 +251,7 @@ class RuleEngineFacade:
             errors = []
             corrections = []
 
-            # 获取规则列表的副本（在锁内）
-            # 优先级约定：数字越小优先级越高 (1 > 2 > 3...)
+            # 获取规则列表的副本（在锁内）并按优先级升序执行（数值越小优先级越高）
             rules = sorted(self._rules, key=lambda r: r.priority)
 
         # 在锁外执行规则（避免持锁时间过长）
@@ -311,10 +309,9 @@ class RuleEngineFacade:
                 if self._statistics_ref is not None:
                     self._statistics_ref["rejected"] = self._statistics_ref.get("rejected", 0) + 1
 
-        # 记录日志（异常不影响验证结果 - fail-closed 完整性保护）
+        # 记录日志（仅失败场景；异常不影响验证结果 - fail-closed 完整性保护）
         # P1-1 Step 3 Critical Fix #3: 日志收集器接口兼容（能力探测）
-        # P1-1清理后补: 恢复记录所有验证（不仅失败），与旧行为一致
-        if self._log_collector:
+        if self._log_collector and not is_valid:
             log_data = {
                 "type": "decision_validation",
                 "session_id": session_id,

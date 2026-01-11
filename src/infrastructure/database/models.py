@@ -181,11 +181,11 @@ class TaskModel(Base):
         nullable=False,
         comment="关联的 Agent ID",
     )
-    run_id: Mapped[str | None] = mapped_column(
+    run_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("workflow_runs.id", ondelete="SET NULL"),
-        nullable=True,
-        comment="关联的 Run ID（可选）",
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="关联的 Run ID",
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, comment="任务名称")
@@ -838,15 +838,17 @@ class ChatMessageModel(Base):
 class RunModel(Base):
     """Run ORM 模型
 
-    表名: workflow_runs (使用此名称避免与历史 runs 表冲突)
+    表名: runs
 
     字段说明:
     - id: 主键 (UUID 字符串，run_ 前缀)
     - project_id: 外键 (关联 Project)
     - workflow_id: 外键 (关联 Workflow)
-    - status: 运行状态 (created/running/completed/failed)
-    - created_at: 创建时间
-    - finished_at: 结束时间 (可选)
+     - agent_id: Agent ID
+     - status: 运行状态 (created/pending/running/completed/succeeded/failed)
+     - created_at: 创建时间
+     - started_at: 开始时间 (可选)
+     - finished_at: 结束时间 (可选)
 
     关系:
     - project: 多对一 (多个 Run 属于一个 Project)
@@ -860,7 +862,7 @@ class RunModel(Base):
     - idx_workflow_runs_created_at: 按时间排序
     """
 
-    __tablename__ = "workflow_runs"
+    __tablename__ = "runs"
 
     # 主键
     id: Mapped[str] = mapped_column(String(36), primary_key=True, comment="Run ID (run_ 前缀)")
@@ -879,21 +881,31 @@ class RunModel(Base):
         comment="Workflow ID",
     )
 
+    # 兼容字段：agent run 场景
+    agent_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("agents.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Agent ID",
+    )
+
     # 业务字段
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
         default="created",
-        comment="Run status (created/running/completed/failed)",
+        comment="Run status (created/pending/running/completed/succeeded/failed)",
     )
 
     # 时间戳
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.now, comment="创建时间"
     )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="开始时间")
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True, comment="结束时间"
     )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True, comment="错误信息（可选）")
 
     # 关系
     project: Mapped["ProjectModel"] = relationship("ProjectModel", lazy="selectin")
@@ -911,6 +923,7 @@ class RunModel(Base):
     __table_args__ = (
         Index("idx_workflow_runs_project_id", "project_id"),
         Index("idx_workflow_runs_workflow_id", "workflow_id"),
+        Index("idx_workflow_runs_agent_id", "agent_id"),
         Index("idx_workflow_runs_status", "status"),
         Index("idx_workflow_runs_created_at", "created_at"),
     )
@@ -951,7 +964,7 @@ class RunEventModel(Base):
     # 外键
     run_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("workflow_runs.id", ondelete="CASCADE"),
+        ForeignKey("runs.id", ondelete="CASCADE"),
         nullable=False,
         comment="Run ID",
     )

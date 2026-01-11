@@ -1,0 +1,15 @@
+name: text_analyzer
+description: Analyze text and return simple metrics.
+category: ai
+version: "1.0.0"
+parameters:
+  - name: text
+    type: string
+    description: Input text.
+    required: true
+entry:
+  type: builtin
+  handler: text_analyzer
+returns:
+  type: object
+  description: Analysis results.

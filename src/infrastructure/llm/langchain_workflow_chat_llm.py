@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import langchain_openai
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
@@ -26,7 +26,9 @@ class LangChainWorkflowChatLLM(WorkflowChatLLM):
         if not api_key:
             raise ValueError("OpenAI API Key is required for chat workflow features.")
 
-        self._llm = ChatOpenAI(
+        # Use module attribute access so tests can patch `langchain_openai.ChatOpenAI`
+        # without being bypassed by an early import binding.
+        self._llm = langchain_openai.ChatOpenAI(
             api_key=SecretStr(api_key),
             model=model,
             temperature=temperature,

@@ -35,6 +35,7 @@ from src.domain.ports.agent_repository import AgentRepository
 from src.domain.ports.task_repository import TaskRepository
 from src.domain.ports.workflow_repository import WorkflowRepository
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.repositories.agent_repository import SQLAlchemyAgentRepository
 from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dto import AgentResponse, CreateAgentRequest
@@ -44,7 +45,6 @@ router = APIRouter()
 
 
 def get_agent_repository(
-    container: ApiContainer = Depends(get_container),
     session: Session = Depends(get_db_session),
 ) -> AgentRepository:
     """获取 Agent Repository
@@ -65,7 +65,7 @@ def get_agent_repository(
     返回：
         SQLAlchemyAgentRepository 实例
     """
-    return container.agent_repository(session)
+    return SQLAlchemyAgentRepository(session)
 
 
 def get_task_repository(

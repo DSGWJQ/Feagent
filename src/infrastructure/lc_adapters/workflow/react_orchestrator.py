@@ -117,7 +117,14 @@ class ReActOrchestrator:
             llm: LLM 实例（可选，为 None 时使用默认配置创建）
         """
         self.max_iterations = max_iterations
-        self.llm = llm or get_llm_for_execution()
+        if llm is not None:
+            self.llm: BaseChatModel | None = llm
+        else:
+            try:
+                self.llm = get_llm_for_execution()
+            except ValueError:
+                # Deterministic/offline fallback: allow orchestrator to run without any real LLM.
+                self.llm = None
         self.system_prompt_generator = WorkflowChatSystemPrompt()
         self.action_parser = WorkflowActionParser()
         self.event_callbacks: list[Callable[[ReActEvent], None]] = []
@@ -287,6 +294,34 @@ class ReActOrchestrator:
             LLM 决定的动作，或 None 如果推理失败
         """
         try:
+            # Deterministic/offline mode: execute nodes sequentially without calling an external LLM.
+            if self.llm is None:
+                remaining = [
+                    node_id
+                    for node_id in state.available_nodes
+                    if node_id not in state.executed_nodes
+                ]
+                if not remaining:
+                    action = WorkflowAction(
+                        type=ActionType.FINISH,
+                        reasoning="No remaining nodes; finish deterministically.",
+                    )
+                else:
+                    action = WorkflowAction(
+                        type=ActionType.EXECUTE_NODE,
+                        node_id=remaining[0],
+                        reasoning="Deterministic mode: execute next available node.",
+                    )
+                self.emit_event_simple(
+                    "reasoning_completed",
+                    {
+                        "iteration": state.iteration_count,
+                        "action_type": action.type if action else "none",
+                        "message": "deterministic",
+                    },
+                )
+                return action
+
             # 第一步：生成执行上下文
             context = WorkflowExecutionContext(
                 workflow_id=state.workflow_id,

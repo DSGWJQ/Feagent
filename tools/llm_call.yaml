@@ -1,0 +1,23 @@
+name: llm_call
+description: Call an LLM provider with chat messages.
+category: ai
+version: "1.0.0"
+parameters:
+  - name: provider
+    type: string
+    description: LLM provider identifier.
+    required: true
+  - name: model
+    type: string
+    description: Model name.
+    required: true
+  - name: messages
+    type: array
+    description: Chat messages (role/content objects).
+    required: true
+entry:
+  type: builtin
+  handler: llm_call
+returns:
+  type: object
+  description: Provider-specific response payload.

@@ -229,6 +229,9 @@ class ClassifyExecutor:
 {{"category": "类别ID", "confidence": 0.0-1.0的置信度, "reasoning": "分类理由"}}
 """
 
+        if self.llm is None:
+            raise ValueError("llm_client is required for LLM classification")
+
         response = await self.llm.generate(prompt)
         result = json.loads(response)
 
@@ -262,6 +265,9 @@ class ClassifyExecutor:
 请以JSON格式返回结果:
 {{"categories": [{{"id": "类别ID", "confidence": 0.0-1.0}}]}}
 """
+
+        if self.llm is None:
+            raise ValueError("llm_client is required for LLM classification")
 
         response = await self.llm.generate(prompt)
         result = json.loads(response)

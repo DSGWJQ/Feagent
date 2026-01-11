@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any, Protocol
 
@@ -113,7 +114,7 @@ class CoordinatorPolicyChain:
         errors = list(getattr(validation, "errors", []) or [])
 
         if is_valid:
-            await self._event_bus.publish(
+            publish_result = self._event_bus.publish(
                 DecisionValidatedEvent(
                     source=self._source,
                     correlation_id=correlation_id,
@@ -122,6 +123,8 @@ class CoordinatorPolicyChain:
                     payload=decision,
                 )
             )
+            if inspect.isawaitable(publish_result):
+                await publish_result
             logger.info(
                 "coordinator_allow",
                 extra={
@@ -134,7 +137,7 @@ class CoordinatorPolicyChain:
             return
 
         reason = "; ".join(errors) or "coordinator rejected decision"
-        await self._event_bus.publish(
+        publish_result = self._event_bus.publish(
             DecisionRejectedEvent(
                 source=self._source,
                 correlation_id=correlation_id,
@@ -144,6 +147,8 @@ class CoordinatorPolicyChain:
                 errors=errors,
             )
         )
+        if inspect.isawaitable(publish_result):
+            await publish_result
         logger.info(
             "coordinator_deny",
             extra={

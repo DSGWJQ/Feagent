@@ -300,8 +300,17 @@ class ChatResponse(BaseModel):
     - react_steps 包含ReAct推理循环的步骤（思考、行动、观察）
     """
 
-    workflow: "WorkflowResponse"
-    ai_message: str = Field(..., description="AI 回复消息")
+    # Compatibility (TDD / v1 response shape)
+    success: bool = Field(default=True, description="Whether the chat edit succeeded")
+    response: str | None = Field(default=None, description="Assistant response (legacy)")
+    error_message: str | None = Field(default=None, description="Error message when success=false")
+    modified_workflow: dict | None = Field(
+        default=None, description="Modified workflow payload (legacy)"
+    )
+
+    # Current response shape
+    workflow: WorkflowResponse | None = None
+    ai_message: str | None = Field(default=None, description="AI 回复消息")
     intent: str = Field(default="", description="用户意图类型")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="AI 信心度")
     modifications_count: int = Field(default=0, ge=0, description="修改数量")

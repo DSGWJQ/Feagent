@@ -1,0 +1,36 @@
+name: http_request
+description: Perform an HTTP request.
+category: http
+version: "1.0.0"
+parameters:
+  - name: url
+    type: string
+    description: Target URL.
+    required: true
+  - name: method
+    type: string
+    description: HTTP method.
+    required: true
+    enum:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - PATCH
+  - name: headers
+    type: object
+    description: Optional request headers.
+    required: false
+  - name: query
+    type: object
+    description: Optional query parameters.
+    required: false
+  - name: body
+    type: any
+    description: Optional request body.
+    required: false
+entry:
+  type: http
+returns:
+  type: object
+  description: HTTP response payload.

@@ -7,7 +7,7 @@
 - 任务列表管理
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -83,6 +83,9 @@ class TestSchedulerAPIIntegration:
         mock_scheduler.remove_job = MagicMock(return_value=None)
         mock_scheduler.pause_job = MagicMock(return_value=None)
         mock_scheduler.resume_job = MagicMock(return_value=None)
+        mock_scheduler.trigger_execution_async = AsyncMock(
+            return_value={"status": "triggered", "timestamp": "2026-01-11T00:00:00"}
+        )
         mock_scheduler.get_jobs = MagicMock(return_value=[])
         mock_scheduler.running = True
         return mock_scheduler
@@ -98,7 +101,8 @@ class TestSchedulerAPIIntegration:
         # 覆盖scheduler service依赖
         app.dependency_overrides[get_scheduler_service] = lambda: mock_scheduler_service
 
-        yield TestClient(app)
+        with TestClient(app) as client:
+            yield client
 
         # 清理依赖覆盖
         app.dependency_overrides.clear()

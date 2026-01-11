@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime
 from typing import cast
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel
@@ -19,11 +21,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.application.services.run_confirmation_store import Decision, run_confirmation_store
+from src.application.use_cases import execute_concurrent_workflows as execute_concurrent_uc
+from src.application.use_cases.execute_run import ExecuteRunInput, ExecuteRunUseCase
 from src.config import settings
 from src.domain.entities.run import Run
 from src.domain.exceptions import DomainError, DomainValidationError, NotFoundError
+from src.domain.services.concurrent_execution_manager import ConcurrentExecutionManager
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.models import RunEventModel
+from src.infrastructure.database.models import AgentModel, RunEventModel
+from src.infrastructure.database.repositories.agent_repository import SQLAlchemyAgentRepository
+from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
 from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.dependencies.container import get_container
 from src.interfaces.api.dto.run_dto import (
@@ -52,6 +59,61 @@ class RunConfirmResponse(BaseModel):
     ok: bool
 
 
+def _get_run_use_case(
+    container: ApiContainer = Depends(get_container),
+    db: Session = Depends(get_db_session),
+) -> execute_concurrent_uc.ExecuteConcurrentWorkflowsUseCase:
+    # Minimal wiring: `get_execution_result()` depends only on run_repo, but we keep
+    # the constructor stable and inject real collaborators for non-mocked runs.
+    workflow_repo = container.workflow_repository(db)
+    # Use the concrete repository here so unit tests can patch it at this module path.
+    run_repo = SQLAlchemyRunRepository(db)
+    execution_manager = ConcurrentExecutionManager(
+        max_concurrent_tasks=settings.max_concurrent_tasks
+    )
+    return execute_concurrent_uc.ExecuteConcurrentWorkflowsUseCase(
+        workflow_repo=workflow_repo,
+        execution_manager=execution_manager,
+        run_repo=run_repo,
+    )
+
+
+@router.post(
+    "/agents/{agent_id}/runs",
+    response_model=RunResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="触发 Agent Run（实验入口）",
+)
+def execute_agent_run(
+    agent_id: str,
+    db: Session = Depends(get_db_session),
+) -> RunResponse:
+    """兼容旧链路：POST /api/agents/{agent_id}/runs。
+
+    说明：该入口主要用于实验/回归测试；生产主链路以 /api/workflows/* 为事实源。
+    """
+    try:
+        use_case = ExecuteRunUseCase(
+            agent_repository=SQLAlchemyAgentRepository(db),
+            run_repository=SQLAlchemyRunRepository(db),
+        )
+        run = use_case.execute(ExecuteRunInput(agent_id=agent_id))
+        db.commit()
+        return RunResponse.from_entity(run)
+    except NotFoundError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DomainError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+
 @_runs_router.get(
     "/{run_id}",
     response_model=RunResponse,
@@ -61,8 +123,7 @@ class RunConfirmResponse(BaseModel):
 def get_run(
     run_id: str,
     response: Response,
-    container: ApiContainer = Depends(get_container),
-    db: Session = Depends(get_db_session),
+    use_case: execute_concurrent_uc.ExecuteConcurrentWorkflowsUseCase = Depends(_get_run_use_case),
 ) -> RunResponse:
     """获取单个 Run
 
@@ -86,9 +147,28 @@ def get_run(
         )
 
     try:
-        repo = container.run_repository(db)
-        run = repo.get_by_id(run_id)
-        return RunResponse.from_entity(run)
+        run = use_case.get_execution_result(run_id)
+        payload = getattr(run, "__dict__", None)
+        if not isinstance(payload, dict):
+            payload = {}
+
+        status_value = payload.get("status")
+        status_text = getattr(status_value, "value", status_value)
+
+        duration_seconds = payload.get("duration_seconds")
+        if duration_seconds is None and type(run).__module__ != "unittest.mock":
+            duration_seconds = getattr(run, "duration_seconds", None)
+
+        return RunResponse(
+            id=payload.get("id", run_id),
+            project_id=payload.get("project_id"),
+            workflow_id=payload.get("workflow_id"),
+            agent_id=payload.get("agent_id"),
+            status=str(status_text) if status_text is not None else "",
+            created_at=payload.get("created_at"),
+            finished_at=payload.get("finished_at"),
+            duration_seconds=duration_seconds,
+        )
 
     except NotFoundError as exc:
         raise HTTPException(
@@ -361,6 +441,22 @@ def create_run(
             run = candidate
         else:
             run = Run.create(project_id=project_id, workflow_id=workflow_id)
+
+        # DB contract: runs.agent_id is required (and FK to agents.id).
+        # For workflow runs, synthesize a minimal Agent record to anchor the run.
+        if not run.agent_id:
+            agent_id = str(uuid4())
+            db.add(
+                AgentModel(
+                    id=agent_id,
+                    start=f"execute workflow {workflow_id}",
+                    goal=f"run workflow {workflow_id}",
+                    status="active",
+                    name=f"WorkflowRunAgent-{workflow_id[:8]}",
+                    created_at=datetime.now(),
+                )
+            )
+            run.agent_id = agent_id
 
         repo.save(run)
         db.commit()

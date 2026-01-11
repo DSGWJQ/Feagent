@@ -27,6 +27,7 @@ from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
 from src.domain.value_objects.workflow_modification_result import ModificationResult
+from src.domain.value_objects.workflow_status import WorkflowStatus
 
 
 def extract_main_subgraph(workflow: Workflow) -> tuple[set[str], set[str]]:
@@ -55,7 +56,9 @@ def extract_main_subgraph(workflow: Workflow) -> tuple[set[str], set[str]]:
     end_nodes = [node for node in workflow.nodes if node.type == NodeType.END]
 
     # Fail-Closed：缺 start 或 end 时返回空集
-    if not start_nodes or not end_nodes:
+    if not start_nodes:
+        return set(), set()
+    if not end_nodes:
         return set(), set()
 
     # 2. 构建邻接表（正向和反向）
@@ -749,6 +752,12 @@ class EnhancedWorkflowChatService:
             (修改后的工作流，修改数量)
         """
         main_node_ids, main_edge_ids = extract_main_subgraph(workflow)
+        original_node_ids = {node.id for node in workflow.nodes}
+        status_value = getattr(workflow, "status", None)
+        status_str = getattr(status_value, "value", status_value)
+        is_draft = status_value == WorkflowStatus.DRAFT or status_str == WorkflowStatus.DRAFT.value
+        has_end = any(node.type == NodeType.END for node in workflow.nodes)
+        allow_incomplete_draft_graph = is_draft and not has_end
 
         nodes_to_delete = modifications.get("nodes_to_delete", [])
         invalid_nodes_to_delete = [
@@ -789,20 +798,6 @@ class EnhancedWorkflowChatService:
                     )
             if isinstance(edge_id, str) and edge_id not in main_edge_ids:
                 invalid_edges_to_update.append(edge_id)
-
-        edges_to_add = modifications.get("edges_to_add", [])
-        invalid_edges_to_add = []
-        for edge_data in edges_to_add:
-            source = edge_data.get("source", "")
-            target = edge_data.get("target", "")
-            if source and source not in main_node_ids:
-                invalid_edges_to_add.append(
-                    {"reason": "source_outside_main_subgraph", "id": source}
-                )
-            if target and target not in main_node_ids:
-                invalid_edges_to_add.append(
-                    {"reason": "target_outside_main_subgraph", "id": target}
-                )
 
         validation_errors: list[dict[str, Any]] = []
         if invalid_nodes_to_delete:
@@ -854,15 +849,6 @@ class EnhancedWorkflowChatService:
                 }
             )
 
-        if invalid_edges_to_add:
-            validation_errors.append(
-                {
-                    "field": "edges_to_add",
-                    "reason": "outside_main_subgraph",
-                    "errors": invalid_edges_to_add,
-                }
-            )
-
         if validation_errors:
             raise DomainValidationError(
                 "修改被拒绝：仅允许操作 start->end 主连通子图",
@@ -906,35 +892,95 @@ class EnhancedWorkflowChatService:
             new_edges = [edge for edge in new_edges if edge.id not in edges_to_delete]
             modifications_count += len(edges_to_delete)
 
-        # 4. 添加边
+        node_ids = {node.id for node in new_nodes}
+        name_to_node_ids: dict[str, list[str]] = {}
+        for node in new_nodes:
+            if isinstance(node.name, str) and node.name.strip():
+                name_to_node_ids.setdefault(node.name, []).append(node.id)
+
+        def _resolve_node_ref(value: Any) -> str | None:
+            if not isinstance(value, str):
+                return None
+            ref = value.strip()
+            if not ref:
+                return None
+            if ref in node_ids:
+                return ref
+            candidates = name_to_node_ids.get(ref)
+            if not candidates or len(candidates) != 1:
+                return None
+            return candidates[0]
+
+        edges_to_add = modifications.get("edges_to_add", [])
+        invalid_edges_to_add: list[dict[str, Any]] = []
+        if edges_to_add and not allow_incomplete_draft_graph:
+            for edge_data in edges_to_add:
+                if not isinstance(edge_data, dict):
+                    continue
+                source_ref = edge_data.get("source", "")
+                target_ref = edge_data.get("target", "")
+                source_id = _resolve_node_ref(source_ref)
+                target_id = _resolve_node_ref(target_ref)
+
+                if not source_id:
+                    invalid_edges_to_add.append(
+                        {"reason": "source_outside_main_subgraph", "id": source_ref}
+                    )
+                    continue
+                if not target_id:
+                    invalid_edges_to_add.append(
+                        {"reason": "target_outside_main_subgraph", "id": target_ref}
+                    )
+                    continue
+
+                if source_id in original_node_ids and source_id not in main_node_ids:
+                    invalid_edges_to_add.append(
+                        {"reason": "source_outside_main_subgraph", "id": source_id}
+                    )
+                if target_id in original_node_ids and target_id not in main_node_ids:
+                    invalid_edges_to_add.append(
+                        {"reason": "target_outside_main_subgraph", "id": target_id}
+                    )
+
+        if invalid_edges_to_add:
+            raise DomainValidationError(
+                "修改被拒绝：仅允许操作 start->end 主连通子图",
+                code="workflow_modification_rejected",
+                errors=[
+                    {
+                        "field": "edges_to_add",
+                        "reason": "outside_main_subgraph",
+                        "errors": invalid_edges_to_add,
+                    }
+                ],
+            )
+
+        # 4. 添加边（edges_to_add 支持 node_id 或 node.name 引用）
         for edge_data in edges_to_add:
-            source = edge_data.get("source", "")
-            target = edge_data.get("target", "")
-
-            # 验证：跳过无效的边
-            if not source or not target:
-                continue
-            if source == target:
+            if not isinstance(edge_data, dict):
                 continue
 
-            # 验证：检查节点是否存在
-            node_ids = {node.id for node in new_nodes}
-            if source not in node_ids or target not in node_ids:
+            source_id = _resolve_node_ref(edge_data.get("source", ""))
+            target_id = _resolve_node_ref(edge_data.get("target", ""))
+
+            # 验证：跳过无效的边（Draft 不完整图允许边引用失败，保持可渐进编辑）
+            if not source_id or not target_id:
+                continue
+            if source_id == target_id:
                 continue
 
             # 验证：检查边是否已存在
             existing_edges = {(edge.source_node_id, edge.target_node_id) for edge in new_edges}
-            if (source, target) in existing_edges:
+            if (source_id, target_id) in existing_edges:
                 continue
 
             try:
                 new_edge = Edge.create(
-                    source_node_id=source,
-                    target_node_id=target,
+                    source_node_id=source_id,
+                    target_node_id=target_id,
                     condition=edge_data.get("condition"),
                 )
                 new_edges.append(new_edge)
-                modifications_count += 1
             except DomainError:
                 continue
 

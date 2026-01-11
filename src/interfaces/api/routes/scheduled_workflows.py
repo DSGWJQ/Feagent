@@ -1,10 +1,12 @@
 """Scheduled Workflows 路由"""
 
+from collections.abc import Iterable
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+import src.application.use_cases.schedule_workflow as schedule_workflow_uc
 from src.application.use_cases.schedule_workflow import (
     ScheduleWorkflowInput,
     ScheduleWorkflowUseCase,
@@ -23,6 +25,14 @@ from src.interfaces.api.dto.workflow_features_dto import (
 router = APIRouter(tags=["Scheduled Workflows"])
 
 
+def _normalize_jobs(jobs: object) -> list[Any]:
+    if isinstance(jobs, list):
+        return jobs
+    if isinstance(jobs, Iterable):
+        return list(jobs)
+    return []
+
+
 def get_schedule_workflow_use_case(
     container: ApiContainer = Depends(get_container),
     session: Session = Depends(get_db_session),
@@ -33,7 +43,7 @@ def get_schedule_workflow_use_case(
     workflow_repo = container.workflow_repository(session)
     scheduled_workflow_repo = container.scheduled_workflow_repository(session)
 
-    return ScheduleWorkflowUseCase(
+    return schedule_workflow_uc.ScheduleWorkflowUseCase(
         workflow_repo=workflow_repo,
         scheduled_workflow_repo=scheduled_workflow_repo,
         scheduler=scheduler,
@@ -143,7 +153,7 @@ async def trigger_scheduled_workflow(
 ) -> dict[str, Any]:
     """手动触发定时任务执行."""
     try:
-        result = await use_case.scheduler.trigger_execution_async(scheduled_workflow_id)
+        result = await use_case.trigger_execution_async(scheduled_workflow_id)
         return {
             "scheduled_workflow_id": scheduled_workflow_id,
             "execution_status": result["status"],
@@ -170,8 +180,7 @@ async def pause_scheduled_workflow(
 ) -> ScheduledWorkflowResponse:
     """暂停定时任务."""
     try:
-        use_case.scheduler.pause_scheduled_workflow(scheduled_workflow_id)
-        result = use_case.get_scheduled_workflow_details(scheduled_workflow_id)
+        result = use_case.pause(scheduled_workflow_id)
         return ScheduledWorkflowResponse.from_entity(result)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
@@ -193,8 +202,7 @@ async def resume_scheduled_workflow(
 ) -> ScheduledWorkflowResponse:
     """恢复定时任务."""
     try:
-        use_case.scheduler.resume_scheduled_workflow(scheduled_workflow_id)
-        result = use_case.get_scheduled_workflow_details(scheduled_workflow_id)
+        result = use_case.resume(scheduled_workflow_id)
         return ScheduledWorkflowResponse.from_entity(result)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
@@ -216,9 +224,20 @@ async def get_scheduler_status(
     """查看调度器状态."""
     try:
         scheduler = use_case.scheduler
-        jobs = scheduler.scheduler.get_jobs()
+
+        jobs_provider = getattr(getattr(scheduler, "scheduler", None), "get_jobs", None)
+        if callable(jobs_provider):
+            jobs = _normalize_jobs(jobs_provider())
+        else:
+            direct_jobs_provider = getattr(scheduler, "get_jobs", None)
+            jobs = _normalize_jobs(direct_jobs_provider()) if callable(direct_jobs_provider) else []
+
+        scheduler_running = getattr(scheduler, "_is_running", None)
+        if not isinstance(scheduler_running, bool):
+            scheduler_running = bool(getattr(scheduler, "running", False))
+
         return {
-            "scheduler_running": scheduler._is_running,
+            "scheduler_running": scheduler_running,
             "total_jobs_in_scheduler": len(jobs),
             "job_details": [
                 {
@@ -249,9 +268,17 @@ async def get_scheduler_jobs(
     """列出调度器中的任务."""
     try:
         scheduler = use_case.scheduler
-        jobs = scheduler.scheduler.get_jobs()
+
+        jobs_provider = getattr(getattr(scheduler, "scheduler", None), "get_jobs", None)
+        if callable(jobs_provider):
+            jobs = _normalize_jobs(jobs_provider())
+        else:
+            direct_jobs_provider = getattr(scheduler, "get_jobs", None)
+            jobs = _normalize_jobs(direct_jobs_provider()) if callable(direct_jobs_provider) else []
+
         all_scheduled_workflows = use_case.list_scheduled_workflows()
         active_workflows = [w for w in all_scheduled_workflows if w.status == "active"]
+        get_scheduled_job = getattr(scheduler, "get_scheduled_job", None)
 
         return {
             "jobs_in_scheduler": [
@@ -272,7 +299,9 @@ async def get_scheduler_jobs(
                     "last_execution_status": wf.last_execution_status,
                     "consecutive_failures": wf.consecutive_failures,
                     "max_retries": wf.max_retries,
-                    "is_in_scheduler": scheduler.get_scheduled_job(wf.id) is not None,
+                    "is_in_scheduler": bool(get_scheduled_job(wf.id))
+                    if callable(get_scheduled_job)
+                    else False,
                 }
                 for wf in active_workflows
             ],
@@ -280,7 +309,11 @@ async def get_scheduler_jobs(
                 "total_jobs_in_scheduler": len(jobs),
                 "total_active_workflows": len(active_workflows),
                 "workflows_not_in_scheduler": len(
-                    [wf for wf in active_workflows if scheduler.get_scheduled_job(wf.id) is None]
+                    [
+                        wf
+                        for wf in active_workflows
+                        if not callable(get_scheduled_job) or not get_scheduled_job(wf.id)
+                    ]
                 ),
             },
             "message": "任务列表获取成功",

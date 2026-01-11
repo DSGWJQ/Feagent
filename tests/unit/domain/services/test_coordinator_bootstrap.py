@@ -245,7 +245,10 @@ def test_supervision_aliases_preserved(minimal_config):
     # 验证别名与底层对象同一引用
     supervision_coordinator = wiring.orchestrators.get("supervision_coordinator")
     assert supervision_coordinator is not None
-    assert wiring.aliases["conversation_supervision"] is supervision_coordinator.conversation_supervision
+    assert (
+        wiring.aliases["conversation_supervision"]
+        is supervision_coordinator.conversation_supervision
+    )
     assert wiring.aliases["efficiency_monitor"] is supervision_coordinator.efficiency_monitor
     assert wiring.aliases["strategy_repository"] is supervision_coordinator.strategy_repository
 

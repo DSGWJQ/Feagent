@@ -420,9 +420,6 @@ class TestComplexFieldConversion:
     def test_failure_strategy_dict_to_config(self, mock_bootstrap):
         """failure_strategy_config dict → Bootstrap schema 映射（Critical Fix-1）"""
         from src.domain.agents.coordinator_agent import CoordinatorAgent
-        from src.domain.services.workflow_failure_orchestrator import (
-            FailureHandlingStrategy,
-        )
 
         failure_dict = {
             "max_retry_attempts": 5,

@@ -30,13 +30,19 @@ from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.ports.workflow_run_execution_entry import WorkflowRunExecutionEntryPort
 
 
+def _missing_workflow_run_execution_entry(_: Session) -> WorkflowRunExecutionEntryPort:
+    raise RuntimeError(
+        "ApiContainer.workflow_run_execution_entry is not configured. "
+        "Provide workflow_run_execution_entry when building ApiContainer."
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ApiContainer:
     """Typed container attached to `app.state.container`."""
 
     executor_registry: NodeExecutorRegistry
     workflow_execution_kernel: Callable[[Session], WorkflowExecutionKernelPort]
-    workflow_run_execution_entry: Callable[[Session], WorkflowRunExecutionEntryPort]
     conversation_turn_orchestrator: Callable[[], ConversationTurnOrchestrator]
 
     user_repository: Callable[[Session], UserRepository]
@@ -50,6 +56,11 @@ class ApiContainer:
     # Adapters without a corresponding Domain Port yet (keep typing loose).
     run_repository: Callable[[Session], Any]
     scheduled_workflow_repository: Callable[[Session], Any]
+
+    # Optional: Some tests build minimal ApiContainer instances; provide a safe default.
+    workflow_run_execution_entry: Callable[[Session], WorkflowRunExecutionEntryPort] = (
+        _missing_workflow_run_execution_entry
+    )
 
 
 class AdapterFactory:

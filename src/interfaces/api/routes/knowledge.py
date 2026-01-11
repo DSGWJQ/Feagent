@@ -171,7 +171,7 @@ async def list_documents(
                     chunk_count=chunk_count,
                     total_tokens=total_tokens,
                     created_at=doc.created_at,
-                    updated_at=doc.updated_at,
+                    updated_at=doc.updated_at or doc.created_at,
                 )
             )
 
@@ -294,7 +294,7 @@ async def get_document(
             chunk_count=chunk_count,
             total_tokens=total_tokens,
             created_at=document.created_at,
-            updated_at=document.updated_at,
+            updated_at=document.updated_at or document.created_at,
         )
 
     except HTTPException:
