@@ -7,8 +7,8 @@ sync wrappers around async implementations (tests/scripts/legacy callers).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
-from typing import TypeVar
+from collections.abc import Awaitable, Coroutine
+from typing import Any, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -25,10 +25,6 @@ def run_sync(awaitable: Awaitable[T]) -> T:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-
-        async def _run() -> T:
-            return await awaitable
-
-        return asyncio.run(_run())
+        return asyncio.run(cast(Coroutine[Any, Any, T], awaitable))
 
     raise RuntimeError("run_sync() cannot be called from a running event loop")
