@@ -16,6 +16,7 @@ import {
   Button,
   Space,
   Divider,
+  message,
   ConfigProvider,
   theme,
 } from 'antd';
@@ -56,8 +57,23 @@ export default function NodeConfigPanel({
   useEffect(() => {
     if (node) {
       const data = (node.data ?? {}) as any;
+      const normalized: Record<string, unknown> = { ...data };
+
+      if (node.type === 'database' && data.params && typeof data.params !== 'string') {
+        normalized.params = JSON.stringify(data.params, null, 2);
+      }
+
+      if (node.type === 'transform') {
+        for (const key of ['mapping', 'conversions', 'fields', 'operations', 'aggregation', 'element_transform']) {
+          const value = data[key];
+          if (value && typeof value !== 'string') {
+            normalized[key] = JSON.stringify(value, null, 2);
+          }
+        }
+      }
+
       form.setFieldsValue({
-        ...data,
+        ...normalized,
         // Back-compat: accept legacy toolId but persist tool_id.
         tool_id: data.tool_id ?? data.toolId ?? '',
       });
@@ -65,7 +81,27 @@ export default function NodeConfigPanel({
   }, [node, form]);
 
   const handleSave = () => {
-    const values = form.getFieldsValue();
+    const values = form.getFieldsValue() as Record<string, any>;
+
+    if (node?.type === 'transform') {
+      const jsonFields = ['mapping', 'conversions', 'fields', 'operations', 'aggregation', 'element_transform'] as const;
+      for (const field of jsonFields) {
+        const raw = values[field];
+        if (typeof raw !== 'string') continue;
+        const trimmed = raw.trim();
+        if (!trimmed) {
+          delete values[field];
+          continue;
+        }
+        try {
+          values[field] = JSON.parse(trimmed);
+        } catch (err) {
+          message.error(`Invalid JSON in ${field}`);
+          return;
+        }
+      }
+    }
+
     if (node) {
       onSave(node.id, values);
       onClose();
@@ -313,6 +349,233 @@ export default function NodeConfigPanel({
                 rows={8}
                 placeholder="Enter your prompt..."
               />
+            </Form.Item>
+          </>
+        );
+
+      case 'python':
+        return (
+          <>
+            <Form.Item
+              label="Code"
+              name="code"
+              rules={[{ required: true, message: 'Please enter code' }]}
+            >
+              <TextArea
+                rows={12}
+                placeholder="result = input1"
+                style={{ fontFamily: 'monospace' }}
+              />
+            </Form.Item>
+            <Divider />
+            <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+              <p>Available variables:</p>
+              <ul style={{ paddingLeft: 20 }}>
+                <li>input1, input2, ... (from connected nodes)</li>
+                <li>Assign output to a <code>result</code> variable</li>
+              </ul>
+            </div>
+          </>
+        );
+
+      case 'transform':
+        return (
+          <>
+            <Form.Item
+              label="Type"
+              name="type"
+              rules={[{ required: true, message: 'Please select transform type' }]}
+            >
+              <Select>
+                <Option value="field_mapping">field_mapping</Option>
+                <Option value="type_conversion">type_conversion</Option>
+                <Option value="field_extraction">field_extraction</Option>
+                <Option value="array_mapping">array_mapping</Option>
+                <Option value="filtering">filtering</Option>
+                <Option value="aggregation">aggregation</Option>
+                <Option value="custom">custom</Option>
+              </Select>
+            </Form.Item>
+
+            <Form.Item label="field" name="field">
+              <Input placeholder="e.g. items" />
+            </Form.Item>
+
+            <Form.Item label="path" name="path">
+              <Input placeholder="e.g. user.profile.address.city" />
+            </Form.Item>
+
+            <Form.Item label="condition" name="condition">
+              <Input placeholder="e.g. price > 100" />
+            </Form.Item>
+
+            <Form.Item label="function" name="function">
+              <Input placeholder="e.g. upper / lower / len" />
+            </Form.Item>
+
+            <Form.Item label="mapping (JSON)" name="mapping">
+              <TextArea rows={6} placeholder='{"newKey":"input.oldKey"}' style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+
+            <Form.Item label="conversions (JSON)" name="conversions">
+              <TextArea rows={6} placeholder='{"age":"int"}' style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+
+            <Form.Item label="fields (JSON)" name="fields">
+              <TextArea rows={4} placeholder='["field1","field2"]' style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+
+            <Form.Item label="operations (JSON)" name="operations">
+              <TextArea rows={4} placeholder='["sum:price","count"]' style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+
+            <Form.Item label="aggregation (JSON)" name="aggregation">
+              <TextArea rows={4} placeholder='{"field":"items","operations":["count"]}' style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+
+            <Form.Item label="element_transform (JSON)" name="element_transform">
+              <TextArea rows={4} placeholder='{"mapping":{"a":"b"}}' style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+          </>
+        );
+
+      case 'database':
+        return (
+          <>
+            <Form.Item
+              label="Database URL"
+              name="database_url"
+              rules={[{ required: true, message: 'Please enter database URL' }]}
+            >
+              <Input placeholder="sqlite:///agent_data.db" />
+            </Form.Item>
+            <Form.Item
+              label="SQL"
+              name="sql"
+              rules={[{ required: true, message: 'Please enter SQL' }]}
+            >
+              <TextArea rows={6} placeholder="SELECT 1" style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+            <Form.Item label="Params (JSON, optional)" name="params">
+              <TextArea rows={4} placeholder="{} or []" style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+          </>
+        );
+
+      case 'file':
+        return (
+          <>
+            <Form.Item
+              label="Operation"
+              name="operation"
+              rules={[{ required: true, message: 'Please select operation' }]}
+            >
+              <Select>
+                <Option value="read">read</Option>
+                <Option value="write">write</Option>
+                <Option value="append">append</Option>
+                <Option value="delete">delete</Option>
+                <Option value="list">list</Option>
+              </Select>
+            </Form.Item>
+            <Form.Item
+              label="Path"
+              name="path"
+              rules={[{ required: true, message: 'Please enter file path' }]}
+            >
+              <Input placeholder="tmp/report.txt" />
+            </Form.Item>
+            <Form.Item label="Encoding" name="encoding">
+              <Input placeholder="utf-8" />
+            </Form.Item>
+            <Form.Item label="Content" name="content">
+              <TextArea rows={6} placeholder="Write/append content" />
+            </Form.Item>
+          </>
+        );
+
+      case 'notification':
+        return (
+          <>
+            <Form.Item
+              label="Type"
+              name="type"
+              rules={[{ required: true, message: 'Please select notification type' }]}
+            >
+              <Select>
+                <Option value="webhook">webhook</Option>
+                <Option value="email">email</Option>
+                <Option value="slack">slack</Option>
+              </Select>
+            </Form.Item>
+            <Form.Item label="Subject" name="subject">
+              <Input placeholder="Notification" />
+            </Form.Item>
+            <Form.Item
+              label="Message"
+              name="message"
+              rules={[{ required: true, message: 'Please enter message' }]}
+            >
+              <TextArea rows={6} placeholder="Your message here" />
+            </Form.Item>
+            <Form.Item label="Webhook URL" name="url">
+              <Input placeholder="https://webhook.example.com" />
+            </Form.Item>
+            <Form.Item label="Headers (JSON)" name="headers">
+              <TextArea rows={4} placeholder='{"Content-Type":"application/json"}' style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+            <Form.Item label="Include Input" name="include_input" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+            <Divider />
+            <Form.Item label="SMTP Host" name="smtp_host">
+              <Input placeholder="smtp.example.com" />
+            </Form.Item>
+            <Form.Item label="SMTP Port" name="smtp_port">
+              <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item label="Sender" name="sender">
+              <Input placeholder="no-reply@example.com" />
+            </Form.Item>
+            <Form.Item label="Sender Password" name="sender_password">
+              <Input.Password />
+            </Form.Item>
+            <Form.Item label="Recipients (JSON)" name="recipients">
+              <TextArea rows={3} placeholder='["a@x.com"]' style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+            <Divider />
+            <Form.Item label="Slack Webhook URL" name="webhook_url">
+              <Input placeholder="https://hooks.slack.com/services/..." />
+            </Form.Item>
+          </>
+        );
+
+      case 'loop':
+        return (
+          <>
+            <Form.Item
+              label="Type"
+              name="type"
+              rules={[{ required: true, message: 'Please select loop type' }]}
+            >
+              <Select>
+                <Option value="for_each">for_each</Option>
+                <Option value="for">for</Option>
+                <Option value="while">while</Option>
+              </Select>
+            </Form.Item>
+            <Form.Item label="Array (for_each)" name="array">
+              <Input placeholder="items" />
+            </Form.Item>
+            <Form.Item
+              label="Code"
+              name="code"
+              rules={[{ required: true, message: 'Please enter code' }]}
+            >
+              <TextArea rows={10} placeholder="result = item" style={{ fontFamily: 'monospace' }} />
+            </Form.Item>
+            <Form.Item label="Iterations (for)" name="iterations">
+              <InputNumber min={1} max={100000} style={{ width: '100%' }} />
             </Form.Item>
           </>
         );

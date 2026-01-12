@@ -47,6 +47,7 @@ function NotificationNode({ data, selected, id }: NodeProps<NotificationNodeData
       <Card
         className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCardWide}`}
         styles={{ body: { padding: 0 } }}
+        data-testid={`workflow-node-${id}`}
       >
         {/* 节点头部 */}
         <div className={styles.nodeHeaderWrapper}>

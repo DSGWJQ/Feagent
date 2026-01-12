@@ -209,6 +209,11 @@ class WorkflowSaveValidator:
         status_value = getattr(workflow, "status", None)
         status_str = getattr(status_value, "value", status_value)
         is_draft = status_value == WorkflowStatus.DRAFT or status_str == WorkflowStatus.DRAFT.value
+        main_node_ids: set[str] | None = None
+        if is_draft:
+            # Draft workflows may contain in-progress nodes. We still fail-closed for the
+            # main start->end subgraph because those nodes are runnable.
+            main_node_ids = _extract_main_subgraph_node_ids(workflow) or None
 
         builtin_types: set[NodeType] = {
             NodeType.INPUT,
@@ -233,9 +238,8 @@ class WorkflowSaveValidator:
             if node.type == NodeType.TOOL:
                 self._validate_tool_node(node_index=idx, node_config=node.config, errors=errors)
 
-            # Draft workflows are allowed to be incomplete: allow nodes with partially-filled
-            # configs while editing (chat/drag). Tool nodes stay fail-closed.
-            if is_draft:
+            # Draft workflows may be incomplete, but nodes on the main subgraph must be runnable.
+            if is_draft and main_node_ids is not None and node.id not in main_node_ids:
                 continue
 
             if node.type in {NodeType.JAVASCRIPT, NodeType.PYTHON}:
@@ -276,17 +280,16 @@ class WorkflowSaveValidator:
                 message="missing start node",
                 path="nodes",
             )
-        if not end_ids and not is_draft:
-            _append_error(
-                errors,
-                code="missing_end",
-                message="missing end node",
-                path="nodes",
-            )
-        if not start_ids or (not end_ids and not is_draft):
+        if not end_ids:
+            if not is_draft:
+                _append_error(
+                    errors,
+                    code="missing_end",
+                    message="missing end node",
+                    path="nodes",
+                )
             return
-        if is_draft:
-            # Draft workflows are allowed to be incomplete (created first, refined later).
+        if not start_ids:
             return
 
         main_node_ids = _extract_main_subgraph_node_ids(workflow)

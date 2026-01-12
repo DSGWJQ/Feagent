@@ -1,0 +1,95 @@
+# Notification 节点 - 通知执行（Webhook/邮件/Slack）
+name: notification
+kind: node
+description: 发送通知（Webhook/邮件/Slack）。通常用于失败告警、对账结果推送等。
+version: "1.0.0"
+author: feagent
+tags:
+  - notification
+  - alert
+  - webhook
+category: integration
+
+executor_type: notification
+
+parameters:
+  - name: type
+    type: string
+    description: 通知类型
+    required: true
+    default: webhook
+    enum: [webhook, email, slack]
+  - name: subject
+    type: string
+    description: 通知主题（email/slack 常用）
+    required: false
+    default: "Notification"
+  - name: message
+    type: string
+    description: 通知内容
+    required: true
+
+  # Webhook
+  - name: url
+    type: string
+    description: Webhook URL（type=webhook 时必填）
+    required: false
+  - name: headers
+    type: string
+    description: Webhook headers（JSON 字符串）
+    required: false
+    default: "{}"
+  - name: include_input
+    type: boolean
+    description: 是否把输入数据附带到 Webhook payload
+    required: false
+    default: true
+
+  # Email
+  - name: smtp_host
+    type: string
+    description: SMTP host（type=email 时必填）
+    required: false
+  - name: smtp_port
+    type: integer
+    description: SMTP port
+    required: false
+    default: 587
+  - name: sender
+    type: string
+    description: 发件人邮箱
+    required: false
+  - name: sender_password
+    type: string
+    description: 发件人密码
+    required: false
+  - name: recipients
+    type: string
+    description: 收件人列表（JSON 字符串，如 [\"a@x.com\",\"b@y.com\"]）
+    required: false
+    default: "[]"
+
+  # Slack
+  - name: webhook_url
+    type: string
+    description: Slack Webhook URL（type=slack 时必填）
+    required: false
+
+returns:
+  type: object
+  properties:
+    type:
+      type: string
+      description: 通知类型
+    success:
+      type: boolean
+      description: 是否成功
+    status_code:
+      type: integer
+      description: Webhook/Slack 响应码（如有）
+
+error_strategy:
+  retry:
+    max_attempts: 1
+    delay_seconds: 1.0
+  on_failure: skip

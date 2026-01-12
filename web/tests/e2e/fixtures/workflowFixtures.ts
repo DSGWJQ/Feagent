@@ -15,7 +15,14 @@ interface SeedWorkflowResponse {
  * Seed Workflow 选项
  */
 interface SeedWorkflowOptions {
-  fixtureType: 'main_subgraph_only' | 'with_isolated_nodes' | 'side_effect_workflow' | 'invalid_config';
+  fixtureType:
+    | 'main_subgraph_only'
+    | 'with_isolated_nodes'
+    | 'side_effect_workflow'
+    | 'invalid_config'
+    | 'report_pipeline'
+    | 'reconcile_sync'
+    | 'code_assistant';
   projectId?: string;
   customMetadata?: Record<string, unknown>;
 }

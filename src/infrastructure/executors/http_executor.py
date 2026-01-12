@@ -4,6 +4,7 @@ Infrastructure 层：实现 HTTP 请求节点执行器
 """
 
 import json
+import os
 from typing import Any
 
 import httpx
@@ -31,31 +32,51 @@ class HttpExecutor(NodeExecutor):
         # 获取配置
         url = node.config.get("url", "")
         method = node.config.get("method", "GET").upper()
-        headers_str = node.config.get("headers", "{}")
-        body_str = node.config.get("body", "{}")
+        headers_value = node.config.get("headers", {})
+        body_value = node.config.get("body", {})
 
         if not url:
             raise DomainError("HTTP 节点缺少 URL 配置")
 
-        # 解析 headers 和 body
-        try:
-            headers = json.loads(headers_str) if headers_str else {}
-        except json.JSONDecodeError as e:
-            raise DomainError(f"HTTP 节点 headers 格式错误: {headers_str}") from e
+        headers = self._parse_json_value(headers_value, field="headers", default={})
 
         # 验证 headers 类型
         if headers is None:
             headers = {}
         if not isinstance(headers, dict):
             raise DomainError("HTTP 节点 headers 必须是 JSON 对象")
+        normalized_headers: dict[str, str] = {}
         for key, value in headers.items():
-            if not isinstance(key, str) or not isinstance(value, str):
+            if not isinstance(key, str):
                 raise DomainError("HTTP 节点 headers 必须是字符串键值对")
+            if value is None:
+                normalized_headers[key] = ""
+            else:
+                normalized_headers[key] = str(value)
 
-        try:
-            body = json.loads(body_str) if body_str and method in ["POST", "PUT", "PATCH"] else None
-        except json.JSONDecodeError as e:
-            raise DomainError(f"HTTP 节点 body 格式错误: {body_str}") from e
+        body = None
+        if method in ["POST", "PUT", "PATCH"]:
+            body = self._parse_json_value(body_value, field="body", default=None)
+
+        # Deterministic E2E mode: never hit external HTTP endpoints.
+        if os.getenv("E2E_TEST_MODE") == "deterministic":
+            mock_response = node.config.get("mock_response", None)
+            if mock_response is not None:
+                return self._parse_json_value(
+                    mock_response, field="mock_response", default=mock_response
+                )
+
+            return {
+                "stub": True,
+                "mode": "deterministic",
+                "status": 200,
+                "data": {
+                    "url": url,
+                    "method": method,
+                    "headers": normalized_headers,
+                    "body": body,
+                },
+            }
 
         # 发送请求
         try:
@@ -63,7 +84,7 @@ class HttpExecutor(NodeExecutor):
                 response = await client.request(
                     method=method,
                     url=url,
-                    headers=headers,
+                    headers=normalized_headers,
                     json=body,
                 )
                 response.raise_for_status()
@@ -80,3 +101,19 @@ class HttpExecutor(NodeExecutor):
             raise DomainError(f"HTTP 请求失败: {e.response.status_code} {e.response.text}") from e
         except httpx.RequestError as e:
             raise DomainError(f"HTTP 请求错误: {str(e)}") from e
+
+    @staticmethod
+    def _parse_json_value(value: Any, *, field: str, default: Any) -> Any:
+        if value is None:
+            return default
+        if isinstance(value, dict | list):
+            return value
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return default
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise DomainError(f"HTTP 节点 {field} 格式错误: {value}") from exc
+        return value

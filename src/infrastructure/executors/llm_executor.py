@@ -4,6 +4,7 @@ Infrastructure 层：实现 LLM 文本生成节点执行器
 """
 
 import json
+import os
 from typing import Any
 
 from src.domain.entities.node import Node
@@ -73,6 +74,20 @@ class LlmExecutor(NodeExecutor):
 
         if not prompt:
             raise DomainError("LLM 节点缺少 prompt")
+
+        # Deterministic E2E mode: never hit external LLM APIs.
+        # Keep output stable and traceable for Playwright runs and local debugging.
+        if os.getenv("E2E_TEST_MODE") == "deterministic":
+            preview = prompt[:280]
+            if structured_output:
+                return {
+                    "stub": True,
+                    "mode": "deterministic",
+                    "model": model,
+                    "prompt_preview": preview,
+                    "report": f"[deterministic stub] {preview}",
+                }
+            return f"[deterministic stub:{model}] {preview}"
 
         # 解析模型提供商
         if "/" in model:

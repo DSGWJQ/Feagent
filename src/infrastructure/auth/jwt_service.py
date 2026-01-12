@@ -17,9 +17,11 @@
 - 密钥从配置文件读取，生产环境必须更换
 """
 
+import time
 from datetime import datetime, timedelta
 
-import jwt
+from jose import jwt
+from jose.exceptions import ExpiredSignatureError, JWTError
 
 from src.config import settings
 
@@ -99,13 +101,22 @@ class JWTService:
         try:
             # 解码并验证token
             payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+
+            # Fail-closed: 显式校验 exp，避免第三方库/时间精度差异导致过期 token 继续可用
+            exp = payload.get("exp")
+            if isinstance(exp, int | float) and time.time() >= float(exp):
+                raise ValueError("Token已过期")
+
             return payload
 
-        except jwt.ExpiredSignatureError as err:
+        except ValueError:
+            raise
+
+        except ExpiredSignatureError as err:
             # Token已过期
             raise ValueError("Token已过期") from err
 
-        except jwt.PyJWTError as err:
+        except JWTError as err:
             # Token无效（签名验证失败、格式错误等）
             raise ValueError("Token无效") from err
 

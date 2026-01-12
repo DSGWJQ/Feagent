@@ -624,7 +624,7 @@ class TestRealWorldExecutionScenarios:
         assert result.metadata["execution_time_ms"] >= 50
 
     @pytest.mark.asyncio
-    async def test_retry_with_exponential_backoff(self):
+    async def test_retry_with_exponential_backoff(self, monkeypatch):
         """测试指数退避重试"""
         from src.domain.services.execution_result import RetryPolicy
         from tests.unit.domain.agents.test_workflow_agent_enhanced import (
@@ -633,14 +633,18 @@ class TestRealWorldExecutionScenarios:
 
         agent = create_workflow_agent_for_test()
 
-        retry_timestamps = []
+        sleep_calls: list[float] = []
+        real_sleep = asyncio.sleep
+
+        async def fake_sleep(delay: float):
+            sleep_calls.append(delay)
+            await real_sleep(0)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
         class TimingExecutor:
             async def execute(self, node_id, config, inputs):
-                import time
-
-                retry_timestamps.append(time.time())
-                if len(retry_timestamps) < 3:
+                if len(sleep_calls) < 2:
                     raise TimeoutError("Retry me")
                 return {"done": True}
 
@@ -659,11 +663,4 @@ class TestRealWorldExecutionScenarios:
         result = await agent.execute_node_with_result(node.id, retry_policy=policy)
 
         assert result.success is True
-        assert len(retry_timestamps) == 3
-
-        # 验证延迟增加（指数退避）
-        if len(retry_timestamps) >= 3:
-            delay1 = retry_timestamps[1] - retry_timestamps[0]
-            delay2 = retry_timestamps[2] - retry_timestamps[1]
-            # delay2 应该大于 delay1（指数退避）
-            assert delay2 > delay1 * 1.5  # 允许一些误差
+        assert sleep_calls == [0.02, 0.04]

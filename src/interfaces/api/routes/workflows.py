@@ -10,6 +10,7 @@ from collections.abc import AsyncGenerator, Callable, Mapping
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
@@ -612,7 +613,7 @@ async def execute_workflow_streaming(
             ):
                 if isinstance(event, dict) and "run_id" not in event:
                     event = {**event, "run_id": run_id}
-                yield f"data: {json.dumps(event)}\n\n"
+                yield f"data: {json.dumps(jsonable_encoder(event))}\n\n"
 
         return StreamingResponse(
             _kernel_event_generator(),
@@ -708,7 +709,7 @@ async def execute_workflow_streaming(
                 events_sent += 1
                 if isinstance(event, dict) and "run_id" not in event:
                     event = {**event, "run_id": run_id}
-                yield f"data: {json.dumps(event)}\n\n"
+                yield f"data: {json.dumps(jsonable_encoder(event))}\n\n"
         finally:
             duration_ms = int((time.perf_counter() - started) * 1000)
             logger.info(

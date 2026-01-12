@@ -717,8 +717,31 @@ class ConversationAgentReActCoreMixin:
 
             action = run_sync(self.llm.decide_action(context))
 
+        # Defensive normalization: make a shallow copy so any downstream enrichment
+        # does not mutate mock side_effect dicts or shared references.
+        if isinstance(action, dict):
+            action = dict(action)
+        else:
+            action = {"action_type": "continue"}
+
         # 获取 action_type
         action_type = action.get("action_type", "continue")
+
+        # Align execute_workflow decisions with production execution contract:
+        # - Preserve `workflow_id`/`run_id` so schema validation does not drop them.
+        # - Auto-fill from injected context (ConversationTurnOrchestrator sets _workflow_id/_run_id).
+        if action_type == "execute_workflow":
+            workflow_id = action.get("workflow_id")
+            if not isinstance(workflow_id, str) or not workflow_id.strip():
+                injected_workflow_id = getattr(self, "_workflow_id", None)
+                if isinstance(injected_workflow_id, str) and injected_workflow_id.strip():
+                    action["workflow_id"] = injected_workflow_id.strip()
+
+            run_id = action.get("run_id")
+            if not isinstance(run_id, str) or not run_id.strip():
+                injected_run_id = getattr(self, "_run_id", None)
+                if isinstance(injected_run_id, str) and injected_run_id.strip():
+                    action["run_id"] = injected_run_id.strip()
 
         # ========================================
         # 【增强功能】使用 Pydantic schema 验证

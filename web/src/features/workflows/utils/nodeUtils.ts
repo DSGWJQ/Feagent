@@ -73,6 +73,10 @@ export function getDefaultNodeData(type: string): Record<string, any> {
       return {
         code: '// Your code here\nreturn input1;',
       };
+    case 'python':
+      return {
+        code: 'result = input1',
+      };
     case 'prompt':
       return {
         content: 'Enter your prompt...',
@@ -95,6 +99,11 @@ export function getDefaultNodeData(type: string): Record<string, any> {
         database_url: 'sqlite:///agent_data.db',
         sql: 'SELECT * FROM table_name',
         params: {},
+      };
+    case 'transform':
+      return {
+        type: 'field_mapping',
+        mapping: {},
       };
     case 'file':
       return {
@@ -198,6 +207,13 @@ export const nodeTypeConfigs: NodeTypeConfig[] = [
     icon: 'Code',
   },
   {
+    type: 'python',
+    label: 'Python',
+    description: '执行 Python 代码',
+    color: '#faad14',
+    icon: 'Code',
+  },
+  {
     type: 'prompt',
     label: '提示词',
     description: '输入文本或提示',
@@ -224,6 +240,13 @@ export const nodeTypeConfigs: NodeTypeConfig[] = [
     description: '执行 SQL 查询',
     color: '#1890ff',
     icon: 'Database',
+  },
+  {
+    type: 'transform',
+    label: '数据转换',
+    description: '字段映射/过滤/聚合',
+    color: '#faad14',
+    icon: 'GitBranch',
   },
   {
     type: 'file',

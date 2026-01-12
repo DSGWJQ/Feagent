@@ -10,9 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
 from typing import cast
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel
@@ -28,7 +26,7 @@ from src.domain.entities.run import Run
 from src.domain.exceptions import DomainError, DomainValidationError, NotFoundError
 from src.domain.services.concurrent_execution_manager import ConcurrentExecutionManager
 from src.infrastructure.database.engine import get_db_session
-from src.infrastructure.database.models import AgentModel, RunEventModel
+from src.infrastructure.database.models import RunEventModel
 from src.infrastructure.database.repositories.agent_repository import SQLAlchemyAgentRepository
 from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
 from src.interfaces.api.container import ApiContainer
@@ -441,22 +439,6 @@ def create_run(
             run = candidate
         else:
             run = Run.create(project_id=project_id, workflow_id=workflow_id)
-
-        # DB contract: runs.agent_id is required (and FK to agents.id).
-        # For workflow runs, synthesize a minimal Agent record to anchor the run.
-        if not run.agent_id:
-            agent_id = str(uuid4())
-            db.add(
-                AgentModel(
-                    id=agent_id,
-                    start=f"execute workflow {workflow_id}",
-                    goal=f"run workflow {workflow_id}",
-                    status="active",
-                    name=f"WorkflowRunAgent-{workflow_id[:8]}",
-                    created_at=datetime.now(),
-                )
-            )
-            run.agent_id = agent_id
 
         repo.save(run)
         db.commit()

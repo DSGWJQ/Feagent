@@ -18,6 +18,8 @@ export { default as DatabaseNode } from './DatabaseNode';
 export { default as FileNode } from './FileNode';
 export { default as NotificationNode } from './NotificationNode';
 export { default as LoopNode } from './LoopNode';
+export { default as PythonNode } from './PythonNode';
+export { default as TransformNode } from './TransformNode';
 
 export type { StartNodeData } from './StartNode';
 export type { EndNodeData } from './EndNode';
@@ -35,3 +37,5 @@ export type { DatabaseNodeData } from './DatabaseNode';
 export type { FileNodeData } from './FileNode';
 export type { NotificationNodeData } from './NotificationNode';
 export type { LoopNodeData } from './LoopNode';
+export type { PythonNodeData } from './PythonNode';
+export type { TransformNodeData } from './TransformNode';
