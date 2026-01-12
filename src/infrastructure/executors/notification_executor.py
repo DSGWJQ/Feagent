@@ -9,6 +9,7 @@ Infrastructure 层：实现消息通知节点执行器
 """
 
 import json
+import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -63,6 +64,21 @@ class NotificationExecutor(NodeExecutor):
         if not notification_type:
             raise DomainError("通知节点缺少 type 配置")
 
+        # Deterministic E2E mode: never send external notifications.
+        if os.getenv("E2E_TEST_MODE") == "deterministic":
+            first_input = next(iter(inputs.values()), None)
+            preview = str(first_input)
+            if len(preview) > 280:
+                preview = preview[:280] + "..."
+            return {
+                "stub": True,
+                "mode": "deterministic",
+                "type": notification_type,
+                "subject": subject,
+                "message": message,
+                "input_preview": preview,
+            }
+
         if notification_type == "webhook":
             return await self._send_webhook(node.config, message, inputs)
         elif notification_type == "email":
@@ -88,14 +104,20 @@ class NotificationExecutor(NodeExecutor):
         if not url:
             raise DomainError("Webhook 通知缺少 url 配置")
 
-        headers_str = config.get("headers", "{}")
+        headers_raw = config.get("headers", {})
         include_input = config.get("include_input", True)
 
         # 解析 headers
-        try:
-            headers = json.loads(headers_str) if headers_str else {}
-        except json.JSONDecodeError as e:
-            raise DomainError(f"Webhook headers 格式错误: {headers_str}") from e
+        headers = NotificationExecutor._parse_json_value(headers_raw, field="headers", default={})
+        if headers is None:
+            headers = {}
+        if not isinstance(headers, dict):
+            raise DomainError("Webhook headers 必须是 JSON 对象")
+        normalized_headers: dict[str, str] = {}
+        for key, value in headers.items():
+            if not isinstance(key, str):
+                raise DomainError("Webhook headers 必须是字符串键值对")
+            normalized_headers[key] = "" if value is None else str(value)
 
         # 构建 payload
         payload: dict[str, Any] = {"message": message}
@@ -106,7 +128,7 @@ class NotificationExecutor(NodeExecutor):
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(url, json=payload, headers=headers)
+                response = await client.post(url, json=payload, headers=normalized_headers)
                 response.raise_for_status()
 
                 return {
@@ -137,18 +159,20 @@ class NotificationExecutor(NodeExecutor):
         smtp_port = config.get("smtp_port", 587)
         sender = config.get("sender", "")
         sender_password = config.get("sender_password", "")
-        recipients_str = config.get("recipients", "[]")
+        recipients_raw = config.get("recipients", [])
 
         if not smtp_host or not sender or not sender_password:
             raise DomainError("邮件通知缺少必要配置（smtp_host, sender, sender_password）")
 
-        # 解析收件人
-        try:
-            recipients = json.loads(recipients_str)
-            if isinstance(recipients, str):
-                recipients = [recipients]
-        except json.JSONDecodeError as e:
-            raise DomainError(f"邮件收件人格式错误: {recipients_str}") from e
+        recipients = NotificationExecutor._parse_json_value(
+            recipients_raw, field="recipients", default=[]
+        )
+        if isinstance(recipients, str):
+            recipients = [recipients]
+        if recipients is None:
+            recipients = []
+        if not isinstance(recipients, list):
+            raise DomainError("邮件收件人 recipients 必须是 JSON 数组或字符串")
 
         if not recipients:
             raise DomainError("邮件通知缺少收件人配置")
@@ -226,3 +250,19 @@ class NotificationExecutor(NodeExecutor):
             raise DomainError(f"Slack 消息发送失败: {e.response.status_code}") from e
         except httpx.RequestError as e:
             raise DomainError(f"Slack 请求错误: {str(e)}") from e
+
+    @staticmethod
+    def _parse_json_value(value: Any, *, field: str, default: Any) -> Any:
+        if value is None:
+            return default
+        if isinstance(value, dict | list):
+            return value
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return default
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise DomainError(f"通知节点 {field} 格式错误: {value}") from exc
+        return value

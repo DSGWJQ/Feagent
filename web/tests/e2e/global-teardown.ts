@@ -5,6 +5,7 @@
 
 import { FullConfig } from '@playwright/test';
 import { batchCleanupTestData } from './fixtures/workflowFixtures';
+import { stopManagedBackend } from './helpers/backend';
 
 async function globalTeardown(config: FullConfig) {
   console.log('\n========================================');
@@ -38,6 +39,8 @@ async function globalTeardown(config: FullConfig) {
   console.log('\n========================================');
   console.log('Teardown Complete');
   console.log('========================================\n');
+
+  await stopManagedBackend();
 }
 
 export default globalTeardown;

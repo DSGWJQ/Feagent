@@ -295,7 +295,8 @@ class ExecuteWorkflowPayload(BaseModel):
         {
             "action_type": "execute_workflow",
             "workflow_id": "workflow_123",
-            "input_params": {...},
+            "run_id": "run_123",
+            "initial_input": {...},
             "execution_mode": "async",
             "notify_on_completion": True
         }
@@ -305,9 +306,36 @@ class ExecuteWorkflowPayload(BaseModel):
         ActionType.EXECUTE_WORKFLOW, description="动作类型"
     )
     workflow_id: str = Field(..., min_length=1, description="工作流ID")
-    input_params: dict[str, Any] | None = Field(None, description="运行时参数")
+    # Production contract: when run persistence is enabled, execution must carry a run_id
+    # (same contract as REST execute/stream). Keep optional for backward compatibility
+    # in offline tests / rollback mode, but preserve the field so it is not dropped by schema validation.
+    run_id: str | None = Field(None, description="运行ID（生产执行链路要求提供）")
+
+    # Input contract alignment:
+    # - REST execute/stream uses `initial_input`
+    # - WorkflowAgent/DecisionExecutionBridge accept `initial_input` or `input_data`
+    # Keep legacy `input_params` but normalize it into `initial_input` when present.
+    initial_input: Any | None = Field(None, description="执行输入（与 REST execute/stream 对齐）")
+    input_data: Any | None = Field(
+        None, description="执行输入（兼容字段，优先级低于 initial_input）"
+    )
+    input_params: dict[str, Any] | None = Field(
+        None, description="运行时参数（legacy，建议迁移到 initial_input）"
+    )
     execution_mode: ExecutionMode = Field(ExecutionMode.ASYNC, description="执行模式")
     notify_on_completion: bool = Field(True, description="是否在完成时通知")
+
+    @model_validator(mode="after")
+    def normalize_inputs(self) -> "ExecuteWorkflowPayload":
+        # Normalize legacy input fields to the production contract.
+        if self.initial_input is not None:
+            return self
+        if self.input_data is not None:
+            self.initial_input = self.input_data
+            return self
+        if self.input_params is not None:
+            self.initial_input = self.input_params
+        return self
 
 
 class RequestClarificationPayload(BaseModel):

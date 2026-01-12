@@ -53,6 +53,7 @@ class NodeType(str, Enum):
     CONTAINER = "container"  # Phase 4: 容器执行
     FILE = "file"  # 文件操作节点
     DATA_PROCESS = "data_process"  # 数据处理节点
+    NOTIFICATION = "notification"  # 通知节点
     HUMAN = "human"  # 人机交互节点
 
 
@@ -692,6 +693,7 @@ class NodeDefinition:
         "transform": NodeType.DATA_PROCESS,  # 数据转换
         "data_process": NodeType.DATA_PROCESS,  # 数据处理
         "human": NodeType.HUMAN,  # 人机交互
+        "notification": NodeType.NOTIFICATION,  # 通知
     }
 
     @classmethod

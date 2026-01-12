@@ -38,6 +38,7 @@ class CapabilityCatalogService:
         "generic",
         "human",
         "llm",
+        "notification",
         "parallel",
         "python",
         "sequential",

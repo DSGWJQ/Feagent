@@ -5,6 +5,7 @@
 
 import { FullConfig } from '@playwright/test';
 import { batchCleanupTestData } from './fixtures/workflowFixtures';
+import { ensureBackendRunning } from './helpers/backend';
 
 async function globalSetup(config: FullConfig) {
   console.log('\n========================================');
@@ -16,6 +17,9 @@ async function globalSetup(config: FullConfig) {
   console.log(`API URL: ${apiUrl}`);
   console.log(`Test Mode: ${process.env.E2E_TEST_MODE || 'deterministic'}`);
   console.log(`Preserve on Failure: ${process.env.PRESERVE_ON_FAILURE || 'false'}\n`);
+
+  // Ensure backend is available for Seed API and Runs API before cleanup.
+  await ensureBackendRunning();
 
   // 清理残留的测试数据（从上次测试失败或中断留下的）
   try {

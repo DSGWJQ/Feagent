@@ -115,3 +115,9 @@ uploads/
 
 # Generated data/artifacts
 data/metrics/
+
+# Local snapshots / temporary artifacts (should never be committed)
+_snapshots/
+_write_test.tmp
+deltest*.txt
+web/test-results.json

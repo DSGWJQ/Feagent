@@ -45,13 +45,33 @@
     },
     "category": {
       "type": "string",
-      "description": "分类",
-      "enum": ["data", "llm", "api", "code", "control", "container", "custom"]
+      "description": "分类（自由文本，用于 UI 分组/检索）",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "maxLength": 64
     },
     "executor_type": {
       "type": "string",
       "description": "执行器类型",
-      "enum": ["python", "llm", "http", "database", "container", "condition", "loop", "parallel", "api"]
+      "enum": [
+        "api",
+        "code",
+        "condition",
+        "container",
+        "data_process",
+        "database",
+        "file",
+        "generic",
+        "http",
+        "human",
+        "llm",
+        "loop",
+        "notification",
+        "parallel",
+        "python",
+        "sequential",
+        "transform",
+        "workflow"
+      ]
     },
     "parameters": {
       "type": "array",

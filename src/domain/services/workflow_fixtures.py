@@ -10,6 +10,9 @@ Fixture 类型：
 - with_isolated_nodes: 测试主子图约束防御
 - side_effect_workflow: 测试副作用确认流程
 - invalid_config: 测试保存校验失败场景
+- report_pipeline: 覆盖报表/数据流水线
+- reconcile_sync: 覆盖对账/同步流水线（api→transform→db upsert→notification）
+- code_assistant: 覆盖代码/研发助手流水线（file→llm→python）
 
 注意：
 - 此模块仅用于测试环境
@@ -284,6 +287,285 @@ def _create_invalid() -> Workflow:
         edges=[
             Edge.create(source_node_id=start.id, target_node_id=broken.id),
             Edge.create(source_node_id=broken.id, target_node_id=end.id),
+        ],
+        source="e2e_test",
+    )
+
+
+@WorkflowFixtureFactory.register("report_pipeline")
+def _create_report_pipeline() -> Workflow:
+    """创建报表/数据流水线 fixture（P0 扩展）
+
+    用途：覆盖“DB → Transform → Python → LLM → File”的核心链路（无外部依赖）
+    结构：start -> database -> transform -> python -> textModel -> file -> end
+    """
+    start = Node.create(
+        type=NodeType.START,
+        name="Start",
+        config={},
+        position=Position(x=100, y=100),
+    )
+    db = Node.create(
+        type=NodeType.DATABASE,
+        name="DB Query",
+        config={
+            "database_url": "sqlite:///test_deterministic.db",
+            "sql": "SELECT 1 as value",
+            "params": {},
+        },
+        position=Position(x=300, y=100),
+    )
+    transform = Node.create(
+        type=NodeType.TRANSFORM,
+        name="Transform",
+        config={
+            "type": "field_mapping",
+            "mapping": {"data": "input1"},
+        },
+        position=Position(x=500, y=100),
+    )
+    python_node = Node.create(
+        type=NodeType.PYTHON,
+        name="Metric Calculation",
+        config={
+            "code": """
+payload = input1
+rows = payload.get("data") if payload.__class__ is dict else payload
+if rows.__class__ is not list:
+    rows = []
+count = len(rows)
+value = 0
+if count > 0 and rows[0].__class__ is dict and "value" in rows[0]:
+    value = rows[0]["value"]
+result = {"count": count, "value": value}
+""".strip("\n"),
+        },
+        position=Position(x=700, y=100),
+    )
+    llm = Node.create(
+        type=NodeType.TEXT_MODEL,
+        name="LLM Analysis",
+        config={
+            "model": "openai/gpt-5",
+            "temperature": 0,
+            "maxTokens": 200,
+            "prompt": "Summarize the following metrics:\n{input1}",
+        },
+        position=Position(x=900, y=100),
+    )
+    file_node = Node.create(
+        type=NodeType.FILE,
+        name="Export File",
+        config={
+            "operation": "write",
+            "path": "tmp/e2e/report_pipeline.txt",
+            "encoding": "utf-8",
+            "content": "{input1}",
+        },
+        position=Position(x=1100, y=100),
+    )
+    end = Node.create(
+        type=NodeType.END,
+        name="End",
+        config={},
+        position=Position(x=1300, y=100),
+    )
+
+    return Workflow.create(
+        name="[TEST] Report Pipeline",
+        description="E2E test fixture: report pipeline workflow",
+        nodes=[start, db, transform, python_node, llm, file_node, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=db.id),
+            Edge.create(source_node_id=db.id, target_node_id=transform.id),
+            Edge.create(source_node_id=transform.id, target_node_id=python_node.id),
+            Edge.create(source_node_id=python_node.id, target_node_id=llm.id),
+            Edge.create(source_node_id=llm.id, target_node_id=file_node.id),
+            Edge.create(source_node_id=file_node.id, target_node_id=end.id),
+        ],
+        source="e2e_test",
+    )
+
+
+@WorkflowFixtureFactory.register("reconcile_sync")
+def _create_reconcile_sync() -> Workflow:
+    """创建对账/同步流水线 fixture（P0 扩展）
+
+    用途：覆盖“HTTP API → Transform → DB upsert → Notification”的核心链路（deterministic 下不出网）
+    结构：start -> http -> transform -> db_init -> db_upsert -> db_verify -> notification -> end
+    """
+    start = Node.create(
+        type=NodeType.START,
+        name="Start",
+        config={},
+        position=Position(x=100, y=100),
+    )
+    http_node = Node.create(
+        type=NodeType.HTTP_REQUEST,
+        name="Fetch External Orders",
+        config={
+            "url": "https://example.test/orders",
+            "method": "GET",
+            "headers": {},
+            # Deterministic stub support (HttpExecutor reads this in E2E_TEST_MODE=deterministic).
+            "mock_response": {
+                "status": 200,
+                "data": {
+                    "items": [
+                        {"id": "order_1", "amount": 100},
+                        {"id": "order_2", "amount": 200},
+                    ]
+                },
+            },
+        },
+        position=Position(x=300, y=100),
+    )
+    transform = Node.create(
+        type=NodeType.TRANSFORM,
+        name="Map Payload",
+        config={
+            "type": "field_mapping",
+            # Map nested response to a stable shape for downstream templating.
+            "mapping": {"items": "input1.data.items"},
+        },
+        position=Position(x=500, y=100),
+    )
+
+    db_url = "sqlite:///tmp/e2e/reconcile_sync.db"
+    db_init = Node.create(
+        type=NodeType.DATABASE,
+        name="DB Init",
+        config={
+            "database_url": db_url,
+            "sql": "CREATE TABLE IF NOT EXISTS e2e_orders (id TEXT PRIMARY KEY, amount INTEGER, source TEXT);",
+            "params": {},
+        },
+        position=Position(x=700, y=40),
+    )
+    db_upsert = Node.create(
+        type=NodeType.DATABASE,
+        name="DB Upsert",
+        config={
+            "database_url": db_url,
+            "sql": "INSERT OR REPLACE INTO e2e_orders (id, amount, source) VALUES (?, ?, ?);",
+            "params": [
+                "{input1.items[0].id}",
+                "{input1.items[0].amount}",
+                "external",
+            ],
+        },
+        position=Position(x=700, y=140),
+    )
+    db_verify = Node.create(
+        type=NodeType.DATABASE,
+        name="DB Verify",
+        config={
+            "database_url": db_url,
+            "sql": "SELECT id, amount, source FROM e2e_orders ORDER BY id;",
+            "params": {},
+        },
+        position=Position(x=900, y=100),
+    )
+    notify = Node.create(
+        type=NodeType.NOTIFICATION,
+        name="Notify Ops",
+        config={
+            "type": "webhook",
+            "url": "https://example.test/webhook",
+            "headers": {},
+            "include_input": True,
+            "subject": "Reconcile Sync",
+            "message": "Sync OK: {input1[0].id} amount={input1[0].amount}",
+        },
+        position=Position(x=1100, y=100),
+    )
+    end = Node.create(
+        type=NodeType.END,
+        name="End",
+        config={},
+        position=Position(x=1300, y=100),
+    )
+
+    return Workflow.create(
+        name="[TEST] Reconcile Sync",
+        description="E2E test fixture: reconcile/sync workflow",
+        nodes=[start, http_node, transform, db_init, db_upsert, db_verify, notify, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=http_node.id),
+            Edge.create(source_node_id=http_node.id, target_node_id=transform.id),
+            Edge.create(source_node_id=start.id, target_node_id=db_init.id),
+            # Ensure transform output is input1 for db_upsert (edge order matters).
+            Edge.create(source_node_id=transform.id, target_node_id=db_upsert.id),
+            Edge.create(source_node_id=db_init.id, target_node_id=db_upsert.id),
+            Edge.create(source_node_id=db_upsert.id, target_node_id=db_verify.id),
+            Edge.create(source_node_id=db_verify.id, target_node_id=notify.id),
+            Edge.create(source_node_id=notify.id, target_node_id=end.id),
+        ],
+        source="e2e_test",
+    )
+
+
+@WorkflowFixtureFactory.register("code_assistant")
+def _create_code_assistant() -> Workflow:
+    """创建代码/研发助手 fixture（P0 扩展）
+
+    用途：覆盖“File → LLM → Python”链路（deterministic 下不依赖真实 LLM）
+    结构：start -> file(read) -> textModel -> python -> end
+    """
+    start = Node.create(
+        type=NodeType.START,
+        name="Start",
+        config={},
+        position=Position(x=100, y=100),
+    )
+    file_node = Node.create(
+        type=NodeType.FILE,
+        name="Read Source",
+        config={
+            "operation": "read",
+            "path": "README.md",
+            "encoding": "utf-8",
+        },
+        position=Position(x=300, y=100),
+    )
+    llm = Node.create(
+        type=NodeType.TEXT_MODEL,
+        name="LLM Review",
+        config={
+            "model": "openai/gpt-5",
+            "temperature": 0,
+            "maxTokens": 200,
+            "prompt": "Review the following file content and summarize key points:\n{input1.content}",
+        },
+        position=Position(x=500, y=100),
+    )
+    python_node = Node.create(
+        type=NodeType.PYTHON,
+        name="Static Check",
+        config={
+            "code": """
+text = input1 if input1.__class__ is str else str(input1)
+result = {"summary_len": len(text), "ok": len(text) > 0}
+""".strip("\n"),
+        },
+        position=Position(x=700, y=100),
+    )
+    end = Node.create(
+        type=NodeType.END,
+        name="End",
+        config={},
+        position=Position(x=900, y=100),
+    )
+
+    return Workflow.create(
+        name="[TEST] Code Assistant",
+        description="E2E test fixture: code assistant workflow",
+        nodes=[start, file_node, llm, python_node, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=file_node.id),
+            Edge.create(source_node_id=file_node.id, target_node_id=llm.id),
+            Edge.create(source_node_id=llm.id, target_node_id=python_node.id),
+            Edge.create(source_node_id=python_node.id, target_node_id=end.id),
         ],
         source="e2e_test",
     )

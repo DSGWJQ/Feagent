@@ -46,20 +46,26 @@ class TransformExecutor(NodeExecutor):
         if not transform_type:
             raise DomainError("Transform 节点缺少转换类型")
 
+        # Provide stable aliases (input1/input2/...) so config can reference either
+        # upstream node IDs or ordered inputs.
+        normalized_inputs = dict(inputs)
+        for idx, (_key, value) in enumerate(inputs.items(), 1):
+            normalized_inputs[f"input{idx}"] = value
+
         if transform_type == "field_mapping":
-            return self._field_mapping(node.config, inputs)
+            return self._field_mapping(node.config, normalized_inputs)
         elif transform_type == "type_conversion":
-            return self._type_conversion(node.config, inputs)
+            return self._type_conversion(node.config, normalized_inputs)
         elif transform_type == "field_extraction":
-            return self._field_extraction(node.config, inputs)
+            return self._field_extraction(node.config, normalized_inputs)
         elif transform_type == "array_mapping":
-            return self._array_mapping(node.config, inputs)
+            return self._array_mapping(node.config, normalized_inputs)
         elif transform_type == "filtering":
-            return self._filtering(node.config, inputs)
+            return self._filtering(node.config, normalized_inputs)
         elif transform_type == "aggregation":
-            return self._aggregation(node.config, inputs)
+            return self._aggregation(node.config, normalized_inputs)
         elif transform_type == "custom":
-            return self._custom_transform(node.config, inputs)
+            return self._custom_transform(node.config, normalized_inputs)
         else:
             raise DomainError(f"不支持的转换类型: {transform_type}")
 

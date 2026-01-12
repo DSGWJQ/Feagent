@@ -31,6 +31,7 @@ from src.application.use_cases.seed_test_workflow import (
 from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.services.workflow_fixtures import WorkflowFixtureFactory
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.models import ProjectModel
 from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.dependencies.container import get_container
 
@@ -153,6 +154,21 @@ def seed_test_workflow(
     )
 
     try:
+        # Seed fixtures reference `project_id` and the Runs API enforces a FK to `projects.id`.
+        # Ensure the project row exists so E2E runs can be created without leaking
+        # test-only DB setup concerns into the UI flow.
+        if db.get(ProjectModel, request.project_id) is None:
+            db.add(
+                ProjectModel(
+                    id=request.project_id,
+                    name=f"[E2E] {request.project_id}",
+                    description="seeded by /api/test/workflows/seed",
+                    rules_text="",
+                    status="active",
+                    owner_user_id=None,
+                )
+            )
+
         output = use_case.execute(
             SeedTestWorkflowInput(
                 fixture_type=request.fixture_type,

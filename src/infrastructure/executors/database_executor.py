@@ -4,11 +4,10 @@ Infrastructure 层：实现数据库查询节点执行器
 
 支持的操作：
 - SQL 查询（SELECT）
-- 数据插入（INSERT）
-- 数据更新（UPDATE）
-- 数据删除（DELETE）
+- SQL 写入/DDL（INSERT/UPDATE/DELETE/CREATE/ALTER/...）
 """
 
+import json
 import sqlite3
 from typing import Any
 
@@ -51,6 +50,7 @@ class DatabaseExecutor(NodeExecutor):
 
         db_path = database_url.replace("sqlite:///", "")
 
+        conn: sqlite3.Connection | None = None
         try:
             # 连接数据库
             conn = sqlite3.connect(db_path)
@@ -63,26 +63,27 @@ class DatabaseExecutor(NodeExecutor):
             # 执行 SQL
             cursor.execute(sql, params)
 
-            # 获取操作类型
-            sql_upper = sql.strip().upper()
-            if sql_upper.startswith("SELECT"):
-                # 查询操作
+            # sqlite3: cursor.description != None indicates a result set is available.
+            if cursor.description is not None:
                 rows = cursor.fetchall()
-                result = [dict(row) for row in rows]
-            elif sql_upper.startswith(("INSERT", "UPDATE", "DELETE")):
-                # 修改操作
-                conn.commit()
-                result = {"rows_affected": cursor.rowcount}
-            else:
-                raise DomainError(f"不支持的 SQL 操作: {sql_upper}")
+                return [dict(row) for row in rows]
 
-            conn.close()
-            return result
+            conn.commit()
+            return {
+                "rows_affected": cursor.rowcount,
+                "lastrowid": cursor.lastrowid,
+            }
 
         except sqlite3.Error as e:
             raise DomainError(f"数据库查询失败: {str(e)}") from e
         except Exception as e:
             raise DomainError(f"数据库操作错误: {str(e)}") from e
+        finally:
+            try:
+                if conn is not None:
+                    conn.close()
+            except Exception:
+                pass
 
     @staticmethod
     def _prepare_params(params_config: Any, inputs: dict[str, Any]) -> tuple:
@@ -101,8 +102,15 @@ class DatabaseExecutor(NodeExecutor):
         elif isinstance(params_config, list):
             # 列表格式参数
             return tuple(params_config)
-        elif isinstance(params_config, str) and params_config:
-            # 空字符串，无参数
-            return ()
+        elif isinstance(params_config, str):
+            # JSON 字符串参数（允许 "[]" / "{}" / ""）
+            raw = params_config.strip()
+            if not raw:
+                return ()
+            try:
+                decoded = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise DomainError(f"数据库节点 params JSON 格式错误: {params_config}") from exc
+            return DatabaseExecutor._prepare_params(decoded, inputs)
         else:
             return ()

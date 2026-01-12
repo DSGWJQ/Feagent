@@ -22,13 +22,14 @@ export interface TextModelNodeData {
   output?: any;
 }
 
-function TextModelNode({ data, selected }: NodeProps<TextModelNodeData>) {
+function TextModelNode({ data, selected, id }: NodeProps<TextModelNodeData>) {
   const status = data.status || 'idle';
 
   return (
     <Card
       className={`workflow-node ${getStatusColor(status, selected)} ${styles.nodeCardWide}`}
       styles={{ body: { padding: 0 } }}
+      data-testid={`workflow-node-${id}`}
     >
       <div className={styles.nodeHeaderWrapper}>
         <div className={`${styles.nodeIcon} ${styles.nodeTypeTextModel}`}>

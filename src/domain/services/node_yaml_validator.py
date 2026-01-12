@@ -146,6 +146,7 @@ class NodeYamlValidator:
         "data_process",  # Phase 5: 数据处理节点
         "transform",  # transform 是 data_process 的别名
         "human",  # Phase 5: 人机交互节点
+        "notification",  # Phase 5: 通知节点
         # Legacy / workflow templates (kept for backward compatibility with existing definitions).
         "workflow",
         "sequential",
