@@ -13,6 +13,7 @@ Fixture 类型：
 - report_pipeline: 覆盖报表/数据流水线
 - reconcile_sync: 覆盖对账/同步流水线（api→transform→db upsert→notification）
 - code_assistant: 覆盖代码/研发助手流水线（file→llm→python）
+- knowledge_assistant: 覆盖运营/客服知识助理流水线（database→transform→llm）
 
 注意：
 - 此模块仅用于测试环境
@@ -500,6 +501,85 @@ def _create_reconcile_sync() -> Workflow:
             Edge.create(source_node_id=db_upsert.id, target_node_id=db_verify.id),
             Edge.create(source_node_id=db_verify.id, target_node_id=notify.id),
             Edge.create(source_node_id=notify.id, target_node_id=end.id),
+        ],
+        source="e2e_test",
+    )
+
+
+@WorkflowFixtureFactory.register("knowledge_assistant")
+def _create_knowledge_assistant() -> Workflow:
+    """创建运营/客服知识助理 fixture（P0 扩展）
+
+    用途：覆盖"Database → Transform → LLM"链路（deterministic 下不依赖真实 LLM）
+    结构：start -> database(query KB) -> transform -> textModel -> end
+    """
+    start = Node.create(
+        type=NodeType.START,
+        name="Start",
+        config={},
+        position=Position(x=100, y=100),
+    )
+
+    db_url = "sqlite:///tmp/e2e/knowledge_assistant.db"
+    db_query = Node.create(
+        type=NodeType.DATABASE,
+        name="Query Knowledge Base",
+        config={
+            "database_url": db_url,
+            "sql": """
+                SELECT id, question, answer, category
+                FROM knowledge_base
+                WHERE category = 'product_info'
+                ORDER BY id LIMIT 5
+            """.strip(),
+            "params": {},
+        },
+        position=Position(x=300, y=100),
+    )
+
+    transform = Node.create(
+        type=NodeType.TRANSFORM,
+        name="Map KB Data",
+        config={
+            "type": "field_mapping",
+            "mapping": {"kb_records": "input1"},
+        },
+        position=Position(x=500, y=100),
+    )
+
+    llm = Node.create(
+        type=NodeType.TEXT_MODEL,
+        name="Generate Reply",
+        config={
+            "model": "openai/gpt-5",
+            "temperature": 0,
+            "maxTokens": 300,
+            "prompt": """Based on the following knowledge base records, generate a professional customer service reply.
+
+Knowledge Base Records:
+{input1.kb_records}
+
+Please provide a concise and helpful response.""",
+        },
+        position=Position(x=700, y=100),
+    )
+
+    end = Node.create(
+        type=NodeType.END,
+        name="End",
+        config={},
+        position=Position(x=900, y=100),
+    )
+
+    return Workflow.create(
+        name="[TEST] Knowledge Assistant",
+        description="E2E test fixture: operations/customer service knowledge assistant workflow",
+        nodes=[start, db_query, transform, llm, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=db_query.id),
+            Edge.create(source_node_id=db_query.id, target_node_id=transform.id),
+            Edge.create(source_node_id=transform.id, target_node_id=llm.id),
+            Edge.create(source_node_id=llm.id, target_node_id=end.id),
         ],
         source="e2e_test",
     )
