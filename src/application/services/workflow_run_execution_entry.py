@@ -23,6 +23,7 @@ from src.application.services.workflow_event_contract import (
     validate_workflow_execution_sse_event,
 )
 from src.application.use_cases.append_run_event import AppendRunEventInput, AppendRunEventUseCase
+from src.config import settings
 from src.domain.exceptions import DomainValidationError, NotFoundError, RunGateError
 from src.domain.ports.run_repository import RunRepository
 from src.domain.ports.workflow_execution_kernel import WorkflowExecutionKernelPort
@@ -166,6 +167,37 @@ class WorkflowRunExecutionEntry:
             except Exception:
                 return
 
+    def _record_execution_event(
+        self,
+        *,
+        run_id: str,
+        sse_event: Mapping[str, Any],
+        execution_event_sink: Callable[[str, Mapping[str, Any]], None] | None = None,
+        record_execution_events: bool = False,
+    ) -> None:
+        """统一的事件记录入口 - 根据 E2E 模式选择策略
+
+        在 deterministic E2E 模式下，强制使用同步落库以保证测试稳定性；
+        在其他模式下，使用 best-effort 异步策略以保证生产性能。
+
+        Args:
+            run_id: Run ID
+            sse_event: SSE 事件字典
+            execution_event_sink: 可选的外部事件接收器（仅在非 deterministic 模式使用）
+            record_execution_events: 是否记录事件（仅在非 deterministic 模式有效）
+        """
+        if settings.e2e_test_mode == "deterministic":
+            # deterministic 模式：强制同步落库，保证测试稳定
+            self._record_execution_event_sync(run_id=run_id, sse_event=sse_event)
+        else:
+            # 生产/混合模式：保持原有 best-effort 异步策略
+            self._record_execution_event_best_effort(
+                run_id=run_id,
+                sse_event=sse_event,
+                execution_event_sink=execution_event_sink,
+                record_execution_events=record_execution_events,
+            )
+
     def _validate_workflow_or_raise(self, *, workflow_id: str) -> None:
         workflow = self._workflow_repository.get_by_id(workflow_id)
         self._save_validator.validate_or_raise(workflow)
@@ -288,7 +320,7 @@ class WorkflowRunExecutionEntry:
                     run_id=run_id,
                 )
                 validate_workflow_execution_sse_event(confirm_required)
-                self._record_execution_event_best_effort(
+                self._record_execution_event(
                     run_id=run_id,
                     sse_event={**confirm_required, "channel": "execution"},
                     execution_event_sink=execution_event_sink,
@@ -329,7 +361,7 @@ class WorkflowRunExecutionEntry:
                     run_id=run_id,
                 )
                 validate_workflow_execution_sse_event(confirmed_event)
-                self._record_execution_event_best_effort(
+                self._record_execution_event(
                     run_id=run_id,
                     sse_event={**confirmed_event, "channel": "execution"},
                     execution_event_sink=execution_event_sink,
@@ -348,7 +380,7 @@ class WorkflowRunExecutionEntry:
                         run_id=run_id,
                     )
                     validate_workflow_execution_sse_event(denied)
-                    self._record_execution_event_best_effort(
+                    self._record_execution_event(
                         run_id=run_id,
                         sse_event={**denied, "channel": "execution"},
                         execution_event_sink=execution_event_sink,
@@ -390,7 +422,7 @@ class WorkflowRunExecutionEntry:
 
             def _emit_execution_event(event: dict[str, Any]) -> None:
                 validate_workflow_execution_sse_event(event)
-                self._record_execution_event_best_effort(
+                self._record_execution_event(
                     run_id=run_id,
                     sse_event={**event, "channel": "execution"},
                     execution_event_sink=execution_event_sink,
@@ -499,7 +531,7 @@ class WorkflowRunExecutionEntry:
                         last_node_error = event
 
                     if event_type == "workflow_complete":
-                        self._record_execution_event_best_effort(
+                        self._record_execution_event(
                             run_id=run_id,
                             sse_event={**event, "channel": "execution"},
                             execution_event_sink=execution_event_sink,
@@ -527,7 +559,7 @@ class WorkflowRunExecutionEntry:
                         terminal_error = event
                         break
 
-                    self._record_execution_event_best_effort(
+                    self._record_execution_event(
                         run_id=run_id,
                         sse_event={**event, "channel": "execution"},
                         execution_event_sink=execution_event_sink,
@@ -688,7 +720,7 @@ class WorkflowRunExecutionEntry:
                 "error": f"{exc.entity_type} not found: {exc.entity_id}",
             }
             event = self._normalize_sse_event(raw_event=error_event, run_id=run_id)
-            self._record_execution_event_best_effort(
+            self._record_execution_event(
                 run_id=run_id,
                 sse_event={**event, "channel": "execution"},
                 execution_event_sink=execution_event_sink,
@@ -710,7 +742,7 @@ class WorkflowRunExecutionEntry:
                 "error": f"Workflow execution failed: {exc}",
             }
             event = self._normalize_sse_event(raw_event=error_event, run_id=run_id)
-            self._record_execution_event_best_effort(
+            self._record_execution_event(
                 run_id=run_id,
                 sse_event={**event, "channel": "execution"},
                 execution_event_sink=execution_event_sink,

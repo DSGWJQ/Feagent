@@ -85,8 +85,9 @@ class ExecuteWorkflowUseCase:
         业务流程：
         1. 获取工作流（不存在抛出 NotFoundError）
         2. 创建 WorkflowExecutor
-        3. 执行工作流
-        4. 返回执行结果
+        3. 设置事件回调（同步 streaming() 行为）
+        4. 执行工作流
+        5. 返回执行结果及收集的事件
 
         参数：
             input_data: 输入参数
@@ -95,6 +96,7 @@ class ExecuteWorkflowUseCase:
             执行结果字典：
             - execution_log: 执行日志（每个节点的执行记录）
             - final_result: 最终结果（End 节点的输出）
+            - events: 执行过程中收集的事件列表
 
         异常：
             NotFoundError: 工作流不存在
@@ -106,13 +108,23 @@ class ExecuteWorkflowUseCase:
         # 2. 创建执行器
         executor = WorkflowExecutor(executor_registry=self.executor_registry)
 
-        # 3. 执行工作流
+        # 3. 创建事件收集列表
+        events: list[dict[str, Any]] = []
+
+        def event_callback(event_type: str, data: dict[str, Any]) -> None:
+            events.append({"type": event_type, "executor_id": WORKFLOW_EXECUTION_KERNEL_ID, **data})
+
+        # 4. 设置事件回调
+        executor.set_event_callback(event_callback)
+
+        # 5. 执行工作流
         final_result = await executor.execute(workflow, input_data.initial_input)
 
-        # 4. 返回结果
+        # 6. 返回结果
         return {
             "execution_log": executor.execution_log,
             "final_result": final_result,
+            "events": events,
             "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
         }
 

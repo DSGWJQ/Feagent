@@ -22,7 +22,8 @@ interface SeedWorkflowOptions {
     | 'invalid_config'
     | 'report_pipeline'
     | 'reconcile_sync'
-    | 'code_assistant';
+    | 'code_assistant'
+    | 'knowledge_assistant';
   projectId?: string;
   customMetadata?: Record<string, unknown>;
 }
