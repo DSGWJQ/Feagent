@@ -1,0 +1,12 @@
+{
+  "data": [
+    { "name": " Alice ", "email": " alice@example.com ", "age": " 30 ", "amount": "12.50", "joined": "2025-01-02" },
+    { "name": "Alice", "email": "alice@example.com", "age": "30", "amount": "12.50", "joined": "2025/01/02" },
+    { "name": "  Bob", "email": "", "age": "not_a_number", "amount": "$9", "joined": "01-03-2025" },
+    { "name": "Carol", "email": null, "age": "  42", "amount": " 0 ", "joined": "" },
+    { "name": "Dave", "email": "dave@example.com", "age": "", "amount": " 100 ", "joined": "2025-02-10" },
+    { "name": "Eve", "email": " eve@example.com", "age": "18", "amount": "18", "joined": "2025-02-11" },
+    { "name": "Eve ", "email": "eve@example.com ", "age": "18", "amount": "18.0", "joined": "2025-02-11" },
+    { "name": "  ", "email": "   ", "age": "   ", "amount": "   ", "joined": "   " }
+  ]
+}

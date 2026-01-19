@@ -49,7 +49,7 @@ def upgrade() -> None:
         sa.Column("workflow_id", sa.String(length=36), nullable=True),
         sa.ForeignKeyConstraint(
             ["workflow_id"],
-            "workflows.id",
+            ["workflows.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -67,7 +67,7 @@ def upgrade() -> None:
         sa.Column("metadata", sa.JSON(), nullable=True),
         sa.ForeignKeyConstraint(
             ["document_id"],
-            "documents.id",
+            ["documents.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -90,7 +90,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(
             ["chunk_id"],
-            "document_chunks.id",
+            ["document_chunks.id"],
         ),
         sa.PrimaryKeyConstraint("chunk_id"),
     )

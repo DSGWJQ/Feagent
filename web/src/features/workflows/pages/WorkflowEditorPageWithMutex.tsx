@@ -27,7 +27,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button, message, Empty, Spin, Modal, Alert, Drawer, Input, Collapse, Typography } from 'antd';
-import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined, UndoOutlined, RedoOutlined, WarningOutlined, HistoryOutlined, ExperimentOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined, UndoOutlined, RedoOutlined, WarningOutlined, HistoryOutlined, ExperimentOutlined, SearchOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ResearchResultDisplay, type ResearchResult } from '@/components/ResearchResultDisplay';
 import { useRunReplay, type RunEvent } from '@/hooks/useRunReplay';
@@ -123,6 +123,23 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     (import.meta.env.VITE_DISABLE_RUN_PERSISTENCE ?? 'false').toString().toLowerCase() === 'true';
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_, setInteractionMode] = useState('idle');
+
+  // Execution input (JSON) is user-configurable so deterministic workflows can run end-to-end.
+  const [executionInputModalOpen, setExecutionInputModalOpen] = useState(false);
+  const [executionInputJson, setExecutionInputJson] = useState<string>(() =>
+    JSON.stringify(
+      {
+        data: [
+          { name: ' Alice ', email: ' alice@example.com ', age: ' 30 ', amount: '12.50' },
+          { name: 'Alice', email: 'alice@example.com', age: '30', amount: '12.50' },
+          { name: '  Bob', email: '', age: 'not_a_number', amount: '$9' },
+          { name: 'Carol', email: null, age: '  42', amount: ' 0 ' },
+        ],
+      },
+      null,
+      2
+    )
+  );
 
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
@@ -1024,16 +1041,22 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       return;
     }
 
-    if (disableRunPersistence) {
-      message.error('Run 持久化功能已禁用，无法执行');
-      return;
-    }
-
     // 先保存工作流
     const saveSuccess = await handleSave();
     if (!saveSuccess) {
       message.error('保存失败，无法执行');
       return;
+    }
+
+    let initialInput: any = {};
+    const trimmed = executionInputJson.trim();
+    if (trimmed) {
+      try {
+        initialInput = JSON.parse(trimmed);
+      } catch {
+        message.error('Execution Input 必须是合法 JSON');
+        return;
+      }
     }
 
     // 记录开始时间
@@ -1042,12 +1065,9 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     // MVP Step 2: 优先复用 lastRunId (来自 plan/compile 流程)
     let runId: string | undefined = lastRunId ?? undefined;
 
-    // 如果没有 lastRunId，尝试创建新的 Run
-    if (!runId) {
-      if (!effectiveProjectId) {
-        message.error('缺少 projectId，无法创建 Run');
-        return;
-      }
+    // 如果没有 lastRunId，且启用 run 持久化且有 projectId，则尝试创建新的 Run。
+    // 否则降级为 legacy execute（不带 run_id），保证 demo 可跑通。
+    if (!runId && !disableRunPersistence && effectiveProjectId) {
       try {
         const token = localStorage.getItem('authToken');
         const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -1066,22 +1086,22 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         } else {
           const errData = await runRes.json().catch(() => ({}));
           console.warn('Failed to create run:', { status: runRes.status, errData });
-          message.error('无法创建 Run，请稍后重试');
-          return;
+          message.warning('无法创建 Run：将以 legacy 模式执行（无 run session）');
         }
       } catch (err) {
         console.warn('Failed to create run:', err);
-        message.error('无法创建 Run，请检查网络后重试');
-        return;
+        message.warning('无法创建 Run：将以 legacy 模式执行（无 run session）');
       }
     }
 
     // 执行工作流
-    execute(workflowId, {
-      initial_input: { message: 'test' },
-      run_id: runId,
-    });
-  }, [workflowId, execute, handleSave, effectiveProjectId, lastRunId, disableRunPersistence]);
+    execute(
+      workflowId,
+      runId && !disableRunPersistence
+        ? { initial_input: initialInput, run_id: runId }
+        : { initial_input: initialInput }
+    );
+  }, [workflowId, execute, handleSave, effectiveProjectId, lastRunId, disableRunPersistence, executionInputJson]);
 
   // 初始化时加载工作流
   useEffect(() => {
@@ -1191,6 +1211,17 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             Run
           </NeoButton>
 
+          <NeoButton
+            variant="secondary"
+            icon={<FileTextOutlined />}
+            onClick={() => setExecutionInputModalOpen(true)}
+            disabled={isExecuting || isGenerating || isCompiling}
+            data-testid="workflow-input-button"
+            title="Configure execution input (JSON)"
+          >
+            Input
+          </NeoButton>
+
           {/* MVP Step 1: Research Plan 按钮 */}
           <NeoButton
             variant="secondary"
@@ -1240,6 +1271,31 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
            />
         </div>
       </div>
+
+      <Modal
+        title="Execution Input (JSON)"
+        open={executionInputModalOpen}
+        onCancel={() => setExecutionInputModalOpen(false)}
+        onOk={() => setExecutionInputModalOpen(false)}
+        okText="Done"
+        cancelText="Cancel"
+        width={760}
+        destroyOnClose={false}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="该 JSON 会作为 workflow initial_input 传入 Start 节点，并流入后续节点（input1）。"
+          style={{ marginBottom: 12 }}
+        />
+        <Input.TextArea
+          data-testid="workflow-input-textarea"
+          value={executionInputJson}
+          onChange={(e) => setExecutionInputJson(e.target.value)}
+          autoSize={{ minRows: 12, maxRows: 28 }}
+          placeholder='例如：{ \"data\": [ { \"name\": \" Alice \", \"age\": \"30\" } ] }'
+        />
+      </Modal>
 
       {replayEvents.length > 0 && (
         <div
