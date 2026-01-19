@@ -168,6 +168,7 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
       list.push({
         id: executionSummary.id,
         role: 'assistant',
+        type: 'execution_summary',
         content: `${icon} ${successText}\n\n` +
           `📊 执行统计：\n` +
           `• 总节点数：${data.totalNodes}\n` +

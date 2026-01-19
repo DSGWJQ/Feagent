@@ -500,9 +500,79 @@ async def execute_workflow_streaming(
     """Execute a workflow and stream progress via SSE."""
 
     if settings.disable_run_persistence:
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail="Runs API is disabled by feature flag (disable_run_persistence).",
+        # Rollback path: stream directly via the legacy workflow engine (no run_id, no Runs API).
+        # This keeps `/api/workflows/{workflow_id}/execute/stream` as the alternate execution path
+        # when Runs are disabled (see runs.py warnings/Link headers).
+        from src.application.use_cases.execute_workflow import (
+            ExecuteWorkflowInput,
+            ExecuteWorkflowUseCase,
+        )
+
+        workflow_repo = container.workflow_repository(db)
+        workflow = workflow_repo.get_by_id(workflow_id)
+        if not workflow:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow not found: {workflow_id}",
+            )
+
+        try:
+            WorkflowSaveValidator(
+                executor_registry=container.executor_registry,
+                tool_repository=container.tool_repository(db),
+            ).validate_or_raise(workflow)
+        except DomainValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=exc.to_dict(),
+            ) from exc
+        except DomainError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        use_case = ExecuteWorkflowUseCase(
+            workflow_repository=workflow_repo,
+            executor_registry=container.executor_registry,
+        )
+
+        async def _legacy_event_generator() -> AsyncGenerator[str, None]:
+            started = time.perf_counter()
+            events_sent = 0
+            last_executor_id: str | None = None
+            try:
+                async for event in use_case.execute_streaming(
+                    ExecuteWorkflowInput(
+                        workflow_id=workflow_id, initial_input=request.initial_input
+                    )
+                ):
+                    if await http_request.is_disconnected():
+                        return
+                    last_executor_id = event.get("executor_id") if isinstance(event, dict) else None
+                    events_sent += 1
+                    yield f"data: {json.dumps(jsonable_encoder(event))}\n\n"
+            finally:
+                duration_ms = int((time.perf_counter() - started) * 1000)
+                logger.info(
+                    "workflow_execute_stream_done",
+                    extra={
+                        "workflow_id": workflow_id,
+                        "executor_id": last_executor_id,
+                        "duration_ms": duration_ms,
+                        "events_sent": events_sent,
+                        "run_id_present": False,
+                        "run_persistence_enabled": False,
+                    },
+                )
+
+        return StreamingResponse(
+            _legacy_event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
         )
 
     run_id = request.run_id

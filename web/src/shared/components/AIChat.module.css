@@ -2,7 +2,7 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    background-color: var(--neo-surface-1) !important;
+    background-color: var(--neo-surface-1, var(--neo-surface-2)) !important;
     border: 1px solid var(--neo-border) !important;
     border-radius: var(--radius-md) !important;
 }
@@ -16,7 +16,7 @@
 
 .body {
     flex: 1;
-    background-color: var(--neo-surface-1) !important;
+    background-color: var(--neo-surface-1, var(--neo-surface-2)) !important;
     padding: var(--spacing-4) !important;
     overflow: hidden;
     display: flex;
@@ -93,6 +93,14 @@
     border: 1px dashed var(--neo-border);
 }
 
+.textExecutionSummary {
+    background-color: transparent;
+    color: var(--neo-text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .textArea {
     background-color: var(--neo-surface-2) !important;
     border: 1px solid var(--neo-border) !important;
@@ -111,7 +119,7 @@
 }
 
 .sendButton:disabled {
-    background-color: var(--neo-surface-3) !important;
+    background-color: var(--neo-surface-3, var(--neo-surface-2)) !important;
     color: var(--neo-text-3) !important;
 }
 
