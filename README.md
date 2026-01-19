@@ -5,8 +5,7 @@
 [![React](https://img.shields.io/badge/React-18%2B-blue)](https://react.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-![Uploading image.png…]()
-
+<img width="2508" height="1126" alt="image" src="https://github.com/user-attachments/assets/97941e6a-83da-4d4b-9854-665bb7354004" />
 
 
 ## ✨ 特性亮点
