@@ -5,6 +5,9 @@
 [![React](https://img.shields.io/badge/React-18%2B-blue)](https://react.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+<img width="2165" height="1148" alt="image" src="https://github.com/user-attachments/assets/ca0c5744-04c2-45fe-a8b8-bc421b7b803b" />
+
+
 ## ✨ 特性亮点
 
 ### 🎙️ 对话式工作流生成与编辑
