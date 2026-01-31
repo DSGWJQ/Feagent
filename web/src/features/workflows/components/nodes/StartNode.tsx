@@ -12,7 +12,7 @@ import styles from '../../styles/workflows.module.css';
 
 export interface StartNodeData {
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function StartNode({ data, selected }: NodeProps<StartNodeData>) {

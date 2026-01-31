@@ -1,6 +1,5 @@
 import React from 'react';
 import classNames from 'classnames';
-import { useTheme } from '@/shared/contexts/ThemeContext';
 import styles from './PageShell.module.css';
 
 export interface PageShellProps {

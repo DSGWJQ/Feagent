@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -40,15 +41,23 @@ class LangGraphWorkflowExecutorAdapter:
             raise DomainError("feature_disabled: langgraph workflow executor is not enabled")
 
         workflow = self._workflow_repository.get_by_id(workflow_id)
+        started_at = time.perf_counter()
         final_result, execution_log = await execute_workflow_async(
             workflow,
             initial_input=input_data,
             executor_registry=self._executor_registry,
         )
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
 
         return {
             "execution_log": execution_log,
             "final_result": final_result,
+            "execution_summary": {
+                "total_nodes": len(execution_log),
+                "success_nodes": len(execution_log),
+                "failed_nodes": 0,
+                "duration_ms": duration_ms,
+            },
         }
 
     async def execute_streaming(
@@ -65,12 +74,14 @@ class LangGraphWorkflowExecutorAdapter:
             def _on_event(event_type: str, data: dict[str, Any]) -> None:
                 events.append({"type": event_type, **data})
 
+            started_at = time.perf_counter()
             final_result, execution_log = await execute_workflow_async(
                 workflow,
                 initial_input=input_data,
                 executor_registry=self._executor_registry,
                 event_callback=_on_event,
             )
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
         except DomainError as exc:
             for event in events:
                 yield event
@@ -88,4 +99,10 @@ class LangGraphWorkflowExecutorAdapter:
             "type": "workflow_complete",
             "result": final_result,
             "execution_log": execution_log,
+            "execution_summary": {
+                "total_nodes": len(execution_log),
+                "success_nodes": len(execution_log),
+                "failed_nodes": 0,
+                "duration_ms": duration_ms,
+            },
         }

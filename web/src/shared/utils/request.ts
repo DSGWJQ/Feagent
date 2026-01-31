@@ -10,7 +10,7 @@
  * - 2024-01-15: 调整响应拦截器以适配 FastAPI 后端（直接返回数据，不包装）
  */
 
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
 import { message } from 'antd';
 
 /**
@@ -118,22 +118,34 @@ export default request;
  * - 提供更好的 TypeScript 类型推断
  * - 简化 API 调用代码
  */
-export const get = <T = any>(url: string, config?: any): Promise<T> => {
+export const get = <T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> => {
   return request.get(url, config);
 };
 
-export const post = <T = any>(url: string, data?: any, config?: any): Promise<T> => {
+export const post = <T = unknown>(
+  url: string,
+  data?: unknown,
+  config?: AxiosRequestConfig
+): Promise<T> => {
   return request.post(url, data, config);
 };
 
-export const put = <T = any>(url: string, data?: any, config?: any): Promise<T> => {
+export const put = <T = unknown>(
+  url: string,
+  data?: unknown,
+  config?: AxiosRequestConfig
+): Promise<T> => {
   return request.put(url, data, config);
 };
 
-export const del = <T = any>(url: string, config?: any): Promise<T> => {
+export const del = <T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> => {
   return request.delete(url, config);
 };
 
-export const patch = <T = any>(url: string, data?: any, config?: any): Promise<T> => {
+export const patch = <T = unknown>(
+  url: string,
+  data?: unknown,
+  config?: AxiosRequestConfig
+): Promise<T> => {
   return request.patch(url, data, config);
 };

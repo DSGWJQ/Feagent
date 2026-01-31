@@ -15,7 +15,7 @@ export interface StructuredOutputNodeData {
   mode: string;
   schema?: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function StructuredOutputNode({

@@ -19,7 +19,7 @@ export interface TextModelNodeData {
   structuredOutput?: boolean;
   schema?: string;
   schemaName?: string;
-  output?: any;
+  output?: unknown;
 }
 
 function TextModelNode({ data, selected, id }: NodeProps<TextModelNodeData>) {
@@ -75,11 +75,20 @@ function TextModelNode({ data, selected, id }: NodeProps<TextModelNodeData>) {
           <p className={styles.nodeOutputLabel}>Output:</p>
           <div className={styles.nodeOutputContent}>
             <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-              {typeof data.output === 'object' && data.output.text
-                ? data.output.text
-                : typeof data.output === 'string'
-                  ? data.output
-                  : JSON.stringify(data.output, null, 2)}
+              {(() => {
+                if (typeof data.output === 'string') {
+                  return data.output;
+                }
+                if (
+                  data.output &&
+                  typeof data.output === 'object' &&
+                  'text' in data.output &&
+                  typeof (data.output as { text?: unknown }).text === 'string'
+                ) {
+                  return (data.output as { text: string }).text;
+                }
+                return JSON.stringify(data.output, null, 2);
+              })()}
             </pre>
           </div>
         </div>

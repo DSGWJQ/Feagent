@@ -25,11 +25,26 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { message } from 'antd';
 import { agentsApi } from '@/features/agents/api/agentsApi';
 import type {
-  Agent,
   CreateAgentDto,
   UpdateAgentDto,
   AgentListParams,
 } from '@/shared/types';
+
+type ApiError = {
+  response?: {
+    data?: {
+      detail?: string;
+    };
+  };
+};
+
+const getErrorDetail = (error: unknown, fallback: string) => {
+  if (!error || typeof error !== 'object') {
+    return fallback;
+  }
+  const maybe = error as ApiError;
+  return maybe.response?.data?.detail || fallback;
+};
 
 /**
  * Query Keys
@@ -124,8 +139,8 @@ export const useCreateAgent = () => {
 
       message.success('创建成功');
     },
-    onError: (error: any) => {
-      message.error(error?.response?.data?.detail || '创建失败');
+    onError: (error: unknown) => {
+      message.error(getErrorDetail(error, '创建失败'));
     },
   });
 };
@@ -152,8 +167,8 @@ export const useUpdateAgent = () => {
 
       message.success('更新成功');
     },
-    onError: (error: any) => {
-      message.error(error?.response?.data?.detail || '更新失败');
+    onError: (error: unknown) => {
+      message.error(getErrorDetail(error, '更新失败'));
     },
   });
 };
@@ -194,8 +209,8 @@ export const useDeleteAgent = () => {
 
       message.success('删除成功');
     },
-    onError: (error: any) => {
-      message.error(error?.response?.data?.detail || '删除失败');
+    onError: (error: unknown) => {
+      message.error(getErrorDetail(error, '删除失败'));
     },
   });
 };

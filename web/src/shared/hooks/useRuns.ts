@@ -20,11 +20,25 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { message } from 'antd';
 import { runsApi } from '@/features/runs/api/runsApi';
 import type {
-  Run,
   CreateRunDto,
   RunListParams,
-  RunStatus,
 } from '@/shared/types';
+
+type ApiError = {
+  response?: {
+    data?: {
+      detail?: string;
+    };
+  };
+};
+
+const getErrorDetail = (error: unknown, fallback: string) => {
+  if (!error || typeof error !== 'object') {
+    return fallback;
+  }
+  const maybe = error as ApiError;
+  return maybe.response?.data?.detail || fallback;
+};
 
 /**
  * Query Keys
@@ -155,8 +169,8 @@ export const useCreateRun = () => {
 
       message.success('开始执行');
     },
-    onError: (error: any) => {
-      message.error(error?.response?.data?.detail || '执行失败');
+    onError: (error: unknown) => {
+      message.error(getErrorDetail(error, '执行失败'));
     },
   });
 };

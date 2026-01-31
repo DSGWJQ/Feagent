@@ -16,8 +16,8 @@ export type CompileResponse = {
   id: string;
   name: string;
   description: string | null;
-  nodes: any[];
-  edges: any[];
+  nodes: unknown[];
+  edges: unknown[];
   warnings: string[];
 };
 
@@ -53,7 +53,8 @@ export function useResearchPlan(options: UseResearchPlanOptions) {
   }, [projectId]);
 
   const generatePlan = useCallback(
-    async (goal: string, _runId: string | null) => {
+    async (goal: string, runId: string | null) => {
+      void runId;
       if (!goal.trim()) return;
       setIsGenerating(true);
       setError(null);
@@ -81,7 +82,9 @@ export function useResearchPlan(options: UseResearchPlanOptions) {
   );
 
   const compilePlan = useCallback(
-    async (_plan: ResearchPlanDTO, _runId: string | null) => {
+    async (planInput: ResearchPlanDTO, runId: string | null) => {
+      void planInput;
+      void runId;
       setIsCompiling(true);
       setError(null);
       try {

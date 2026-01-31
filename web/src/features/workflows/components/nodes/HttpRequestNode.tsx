@@ -16,7 +16,7 @@ export interface HttpRequestNodeData {
   headers?: string;
   body?: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function HttpRequestNode({ data, selected, id }: NodeProps<HttpRequestNodeData>) {

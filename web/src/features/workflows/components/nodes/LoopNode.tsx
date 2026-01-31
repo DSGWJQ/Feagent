@@ -26,7 +26,7 @@ export interface LoopNodeData {
   current_index?: number;
   total?: number;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function LoopNode({ data, selected, id }: NodeProps<LoopNodeData>) {

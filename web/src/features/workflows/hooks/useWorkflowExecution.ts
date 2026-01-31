@@ -24,7 +24,7 @@ export interface NodeStatusMap {
  * 节点输出映射
  */
 export interface NodeOutputMap {
-  [nodeId: string]: any;
+  [nodeId: string]: unknown;
 }
 
 /**
@@ -44,7 +44,7 @@ export interface UseWorkflowExecutionReturn {
   /** 节点输出映射 */
   nodeOutputMap: NodeOutputMap;
   /** 最终结果 */
-  finalResult: any;
+  finalResult: unknown;
   /** 执行工作流 */
   execute: (workflowId: string, request: ExecuteWorkflowRequest) => void;
   /** 取消执行 */
@@ -71,7 +71,7 @@ export function useWorkflowExecution(): UseWorkflowExecutionReturn {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [nodeStatusMap, setNodeStatusMap] = useState<NodeStatusMap>({});
   const [nodeOutputMap, setNodeOutputMap] = useState<NodeOutputMap>({});
-  const [finalResult, setFinalResult] = useState<any>(null);
+  const [finalResult, setFinalResult] = useState<unknown>(null);
 
   const cancelFnRef = useRef<(() => void) | null>(null);
 

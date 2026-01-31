@@ -28,7 +28,7 @@ export function getStatusColor(
 /**
  * 获取节点默认配置
  */
-export function getDefaultNodeData(type: string): Record<string, any> {
+export function getDefaultNodeData(type: string): Record<string, unknown> {
   switch (type) {
     case 'start':
       return {};
@@ -55,7 +55,7 @@ export function getDefaultNodeData(type: string): Record<string, any> {
       };
     case 'imageGeneration':
       return {
-        model: 'gemini-2.5-flash-image',
+        model: 'openai/dall-e-3',
         aspectRatio: '1:1',
         outputFormat: 'png',
       };

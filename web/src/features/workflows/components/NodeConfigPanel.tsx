@@ -32,7 +32,7 @@ interface NodeConfigPanelProps {
   open: boolean;
   node: Node | null;
   onClose: () => void;
-  onSave: (nodeId: string, data: any) => void;
+  onSave: (nodeId: string, data: Record<string, unknown>) => void;
 }
 
 export default function NodeConfigPanel({
@@ -41,7 +41,7 @@ export default function NodeConfigPanel({
   onClose,
   onSave,
 }: NodeConfigPanelProps) {
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<Record<string, unknown>>();
 
   const isToolNode = node?.type === 'tool';
   const { data: tools = [], isLoading: toolsLoading } = useQuery({
@@ -56,11 +56,14 @@ export default function NodeConfigPanel({
 
   useEffect(() => {
     if (node) {
-      const data = (node.data ?? {}) as any;
+      const data = (node.data ?? {}) as Record<string, unknown>;
       const normalized: Record<string, unknown> = { ...data };
 
-      if (node.type === 'database' && data.params && typeof data.params !== 'string') {
-        normalized.params = JSON.stringify(data.params, null, 2);
+      if (node.type === 'database') {
+        const params = data['params'];
+        if (params && typeof params !== 'string') {
+          normalized.params = JSON.stringify(params, null, 2);
+        }
       }
 
       if (node.type === 'transform') {
@@ -81,7 +84,7 @@ export default function NodeConfigPanel({
   }, [node, form]);
 
   const handleSave = () => {
-    const values = form.getFieldsValue() as Record<string, any>;
+    const values = form.getFieldsValue() as Record<string, unknown>;
 
     if (node?.type === 'transform') {
       const jsonFields = ['mapping', 'conversions', 'fields', 'operations', 'aggregation', 'element_transform'] as const;
@@ -95,7 +98,7 @@ export default function NodeConfigPanel({
         }
         try {
           values[field] = JSON.parse(trimmed);
-        } catch (err) {
+        } catch {
           message.error(`Invalid JSON in ${field}`);
           return;
         }

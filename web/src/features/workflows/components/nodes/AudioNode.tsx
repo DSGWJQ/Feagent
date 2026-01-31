@@ -16,7 +16,7 @@ export interface AudioNodeData {
   speed: number;
   text?: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function AudioNode({ data, selected }: NodeProps<AudioNodeData>) {

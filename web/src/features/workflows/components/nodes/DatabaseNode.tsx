@@ -20,9 +20,9 @@ const { TextArea } = Input;
 export interface DatabaseNodeData {
   database_url: string;
   sql: string;
-  params?: Record<string, any>;
+  params?: Record<string, unknown>;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function DatabaseNode({ data, selected, id }: NodeProps<DatabaseNodeData>) {

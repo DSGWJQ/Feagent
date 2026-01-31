@@ -11,6 +11,9 @@
 - 输入输出明确：使用 Input/Output 对象
 """
 
+import asyncio
+import contextlib
+import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
@@ -118,7 +121,9 @@ class ExecuteWorkflowUseCase:
         executor.set_event_callback(event_callback)
 
         # 5. 执行工作流
+        started_at = time.perf_counter()
         final_result = await executor.execute(workflow, input_data.initial_input)
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
 
         # 6. 返回结果
         return {
@@ -126,6 +131,12 @@ class ExecuteWorkflowUseCase:
             "final_result": final_result,
             "events": events,
             "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
+            "execution_summary": {
+                "total_nodes": len(executor.execution_log),
+                "success_nodes": len(executor.execution_log),
+                "failed_nodes": 0,
+                "duration_ms": duration_ms,
+            },
         }
 
     async def execute_streaming(
@@ -160,36 +171,68 @@ class ExecuteWorkflowUseCase:
         # 2. 创建执行器
         executor = WorkflowExecutor(executor_registry=self.executor_registry)
 
-        # 3. 创建事件队列
-        events: list[dict[str, Any]] = []
+        # 3. 创建事件队列（实时推送，避免阻塞导致 SSE 超时）
+        events: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        done = asyncio.Event()
+        error: DomainError | None = None
+        final_result: Any = None
+        started_at = time.perf_counter()
 
         def event_callback(event_type: str, data: dict[str, Any]) -> None:
-            events.append({"type": event_type, "executor_id": WORKFLOW_EXECUTION_KERNEL_ID, **data})
+            try:
+                events.put_nowait(
+                    {"type": event_type, "executor_id": WORKFLOW_EXECUTION_KERNEL_ID, **data}
+                )
+            except asyncio.QueueFull:
+                # KISS: drop events on overflow to protect server responsiveness.
+                pass
 
         # 4. 设置事件回调
         executor.set_event_callback(event_callback)
 
+        async def _run_workflow() -> None:
+            nonlocal final_result, error
+            try:
+                final_result = await executor.execute(workflow, input_data.initial_input)
+            except DomainError as exc:
+                error = exc
+            finally:
+                done.set()
+
+        task = asyncio.create_task(_run_workflow())
         try:
-            # 5. 执行工作流
-            final_result = await executor.execute(workflow, input_data.initial_input)
-        except DomainError as exc:
-            for event in events:
+            while True:
+                if done.is_set() and events.empty():
+                    break
+                try:
+                    event = await asyncio.wait_for(events.get(), timeout=0.1)
+                except TimeoutError:
+                    continue
                 yield event
+        finally:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+        if error is not None:
             yield {
                 "type": "workflow_error",
-                "error": str(exc),
+                "error": str(error),
                 "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
             }
             return
 
-        # 6. 生成所有事件
-        for event in events:
-            yield event
-
-        # 7. 生成 workflow_complete 事件
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
         yield {
             "type": "workflow_complete",
             "result": final_result,
             "execution_log": executor.execution_log,
             "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
+            "execution_summary": {
+                "total_nodes": len(executor.execution_log),
+                "success_nodes": len(executor.execution_log),
+                "failed_nodes": 0,
+                "duration_ms": duration_ms,
+            },
         }

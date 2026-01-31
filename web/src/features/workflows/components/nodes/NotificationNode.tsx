@@ -25,7 +25,7 @@ export interface NotificationNodeData {
   url: string;
   include_input: boolean;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function NotificationNode({ data, selected, id }: NodeProps<NotificationNodeData>) {

@@ -17,7 +17,7 @@
 
 import { Form, Input, Button, App } from 'antd';
 import { useCreateAgent } from '@/shared/hooks';
-import type { CreateAgentDto, Agent } from '@/shared/types';
+import type { Agent } from '@/shared/types';
 
 const { TextArea } = Input;
 
@@ -39,8 +39,24 @@ interface CreateAgentFormProps {
   onSuccess?: (agent: Agent) => void;
 
   /** 创建失败后的回调 */
-  onError?: (error: any) => void;
+  onError?: (error: unknown) => void;
 }
+
+type ApiError = {
+  response?: {
+    data?: {
+      detail?: string;
+    };
+  };
+};
+
+const getErrorDetail = (error: unknown, fallback: string) => {
+  if (!error || typeof error !== 'object') {
+    return fallback;
+  }
+  const maybe = error as ApiError;
+  return maybe.response?.data?.detail || fallback;
+};
 
 export const CreateAgentForm: React.FC<CreateAgentFormProps> = ({
   onSuccess,
@@ -109,8 +125,8 @@ export const CreateAgentForm: React.FC<CreateAgentFormProps> = ({
 
       // 解析错误信息
       const errorMessage =
-        (error as any)?.response?.data?.detail ||
-        (error as Error).message ||
+        getErrorDetail(error, '') ||
+        (error instanceof Error ? error.message : '') ||
         '创建失败，请检查网络连接后重试';
 
       // 显示错误提示（支持重试）

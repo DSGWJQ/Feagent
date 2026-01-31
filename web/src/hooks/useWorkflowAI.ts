@@ -79,11 +79,17 @@ export const useWorkflowAI = ({
               }
 
               if (event.type === 'planning_step') {
-                const meta = (event.metadata ?? {}) as any;
-                const stepNumber = meta.step_number ?? meta.stepNumber;
-                const thought = meta.thought ?? event.content ?? '';
-                const action = meta.action;
-                const observation = meta.observation;
+                const meta = event.metadata ?? {};
+                const stepNumber =
+                  typeof meta['step_number'] === 'number'
+                    ? meta['step_number']
+                    : typeof meta['stepNumber'] === 'number'
+                      ? meta['stepNumber']
+                      : undefined;
+                const thought =
+                  typeof meta['thought'] === 'string' ? meta['thought'] : event.content ?? '';
+                const action = meta['action'];
+                const observation = meta['observation'];
                 const label = `AI规划${stepNumber ? ` #${stepNumber}` : ''}`;
 
                 const parts: string[] = [];
@@ -123,17 +129,25 @@ export const useWorkflowAI = ({
               if (event.type === 'error') {
                 setStreamingMessage(null);
 
-                const detail = event.metadata?.detail as any;
-                if (detail && typeof detail === 'object' && Array.isArray(detail.errors)) {
-                  const preview = detail.errors
+                const detail = event.metadata?.detail;
+                if (
+                  detail &&
+                  typeof detail === 'object' &&
+                  Array.isArray((detail as { errors?: unknown[] }).errors)
+                ) {
+                  const preview = (detail as { errors: unknown[] }).errors
                     .slice(0, 6)
-                    .map((e: any) => {
-                      const code = e?.code ?? 'error';
-                      const path = e?.path ? `@ ${e.path}` : '';
+                    .map((e: unknown) => {
+                      const entry = e as { code?: unknown; path?: unknown };
+                      const code = typeof entry.code === 'string' ? entry.code : 'error';
+                      const path = typeof entry.path === 'string' ? `@ ${entry.path}` : '';
                       return `${code} ${path}`.trim();
                     })
                     .join('; ');
-                  const message = detail.message || event.content || 'workflow validation failed';
+                  const message =
+                    typeof (detail as { message?: unknown }).message === 'string'
+                      ? (detail as { message: string }).message
+                      : event.content || 'workflow validation failed';
                   reject(new Error(preview ? `${message} (${preview})` : message));
                 } else {
                   reject(new Error(event.content || 'chat-stream failed'));

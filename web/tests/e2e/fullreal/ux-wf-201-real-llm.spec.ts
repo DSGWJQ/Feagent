@@ -45,7 +45,7 @@ if (RUN_LEGACY_FULLREAL_EXECUTION_TESTS) {
     seedWorkflow,
   }) => {
     let workflowId: string | undefined;
-    let runId: string | null = null;
+    const runId: string | null = null;
 
     try {
       // 1. Create test workflow using seed fixture
@@ -174,7 +174,7 @@ if (RUN_LEGACY_FULLREAL_EXECUTION_TESTS) {
     seedWorkflow,
   }) => {
     let workflowId: string | undefined;
-    let runId: string | null = null;
+    const runId: string | null = null;
     let confirmId: string | null = null;
 
     try {
@@ -302,7 +302,7 @@ if (RUN_LEGACY_FULLREAL_EXECUTION_TESTS) {
     seedWorkflow,
   }) => {
     let workflowId: string | undefined;
-    let runId: string | null = null;
+    const runId: string | null = null;
 
     try {
       // 1. Create workflow

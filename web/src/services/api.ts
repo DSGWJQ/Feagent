@@ -9,15 +9,8 @@
  */
 
 import axios from 'axios';
+import type { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import type {
-  AxiosInstance,
-  AxiosError,
-  AxiosRequestConfig,
-  InternalAxiosRequestConfig,
-} from 'axios';
-import type {
-  Task,
-  Run,
   ClassificationResult,
   ScheduledWorkflow,
   Tool,

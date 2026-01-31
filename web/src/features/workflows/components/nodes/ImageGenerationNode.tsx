@@ -16,7 +16,7 @@ export interface ImageGenerationNodeData {
   outputFormat: string;
   prompt?: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function ImageGenerationNode({

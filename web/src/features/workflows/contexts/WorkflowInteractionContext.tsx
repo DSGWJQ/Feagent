@@ -13,6 +13,7 @@ const WorkflowInteractionContext = createContext<WorkflowInteractionContextType 
   undefined
 );
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useWorkflowInteraction = () => {
   const context = useContext(WorkflowInteractionContext);
   if (!context) {

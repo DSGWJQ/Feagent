@@ -12,7 +12,7 @@ import styles from '../../styles/workflows.module.css';
 
 export interface EndNodeData {
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function EndNode({ data, selected }: NodeProps<EndNodeData>) {

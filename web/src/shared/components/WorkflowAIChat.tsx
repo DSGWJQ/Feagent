@@ -32,7 +32,6 @@ export const WorkflowAIChat: React.FC<WorkflowAIChatProps> = ({
     isProcessing,
     pendingWorkflow,
     streamingMessage,
-    sendMessage,
     confirmPendingWorkflow,
     startChatStream,
     errorMessage,
