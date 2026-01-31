@@ -13,7 +13,7 @@ import styles from '../../styles/workflows.module.css';
 export interface JavaScriptNodeData {
   code: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function JavaScriptNode({ id, data, selected }: NodeProps<JavaScriptNodeData>) {

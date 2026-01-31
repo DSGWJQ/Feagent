@@ -12,7 +12,6 @@
 
 import { Card, Row, Col, Button, Space, Statistic, List, Tag, Empty } from 'antd';
 import {
-  PlusOutlined,
   FileTextOutlined,
   ScheduleOutlined,
   DashboardOutlined,

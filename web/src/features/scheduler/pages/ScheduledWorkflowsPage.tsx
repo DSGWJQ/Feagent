@@ -39,7 +39,7 @@ import * as scheduledWorkflowsApi from '../api/scheduledWorkflowsApi';
 import * as workflowsApi from '../../workflows/api/workflowsApi';
 import { PageShell } from '@/shared/components/layout/PageShell';
 import { NeoCard } from '@/shared/components/common/NeoCard';
-import type { ScheduledWorkflow } from '@/types/workflow';
+import type { ScheduledWorkflow, Workflow } from '@/types/workflow';
 import styles from '../styles/scheduler.module.css';
 
 const statusColors: Record<string, string> = {
@@ -48,11 +48,16 @@ const statusColors: Record<string, string> = {
   paused: 'orange',
 };
 
+interface ScheduleFormValues {
+  workflowId: string;
+  cronExpression: string;
+  maxRetries: number;
+}
+
 export default function ScheduledWorkflowsPage() {
   const queryClient = useQueryClient();
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<ScheduleFormValues>();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<ScheduledWorkflow | null>(null);
 
   // Load scheduled workflows
   const {
@@ -146,12 +151,11 @@ export default function ScheduledWorkflowsPage() {
   });
 
   const handleCreateOpen = () => {
-    setSelectedWorkflow(null);
     form.resetFields();
     setIsModalOpen(true);
   };
 
-  const handleCreateSubmit = (values: any) => {
+  const handleCreateSubmit = (values: ScheduleFormValues) => {
     createMutation.mutate({
       workflowId: values.workflowId,
       cronExpression: values.cronExpression,
@@ -229,7 +233,7 @@ export default function ScheduledWorkflowsPage() {
       title: 'Actions',
       key: 'actions',
       width: '25%',
-      render: (text: any, record: ScheduledWorkflow) => (
+      render: (_: unknown, record: ScheduledWorkflow) => (
         <Space size="small" wrap>
           <Button
             type="primary"
@@ -351,7 +355,7 @@ export default function ScheduledWorkflowsPage() {
           >
             {availableWorkflows.length > 0 ? (
               <Select placeholder="Select a workflow to schedule">
-                {availableWorkflows.map((wf: any) => (
+                {availableWorkflows.map((wf: Workflow) => (
                   <Select.Option key={wf.id} value={wf.id}>
                     {wf.name || wf.id}
                   </Select.Option>

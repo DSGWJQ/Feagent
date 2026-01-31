@@ -10,6 +10,7 @@ import type { Node, Edge } from '@xyflow/react';
  * 生成 Python 代码
  */
 export function generatePythonCode(nodes: Node[], edges: Edge[]): string {
+  void edges;
   const imports = new Set<string>();
   imports.add('import asyncio');
   imports.add('from typing import Any, Dict');
@@ -142,6 +143,7 @@ export function generatePythonCode(nodes: Node[], edges: Edge[]): string {
  * 生成 TypeScript 代码
  */
 export function generateTypeScriptCode(nodes: Node[], edges: Edge[]): string {
+  void edges;
   let code = `/**
  * Generated Workflow Code
  *

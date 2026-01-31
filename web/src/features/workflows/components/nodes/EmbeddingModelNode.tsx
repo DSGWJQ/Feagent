@@ -15,7 +15,7 @@ export interface EmbeddingModelNodeData {
   dimensions: number;
   text?: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function EmbeddingModelNode({

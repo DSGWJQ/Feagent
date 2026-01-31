@@ -20,7 +20,7 @@ export interface PlanningSseEvent {
   sequence?: number;
   timestamp?: string;
   is_final?: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ChatCreateRequest {

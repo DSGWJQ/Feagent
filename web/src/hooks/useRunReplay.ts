@@ -7,7 +7,7 @@ const MIN_REPLAY_UI_MS = 500;
 export type RunEvent = {
   type: string;
   run_id: string;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export type UseRunReplayOptions = {

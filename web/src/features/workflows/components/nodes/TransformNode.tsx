@@ -12,18 +12,18 @@ import styles from '../../styles/workflows.module.css';
 
 export interface TransformNodeData {
   type: string;
-  mapping?: Record<string, any>;
-  conversions?: Record<string, any>;
+  mapping?: Record<string, unknown>;
+  conversions?: Record<string, unknown>;
   path?: string;
-  fields?: any;
+  fields?: unknown;
   field?: string;
   condition?: string;
-  operations?: any;
-  aggregation?: Record<string, any>;
+  operations?: unknown;
+  aggregation?: Record<string, unknown>;
   function?: string;
-  element_transform?: Record<string, any>;
+  element_transform?: Record<string, unknown>;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function TransformNode({ id, data, selected }: NodeProps<TransformNodeData>) {

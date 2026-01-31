@@ -1,7 +1,7 @@
 /**
  * 统一响应结构
  */
-export interface Result<T = any> {
+export interface Result<T = unknown> {
   code: number;
   message: string;
   data?: T;
@@ -25,5 +25,5 @@ export interface PageResult<T> {
 export interface PageParams {
   page?: number;
   page_size?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }

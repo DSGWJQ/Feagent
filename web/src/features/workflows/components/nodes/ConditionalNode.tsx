@@ -13,7 +13,7 @@ import styles from '../../styles/workflows.module.css';
 export interface ConditionalNodeData {
   condition: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function ConditionalNode({ data, selected }: NodeProps<ConditionalNodeData>) {

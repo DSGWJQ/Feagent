@@ -13,7 +13,7 @@ import styles from '../../styles/workflows.module.css';
 export interface PromptNodeData {
   content: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function PromptNode({ data, selected }: NodeProps<PromptNodeData>) {

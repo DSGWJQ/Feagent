@@ -4,22 +4,24 @@
  * 在执行完成后调用回调函数，用于插入执行总结到聊天
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { executeWorkflowStreaming } from '../api/workflowsApi';
 import type {
   ExecuteWorkflowRequest,
   SSEEvent,
   ExecutionLogEntry,
   NodeExecutionStatus,
+  ExecutionSummary,
 } from '../types/workflow';
 
 export interface UseWorkflowExecutionWithCallbackProps {
   /** 工作流执行完成时的回调 */
   onWorkflowComplete?: (result: {
-    finalResult: any;
+    finalResult: unknown;
     executionLog: ExecutionLogEntry[];
     nodeStatusMap: Record<string, NodeExecutionStatus>;
-    nodeOutputMap: Record<string, any>;
+    nodeOutputMap: Record<string, unknown>;
+    executionSummary?: ExecutionSummary;
   }) => void;
   /** PRD-030: 外部副作用确认弹窗触发 */
   onConfirmRequired?: (payload: {
@@ -43,9 +45,9 @@ export interface UseWorkflowExecutionWithCallbackReturn {
   /** 节点状态映射 */
   nodeStatusMap: Record<string, NodeExecutionStatus>;
   /** 节点输出映射 */
-  nodeOutputMap: Record<string, any>;
+  nodeOutputMap: Record<string, unknown>;
   /** 最终结果 */
-  finalResult: any;
+  finalResult: unknown;
   /** 执行工作流 */
   execute: (workflowId: string, request: ExecuteWorkflowRequest) => void;
   /** 取消执行 */
@@ -66,8 +68,8 @@ export function useWorkflowExecutionWithCallback({
   const [error, setError] = useState<string | null>(null);
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [nodeStatusMap, setNodeStatusMap] = useState<Record<string, NodeExecutionStatus>>({});
-  const [nodeOutputMap, setNodeOutputMap] = useState<Record<string, any>>({});
-  const [finalResult, setFinalResult] = useState<any>(null);
+  const [nodeOutputMap, setNodeOutputMap] = useState<Record<string, unknown>>({});
+  const [finalResult, setFinalResult] = useState<unknown>(null);
 
   const cancelFnRef = useRef<(() => void) | null>(null);
   const previousNodeStatusMap = useRef<Record<string, NodeExecutionStatus>>({});
@@ -143,7 +145,7 @@ export function useWorkflowExecutionWithCallback({
         }
         break;
 
-      case 'workflow_complete':
+      case 'workflow_complete': {
         setCurrentNodeId(null);
         setFinalResult(event.result);
         finishExecutionUi();
@@ -164,10 +166,12 @@ export function useWorkflowExecutionWithCallback({
               executionLog: event.execution_log || executionLog,
               nodeStatusMap: currentStatusMap,
               nodeOutputMap: currentOutputMap,
+              executionSummary: event.execution_summary,
             });
           }
         }, 100);
         break;
+      }
 
       case 'workflow_error':
         setCurrentNodeId(null);

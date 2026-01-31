@@ -20,7 +20,6 @@ import styles from '../styles/workflows.module.css';
 interface ExecutionOverlayProps {
   nodeStatusMap: NodeStatusMap;
   nodeOutputMap: NodeOutputMap;
-  currentNodeId: string | null;
   isExecuting: boolean;
   nodes: Node[];
 }
@@ -33,12 +32,10 @@ interface NodeExecutionOrder {
  * 节点执行状态组件
  */
 const NodeExecutionStatus: React.FC<{
-  node: Node;
   status?: string;
-  output?: any;
+  output?: unknown;
   order?: number;
-  isCurrent: boolean;
-}> = ({ node, status, output, order, isCurrent }) => {
+}> = ({ status, output, order }) => {
   const statusConfig = useMemo(() => {
     switch (status) {
       case 'running':
@@ -71,8 +68,11 @@ const NodeExecutionStatus: React.FC<{
       return output.length > 50 ? output.substring(0, 50) + '...' : output;
     }
 
-    if (typeof output === 'object' && output.content) {
-      return output.content.length > 50 ? output.content.substring(0, 50) + '...' : output.content;
+    if (output && typeof output === 'object' && 'content' in output) {
+      const content = (output as { content?: unknown }).content;
+      if (typeof content === 'string') {
+        return content.length > 50 ? content.substring(0, 50) + '...' : content;
+      }
     }
 
     return JSON.stringify(output).substring(0, 50) + '...';
@@ -108,7 +108,6 @@ const NodeExecutionStatus: React.FC<{
 export const ExecutionOverlay: React.FC<ExecutionOverlayProps> = ({
   nodeStatusMap,
   nodeOutputMap,
-  currentNodeId,
   isExecuting,
   nodes,
 }) => {
@@ -157,11 +156,9 @@ export const ExecutionOverlay: React.FC<ExecutionOverlayProps> = ({
       {visibleNodes.map((node) => (
         <NodeExecutionStatus
           key={node.id}
-          node={node}
           status={nodeStatusMap[node.id]}
           output={nodeOutputMap[node.id]}
           order={executionOrder[node.id]}
-          isCurrent={node.id === currentNodeId}
         />
       ))}
     </>

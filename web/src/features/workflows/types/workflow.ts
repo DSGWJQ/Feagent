@@ -25,7 +25,7 @@ export interface WorkflowNode {
   id: string;
   type: string;
   position: Position;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 /**
@@ -83,7 +83,7 @@ export interface UpdateWorkflowRequest {
  * 执行工作流请求
  */
 export interface ExecuteWorkflowRequest {
-  initial_input?: any;
+  initial_input?: unknown;
   run_id?: string;
 }
 
@@ -92,7 +92,8 @@ export interface ExecuteWorkflowRequest {
  */
 export interface ExecuteWorkflowResponse {
   execution_log: ExecutionLogEntry[];
-  final_result: any;
+  final_result: unknown;
+  execution_summary?: ExecutionSummary;
 }
 
 /**
@@ -101,7 +102,17 @@ export interface ExecuteWorkflowResponse {
 export interface ExecutionLogEntry {
   node_id: string;
   node_type: string;
-  output: any;
+  output: unknown;
+}
+
+/**
+ * 执行统计（由后端权威返回）
+ */
+export interface ExecutionSummary {
+  total_nodes: number;
+  success_nodes: number;
+  failed_nodes: number;
+  duration_ms?: number;
 }
 
 /**
@@ -126,11 +137,12 @@ export interface SSEEvent {
   node_id?: string;
   node_type?: string;
   node_name?: string;
-  output?: any;
+  output?: unknown;
   error?: string;
   reason?: string;
-  result?: any;
+  result?: unknown;
   execution_log?: ExecutionLogEntry[];
+  execution_summary?: ExecutionSummary;
   confirm_id?: string;
   default_decision?: 'deny';
   decision?: 'allow' | 'deny';

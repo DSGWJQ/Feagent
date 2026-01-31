@@ -17,6 +17,7 @@ import { useWorkflow } from '@/hooks/useWorkflow';
 import { chatCreateWorkflowStreaming, type PlanningSseEvent } from '../api/workflowsApi';
 import WorkflowInteractionProvider from '../contexts/WorkflowInteractionContext';
 import WorkflowEditorPageWithMutex from './WorkflowEditorPageWithMutex';
+import type { Workflow } from '../types/workflow';
 
 function generateRunId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -28,7 +29,11 @@ function generateRunId() {
 function extractWorkflowId(event: PlanningSseEvent): string | null {
   const metadata = event.metadata ?? {};
   const candidate =
-    (metadata as any).workflow_id ?? (metadata as any).workflowId ?? (metadata as any).workflow?.id;
+    metadata['workflow_id'] ??
+    metadata['workflowId'] ??
+    (typeof metadata['workflow'] === 'object' && metadata['workflow'] !== null
+      ? (metadata['workflow'] as Record<string, unknown>)?.id
+      : null);
   if (typeof candidate !== 'string') {
     return null;
   }
@@ -58,7 +63,7 @@ export const WorkflowEditorPage: React.FC = () => {
   /**
    * 处理工作流更新
    */
-  const handleWorkflowUpdate = useCallback((workflow: any) => {
+  const handleWorkflowUpdate = useCallback((workflow: Workflow) => {
     console.log('Workflow updated:', workflow);
   }, []);
 
@@ -135,14 +140,14 @@ export const WorkflowEditorPage: React.FC = () => {
           finishWithError(error?.message || '创建失败：网络错误');
         }
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to create workflow:', error);
       setIsCreating(false);
       setCreateError('创建失败：未知错误');
     } finally {
       // 注意：在成功拿到 workflow_id 后会 navigate，组件可能被卸载；这里不强制 setIsCreating(false)
     }
-  }, [createPrompt, isCreating, location.search, navigate, message]);
+  }, [createPrompt, isCreating, navigate, message]);
 
   useEffect(() => {
     return () => {

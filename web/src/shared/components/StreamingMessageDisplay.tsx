@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { Card, Tag, Typography, Space, Collapse, Spin, Alert } from 'antd';
+import { Tag, Typography, Space, Collapse, Spin, Alert } from 'antd';
 import {
   BulbOutlined,
   ToolOutlined,
@@ -23,7 +23,7 @@ import type {
   ToolCallMetadata,
   ToolResultMetadata,
 } from '@/shared/types/streaming';
-import { getMessageTypeLabel, isIntermediateStep } from '@/shared/types/streaming';
+import { getMessageTypeLabel } from '@/shared/types/streaming';
 import styles from './StreamingMessageDisplay.module.css';
 
 const { Text, Paragraph } = Typography;

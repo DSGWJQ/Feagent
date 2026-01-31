@@ -4,7 +4,7 @@
  * 支持接收并显示执行总结信息
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Input, Button, Card, Space, Alert, Typography, Badge } from 'antd';
 import { RobotOutlined, UserOutlined, LoadingOutlined, CheckCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 
@@ -12,7 +12,6 @@ import { useWorkflowAI } from '@/hooks/useWorkflowAI';
 import { useWorkflowInteraction } from '@/features/workflows/contexts/WorkflowInteractionContext';
 import type { ChatMessage } from '@/shared/types/chat';
 import type { Workflow } from '@/features/workflows/types/workflow';
-import type { ExecutionLogEntry } from '@/features/workflows/types/workflow';
 import WorkflowDiffSummaryView from '@/features/workflows/components/WorkflowDiffSummary';
 import { diffWorkflowGraphs } from '@/features/workflows/utils/workflowDiff';
 import styles from './AIChat.module.css';
@@ -31,7 +30,7 @@ interface WorkflowAIChatWithExecutionProps {
     successNodes: number;
     errorNodes: number;
     duration?: number;
-    result?: any;
+    result?: unknown;
   }) => void;
 }
 
@@ -45,8 +44,20 @@ interface ExecutionSummaryMessage {
     successNodes: number;
     errorNodes: number;
     duration?: number;
-    result?: any;
+    result?: unknown;
   };
+}
+
+type ExecutionSummaryPayload = ExecutionSummaryMessage['data'];
+
+type ExtendedChatMessage = ChatMessage & {
+  type?: 'execution_summary';
+};
+
+declare global {
+  interface Window {
+    addExecutionSummary?: (summary: ExecutionSummaryPayload) => void;
+  }
 }
 
 export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionProps> = ({
@@ -67,7 +78,6 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
     isProcessing,
     pendingWorkflow,
     streamingMessage,
-    sendMessage,
     confirmPendingWorkflow,
     startChatStream,
     errorMessage,
@@ -104,14 +114,7 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
   /**
    * 添加执行总结消息
    */
-  const addExecutionSummary = (summary: {
-    success: boolean;
-    totalNodes: number;
-    successNodes: number;
-    errorNodes: number;
-    duration?: number;
-    result?: any;
-  }) => {
+  const addExecutionSummary = useCallback((summary: ExecutionSummaryPayload) => {
     const summaryMessage: ExecutionSummaryMessage = {
       id: `exec_summary_${Date.now()}`,
       type: 'execution_summary',
@@ -125,17 +128,17 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
     if (onExecutionSummary) {
       onExecutionSummary(summary);
     }
-  };
+  }, [onExecutionSummary]);
 
   // 暴露添加执行总结的方法
   useEffect(() => {
     // 将方法挂载到全局，供父组件调用
-    (window as any).addExecutionSummary = addExecutionSummary;
+    window.addExecutionSummary = addExecutionSummary;
 
     return () => {
-      delete (window as any).addExecutionSummary;
+      delete window.addExecutionSummary;
     };
-  }, [onExecutionSummary]);
+  }, [addExecutionSummary]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -153,7 +156,7 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
   }, [showWelcome]);
 
   const displayedMessages = useMemo(() => {
-    const list: ChatMessage[] = [];
+    const list: ExtendedChatMessage[] = [];
     if (welcomeMessage) {
       list.push(welcomeMessage);
     }
@@ -177,7 +180,7 @@ export const WorkflowAIChatWithExecution: React.FC<WorkflowAIChatWithExecutionPr
           (data.duration ? `• 执行时长：${(data.duration / 1000).toFixed(2)}秒\n` : '') +
           (data.result ? `\n📋 执行结果：\n${JSON.stringify(data.result, null, 2)}` : ''),
         timestamp: executionSummary.timestamp,
-      } as any); // Cast as any because ChatMessage might not support execution summary props technically
+      });
     }
 
     if (errorMessage) {

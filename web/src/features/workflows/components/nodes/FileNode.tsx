@@ -25,7 +25,7 @@ export interface FileNodeData {
   encoding: string;
   content?: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function FileNode({ data, selected, id }: NodeProps<FileNodeData>) {

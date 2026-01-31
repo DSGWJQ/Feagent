@@ -97,10 +97,10 @@ export interface Task {
   status: TaskStatus;
 
   /** 任务输入数据 */
-  input_data: Record<string, any> | null;
+  input_data: Record<string, unknown> | null;
 
   /** 任务输出结果 */
-  output_data: Record<string, any> | null;
+  output_data: Record<string, unknown> | null;
 
   /** 错误信息（失败时） */
   error: string | null;

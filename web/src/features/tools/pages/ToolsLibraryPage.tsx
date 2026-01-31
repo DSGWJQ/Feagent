@@ -21,6 +21,7 @@ import {
   CheckOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { Tool } from '@/types/workflow';
 import styles from '../styles/tools.module.css';
 
 const toolCategories = [
@@ -38,13 +39,21 @@ const toolStatuses = [
   { label: 'Deprecated', value: 'deprecated', color: 'red' },
 ];
 
+interface ToolFormValues {
+  name: string;
+  description?: string;
+  category: string;
+  version: string;
+  status: 'draft' | 'published' | 'deprecated';
+}
+
 export default function ToolsLibraryPage() {
   const queryClient = useQueryClient();
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<ToolFormValues>();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTool, setEditingTool] = useState<any>(null);
+  const [editingTool, setEditingTool] = useState<Tool | null>(null);
 
-  const mockTools = [
+  const mockTools: Tool[] = [
     {
       id: 'tool_1',
       name: 'PostgreSQL Database',
@@ -80,7 +89,7 @@ export default function ToolsLibraryPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => {
+    mutationFn: (data: ToolFormValues) => {
       return new Promise((resolve) => {
         setTimeout(() => {
           resolve({ data: { ...data, id: `tool_${Date.now()}` } });
@@ -101,7 +110,7 @@ export default function ToolsLibraryPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => {
       return new Promise((resolve) => {
-        setTimeout(() => resolve(null), 500);
+        setTimeout(() => resolve({ id }), 500);
       });
     },
     onSuccess: () => {
@@ -116,7 +125,7 @@ export default function ToolsLibraryPage() {
   const publishMutation = useMutation({
     mutationFn: (id: string) => {
       return new Promise((resolve) => {
-        setTimeout(() => resolve(null), 500);
+        setTimeout(() => resolve({ id }), 500);
       });
     },
     onSuccess: () => {
@@ -134,7 +143,7 @@ export default function ToolsLibraryPage() {
     setIsModalOpen(true);
   };
 
-  const handleCreateSubmit = (values: any) => {
+  const handleCreateSubmit = (values: ToolFormValues) => {
     createMutation.mutate(values);
   };
 
@@ -194,7 +203,7 @@ export default function ToolsLibraryPage() {
       title: 'Actions',
       key: 'actions',
       width: '26%',
-      render: (text: any, record: any) => (
+      render: (_: unknown, record: Tool) => (
         <Space size="small" wrap>
           <Button
             type="primary"

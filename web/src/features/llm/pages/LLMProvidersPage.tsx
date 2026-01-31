@@ -24,6 +24,20 @@ import { PageShell } from '@/shared/components/layout/PageShell';
 import { NeoCard } from '@/shared/components/common/NeoCard';
 import styles from '../styles/llm.module.css';
 
+interface LlmProvider {
+  id: string;
+  name: string;
+  type: string;
+  baseUrl: string;
+  model: string;
+  enabled: boolean;
+  apiKeyMasked: string;
+}
+
+type LlmProviderForm = Omit<LlmProvider, 'id' | 'apiKeyMasked'> & {
+  apiKey?: string;
+};
+
 const providerTypes = [
   { label: 'OpenAI', value: 'openai' },
   { label: 'DeepSeek', value: 'deepseek' },
@@ -35,11 +49,11 @@ const providerTypes = [
 
 export default function LLMProvidersPage() {
   const queryClient = useQueryClient();
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<LlmProviderForm>();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingProvider, setEditingProvider] = useState<any>(null);
+  const [editingProvider, setEditingProvider] = useState<LlmProvider | null>(null);
 
-  const mockProviders = [
+  const mockProviders: LlmProvider[] = [
     {
       id: 'provider_1',
       name: 'OpenAI Official',
@@ -88,7 +102,7 @@ export default function LLMProvidersPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => {
+    mutationFn: (data: LlmProviderForm) => {
       return new Promise((resolve) => {
         setTimeout(() => {
           resolve({ data: { ...data, id: `provider_${Date.now()}` } });
@@ -107,10 +121,9 @@ export default function LLMProvidersPage() {
   });
 
   const updateMutation = useMutation({
-    /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
-    mutationFn: (data: any) => {
+    mutationFn: (data: LlmProviderForm & { id: string }) => {
       return new Promise((resolve) => {
-        setTimeout(() => resolve(null), 500);
+        setTimeout(() => resolve({ data }), 500);
       });
     },
     onSuccess: () => {
@@ -125,10 +138,9 @@ export default function LLMProvidersPage() {
   });
 
   const deleteMutation = useMutation({
-    /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
     mutationFn: (id: string) => {
       return new Promise((resolve) => {
-        setTimeout(() => resolve(null), 500);
+        setTimeout(() => resolve({ id }), 500);
       });
     },
     onSuccess: () => {
@@ -146,7 +158,7 @@ export default function LLMProvidersPage() {
     setIsModalOpen(true);
   };
 
-  const handleCreateSubmit = (values: any) => {
+  const handleCreateSubmit = (values: LlmProviderForm) => {
     if (editingProvider) {
       updateMutation.mutate({ ...values, id: editingProvider.id });
     } else {
@@ -232,7 +244,7 @@ export default function LLMProvidersPage() {
       title: 'Actions',
       key: 'actions',
       width: '16%',
-      render: (_: any, record: any) => (
+      render: (_: unknown, record: LlmProvider) => (
         <Space size="small" wrap>
           <Button
             type="primary"

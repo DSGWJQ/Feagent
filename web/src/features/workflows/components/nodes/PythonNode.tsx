@@ -13,7 +13,7 @@ import styles from '../../styles/workflows.module.css';
 export interface PythonNodeData {
   code: string;
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function PythonNode({ id, data, selected }: NodeProps<PythonNodeData>) {

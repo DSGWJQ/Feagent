@@ -17,7 +17,7 @@ export interface ToolNodeData {
   description?: string;
   code?: string; // legacy inline tool code (kept for backward compatibility display)
   status?: NodeStatus;
-  output?: any;
+  output?: unknown;
 }
 
 function ToolNode({ data, selected }: NodeProps<ToolNodeData>) {

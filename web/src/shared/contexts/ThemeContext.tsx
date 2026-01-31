@@ -32,11 +32,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     return getStoredTheme();
   });
 
-  // 初始化时应用主题
-  useEffect(() => {
-    applyTheme(theme);
-  }, []);
-
   // 主题切换时应用并保存
   useEffect(() => {
     applyTheme(theme);
@@ -73,6 +68,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
  * }
  * ```
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
   if (!context) {

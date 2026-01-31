@@ -28,19 +28,19 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Button, message, Empty, Spin, Modal, Alert, Drawer, Input, Collapse, Typography } from 'antd';
 import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined, UndoOutlined, RedoOutlined, WarningOutlined, HistoryOutlined, ExperimentOutlined, SearchOutlined, FileTextOutlined } from '@ant-design/icons';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { ResearchResultDisplay, type ResearchResult } from '@/components/ResearchResultDisplay';
 import { useRunReplay, type RunEvent } from '@/hooks/useRunReplay';
-import { useResearchPlan, type ResearchPlanDTO, type CompileResponse } from '@/hooks/useResearchPlan';
+import { useResearchPlan } from '@/hooks/useResearchPlan';
 import { API_BASE_URL } from '@/services/api';
 import { useWorkflowHistory } from '../hooks/useWorkflowHistory';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
-import { useConflictResolution, type Conflict } from '../hooks/useConflictResolution';
+import { useConflictResolution } from '../hooks/useConflictResolution';
 import { wouldCreateCycle } from '../utils/graphUtils';
 import { confirmRunSideEffect, updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
 import { useWorkflow } from '@/hooks/useWorkflow';
-import type { Workflow, WorkflowNode, WorkflowEdge } from '../types/workflow';
+import type { Workflow } from '../types/workflow';
 import NodePalette from '../components/NodePalette';
 import NodeConfigPanel from '../components/NodeConfigPanel';
 import CodeExportModal from '../components/CodeExportModal';
@@ -104,9 +104,42 @@ const initialNodes: Node[] = [];
 
 const initialEdges: Edge[] = [];
 
+type EdgeConditionData = {
+  condition?: string | null;
+};
+
+type WorkflowApiError = {
+  response?: {
+    data?: {
+      detail?: unknown;
+    };
+  };
+  message?: string;
+};
+
+const getErrorDetail = (error: unknown): unknown => {
+  if (!error || typeof error !== 'object') {
+    return undefined;
+  }
+  return (error as WorkflowApiError).response?.data?.detail;
+};
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (error && typeof error === 'object') {
+    const maybe = error as { message?: unknown };
+    if (typeof maybe.message === 'string') {
+      return maybe.message;
+    }
+  }
+  return '未知错误';
+};
+
 interface WorkflowEditorPageWithMutexProps {
   workflowId: string;
-  onWorkflowUpdate: (workflow: any) => void;
+  onWorkflowUpdate: (workflow: Workflow) => void;
 }
 
 /**
@@ -116,7 +149,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   workflowId,
   onWorkflowUpdate,
 }) => {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { isCanvasMode } = useWorkflowInteraction();
   const disableRunPersistence =
@@ -152,7 +184,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [nodeIdCounter, setNodeIdCounter] = useState(4);
 
   // Step F.7: ResearchResult 和 Run 状态
   const [researchResult, setResearchResult] = useState<ResearchResult | null>(null);
@@ -267,7 +298,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   // 本地草稿模式：不从后端加载数据
   const isLocalDraft = workflowId === 'local-draft' || workflowId === 'demo-draft';
 
-  const { workflowData, isLoadingWorkflow, workflowError } = useWorkflow(
+  const { workflowData, isLoadingWorkflow } = useWorkflow(
     isLocalDraft ? '' : workflowId
   );
 
@@ -294,6 +325,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     workflowId,
     projectId: effectiveProjectId,
     onPlanGenerated: (plan) => {
+      void plan;
       message.success('Research plan generated!');
     },
     onCompiled: (response) => {
@@ -302,8 +334,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         id: response.id,
         name: response.name,
         description: response.description,
-        nodes: response.nodes,
-        edges: response.edges,
+        nodes: response.nodes as Workflow['nodes'],
+        edges: response.edges as Workflow['edges'],
       });
       setCompileWarnings(response.warnings);
       if (response.warnings.length > 0) {
@@ -360,10 +392,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   const {
     conflicts,
     hasConflicts,
-    detectConflict,
     resolveConflict,
     resolveAllConflicts,
-    clearConflicts,
   } = useConflictResolution({
     defaultStrategy: 'ask',
     onConflictDetected: (conflict) => {
@@ -391,9 +421,9 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         });
         setPendingConfirm(null);
         message.success(decision === 'allow' ? '已允许执行外部副作用' : '已拒绝执行外部副作用');
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn('confirm side effect failed', err);
-        message.error(`确认失败: ${err?.message || '未知错误'}`);
+        message.error(`确认失败: ${getErrorMessage(err)}`);
       } finally {
         setConfirmSubmitting(false);
       }
@@ -404,31 +434,28 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   const {
     execute,
     isExecuting,
-    currentNodeId,
-    executionLog,
     error: executionError,
     nodeStatusMap,
     nodeOutputMap,
   } = useWorkflowExecutionWithCallback({
-    onWorkflowComplete: ({ finalResult, executionLog, nodeStatusMap, nodeOutputMap }) => {
-      // 计算执行统计
-      const totalNodes = Object.keys(nodeStatusMap).length;
-      const successNodes = Object.values(nodeStatusMap).filter(s => s === 'completed').length;
-      const errorNodes = Object.values(nodeStatusMap).filter(s => s === 'error').length;
-      const duration = executionStartTime ? Date.now() - executionStartTime : undefined;
+    onWorkflowComplete: ({ finalResult, executionSummary }) => {
+      const summaryFromBackend = executionSummary;
+      const duration = summaryFromBackend?.duration_ms ?? (
+        executionStartTime ? Date.now() - executionStartTime : undefined
+      );
 
-      // 准备执行总结
-      const summary = {
-        success: errorNodes === 0,
-        totalNodes,
-        successNodes,
-        errorNodes,
-        duration,
-        result: finalResult,
-      };
+      const summary = summaryFromBackend
+        ? {
+          success: summaryFromBackend.failed_nodes === 0,
+          totalNodes: summaryFromBackend.total_nodes,
+          successNodes: summaryFromBackend.success_nodes,
+          errorNodes: summaryFromBackend.failed_nodes,
+          duration,
+          result: finalResult,
+        }
+        : null;
 
-      // 调用全局方法添加执行总结到聊天
-      if (window.addExecutionSummary) {
+      if (summary && window.addExecutionSummary) {
         window.addExecutionSummary(summary);
       }
 
@@ -439,11 +466,15 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         setResultDrawerOpen(true);
       }
 
-      message.success(
-        summary.success
-          ? `工作流执行成功！共执行 ${totalNodes} 个节点`
-          : `工作流执行完成！成功 ${successNodes} 个，失败 ${errorNodes} 个`
-      );
+      if (summary) {
+        message.success(
+          summary.success
+            ? `工作流执行成功！共执行 ${summary.totalNodes} 个节点`
+            : `工作流执行完成！成功 ${summary.successNodes} 个，失败 ${summary.errorNodes} 个`
+        );
+      } else {
+        message.success('工作流执行完成！');
+      }
     },
     onConfirmRequired: ({ runId, workflowId, nodeId, confirmId }) => {
       setPendingConfirm((prev) => {
@@ -468,23 +499,23 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       id: workflowId,
       name: workflowData?.name ?? '',
       description: workflowData?.description ?? '',
-      nodes: (nodes ?? []).map((n: any) => ({
+      nodes: (nodes ?? []).map((n) => ({
         id: n.id,
         type: n.type,
         position: n.position,
-        data: n.data ?? {},
+        data: (n.data ?? {}) as Record<string, unknown>,
       })),
-      edges: (edges ?? []).map((e: any) => ({
+      edges: (edges ?? []).map((e) => ({
         id: e.id,
         source: e.source,
         target: e.target,
         sourceHandle: e.sourceHandle,
         label: e.label,
-        condition: e?.data?.condition ?? null,
+        condition: (e.data as EdgeConditionData | undefined)?.condition ?? null,
       })),
-      status: (workflowData as any)?.status ?? ('draft' as any),
-      created_at: (workflowData as any)?.created_at ?? '',
-      updated_at: (workflowData as any)?.updated_at ?? '',
+      status: workflowData?.status ?? 'draft',
+      created_at: workflowData?.created_at ?? '',
+      updated_at: workflowData?.updated_at ?? '',
     };
     return wf;
   }, [workflowId, workflowData, nodes, edges]);
@@ -497,23 +528,26 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   /**
    * 处理工作流更新（从AI聊天返回）
    */
-  const handleWorkflowUpdate = useCallback((workflow: any) => {
+  const handleWorkflowUpdate = useCallback((workflow: Workflow) => {
     console.log('收到工作流更新:', workflow);
 
     // 转换后端工作流格式到 React Flow 格式
-    const newNodes: Node[] = workflow.nodes.map((node: any) => ({
+    const newNodes: Node[] = workflow.nodes.map((node) => ({
       id: node.id,
       type: mapBackendNodeTypeToFrontend(node.type),
       position: { x: node.position.x, y: node.position.y },
       data: {
         ...(node.data || {}),
         // Ensure common fields exist for custom node renderers/config panels.
-        name: node.name ?? node.data?.name ?? '',
-        label: node.name ?? node.data?.label ?? node.data?.name ?? '',
+        name: node.name ?? (node.data as Record<string, unknown> | undefined)?.name ?? '',
+        label: node.name
+          ?? (node.data as Record<string, unknown> | undefined)?.label
+          ?? (node.data as Record<string, unknown> | undefined)?.name
+          ?? '',
       },
     }));
 
-    const newEdges: Edge[] = workflow.edges.map((edge: any) => ({
+    const newEdges: Edge[] = workflow.edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
@@ -531,7 +565,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
     message.success('工作流已更新');
     requestFitView();
-  }, [clearHistory, onWorkflowUpdate, pushSnapshot]);
+  }, [clearHistory, onWorkflowUpdate, pushSnapshot, requestFitView]);
 
   /**
    * 映射后端节点类型到前端节点类型
@@ -632,7 +666,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   const handleEdgeClick = useCallback(
     (_: unknown, edge: Edge) => {
       setSelectedEdge(edge);
-      setEdgeConditionDraft(String((edge as any)?.data?.condition ?? ''));
+      const condition = (edge.data as EdgeConditionData | undefined)?.condition;
+      setEdgeConditionDraft(condition != null ? String(condition) : '');
       setEdgeConfigOpen(true);
       setConfigPanelOpen(false);
     },
@@ -812,7 +847,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   /**
    * 保存节点配置
    */
-  const handleSaveNodeConfig = useCallback((nodeId: string, config: any) => {
+  const handleSaveNodeConfig = useCallback((nodeId: string, config: Record<string, unknown>) => {
     const nextNodes = nodesRef.current.map((node) =>
       node.id === nodeId
         ? {
@@ -922,7 +957,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         sourceHandle: edge.sourceHandle || undefined,
         label: (edge.label as string | undefined) || null,
         condition:
-          (edge as any)?.data?.condition ?? (typeof edge.label === 'string' ? edge.label : null),
+          (edge.data as EdgeConditionData | undefined)?.condition ??
+          (typeof edge.label === 'string' ? edge.label : null),
       }));
 
       await updateWorkflow(workflowId, {
@@ -932,12 +968,19 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
       message.success('工作流保存成功');
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to save workflow:', error);
 
-      const detail = error?.response?.data?.detail;
-      if (detail && typeof detail === 'object' && Array.isArray((detail as any).errors)) {
-        const payload = detail as any;
+      const detail = getErrorDetail(error);
+      if (
+        detail &&
+        typeof detail === 'object' &&
+        Array.isArray((detail as { errors?: unknown[] }).errors)
+      ) {
+        const payload = detail as {
+          message?: string;
+          errors: Array<{ code?: unknown; path?: unknown; message?: unknown }>;
+        };
         Modal.error({
           title: '保存失败：工作流校验未通过',
           width: 760,
@@ -948,11 +991,13 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
               </div>
               <div style={{ maxHeight: 360, overflow: 'auto' }}>
                 <ul style={{ paddingLeft: 18, margin: 0 }}>
-                  {payload.errors.map((errItem: any, idx: number) => (
-                    <li key={`${errItem.code ?? 'error'}_${idx}`}>
-                      <code>{errItem.code ?? 'error'}</code>
-                      {errItem.path ? <span> @ {errItem.path}</span> : null}
-                      {errItem.message ? <span>: {errItem.message}</span> : null}
+                  {payload.errors.map((errItem, idx) => (
+                    <li key={`${String(errItem.code ?? 'error')}_${idx}`}>
+                      <code>{String(errItem.code ?? 'error')}</code>
+                      {typeof errItem.path === 'string' ? <span> @ {errItem.path}</span> : null}
+                      {typeof errItem.message === 'string' ? (
+                        <span>: {errItem.message}</span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -964,7 +1009,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       } else if (typeof detail === 'string' && detail.trim()) {
         message.error(`保存失败: ${detail}`);
       } else {
-        message.error(`保存失败: ${error?.message || '未知错误'}`);
+        message.error(`保存失败: ${getErrorMessage(error)}`);
       }
       return false;
     } finally {
@@ -1048,7 +1093,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       return;
     }
 
-    let initialInput: any = {};
+    let initialInput: unknown = {};
     const trimmed = executionInputJson.trim();
     if (trimmed) {
       try {
@@ -1114,18 +1159,21 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       console.log('Loading workflow:', workflowData.id, workflowData.name);
 
       // 转换后端数据到前端格式
-      const loadedNodes: Node[] = workflowData.nodes.map((node: any) => ({
+      const loadedNodes: Node[] = workflowData.nodes.map((node) => ({
         id: node.id,
         type: mapBackendNodeTypeToFrontend(node.type),
         position: { x: node.position.x, y: node.position.y },
         data: {
           ...(node.data || {}),
-          name: node.name ?? node.data?.name ?? '',
-          label: node.name ?? node.data?.label ?? node.data?.name ?? '',
+          name: node.name ?? (node.data as Record<string, unknown> | undefined)?.name ?? '',
+          label: node.name
+            ?? (node.data as Record<string, unknown> | undefined)?.label
+            ?? (node.data as Record<string, unknown> | undefined)?.name
+            ?? '',
         },
       }));
 
-      const loadedEdges: Edge[] = workflowData.edges.map((edge: any) => ({
+      const loadedEdges: Edge[] = workflowData.edges.map((edge) => ({
         id: edge.id,
         source: edge.source,
         target: edge.target,
@@ -1144,7 +1192,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       console.log(`Workflow loaded: ${loadedNodes.length} nodes, ${loadedEdges.length} edges`);
       requestFitView();
     }
-  }, [clearHistory, pushSnapshot, workflowData, isInitialized]);
+  }, [clearHistory, pushSnapshot, workflowData, isInitialized, isLocalDraft, requestFitView]);
 
   // 显示加载状态
   if (isLoadingWorkflow) {
@@ -1359,7 +1407,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
                 });
               }
             }}
-            // @ts-ignore - NodeType signature mismatch
+            // @ts-expect-error - NodeType signature mismatch
             nodeTypes={nodeTypes}
             fitView
             style={{ backgroundColor: 'transparent' }}
@@ -1376,10 +1424,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             <Background color="#333" gap={20} size={1} />
             <Controls />
             <MiniMap
-              nodeColor={(node) => {
-                // Keep original logic or simplify
-                return 'var(--neo-gold)';
-              }}
+              nodeColor={() => 'var(--neo-gold)'}
               maskColor="rgba(0, 0, 0, 0.6)"
               style={{
                 backgroundColor: 'var(--neo-surface)',
@@ -1393,7 +1438,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
           <ExecutionOverlay
             nodeStatusMap={nodeStatusMap}
             nodeOutputMap={nodeOutputMap}
-            currentNodeId={currentNodeId}
             isExecuting={isExecuting}
             nodes={nodes}
           />
