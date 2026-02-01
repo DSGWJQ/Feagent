@@ -28,7 +28,7 @@ from uuid import uuid4
 class NodeType(str, Enum):
     """节点类型枚举
 
-    预定义16种核心节点类型：
+    预定义20种核心节点类型：
     - 基础节点：START, END
     - 控制流节点：CONDITION, LOOP, PARALLEL
     - AI能力节点：LLM, KNOWLEDGE, CLASSIFY, TEMPLATE
@@ -51,6 +51,10 @@ class NodeType(str, Enum):
     KNOWLEDGE = "knowledge"
     CLASSIFY = "classify"
     TEMPLATE = "template"
+    EMBEDDING = "embeddingModel"
+    IMAGE = "imageGeneration"
+    AUDIO = "audio"
+    STRUCTURED_OUTPUT = "structuredOutput"
 
     # 执行节点
     API = "api"
@@ -541,6 +545,43 @@ PREDEFINED_SCHEMAS: dict[NodeType, dict[str, Any]] = {
             "variables": {"type": "object", "default": {}},
         },
         "required": [],
+    },
+    NodeType.EMBEDDING: {
+        "type": "object",
+        "properties": {
+            "model": {"type": "string", "default": "openai/text-embedding-3-small"},
+            "dimensions": {"type": "integer"},
+        },
+        "required": ["model"],
+    },
+    NodeType.IMAGE: {
+        "type": "object",
+        "properties": {
+            "model": {"type": "string", "default": "openai/dall-e-3"},
+            "aspectRatio": {"type": "string", "default": "1:1"},
+            "outputFormat": {"type": "string", "default": "png"},
+            "prompt": {"type": "string"},
+        },
+        "required": ["model"],
+    },
+    NodeType.AUDIO: {
+        "type": "object",
+        "properties": {
+            "model": {"type": "string", "default": "openai/tts-1"},
+            "voice": {"type": "string", "default": "alloy"},
+            "speed": {"type": "number", "default": 1.0},
+            "text": {"type": "string"},
+        },
+        "required": ["model"],
+    },
+    NodeType.STRUCTURED_OUTPUT: {
+        "type": "object",
+        "properties": {
+            "schemaName": {"type": "string", "default": "StructuredOutput"},
+            "mode": {"type": "string", "default": "object"},
+            "schema": {"type": "string"},
+        },
+        "required": ["schemaName", "schema"],
     },
     NodeType.GENERIC: {
         "type": "object",

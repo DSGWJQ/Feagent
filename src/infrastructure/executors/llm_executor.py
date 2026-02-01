@@ -4,12 +4,12 @@ Infrastructure 层：实现 LLM 文本生成节点执行器
 """
 
 import json
-import os
 from typing import Any
 
 from src.domain.entities.node import Node
 from src.domain.exceptions import DomainError
 from src.domain.ports.node_executor import NodeExecutor
+from src.infrastructure.executors.deterministic_mode import is_deterministic_mode
 
 
 class LlmExecutor(NodeExecutor):
@@ -77,7 +77,7 @@ class LlmExecutor(NodeExecutor):
 
         # Deterministic E2E mode: never hit external LLM APIs.
         # Keep output stable and traceable for Playwright runs and local debugging.
-        if os.getenv("E2E_TEST_MODE") == "deterministic":
+        if is_deterministic_mode():
             preview = prompt[:280]
             if structured_output:
                 return {

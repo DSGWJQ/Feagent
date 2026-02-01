@@ -9,7 +9,6 @@ Infrastructure 层：实现消息通知节点执行器
 """
 
 import json
-import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -20,6 +19,7 @@ import httpx
 from src.domain.entities.node import Node
 from src.domain.exceptions import DomainError
 from src.domain.ports.node_executor import NodeExecutor
+from src.infrastructure.executors.deterministic_mode import is_deterministic_mode
 
 
 class NotificationExecutor(NodeExecutor):
@@ -65,7 +65,7 @@ class NotificationExecutor(NodeExecutor):
             raise DomainError("通知节点缺少 type 配置")
 
         # Deterministic E2E mode: never send external notifications.
-        if os.getenv("E2E_TEST_MODE") == "deterministic":
+        if is_deterministic_mode():
             first_input = next(iter(inputs.values()), None)
             preview = str(first_input)
             if len(preview) > 280:

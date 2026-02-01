@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections import Counter
@@ -145,12 +146,40 @@ class WorkflowSaveValidator:
 
     def _normalize_workflow_node_configs(self, workflow: Workflow) -> None:
         for node in workflow.nodes:
+            # Canonicalize legacy config keys before applying fail-closed validation so that
+            # drag-save and chat-modify persist a single stable shape (KISS/DRY).
+            if node.type in {NodeType.HTTP, NodeType.HTTP_REQUEST} and isinstance(
+                node.config, dict
+            ):
+                url = node.config.get("url")
+                if isinstance(url, str) and url.strip():
+                    node.config["url"] = url.strip()
+                    node.config.pop("path", None)
+                else:
+                    path_value = node.config.get("path")
+                    if isinstance(path_value, str):
+                        normalized = path_value.strip()
+                        if normalized:
+                            node.config["url"] = normalized
+                            node.config.pop("path", None)
+
             if node.type == NodeType.TOOL and isinstance(node.config, dict):
                 tool_id = _extract_tool_id(node.config)
                 if tool_id is None:
                     continue
                 node.config["tool_id"] = tool_id
                 node.config.pop("toolId", None)
+
+            if node.type == NodeType.LOOP and isinstance(node.config, dict):
+                loop_type = node.config.get("type")
+                normalized_type = loop_type.strip() if isinstance(loop_type, str) else None
+                if normalized_type == "for":
+                    normalized_type = "range"
+                if normalized_type == "range":
+                    node.config["type"] = "range"
+                    if "end" not in node.config and "iterations" in node.config:
+                        node.config["end"] = node.config.get("iterations")
+                    node.config.pop("iterations", None)
 
     def _validate_unique_node_ids(
         self, node_ids: list[str], *, errors: list[dict[str, Any]]
@@ -223,6 +252,10 @@ class WorkflowSaveValidator:
             NodeType.OUTPUT,
         }
 
+        incoming_sources: dict[str, list[str]] = {}
+        for edge in workflow.edges:
+            incoming_sources.setdefault(edge.target_node_id, []).append(edge.source_node_id)
+
         for idx, node in enumerate(workflow.nodes):
             if node.type in builtin_types:
                 continue
@@ -245,6 +278,17 @@ class WorkflowSaveValidator:
             if node.type in {NodeType.JAVASCRIPT, NodeType.PYTHON}:
                 self._validate_code_node(node_index=idx, node_config=node.config, errors=errors)
 
+            if node.type in {NodeType.TEXT_MODEL, NodeType.LLM}:
+                self._validate_text_model_node(
+                    node_index=idx,
+                    node_config=node.config,
+                    incoming_source_node_ids=incoming_sources.get(node.id, []),
+                    errors=errors,
+                )
+
+            if node.type == NodeType.PROMPT:
+                self._validate_prompt_node(node_index=idx, node_config=node.config, errors=errors)
+
             if node.type == NodeType.TRANSFORM:
                 self._validate_transform_node(
                     node_index=idx,
@@ -255,6 +299,81 @@ class WorkflowSaveValidator:
             if node.type in {NodeType.HTTP, NodeType.HTTP_REQUEST}:
                 self._validate_http_request_node(
                     node_index=idx, node_config=node.config, errors=errors
+                )
+
+            if node.type in {NodeType.CONDITIONAL, NodeType.CONDITION}:
+                self._validate_conditional_node(
+                    node_index=idx, node_config=node.config, errors=errors
+                )
+
+            if node.type == NodeType.LOOP:
+                self._validate_loop_node(node_index=idx, node_config=node.config, errors=errors)
+
+            if node.type == NodeType.DATABASE:
+                self._validate_database_node(
+                    node_index=idx,
+                    node_config=node.config,
+                    errors=errors,
+                )
+
+            if node.type == NodeType.FILE:
+                self._validate_file_node(node_index=idx, node_config=node.config, errors=errors)
+
+            if node.type == NodeType.NOTIFICATION:
+                self._validate_notification_node(
+                    node_index=idx,
+                    node_config=node.config,
+                    errors=errors,
+                )
+
+            if node.type == NodeType.EMBEDDING:
+                self._validate_embedding_node(
+                    node_index=idx, node_config=node.config, errors=errors
+                )
+                self._validate_requires_text_input_or_incoming_edge(
+                    node_index=idx,
+                    node_config=node.config,
+                    node_label="embedding",
+                    config_input_keys=("input", "text", "prompt", "content"),
+                    incoming_source_node_ids=incoming_sources.get(node.id, []),
+                    errors=errors,
+                )
+
+            if node.type == NodeType.IMAGE:
+                self._validate_image_generation_node(
+                    node_index=idx, node_config=node.config, errors=errors
+                )
+                self._validate_requires_text_input_or_incoming_edge(
+                    node_index=idx,
+                    node_config=node.config,
+                    node_label="imageGeneration",
+                    config_input_keys=("prompt", "text", "input", "content"),
+                    incoming_source_node_ids=incoming_sources.get(node.id, []),
+                    errors=errors,
+                )
+
+            if node.type == NodeType.AUDIO:
+                self._validate_audio_node(node_index=idx, node_config=node.config, errors=errors)
+                self._validate_requires_text_input_or_incoming_edge(
+                    node_index=idx,
+                    node_config=node.config,
+                    node_label="audio",
+                    config_input_keys=("text", "input", "prompt", "content"),
+                    incoming_source_node_ids=incoming_sources.get(node.id, []),
+                    errors=errors,
+                )
+
+            if node.type == NodeType.STRUCTURED_OUTPUT:
+                self._validate_structured_output_node(
+                    node_index=idx, node_config=node.config, errors=errors
+                )
+                self._validate_requires_text_input_or_incoming_edge(
+                    node_index=idx,
+                    node_config=node.config,
+                    node_label="structuredOutput",
+                    config_input_keys=("prompt", "text", "input", "content"),
+                    incoming_source_node_ids=incoming_sources.get(node.id, []),
+                    errors=errors,
                 )
 
     def _validate_main_subgraph(self, workflow: Workflow, *, errors: list[dict[str, Any]]) -> None:
@@ -465,6 +584,142 @@ class WorkflowSaveValidator:
                 path=f"nodes[{node_index}].config.method",
             )
 
+        # Validate JSON fields early to avoid “save ok but executor必失败” drift.
+        headers_value = node_config.get("headers")
+        if isinstance(headers_value, str) and headers_value.strip():
+            parsed = self._try_parse_json(
+                headers_value, errors=errors, path=f"nodes[{node_index}].config.headers"
+            )
+            if parsed is not None and not isinstance(parsed, dict):
+                _append_error(
+                    errors,
+                    code="invalid_headers",
+                    message="headers must be a JSON object",
+                    path=f"nodes[{node_index}].config.headers",
+                )
+
+        body_value = node_config.get("body")
+        if isinstance(body_value, str) and body_value.strip():
+            self._try_parse_json(body_value, errors=errors, path=f"nodes[{node_index}].config.body")
+
+        mock_response_value = node_config.get("mock_response")
+        if isinstance(mock_response_value, str) and mock_response_value.strip():
+            self._try_parse_json(
+                mock_response_value,
+                errors=errors,
+                path=f"nodes[{node_index}].config.mock_response",
+            )
+
+    def _validate_embedding_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for embedding nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        model = node_config.get("model")
+        if not isinstance(model, str) or not model.strip():
+            _append_error(
+                errors,
+                code="missing_model",
+                message="model is required for embedding nodes",
+                path=f"nodes[{node_index}].config.model",
+            )
+
+    def _validate_image_generation_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for image nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        model = node_config.get("model")
+        if not isinstance(model, str) or not model.strip():
+            _append_error(
+                errors,
+                code="missing_model",
+                message="model is required for image nodes",
+                path=f"nodes[{node_index}].config.model",
+            )
+
+    def _validate_audio_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for audio nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        model = node_config.get("model")
+        if not isinstance(model, str) or not model.strip():
+            _append_error(
+                errors,
+                code="missing_model",
+                message="model is required for audio nodes",
+                path=f"nodes[{node_index}].config.model",
+            )
+
+    def _validate_structured_output_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for structured output nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        schema_name = node_config.get("schemaName")
+        if not isinstance(schema_name, str) or not schema_name.strip():
+            _append_error(
+                errors,
+                code="missing_schema_name",
+                message="schemaName is required for structured output nodes",
+                path=f"nodes[{node_index}].config.schemaName",
+            )
+
+        schema_value = node_config.get("schema")
+        if isinstance(schema_value, str):
+            has_schema = bool(schema_value.strip())
+        else:
+            has_schema = isinstance(schema_value, dict) and bool(schema_value)
+        if not has_schema:
+            _append_error(
+                errors,
+                code="missing_schema",
+                message="schema is required for structured output nodes",
+                path=f"nodes[{node_index}].config.schema",
+            )
+        elif isinstance(schema_value, str) and schema_value.strip():
+            parsed = self._try_parse_json(
+                schema_value,
+                errors=errors,
+                path=f"nodes[{node_index}].config.schema",
+            )
+            if parsed is not None and not isinstance(parsed, dict):
+                _append_error(
+                    errors,
+                    code="invalid_schema",
+                    message="schema must be a JSON object",
+                    path=f"nodes[{node_index}].config.schema",
+                )
+
     def _validate_tool_node(
         self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
     ) -> None:
@@ -505,3 +760,512 @@ class WorkflowSaveValidator:
                 message=f"tool is deprecated: {tool_id}",
                 path=f"nodes[{node_index}].config.tool_id",
             )
+
+    def _validate_text_model_node(
+        self,
+        *,
+        node_index: int,
+        node_config: dict[str, Any],
+        incoming_source_node_ids: list[str],
+        errors: list[dict[str, Any]],
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for textModel nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        model = node_config.get("model")
+        if not isinstance(model, str) or not model.strip():
+            _append_error(
+                errors,
+                code="missing_model",
+                message="model is required for textModel nodes",
+                path=f"nodes[{node_index}].config.model",
+            )
+
+        prompt = node_config.get("prompt") or node_config.get("user_prompt")
+        has_prompt = isinstance(prompt, str) and prompt.strip()
+        if has_prompt:
+            return
+
+        incoming_count = len(incoming_source_node_ids)
+        if incoming_count == 0:
+            _append_error(
+                errors,
+                code="missing_prompt",
+                message="textModel nodes must have prompt or at least one incoming edge",
+                path=f"nodes[{node_index}].config.prompt",
+            )
+            return
+
+        if incoming_count == 1:
+            return
+
+        prompt_source = node_config.get("promptSourceNodeId") or node_config.get("promptSource")
+        if not isinstance(prompt_source, str) or not prompt_source.strip():
+            _append_error(
+                errors,
+                code="ambiguous_prompt_source",
+                message=(
+                    "textModel nodes with multiple inputs require promptSourceNodeId "
+                    "or a Prompt node to merge inputs"
+                ),
+                path=f"nodes[{node_index}].config.promptSourceNodeId",
+                meta={"incoming_sources": incoming_source_node_ids},
+            )
+            return
+
+        normalized_source = prompt_source.strip()
+        if normalized_source not in set(incoming_source_node_ids):
+            _append_error(
+                errors,
+                code="invalid_prompt_source",
+                message=f"promptSourceNodeId not found in incoming sources: {normalized_source}",
+                path=f"nodes[{node_index}].config.promptSourceNodeId",
+                meta={"incoming_sources": incoming_source_node_ids},
+            )
+
+    def _validate_prompt_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for prompt nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        content = node_config.get("content")
+        if not isinstance(content, str) or not content.strip():
+            _append_error(
+                errors,
+                code="missing_content",
+                message="content is required for prompt nodes",
+                path=f"nodes[{node_index}].config.content",
+            )
+
+    def _validate_conditional_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for conditional nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        condition = node_config.get("condition")
+        if not isinstance(condition, str) or not condition.strip():
+            _append_error(
+                errors,
+                code="missing_condition",
+                message="condition is required for conditional nodes",
+                path=f"nodes[{node_index}].config.condition",
+            )
+
+    def _validate_loop_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for loop nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        loop_type = node_config.get("type")
+        if not isinstance(loop_type, str) or not loop_type.strip():
+            _append_error(
+                errors,
+                code="missing_type",
+                message="type is required for loop nodes",
+                path=f"nodes[{node_index}].config.type",
+            )
+            return
+
+        normalized_type = loop_type.strip()
+        # Back-compat: UI 曾使用 `for`，runtime 以 `range` 为准。
+        if normalized_type == "for":
+            normalized_type = "range"
+
+        supported_types = {"for_each", "range", "while"}
+        if normalized_type not in supported_types:
+            _append_error(
+                errors,
+                code="unsupported_loop_type",
+                message=f"unsupported loop type: {loop_type}",
+                path=f"nodes[{node_index}].config.type",
+            )
+            return
+
+        if normalized_type == "for_each":
+            array_field = node_config.get("array")
+            if not isinstance(array_field, str) or not array_field.strip():
+                _append_error(
+                    errors,
+                    code="missing_array",
+                    message="array is required for for_each loop",
+                    path=f"nodes[{node_index}].config.array",
+                )
+
+        if normalized_type == "range":
+            end_value = node_config.get("end")
+            if end_value is None:
+                end_value = node_config.get("iterations")
+            if end_value is None:
+                _append_error(
+                    errors,
+                    code="missing_end",
+                    message="end (or iterations) is required for range loop",
+                    path=f"nodes[{node_index}].config.end",
+                )
+            elif not (
+                (isinstance(end_value, int) and not isinstance(end_value, bool))
+                or (isinstance(end_value, str) and end_value.strip().isdigit())
+            ):
+                _append_error(
+                    errors,
+                    code="invalid_end",
+                    message="end (or iterations) must be an integer",
+                    path=f"nodes[{node_index}].config.end",
+                )
+            code = node_config.get("code")
+            if not isinstance(code, str) or not code.strip():
+                _append_error(
+                    errors,
+                    code="missing_code",
+                    message="code is required for range loop",
+                    path=f"nodes[{node_index}].config.code",
+                )
+
+        if normalized_type == "while":
+            condition = node_config.get("condition")
+            if not isinstance(condition, str) or not condition.strip():
+                _append_error(
+                    errors,
+                    code="missing_condition",
+                    message="condition is required for while loop",
+                    path=f"nodes[{node_index}].config.condition",
+                )
+            code = node_config.get("code")
+            if not isinstance(code, str) or not code.strip():
+                _append_error(
+                    errors,
+                    code="missing_code",
+                    message="code is required for while loop",
+                    path=f"nodes[{node_index}].config.code",
+                )
+            max_iterations = node_config.get("max_iterations")
+            if max_iterations is not None and (
+                not isinstance(max_iterations, int)
+                or isinstance(max_iterations, bool)
+                or max_iterations <= 0
+            ):
+                _append_error(
+                    errors,
+                    code="invalid_max_iterations",
+                    message="max_iterations must be a positive integer",
+                    path=f"nodes[{node_index}].config.max_iterations",
+                )
+
+    def _validate_database_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for database nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        sql = node_config.get("sql")
+        if not isinstance(sql, str) or not sql.strip():
+            _append_error(
+                errors,
+                code="missing_sql",
+                message="sql is required for database nodes",
+                path=f"nodes[{node_index}].config.sql",
+            )
+
+        database_url = node_config.get("database_url")
+        if database_url is None:
+            # Keep executor default but persist a canonical value to avoid drift.
+            node_config["database_url"] = "sqlite:///agent_data.db"
+        elif not isinstance(database_url, str) or not database_url.strip():
+            _append_error(
+                errors,
+                code="missing_database_url",
+                message="database_url is required for database nodes",
+                path=f"nodes[{node_index}].config.database_url",
+            )
+        else:
+            normalized_url = database_url.strip()
+            node_config["database_url"] = normalized_url
+            # Fail-closed: runtime currently only supports sqlite.
+            if not normalized_url.startswith("sqlite:///"):
+                _append_error(
+                    errors,
+                    code="unsupported_database_url",
+                    message="only sqlite:/// database_url is supported",
+                    path=f"nodes[{node_index}].config.database_url",
+                    meta={"supported_prefix": "sqlite:///"},
+                )
+
+        params_value = node_config.get("params")
+        if isinstance(params_value, str) and params_value.strip():
+            parsed = self._try_parse_json(
+                params_value,
+                errors=errors,
+                path=f"nodes[{node_index}].config.params",
+            )
+            if parsed is not None and not isinstance(parsed, dict | list):
+                _append_error(
+                    errors,
+                    code="invalid_params",
+                    message="params must be a JSON object or array",
+                    path=f"nodes[{node_index}].config.params",
+                )
+
+    def _validate_file_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for file nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        operation = node_config.get("operation")
+        if not isinstance(operation, str) or not operation.strip():
+            _append_error(
+                errors,
+                code="missing_operation",
+                message="operation is required for file nodes",
+                path=f"nodes[{node_index}].config.operation",
+            )
+            return
+
+        allowed = {"read", "write", "append", "delete", "list"}
+        normalized_operation = operation.strip().lower()
+        if normalized_operation not in allowed:
+            _append_error(
+                errors,
+                code="unsupported_operation",
+                message=f"unsupported file operation: {operation}",
+                path=f"nodes[{node_index}].config.operation",
+                meta={"allowed": sorted(allowed)},
+            )
+
+        path_value = node_config.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            _append_error(
+                errors,
+                code="missing_path",
+                message="path is required for file nodes",
+                path=f"nodes[{node_index}].config.path",
+            )
+
+    def _validate_notification_node(
+        self, *, node_index: int, node_config: dict[str, Any], errors: list[dict[str, Any]]
+    ) -> None:
+        if not isinstance(node_config, dict):
+            _append_error(
+                errors,
+                code="invalid_config",
+                message="config must be an object for notification nodes",
+                path=f"nodes[{node_index}].config",
+            )
+            return
+
+        notification_type = node_config.get("type")
+        if not isinstance(notification_type, str) or not notification_type.strip():
+            _append_error(
+                errors,
+                code="missing_type",
+                message="type is required for notification nodes",
+                path=f"nodes[{node_index}].config.type",
+            )
+            return
+
+        message_value = node_config.get("message")
+        if not isinstance(message_value, str) or not message_value.strip():
+            _append_error(
+                errors,
+                code="missing_message",
+                message="message is required for notification nodes",
+                path=f"nodes[{node_index}].config.message",
+            )
+
+        # Optional JSON fields
+        headers_value = node_config.get("headers")
+        if isinstance(headers_value, str) and headers_value.strip():
+            parsed = self._try_parse_json(
+                headers_value,
+                errors=errors,
+                path=f"nodes[{node_index}].config.headers",
+            )
+            if parsed is not None and not isinstance(parsed, dict):
+                _append_error(
+                    errors,
+                    code="invalid_headers",
+                    message="headers must be a JSON object",
+                    path=f"nodes[{node_index}].config.headers",
+                )
+
+        normalized_type = notification_type.strip().lower()
+        if normalized_type == "webhook":
+            url = node_config.get("url")
+            if not isinstance(url, str) or not url.strip():
+                _append_error(
+                    errors,
+                    code="missing_url",
+                    message="url is required for webhook notification",
+                    path=f"nodes[{node_index}].config.url",
+                )
+        elif normalized_type == "slack":
+            webhook_url = node_config.get("webhook_url")
+            if not isinstance(webhook_url, str) or not webhook_url.strip():
+                _append_error(
+                    errors,
+                    code="missing_webhook_url",
+                    message="webhook_url is required for slack notification",
+                    path=f"nodes[{node_index}].config.webhook_url",
+                )
+        elif normalized_type == "email":
+            smtp_host = node_config.get("smtp_host")
+            sender = node_config.get("sender")
+            sender_password = node_config.get("sender_password")
+            if not isinstance(smtp_host, str) or not smtp_host.strip():
+                _append_error(
+                    errors,
+                    code="missing_smtp_host",
+                    message="smtp_host is required for email notification",
+                    path=f"nodes[{node_index}].config.smtp_host",
+                )
+            if not isinstance(sender, str) or not sender.strip():
+                _append_error(
+                    errors,
+                    code="missing_sender",
+                    message="sender is required for email notification",
+                    path=f"nodes[{node_index}].config.sender",
+                )
+            if not isinstance(sender_password, str) or not sender_password.strip():
+                _append_error(
+                    errors,
+                    code="missing_sender_password",
+                    message="sender_password is required for email notification",
+                    path=f"nodes[{node_index}].config.sender_password",
+                )
+
+            recipients = node_config.get("recipients")
+            if recipients is None:
+                _append_error(
+                    errors,
+                    code="missing_recipients",
+                    message="recipients is required for email notification",
+                    path=f"nodes[{node_index}].config.recipients",
+                )
+            elif isinstance(recipients, str):
+                if not recipients.strip():
+                    _append_error(
+                        errors,
+                        code="missing_recipients",
+                        message="recipients is required for email notification",
+                        path=f"nodes[{node_index}].config.recipients",
+                    )
+                else:
+                    # If user provides JSON, validate it; otherwise treat as a single email.
+                    raw = recipients.strip()
+                    if raw.startswith("[") or raw.startswith('"'):
+                        parsed = self._try_parse_json(
+                            raw,
+                            errors=errors,
+                            path=f"nodes[{node_index}].config.recipients",
+                        )
+                        if parsed is not None and not isinstance(parsed, list | str):
+                            _append_error(
+                                errors,
+                                code="invalid_recipients",
+                                message="recipients must be a JSON array or string",
+                                path=f"nodes[{node_index}].config.recipients",
+                            )
+            elif isinstance(recipients, list):
+                if not recipients:
+                    _append_error(
+                        errors,
+                        code="missing_recipients",
+                        message="recipients is required for email notification",
+                        path=f"nodes[{node_index}].config.recipients",
+                    )
+            else:
+                _append_error(
+                    errors,
+                    code="invalid_recipients",
+                    message="recipients must be a JSON array or string",
+                    path=f"nodes[{node_index}].config.recipients",
+                )
+        else:
+            _append_error(
+                errors,
+                code="unsupported_notification_type",
+                message=f"unsupported notification type: {notification_type}",
+                path=f"nodes[{node_index}].config.type",
+            )
+
+    def _validate_requires_text_input_or_incoming_edge(
+        self,
+        *,
+        node_index: int,
+        node_config: dict[str, Any],
+        node_label: str,
+        config_input_keys: tuple[str, ...],
+        incoming_source_node_ids: list[str],
+        errors: list[dict[str, Any]],
+    ) -> None:
+        if not isinstance(node_config, dict):
+            return
+
+        for key in config_input_keys:
+            value = node_config.get(key)
+            if isinstance(value, str) and value.strip():
+                return
+            if isinstance(value, list) and value:
+                return
+            if value is not None and not isinstance(value, str | list):
+                # Non-string inputs (e.g. dict) are acceptable, executor will stringify them.
+                return
+
+        if not incoming_source_node_ids:
+            _append_error(
+                errors,
+                code="missing_input",
+                message=f"{node_label} nodes must have config input or at least one incoming edge",
+                path=f"nodes[{node_index}].config",
+            )
+
+    def _try_parse_json(self, raw: str, *, errors: list[dict[str, Any]], path: str) -> Any | None:
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            _append_error(
+                errors,
+                code="invalid_json",
+                message="invalid JSON",
+                path=path,
+            )
+            return None

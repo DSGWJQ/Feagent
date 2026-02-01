@@ -12,11 +12,14 @@ from typing import Any
 
 from src.domain.agents.workflow_agent import register_default_container_executor_factory
 from src.domain.ports.node_executor import NodeExecutorRegistry
+from src.infrastructure.executors.audio_executor import AudioExecutor
 from src.infrastructure.executors.base_executor import EndExecutor, StartExecutor
 from src.infrastructure.executors.database_executor import DatabaseExecutor
 from src.infrastructure.executors.default_container_executor import DefaultContainerExecutor
+from src.infrastructure.executors.embedding_executor import EmbeddingExecutor
 from src.infrastructure.executors.file_executor import FileExecutor
 from src.infrastructure.executors.http_executor import HttpExecutor
+from src.infrastructure.executors.image_generation_executor import ImageGenerationExecutor
 from src.infrastructure.executors.javascript_executor import (
     ConditionalExecutor,
     JavaScriptExecutor,
@@ -26,6 +29,7 @@ from src.infrastructure.executors.loop_executor import LoopExecutor
 from src.infrastructure.executors.notification_executor import NotificationExecutor
 from src.infrastructure.executors.prompt_executor import PromptExecutor
 from src.infrastructure.executors.python_executor import PythonExecutor
+from src.infrastructure.executors.structured_output_executor import StructuredOutputExecutor
 from src.infrastructure.executors.tool_node_executor import ToolNodeExecutor
 from src.infrastructure.executors.transform_executor import TransformExecutor
 
@@ -38,7 +42,11 @@ __all__ = [
     "DatabaseExecutor",
     "FileExecutor",
     "NotificationExecutor",
+    "EmbeddingExecutor",
+    "ImageGenerationExecutor",
+    "AudioExecutor",
     "LlmExecutor",
+    "StructuredOutputExecutor",
     "JavaScriptExecutor",
     "PythonExecutor",
     "TransformExecutor",
@@ -84,7 +92,9 @@ def create_executor_registry(
     registry.register("python", PythonExecutor())
 
     # 注册条件执行器
-    registry.register("conditional", ConditionalExecutor())
+    conditional_executor = ConditionalExecutor()
+    registry.register("conditional", conditional_executor)
+    registry.register("condition", conditional_executor)  # 兼容旧版本/Coze 导入
 
     # 注册 Prompt 执行器
     registry.register("prompt", PromptExecutor())
@@ -104,11 +114,11 @@ def create_executor_registry(
     # 注册通知执行器
     registry.register("notification", NotificationExecutor())
 
-    # TODO: 注册其他执行器
-    # - imageGeneration
-    # - audio
-    # - embeddingModel
-    # - structuredOutput
+    # 注册向量与多模态执行器
+    registry.register("embeddingModel", EmbeddingExecutor(api_key=openai_api_key))
+    registry.register("imageGeneration", ImageGenerationExecutor(api_key=openai_api_key))
+    registry.register("audio", AudioExecutor(api_key=openai_api_key))
+    registry.register("structuredOutput", StructuredOutputExecutor(api_key=openai_api_key))
 
     if session_factory is not None:
         registry.register("tool", ToolNodeExecutor(session_factory=session_factory))

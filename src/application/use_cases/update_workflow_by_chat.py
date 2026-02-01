@@ -298,7 +298,7 @@ class UpdateWorkflowByChatUseCase:
                     "id": node.id,
                     "type": node.type.value,
                     "name": node.name,
-                    "config": node.config,
+                    "data": node.config,
                     "position": {"x": node.position.x, "y": node.position.y},
                 }
                 for node in modified_workflow.nodes
@@ -306,8 +306,8 @@ class UpdateWorkflowByChatUseCase:
             "edges": [
                 {
                     "id": edge.id,
-                    "source_node_id": edge.source_node_id,
-                    "target_node_id": edge.target_node_id,
+                    "source": edge.source_node_id,
+                    "target": edge.target_node_id,
                     "condition": edge.condition,
                 }
                 for edge in modified_workflow.edges

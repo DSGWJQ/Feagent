@@ -6,6 +6,7 @@ Infrastructure 层：实现 JavaScript 代码执行节点执行器
 这里使用 Python 的 eval 作为简化实现
 """
 
+import asyncio
 from typing import Any
 
 from src.domain.entities.node import Node
@@ -46,8 +47,8 @@ class JavaScriptExecutor(NodeExecutor):
             python_code = code.replace("const ", "").replace("let ", "").replace("var ", "")
             python_code = python_code.replace("===", "==").replace("!==", "!=")
 
-            # 执行代码
-            exec(python_code, exec_context)
+            # KISS: offload CPU-bound exec to keep the event loop responsive for SSE.
+            await asyncio.to_thread(exec, python_code, exec_context)
 
             # 返回结果（假设代码中有 return 语句）
             # 这是一个简化实现，实际应该捕获 return 值
@@ -93,7 +94,10 @@ class ConditionalExecutor(NodeExecutor):
                 "min": min,
                 "max": max,
             }
-            result = eval(condition, {"__builtins__": safe_builtins}, exec_context)
+            # KISS: offload eval to avoid blocking the event loop under load.
+            result = await asyncio.to_thread(
+                eval, condition, {"__builtins__": safe_builtins}, exec_context
+            )
             return {"result": bool(result), "branch": "true" if result else "false"}
         except Exception as e:
             raise DomainError(f"条件表达式评估失败: {str(e)}") from e

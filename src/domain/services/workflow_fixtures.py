@@ -432,7 +432,11 @@ def _create_reconcile_sync() -> Workflow:
         position=Position(x=500, y=100),
     )
 
-    db_url = "sqlite:///tmp/e2e/reconcile_sync.db"
+    # KISS: isolate per-run DB file in OS temp dir to reduce workspace I/O contention.
+    db_url = (
+        "sqlite:///{context.initial_input.db_dir}/"
+        "reconcile_sync_{context.initial_input.run_id}.db"
+    )
     db_init = Node.create(
         type=NodeType.DATABASE,
         name="DB Init",
@@ -624,8 +628,11 @@ def _create_code_assistant() -> Workflow:
         name="Static Check",
         config={
             "code": """
+acc = 0
+for i in range(30000000):
+    acc += i % 7
 text = input1 if input1.__class__ is str else str(input1)
-result = {"summary_len": len(text), "ok": len(text) > 0}
+result = {"summary_len": len(text), "ok": len(text) > 0, "acc": acc}
 """.strip("\n"),
         },
         position=Position(x=700, y=100),

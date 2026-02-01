@@ -63,10 +63,33 @@ def test_validator_rejects_cycles():
 
 def test_validator_rejects_missing_executor():
     registry = create_executor_registry()
-    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+    tool = Tool.create(
+        name="t",
+        description="",
+        category=ToolCategory.HTTP,
+        author="tester",
+    )
+    tool.id = "tool_123"
+    tool.status = ToolStatus.PUBLISHED
 
-    node = _node(NodeType.IMAGE)
-    workflow = Workflow.create(name="wf", description="", nodes=[node], edges=[])
+    tool_repo = Mock()
+    tool_repo.exists.return_value = True
+    tool_repo.find_by_id.return_value = tool
+
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=tool_repo)
+
+    start = _node(NodeType.START)
+    node = _node(NodeType.TOOL, config={"tool_id": "tool_123"})
+    end = _node(NodeType.END)
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, node, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=node.id),
+            Edge.create(source_node_id=node.id, target_node_id=end.id),
+        ],
+    )
 
     with pytest.raises(DomainValidationError) as exc:
         validator.validate_or_raise(workflow)
@@ -185,3 +208,118 @@ def test_validator_prefers_non_empty_tool_id_over_blank_tool_id_field():
 
     assert node.config.get("tool_id") == "tool_123"
     assert "toolId" not in node.config
+
+
+def test_validator_normalizes_http_url_from_legacy_path_before_persisting_shape():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    http = _node(
+        NodeType.HTTP_REQUEST,
+        config={"path": " https://api.example.com/health ", "method": "GET"},
+    )
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, http, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=http.id),
+            Edge.create(source_node_id=http.id, target_node_id=end.id),
+        ],
+    )
+
+    validator.validate_or_raise(workflow)
+
+    assert http.config.get("url") == "https://api.example.com/health"
+    assert "path" not in http.config
+
+
+def test_validator_normalizes_loop_for_to_range_and_moves_iterations_to_end():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    loop = _node(NodeType.LOOP, config={"type": "for", "iterations": 3, "code": "result = i"})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, loop, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=loop.id),
+            Edge.create(source_node_id=loop.id, target_node_id=end.id),
+        ],
+    )
+
+    validator.validate_or_raise(workflow)
+
+    assert loop.config.get("type") == "range"
+    assert loop.config.get("end") == 3
+    assert "iterations" not in loop.config
+
+
+def test_validator_rejects_text_model_multi_input_without_prompt_source():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    http = _node(
+        NodeType.HTTP_REQUEST,
+        config={"url": "https://example.test/api", "method": "GET"},
+    )
+    transform = _node(
+        NodeType.TRANSFORM, config={"type": "field_mapping", "mapping": {"x": "input1"}}
+    )
+    llm = _node(NodeType.TEXT_MODEL, config={"model": "openai/gpt-4"})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, http, transform, llm, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=http.id),
+            Edge.create(source_node_id=start.id, target_node_id=transform.id),
+            Edge.create(source_node_id=http.id, target_node_id=llm.id),
+            Edge.create(source_node_id=transform.id, target_node_id=llm.id),
+            Edge.create(source_node_id=llm.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "ambiguous_prompt_source" in codes
+
+
+def test_validator_rejects_database_url_when_not_sqlite():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    db = _node(
+        NodeType.DATABASE,
+        config={"database_url": "postgresql://localhost:5432/db", "sql": "SELECT 1"},
+    )
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, db, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=db.id),
+            Edge.create(source_node_id=db.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "unsupported_database_url" in codes

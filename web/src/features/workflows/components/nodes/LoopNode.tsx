@@ -4,7 +4,7 @@
  *
  * 功能：
  * - for_each 循环（遍历数组）
- * - for 循环（指定次数）
+ * - range 循环（指定范围）
  * - while 循环（条件循环）
  * - 执行循环体代码
  */
@@ -19,10 +19,16 @@ import styles from '../../styles/workflows.module.css';
 const { TextArea } = Input;
 
 export interface LoopNodeData {
-  type: 'for_each' | 'for' | 'while';
-  array: string;
-  code: string;
+  // Back-compat: keep `for` + `iterations` for older saved workflows.
+  type: 'for_each' | 'range' | 'while' | 'for';
+  array?: string;
+  code?: string;
+  start?: number;
+  end?: number;
+  step?: number;
   iterations?: number;
+  condition?: string;
+  max_iterations?: number;
   current_index?: number;
   total?: number;
   status?: NodeStatus;
@@ -83,7 +89,7 @@ function LoopNode({ data, selected, id }: NodeProps<LoopNodeData>) {
               循环类型
             </label>
             <Input
-              placeholder="for_each / for / while"
+              placeholder="for_each / range / while"
               value={data.type}
               readOnly
               style={{
@@ -93,28 +99,118 @@ function LoopNode({ data, selected, id }: NodeProps<LoopNodeData>) {
             />
           </div>
 
-          {/* 数组变量 */}
-          <div style={{ marginBottom: 12 }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 12,
-                color: '#8c8c8c',
-                marginBottom: 4,
-              }}
-            >
-              数组变量
-            </label>
-            <Input
-              placeholder="例如: items, userList"
-              value={data.array}
-              readOnly
-              style={{
-                fontSize: 12,
-                backgroundColor: '#f5f5f5',
-              }}
-            />
-          </div>
+          {data.type === 'for_each' && (
+            <div style={{ marginBottom: 12 }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 12,
+                  color: '#8c8c8c',
+                  marginBottom: 4,
+                }}
+              >
+                数组变量
+              </label>
+              <Input
+                placeholder="例如: items, userList"
+                value={data.array ?? ''}
+                readOnly
+                style={{
+                  fontSize: 12,
+                  backgroundColor: '#f5f5f5',
+                }}
+              />
+            </div>
+          )}
+
+          {(data.type === 'range' || data.type === 'for') && (
+            <div style={{ marginBottom: 12 }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 12,
+                  color: '#8c8c8c',
+                  marginBottom: 4,
+                }}
+              >
+                范围
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Input
+                  placeholder="start"
+                  value={data.start ?? 0}
+                  readOnly
+                  style={{
+                    fontSize: 12,
+                    backgroundColor: '#f5f5f5',
+                  }}
+                />
+                <Input
+                  placeholder="end"
+                  value={data.end ?? data.iterations ?? ''}
+                  readOnly
+                  style={{
+                    fontSize: 12,
+                    backgroundColor: '#f5f5f5',
+                  }}
+                />
+                <Input
+                  placeholder="step"
+                  value={data.step ?? 1}
+                  readOnly
+                  style={{
+                    fontSize: 12,
+                    backgroundColor: '#f5f5f5',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {data.type === 'while' && (
+            <div style={{ marginBottom: 12 }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 12,
+                  color: '#8c8c8c',
+                  marginBottom: 4,
+                }}
+              >
+                条件
+              </label>
+              <Input
+                placeholder="iteration < 10"
+                value={data.condition ?? ''}
+                readOnly
+                style={{
+                  fontSize: 12,
+                  backgroundColor: '#f5f5f5',
+                }}
+              />
+              <div style={{ marginTop: 8 }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    color: '#8c8c8c',
+                    marginBottom: 4,
+                  }}
+                >
+                  最大迭代次数
+                </label>
+                <Input
+                  placeholder="max_iterations"
+                  value={data.max_iterations ?? ''}
+                  readOnly
+                  style={{
+                    fontSize: 12,
+                    backgroundColor: '#f5f5f5',
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* 循环体代码 */}
           <div style={{ marginBottom: 12 }}>
@@ -130,7 +226,7 @@ function LoopNode({ data, selected, id }: NodeProps<LoopNodeData>) {
             </label>
             <TextArea
               placeholder="例如: result = processItem(item)"
-              value={data.code}
+              value={data.code ?? ''}
               readOnly
               rows={4}
               style={{
@@ -140,33 +236,6 @@ function LoopNode({ data, selected, id }: NodeProps<LoopNodeData>) {
               }}
             />
           </div>
-
-          {/* 迭代信息（如果有） */}
-          {data.iterations !== undefined && (
-            <div style={{ marginBottom: 12 }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: 12,
-                  color: '#8c8c8c',
-                  marginBottom: 4,
-                }}
-              >
-                迭代次数
-              </label>
-              <div
-                style={{
-                  fontSize: 12,
-                  padding: '4px 11px',
-                  backgroundColor: '#f5f5f5',
-                  borderRadius: 4,
-                  color: '#1890ff',
-                }}
-              >
-                {data.iterations} 次
-              </div>
-            </div>
-          )}
 
           {/* 执行进度（运行时） */}
           {hasProgress && (

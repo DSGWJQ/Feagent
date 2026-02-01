@@ -8,6 +8,7 @@ Infrastructure 层：实现 Python 代码执行节点执行器
 - 提供安全的执行环境
 """
 
+import asyncio
 from typing import Any
 
 from src.domain.entities.node import Node
@@ -103,8 +104,8 @@ class PythonExecutor(NodeExecutor):
         exec_context["context"] = context
 
         try:
-            # 执行代码
-            exec(code, exec_context)
+            # KISS: offload CPU-bound exec to keep the event loop responsive for SSE.
+            await asyncio.to_thread(exec, code, exec_context)
 
             # 返回结果（假设代码中有 result 变量赋值）
             return exec_context.get("result")

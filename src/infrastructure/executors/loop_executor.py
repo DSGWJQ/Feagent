@@ -15,6 +15,20 @@ from src.domain.exceptions import DomainError
 from src.domain.ports.node_executor import NodeExecutor
 
 
+def _coerce_int(value: Any, *, field: str) -> int:
+    if isinstance(value, bool):
+        raise DomainError(f"Loop 配置 {field} 必须是整数")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        raw = value.strip()
+        if raw and raw.lstrip("-").isdigit():
+            return int(raw)
+    raise DomainError(f"Loop 配置 {field} 必须是整数")
+
+
 class LoopExecutor(NodeExecutor):
     """循环节点执行器
 
@@ -69,11 +83,16 @@ class LoopExecutor(NodeExecutor):
         if not loop_type:
             raise DomainError("Loop 节点缺少循环类型")
 
-        if loop_type == "for_each":
+        normalized_type = loop_type.strip() if isinstance(loop_type, str) else str(loop_type)
+        # Back-compat: some clients used `for` + `iterations` instead of `range` + `end`.
+        if normalized_type == "for":
+            normalized_type = "range"
+
+        if normalized_type == "for_each":
             return await self._for_each_loop(node.config, inputs, context)
-        elif loop_type == "range":
+        elif normalized_type == "range":
             return await self._range_loop(node.config, inputs, context)
-        elif loop_type == "while":
+        elif normalized_type == "while":
             return await self._while_loop(node.config, inputs, context)
         else:
             raise DomainError(f"不支持的循环类型: {loop_type}")
@@ -153,6 +172,8 @@ class LoopExecutor(NodeExecutor):
         """
         start = config.get("start", 0)
         end = config.get("end")
+        if end is None:
+            end = config.get("iterations")
         step = config.get("step", 1)
         code = config.get("code", "")
 
@@ -164,7 +185,11 @@ class LoopExecutor(NodeExecutor):
 
         results = []
 
-        for i in range(start, end, step):
+        start_int = _coerce_int(start, field="start")
+        end_int = _coerce_int(end, field="end")
+        step_int = _coerce_int(step, field="step")
+
+        for i in range(start_int, end_int, step_int):
             # 准备执行环境
             exec_context = {
                 "__builtins__": self.SAFE_BUILTINS,
@@ -195,7 +220,7 @@ class LoopExecutor(NodeExecutor):
         """
         condition = config.get("condition", "")
         code = config.get("code", "")
-        max_iterations = config.get("max_iterations", 100)
+        max_iterations = _coerce_int(config.get("max_iterations", 100), field="max_iterations")
         initial_vars = config.get("initial_vars", {})
 
         if not condition:
@@ -211,6 +236,7 @@ class LoopExecutor(NodeExecutor):
         exec_context = {
             "__builtins__": self.SAFE_BUILTINS,
             "context": context,
+            "iteration": 0,
         }
 
         # 添加初始变量
@@ -218,6 +244,7 @@ class LoopExecutor(NodeExecutor):
 
         while iteration_count < max_iterations:
             try:
+                exec_context["iteration"] = iteration_count
                 # 评估条件
                 condition_result = eval(condition, exec_context)
 

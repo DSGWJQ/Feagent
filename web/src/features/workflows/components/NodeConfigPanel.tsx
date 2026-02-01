@@ -75,6 +75,17 @@ export default function NodeConfigPanel({
         }
       }
 
+      if (node.type === 'loop') {
+        // Back-compat: older UI used `type=for` + `iterations`; runtime uses `range` + `end`.
+        if (data['type'] === 'for') {
+          normalized.type = 'range';
+          if (data['end'] == null && data['iterations'] != null) {
+            normalized.end = data['iterations'];
+          }
+          delete normalized.iterations;
+        }
+      }
+
       form.setFieldsValue({
         ...normalized,
         // Back-compat: accept legacy toolId but persist tool_id.
@@ -563,22 +574,106 @@ export default function NodeConfigPanel({
             >
               <Select>
                 <Option value="for_each">for_each</Option>
-                <Option value="for">for</Option>
+                <Option value="range">range</Option>
                 <Option value="while">while</Option>
               </Select>
             </Form.Item>
-            <Form.Item label="Array (for_each)" name="array">
-              <Input placeholder="items" />
-            </Form.Item>
             <Form.Item
-              label="Code"
-              name="code"
-              rules={[{ required: true, message: 'Please enter code' }]}
+              noStyle
+              shouldUpdate={(prevValues, currentValues) => prevValues.type !== currentValues.type}
             >
-              <TextArea rows={10} placeholder="result = item" style={{ fontFamily: 'monospace' }} />
-            </Form.Item>
-            <Form.Item label="Iterations (for)" name="iterations">
-              <InputNumber min={1} max={100000} style={{ width: '100%' }} />
+              {({ getFieldValue }) => {
+                const type = getFieldValue('type');
+                if (type === 'for_each') {
+                  return (
+                    <>
+                      <Form.Item
+                        label="Array"
+                        name="array"
+                        rules={[{ required: true, message: 'Please enter array field' }]}
+                      >
+                        <Input placeholder="items" />
+                      </Form.Item>
+                      <Form.Item label="Skip None" name="skip_none" valuePropName="checked">
+                        <Switch />
+                      </Form.Item>
+                      <Form.Item label="Code (optional)" name="code">
+                        <TextArea
+                          rows={10}
+                          placeholder="result = item"
+                          style={{ fontFamily: 'monospace' }}
+                        />
+                      </Form.Item>
+                    </>
+                  );
+                }
+                if (type === 'range') {
+                  return (
+                    <>
+                      <Form.Item label="Start" name="start">
+                        <InputNumber style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item
+                        label="End"
+                        name="end"
+                        rules={[{ required: true, message: 'Please enter end' }]}
+                      >
+                        <InputNumber min={0} max={1000000} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item label="Step" name="step">
+                        <InputNumber min={1} max={1000000} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item
+                        label="Code"
+                        name="code"
+                        rules={[{ required: true, message: 'Please enter code' }]}
+                      >
+                        <TextArea
+                          rows={10}
+                          placeholder="result = i"
+                          style={{ fontFamily: 'monospace' }}
+                        />
+                      </Form.Item>
+                    </>
+                  );
+                }
+                if (type === 'while') {
+                  return (
+                    <>
+                      <Form.Item
+                        label="Condition"
+                        name="condition"
+                        rules={[{ required: true, message: 'Please enter condition' }]}
+                      >
+                        <TextArea
+                          rows={4}
+                          placeholder="iteration < 10"
+                          style={{ fontFamily: 'monospace' }}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        label="Max Iterations"
+                        name="max_iterations"
+                        rules={[{ required: true, message: 'Please enter max_iterations' }]}
+                      >
+                        <InputNumber min={1} max={1000000} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item
+                        label="Code"
+                        name="code"
+                        rules={[{ required: true, message: 'Please enter code' }]}
+                      >
+                        <TextArea
+                          rows={10}
+                          placeholder="result = iteration"
+                          style={{ fontFamily: 'monospace' }}
+                        />
+                      </Form.Item>
+                    </>
+                  );
+                }
+                return null;
+              }}
             </Form.Item>
           </>
         );

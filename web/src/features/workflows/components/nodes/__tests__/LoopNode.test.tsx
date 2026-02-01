@@ -3,10 +3,10 @@
  *
  * 测试策略（TDD）：
  * 1. 渲染测试：节点能正��渲染，显示标题和图标
- * 2. 循环类型测试：类型选择（for_each/for/while）
+ * 2. 循环类型测试：类型选择（for_each/range/while）
  * 3. 数组配置测试：数组变量名输入
  * 4. 代码配置测试：循环体代码输入
- * 5. 迭代信息测试：显示当前迭代信息
+ * 5. 范围/条件信息测试：显示 range/while 的关键参数
  * 6. 连接点测试：输入和输出连接点存在
  */
 
@@ -176,18 +176,20 @@ describe('LoopNode - TDD', () => {
   });
 
   describe('迭代信息测试', () => {
-    it('应该显示迭代次数（如果有��', () => {
+    it('应该显示 range 的 end 值（如果有）', () => {
       const mockData = {
-        type: 'for_each',
-        array: 'items',
-        code: 'result = item',
-        iterations: 10,
+        type: 'range',
+        start: 0,
+        end: 10,
+        step: 1,
+        code: 'result = i',
       };
 
       renderWithReactFlow(<LoopNode data={mockData} id="test-node" />);
 
-      // 断言：应该显示迭代次数
-      expect(screen.getByText(/10/)).toBeInTheDocument();
+      // 断言：应该显示范围信息
+      expect(screen.getByText('范围')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('10')).toBeInTheDocument();
     });
 
     it('应该显示当前索引（运行时）', () => {

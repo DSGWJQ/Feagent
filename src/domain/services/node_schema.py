@@ -167,6 +167,95 @@ def _create_predefined_schemas() -> dict[str, NodeSchema]:
         description="大语言模型调用节点",
     )
 
+    # Embedding节点
+    schemas["embeddingModel"] = NodeSchema(
+        node_type="embeddingModel",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "default": "openai/text-embedding-3-small"},
+                "dimensions": {"type": "integer"},
+            },
+            "required": ["model"],
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "embeddings": {"type": "array"},
+            },
+            "required": ["embeddings"],
+        },
+        allowed_child_types=[],
+        description="向量嵌入节点",
+    )
+
+    # ImageGeneration节点
+    schemas["imageGeneration"] = NodeSchema(
+        node_type="imageGeneration",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "default": "openai/dall-e-3"},
+                "aspectRatio": {"type": "string", "default": "1:1"},
+                "outputFormat": {"type": "string", "default": "png"},
+            },
+            "required": ["model"],
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "image_b64": {"type": "string"},
+                "image_url": {"type": "string"},
+            },
+        },
+        allowed_child_types=[],
+        description="图像生成节点",
+    )
+
+    # Audio节点
+    schemas["audio"] = NodeSchema(
+        node_type="audio",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "default": "openai/tts-1"},
+                "voice": {"type": "string", "default": "alloy"},
+                "speed": {"type": "number", "default": 1.0},
+            },
+            "required": ["model"],
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "audio_b64": {"type": "string"},
+            },
+        },
+        allowed_child_types=[],
+        description="语音生成节点",
+    )
+
+    # StructuredOutput节点
+    schemas["structuredOutput"] = NodeSchema(
+        node_type="structuredOutput",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "schemaName": {"type": "string", "default": "StructuredOutput"},
+                "mode": {"type": "string", "default": "object"},
+                "schema": {"type": "string"},
+            },
+            "required": ["schemaName", "schema"],
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "output": {"type": "object"},
+            },
+        },
+        allowed_child_types=[],
+        description="结构化输出节点",
+    )
+
     # API节点
     schemas["api"] = NodeSchema(
         node_type="api",
@@ -399,6 +488,10 @@ def _create_predefined_schemas() -> dict[str, NodeSchema]:
             "classify",
             "template",
             "mcp",
+            "embeddingModel",
+            "imageGeneration",
+            "audio",
+            "structuredOutput",
             "generic",  # 允许嵌套
         ],
         description="通用容器节点，可包含子节点",

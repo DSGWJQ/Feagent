@@ -43,9 +43,12 @@ Desktop.ini
 # Testing
 .pytest_cache/
 .coverage
+.coverage*
 htmlcov/
 *.cover
 .hypothesis/
+pytest-cache-files-*/
+pytest-cache-files-*
 
 # Database
 *.db
@@ -103,6 +106,7 @@ dmypy.json
 
 # Temp artifacts
 tmp/
+.tmp_*
 temp_scheduled_workflows.py
 __tmp_fix.py
 __tmp_read.py
@@ -115,6 +119,8 @@ uploads/
 
 # Generated data/artifacts
 data/metrics/
+data/chroma_db/
+data/three_high_profile*.json
 
 # Local snapshots / temporary artifacts (should never be committed)
 _snapshots/

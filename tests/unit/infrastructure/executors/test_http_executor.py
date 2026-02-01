@@ -42,6 +42,12 @@ from src.infrastructure.executors.http_executor import HttpExecutor
 # ====================
 
 
+@pytest.fixture(autouse=True)
+def _force_fullreal_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unit tests validate real request-shaping; disable deterministic short-circuit."""
+    monkeypatch.setenv("E2E_TEST_MODE", "fullreal")
+
+
 @dataclass
 class _FakeHTTPXState:
     """记录 httpx 调用状态"""
@@ -230,6 +236,31 @@ class TestHttpExecutorConfigValidation:
         # Then
         assert result == {"ok": True}
         assert len(state.request_calls) == 1
+        assert state.request_calls[0]["url"] == "https://example.com/api"
+
+    @pytest.mark.asyncio
+    async def test_execute_legacy_path_is_accepted_as_url(
+        self, node_factory, fake_httpx, monkeypatch
+    ):
+        """
+        测试：兼容 legacy config.path（作为 url 别名）
+
+        Given: 节点配置仅包含 path + method（无 url）
+        When: 执行 HttpExecutor.execute
+        Then: 不抛出异常，并使用 path 作为请求 url
+        """
+        # Given
+        # Force non-deterministic mode so we can assert real request shape via fake httpx.
+        monkeypatch.setenv("E2E_TEST_MODE", "fullreal")
+        state = fake_httpx(response=_FakeResponse(status_code=200, json_value={"ok": True}))
+        executor = HttpExecutor()
+        node = node_factory({"path": "https://example.com/api", "method": "GET"})
+
+        # When
+        result = await executor.execute(node, {}, {})
+
+        # Then
+        assert result == {"ok": True}
         assert state.request_calls[0]["url"] == "https://example.com/api"
 
 

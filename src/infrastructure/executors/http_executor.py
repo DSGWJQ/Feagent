@@ -4,7 +4,6 @@ Infrastructure 层：实现 HTTP 请求节点执行器
 """
 
 import json
-import os
 from typing import Any
 
 import httpx
@@ -12,6 +11,7 @@ import httpx
 from src.domain.entities.node import Node
 from src.domain.exceptions import DomainError
 from src.domain.ports.node_executor import NodeExecutor
+from src.infrastructure.executors.deterministic_mode import is_deterministic_mode
 
 
 class HttpExecutor(NodeExecutor):
@@ -25,18 +25,21 @@ class HttpExecutor(NodeExecutor):
 
         配置参数：
             url: 请求 URL
+            path: (legacy) 请求 URL 的兼容字段（历史数据/旧客户端可能使用）
             method: 请求方法（GET, POST, PUT, DELETE, PATCH）
             headers: 请求头（JSON 字符串）
             body: 请求体（JSON 字符串）
         """
         # 获取配置
-        url = node.config.get("url", "")
+        # Canonical field is `url`; accept legacy `path` for backward compatibility.
+        url = node.config.get("url") or node.config.get("path") or ""
         method = node.config.get("method", "GET").upper()
         headers_value = node.config.get("headers", {})
         body_value = node.config.get("body", {})
 
-        if not url:
+        if not isinstance(url, str) or not url.strip():
             raise DomainError("HTTP 节点缺少 URL 配置")
+        url = url.strip()
 
         headers = self._parse_json_value(headers_value, field="headers", default={})
 
@@ -59,7 +62,7 @@ class HttpExecutor(NodeExecutor):
             body = self._parse_json_value(body_value, field="body", default=None)
 
         # Deterministic E2E mode: never hit external HTTP endpoints.
-        if os.getenv("E2E_TEST_MODE") == "deterministic":
+        if is_deterministic_mode():
             mock_response = node.config.get("mock_response", None)
             if mock_response is not None:
                 return self._parse_json_value(

@@ -43,6 +43,9 @@ from src.domain.services.workflow_chat_service_enhanced import EnhancedWorkflowC
 from src.domain.services.workflow_save_validator import WorkflowSaveValidator
 from src.infrastructure.database.engine import get_db_session
 from src.infrastructure.llm import LangChainWorkflowChatLLM
+from src.infrastructure.llm.deterministic_workflow_chat_llm import (
+    DeterministicWorkflowChatLLM,
+)
 from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.dependencies.agents import get_event_bus
 from src.interfaces.api.dependencies.container import get_container
@@ -191,23 +194,7 @@ def get_workflow_chat_llm() -> WorkflowChatLLM:
                 temperature=0.0,
             )
         if settings.enable_test_seed_api:
-
-            class _DeterministicStubWorkflowChatLLM:
-                def generate_modifications(self, system_prompt: str, user_prompt: str) -> dict:
-                    return {
-                        "nodes_to_add": [],
-                        "nodes_to_update": [],
-                        "nodes_to_delete": [],
-                        "edges_to_add": [],
-                        "edges_to_delete": [],
-                    }
-
-                async def generate_modifications_async(
-                    self, system_prompt: str, user_prompt: str
-                ) -> dict:
-                    return self.generate_modifications(system_prompt, user_prompt)
-
-            return _DeterministicStubWorkflowChatLLM()
+            return DeterministicWorkflowChatLLM()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="OpenAI API key is not configured for workflow chat.",
@@ -541,7 +528,38 @@ async def execute_workflow_streaming(
             started = time.perf_counter()
             events_sent = 0
             last_executor_id: str | None = None
+            diagnostics = settings.e2e_test_mode == "deterministic"
+            heartbeat_ms: float | None = None
+            first_event_ms: float | None = None
+            first_event_type: str | None = None
+            terminal_event_ms: float | None = None
+            serialization_total_ms = 0.0
+            serialization_max_ms = 0.0
+            serialization_count = 0
+
+            def _serialize(payload: dict[str, Any]) -> str:
+                nonlocal serialization_total_ms, serialization_max_ms, serialization_count
+                if not diagnostics:
+                    return json.dumps(jsonable_encoder(payload))
+                started_at = time.perf_counter()
+                encoded = json.dumps(jsonable_encoder(payload))
+                elapsed_ms = (time.perf_counter() - started_at) * 1000
+                serialization_total_ms += elapsed_ms
+                serialization_max_ms = max(serialization_max_ms, elapsed_ms)
+                serialization_count += 1
+                return encoded
+
             try:
+                if diagnostics:
+                    heartbeat = {
+                        "type": "workflow_heartbeat",
+                        "message": "legacy_stream_started",
+                        "executor_id": "workflow_engine_v1",
+                        "ts_ms": int(time.time() * 1000),
+                    }
+                    events_sent += 1
+                    heartbeat_ms = (time.perf_counter() - started) * 1000
+                    yield f"data: {_serialize(heartbeat)}\n\n"
                 async for event in use_case.execute_streaming(
                     ExecuteWorkflowInput(
                         workflow_id=workflow_id, initial_input=request.initial_input
@@ -551,9 +569,22 @@ async def execute_workflow_streaming(
                         return
                     last_executor_id = event.get("executor_id") if isinstance(event, dict) else None
                     events_sent += 1
-                    yield f"data: {json.dumps(jsonable_encoder(event))}\n\n"
+                    if diagnostics and first_event_ms is None:
+                        first_event_ms = (time.perf_counter() - started) * 1000
+                        first_event_type = event.get("type") if isinstance(event, dict) else None
+                    if (
+                        diagnostics
+                        and terminal_event_ms is None
+                        and isinstance(event, dict)
+                        and event.get("type") in {"workflow_complete", "workflow_error"}
+                    ):
+                        terminal_event_ms = (time.perf_counter() - started) * 1000
+                    yield f"data: {_serialize(event)}\n\n"
             finally:
                 duration_ms = int((time.perf_counter() - started) * 1000)
+                serialization_avg_ms = (
+                    serialization_total_ms / serialization_count if serialization_count else None
+                )
                 logger.info(
                     "workflow_execute_stream_done",
                     extra={
@@ -561,6 +592,15 @@ async def execute_workflow_streaming(
                         "executor_id": last_executor_id,
                         "duration_ms": duration_ms,
                         "events_sent": events_sent,
+                        "legacy_heartbeat_ms": heartbeat_ms,
+                        "legacy_first_event_ms": first_event_ms,
+                        "legacy_first_event_type": first_event_type,
+                        "legacy_terminal_event_ms": terminal_event_ms,
+                        "legacy_serialization_avg_ms": serialization_avg_ms,
+                        "legacy_serialization_max_ms": serialization_max_ms
+                        if serialization_count
+                        else None,
+                        "legacy_serialization_count": serialization_count,
                         "run_id_present": False,
                         "run_persistence_enabled": False,
                     },
@@ -1581,7 +1621,7 @@ The JSON must include:
   "description": "Workflow description",
   "nodes": [
     {{
-      "type": "start|end|httpRequest|textModel|database|conditional|loop|python|transform|file|notification",
+      "type": "start|end|httpRequest|textModel|database|conditional|loop|python|transform|file|notification|prompt|embeddingModel|imageGeneration|audio|structuredOutput|javascript",
       "name": "Node name",
       "config": {{}},
       "position": {{"x": 100, "y": 100}}
@@ -1597,6 +1637,7 @@ Rules:
 2. Node types must be selected from the supported list.
 3. Edge source/target must reference existing nodes.
 4. Return valid JSON only, without extra commentary.
+5. Avoid using tool nodes unless explicitly required (tool availability depends on environment configuration).
 """
 
         response = await self.llm.ainvoke(prompt)
