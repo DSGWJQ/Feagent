@@ -188,16 +188,20 @@ test.describe('UX-WF-102: Save Validation Error', () => {
     page,
     seedWorkflow,
   }) => {
+    const projectId = 'e2e_minimal_workflow_test';
     // 1. Create a normal workflow first
     const { workflow_id } = await seedWorkflow({
       fixtureType: 'main_subgraph_only',
-      projectId: 'e2e_minimal_workflow_test',
+      projectId,
     });
 
     console.log(`[UX-WF-102] Created main_subgraph_only workflow: ${workflow_id}`);
 
     // 2. Navigate to workflow editor
-    await page.goto(`/workflows/${workflow_id}/edit`);
+    await page.goto(`/workflows/${workflow_id}/edit?projectId=${projectId}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 60_000,
+    });
 
     // 3. Wait for editor to load
     await page.waitForSelector('[data-testid="workflow-canvas"]', {
@@ -205,43 +209,36 @@ test.describe('UX-WF-102: Save Validation Error', () => {
       timeout: 15000,
     });
 
-    // 4. Setup response listener
-    let patchResponseStatus: number | null = null;
-    let patchResponseBody: Record<string, unknown> | null = null;
-
-    page.on('response', async (response) => {
-      const url = response.url();
-      if (
-        url.includes(`/api/workflows/${workflow_id}`) &&
-        response.request().method() === 'PATCH'
-      ) {
-        patchResponseStatus = response.status();
-        try {
-          patchResponseBody = await response.json();
-        } catch {
-          // Response may not be JSON
-        }
-        console.log(`[UX-WF-102] Minimal workflow PATCH status: ${patchResponseStatus}`);
-      }
-    });
-
-    // 5. Try to select and delete intermediate nodes (if possible)
+    // 4. Try to select and delete intermediate nodes (if possible)
     // This depends on the UI implementation
     // For now, we'll just attempt to save and verify the response
 
     const saveButton = page.locator('[data-testid="workflow-save-button"]');
     await saveButton.waitFor({ state: 'visible', timeout: 5000 });
 
-    // 6. If save button is enabled, click it
+    // 5. If save button is enabled, click it
     if (await saveButton.isEnabled()) {
       console.log('[UX-WF-102] Attempting to save minimal workflow');
+
+      const patchResponsePromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PATCH' &&
+          response.url().includes(`/api/workflows/${workflow_id}`),
+        { timeout: 30_000 }
+      );
+
       await saveButton.click();
+      const patchResponse = await patchResponsePromise;
+      const patchResponseStatus = patchResponse.status();
 
-      // 7. Wait for response
-      await page.waitForTimeout(2000);
+      let patchResponseBody: Record<string, unknown> | null = null;
+      try {
+        patchResponseBody = (await patchResponse.json()) as Record<string, unknown>;
+      } catch {
+        // Response may not be JSON
+      }
 
-      // 8. Verify response (either success or validation error)
-      expect(patchResponseStatus).toBeDefined();
+      console.log(`[UX-WF-102] Minimal workflow PATCH status: ${patchResponseStatus}`);
 
       if (patchResponseStatus === 400) {
         // Validation error - verify structure

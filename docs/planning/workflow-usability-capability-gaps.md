@@ -14,37 +14,34 @@
    - Tool: legacy `toolId` 会被 normalize 到 `tool_id`
    - Loop: legacy `type=for + iterations` 会被 normalize 到 `type=range + end`
 
-3) 前端 UI 的“可拖拽节点集合”目前为（17 个）：
+3) 前端 UI 的“可拖拽节点集合”目前为（18 个）：
    `start/end/httpRequest/textModel/conditional/javascript/python/transform/prompt/imageGeneration/audio/tool/embeddingModel/structuredOutput/database/file/notification/loop`
    - 事实源：`web/src/features/workflows/utils/nodeUtils.ts` + `web/src/features/workflows/pages/WorkflowEditorPageWithMutex.tsx`
 
-4) 对话侧（真实链路）supported node list 目前未覆盖全部 UI 节点
-   - `src/domain/services/workflow_chat_service_enhanced.py` prompt 仅列：
-     `start/end/httpRequest/transform/database/conditional/loop/python/textModel/prompt/file/notification/tool`
-   - 缺失：`javascript/embeddingModel/imageGeneration/audio/structuredOutput`
+4) 对话侧（真实链路）supported node list 已与 UI 节点集合对齐（已修复）
+   - `src/domain/services/workflow_chat_service_enhanced.py` prompt 已覆盖 UI 节点，并补充模型类节点 provider 约束（OpenAI-only）。
 
 5) API（deprecated/internal）生成 prompt 的节点清单与 UI 不完全一致
    - `src/interfaces/api/routes/workflows.py:SimpleWorkflowLLMClient.generate_workflow` 支持列表包含 `javascript`，不包含 `tool`，并提示避免使用 tool（环境依赖）。
 
 ## 1. P0 阻塞项（零容忍：保存通过但必然执行失败 / 口径承诺但系统不可用）
 
-### P0-1 textModel provider/密钥注入不一致
+### P0-1 textModel provider/密钥注入不一致（已修复：OpenAI-only）
 
 - 现状：
-  - UI 允许选择：`openai/*`、`anthropic/*`、`google/*`
   - `LlmExecutor`：
     - `google` provider 未实现（必失败）
-    - `anthropic` provider 需要 Anthropic key，但 `create_executor_registry()` 当前仅把 `openai_api_key` 注入 `LlmExecutor`（anthropic key 参数未使用）
-  - SaveValidator 未对 provider 与依赖做 fail-closed 校验（因此“可保存但必失败”成立）
-- 影响：用户可在 UI 配置并保存一个 textModel 节点，但执行阶段稳定失败。
+  - SaveValidator 现已对 textModel 做 provider fail-closed 校验（拒绝非 OpenAI provider）。
+  - UI 现已移除 `anthropic/*`、`google/*` 模型选项，避免生成必败配置。
+- 影响（修复后）：用户无法保存一个当前实现必败的 provider 配置。
 
-### P0-2 imageGeneration provider 口径漂移（UI 提供 Gemini 选项但 runtime 仅支持 OpenAI）
+### P0-2 imageGeneration provider 口径漂移（已修复：移除 Gemini + fail-closed）
 
 - 现状：
-  - UI `imageGeneration` 提供 `gemini-2.5-flash-image`（无 provider 前缀）
   - `ImageGenerationExecutor` 仅支持 OpenAI
-  - SaveValidator 仅校验 model 非空，不限制 provider
-- 影响：用户可保存，但执行必失败或调用 OpenAI 时 model 不合法。
+  - SaveValidator 现已 fail-closed：拒绝非 OpenAI provider，且拒绝 `gemini*` 模型族（即使缺 provider 前缀）。
+  - UI 现已移除 Gemini 选项。
+- 影响（修复后）：imageGeneration 不再允许保存明显必败的模型配置。
 
 ### P0-3 database_url 未被 SaveValidator 限制（runtime 仅 sqlite）（已修复）
 
@@ -53,12 +50,12 @@
 - 覆盖测试：
   - `tests/unit/domain/services/test_workflow_save_validator.py::test_validator_rejects_database_url_when_not_sqlite`
 
-### P0-4 “可表达→可生成”链路缺口（对话任务库/文档 vs 真实 chat prompt）
+### P0-4 “可表达→可生成”链路缺口（已修复：对话 supported node list 对齐 UI）
 
 - 现状：
   - 任务库文档 `docs/planning/workflow-task-catalog.md` 已列出：`embeddingModel/imageGeneration/audio/structuredOutput/javascript/tool`
-  - 真实 chat prompt 未列出 `embeddingModel/imageGeneration/audio/structuredOutput/javascript`
-- 影响：用户按文档/任务库表达需求时，系统对话侧可能无法生成对应节点组合（口径漂移）。
+  - 真实 chat prompt 已列出 `embeddingModel/imageGeneration/audio/structuredOutput/javascript`
+- 影响（修复后）：对话侧可生成 UI 支持节点组合，减少口径漂移。
 
 ## 2. P1 信息缺口（不影响基本跑通，但会影响边界结论/可用性验收）
 
@@ -67,8 +64,9 @@
    - 是否配置 `OPENAI_API_KEY`、是否存在 `ANTHROPIC_API_KEY`（以及是否允许外部 HTTP/通知）
    - tool 节点依赖 DB 的 Tool 数据：prod/dev 是否一定存在可用 tool？tool 缺失时 UI/对话是否应该隐藏/降级？
 
-2) Draft 可编辑性策略
-   - SaveValidator 在 draft 时仍会对所有节点校验 “executor 是否存在”（而不仅仅是主连通子图），可能导致草稿阶段无法保存“进行中的”节点（需确认是否符合产品预期）。
+2) Draft 可编辑性策略（已对齐）
+   - SaveValidator 在 draft 时仅对 **start->end 主连通子图**做 executability 校验；非主子图节点允许 in-progress（不会因缺 executor / tool 未配置而阻断保存）。
+   - 覆盖测试：`tests/unit/domain/services/test_workflow_save_validator.py::test_validator_allows_draft_to_contain_incomplete_tool_node_outside_main_subgraph`
 
 3) 多模态节点的“最小可执行配置”定义
    - embeddingModel/imageGeneration/audio/structuredOutput 的输入来源：靠入边还是允许 config 直接填写？
@@ -87,10 +85,7 @@
    - 还是必须执行成功并产出结果？
    - deterministic 环境下是否要求语义断言（例如 ETL 结果正确）？
 
-## 4. 下一步（进入修复前的最小决策点）
+## 4. 决策记录（已确认）
 
-请你先确认以下 3 点（我再进入第 2/3/4 阶段的代码修复与补测）：
-
-1) textModel：是否要对外宣称支持 `anthropic/*` 与 `google/*`？（若否，UI/SaveValidator/文档需收敛到 openai）
-2) imageGeneration：是否要保留 Gemini 选项？（若否，UI 需要移除；若是，需要补 executor/provider 支持与校验）
-3) database：是否只支持 sqlite？（若是，SaveValidator/前端需要显式限制并给出清晰错误；若否，需要实现更多 executor）
+1) database：仅支持 sqlite（已落地 SaveValidator fail-closed：拒绝非 `sqlite:///`）
+2) 模型类节点：当前版本仅承诺 OpenAI provider（已落地：UI 收敛 + SaveValidator fail-closed + chat prompt 规则）

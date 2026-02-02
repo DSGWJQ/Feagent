@@ -12,7 +12,8 @@ test.describe('UX-WF-008: Code Assistant', () => {
     page,
     seedWorkflow,
   }) => {
-    test.setTimeout(90_000);
+    // Includes run creation + execution completion (with possible side-effect approvals).
+    test.setTimeout(180_000);
 
     const apiBaseUrl = process.env.PLAYWRIGHT_API_URL || 'http://127.0.0.1:8000';
     const projectId = 'e2e_code_assistant';

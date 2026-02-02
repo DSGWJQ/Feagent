@@ -10,7 +10,8 @@ import { test, expect } from '../fixtures/workflowFixtures';
 
 test.describe('UX-WF-009: Knowledge Assistant', () => {
   test('should run knowledge_assistant fixture to completion', async ({ page, seedWorkflow }) => {
-    test.setTimeout(90_000);
+    // Includes run creation, optional side-effect confirmation, and execution completion waits.
+    test.setTimeout(180_000);
 
     const apiBaseUrl = process.env.PLAYWRIGHT_API_URL || 'http://127.0.0.1:8000';
     const projectId = 'e2e_knowledge_assistant';

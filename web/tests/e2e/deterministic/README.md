@@ -35,6 +35,6 @@ npx playwright test --project=deterministic --headed
 
 ## 环境要求
 
-- 后端需配置 `.env.test` 环境变量
-- 启用 `enable_test_seed_api=true`
-- 设置 `E2E_TEST_MODE=deterministic`
+- 后端环境文件：优先读取 `.env.test`，不存在时自动回退到 `.env.test.example`
+- 需启用 `ENABLE_TEST_SEED_API=true`
+- 需设置 `E2E_TEST_MODE=deterministic`（deterministic: Stub LLM + Mock HTTP）

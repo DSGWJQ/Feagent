@@ -31,6 +31,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi import Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 
 from src.domain.services.conversation_flow_emitter import (
@@ -132,7 +133,9 @@ class SSEEmitterHandler:
         if isinstance(data, str):
             return f"data: {data}\n\n"
 
-        json_str = json.dumps(data, ensure_ascii=False)
+        # Defensive: metadata may include non-JSON types (datetime, UUID, Pydantic models, etc.).
+        # `jsonable_encoder` normalizes them to JSON-safe primitives to prevent SSE crashes.
+        json_str = json.dumps(jsonable_encoder(data), ensure_ascii=False)
         return f"data: {json_str}\n\n"
 
     async def _cleanup(self, reason: str = "completed") -> None:

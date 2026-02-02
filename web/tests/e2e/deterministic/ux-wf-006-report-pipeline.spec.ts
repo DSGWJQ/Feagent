@@ -27,7 +27,10 @@ test.describe('UX-WF-006: Report Pipeline', () => {
       if (node?.id && node?.type) nodeIds.set(node.type, node.id);
     }
 
-    await page.goto(`/workflows/${workflow_id}/edit`);
+    await page.goto(`/workflows/${workflow_id}/edit?projectId=${projectId}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 60_000,
+    });
     await page.waitForSelector('[data-testid="workflow-canvas"]', { state: 'visible', timeout: 15000 });
 
     // Assert key nodes exist on canvas (stable via backend-provided node IDs).

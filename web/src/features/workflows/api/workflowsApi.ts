@@ -12,6 +12,7 @@ import type {
   ExecuteWorkflowResponse,
   SSEEvent,
 } from '../types/workflow';
+import type { WorkflowCapabilitiesResponse } from '../types/workflowCapabilities';
 
 export interface PlanningSseEvent {
   type: string;
@@ -67,6 +68,14 @@ export async function executeWorkflow(
     `/workflows/${workflowId}/execute`,
     request
   );
+  return response.data;
+}
+
+/**
+ * Capability matrix (SoT) for editor workflows.
+ */
+export async function getWorkflowCapabilities(): Promise<WorkflowCapabilitiesResponse> {
+  const response = await axiosInstance.get<WorkflowCapabilitiesResponse>(`/workflows/capabilities`);
   return response.data;
 }
 

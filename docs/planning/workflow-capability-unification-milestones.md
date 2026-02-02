@@ -95,10 +95,19 @@
 
 ### 2.7 执行记录（完成后填写）
 
-- 完成日期：
+- 完成日期：2026-02-01
 - 变更摘要：
+  - 新增 editor workflow 单一能力/校验事实源：`src/domain/services/workflow_node_contracts.py`
+  - 新增能力矩阵端点：`GET /api/workflows/capabilities`（`src/interfaces/api/routes/workflow_capabilities.py`）
+  - `WorkflowSaveValidator` 改为读取同一份 contract spec（避免 required/conditional/json/multi-input 规则漂移）
+  - 新增合同测试：`tests/integration/api/workflows/test_workflow_capabilities_api.py`
+  - 更新补测矩阵：`docs/planning/workflow-usability-test-matrix.md`（P2 DONE）
 - 测试结果：
+  - `python -m pytest tests/unit/domain/services/test_workflow_save_validator.py -q --no-cov`
+  - `python -m pytest tests/integration/api/workflows/test_workflow_capabilities_api.py -q --no-cov`
 - 遗留风险：
+  - loop 的 `invalid_end`/`invalid_max_iterations` 等数值约束仍在 SaveValidator 内部实现，尚未完全声明式化到 spec
+  - UI/对话侧尚未接入 capabilities endpoint（将在 Milestone 2 完成）
 
 ---
 
@@ -152,10 +161,19 @@
 
 ### 3.7 执行记录（完成后填写）
 
-- 完成日期：
+- 完成日期：2026-02-02
 - 变更摘要：
+  - 对话侧：`WorkflowChatServiceEnhanced` 的 system prompt 不再手写节点清单与关键约束，改为从能力事实源 spec 渲染（避免 contract drift）。
+  - UI：`NodeConfigPanel` 在 `textModel` 多入边且无内置 prompt 时强制要求选择 `promptSourceNodeId`，并在保存节点配置前执行 `form.validateFields()` 阻止保存必败配置。
+  - 前端调用方：`WorkflowEditorPageWithMutex` 传入 `nodes/edges` 供面板计算入边与候选上游节点。
+  - 补齐前端单测：覆盖 OpenAI-only 选项暴露与多入边 promptSource 必填阻断。
 - 测试结果：
+  - `python -m pytest tests/unit/domain/services/test_workflow_save_validator.py -q --no-cov`
+  - `python -m pytest tests/unit/domain/services/test_workflow_chat_service_enhanced.py -q --no-cov`
+  - `npm --prefix web test -- src/features/workflows/components/__tests__/NodeConfigPanel.test.tsx`
 - 遗留风险：
+  - UI/对话目前直接读取后端同仓 spec（而非通过 `/api/workflows/capabilities`），仍需在 Milestone 3/后续阶段评估是否统一改为消费端点以隔离前后端发布节奏。
+  - 多入边 textModel 若用户从未打开配置面板，仍可能在保存 workflow 时被后端 fail-closed 拒绝；需要确认 UI 对保存失败的错误展示是否足够可定位（节点 id/type + hint）。
 
 ---
 
@@ -205,10 +223,22 @@
 
 ### 4.7 执行记录（完成后填写）
 
-- 完成日期：
+- 完成日期：2026-02-02
 - 变更摘要：
+  - 新增 deterministic UI e2e：`web/tests/e2e/deterministic/workflow-data-cleaning.spec.ts`（chat-create → 进入编辑器 → 保存 → 配置 Input(JSON) → Run → 断言输出语义：去重/去空/类型转换）。
+  - 补齐稳定选择器与结果出口（避免用文案/placeholder 做选择器导致 flaky）：
+    - `web/src/features/workflows/pages/WorkflowEditorPage.tsx`：为 chat-create 输入框/提交按钮补齐 `data-testid`，并将获取 `workflow_id` 的超时从 10s 放宽到 20s（Windows + SQLite 冷写入更慢）。
+    - `web/src/features/workflows/pages/WorkflowEditorPageWithMutex.tsx`：暴露隐藏 DOM `data-testid="workflow-final-result"`（JSON.stringify(finalResult)）供 Playwright 断言；为 Input modal 的 OK/Cancel 补齐 `data-testid`。
+  - 让 deterministic e2e 默认可跑通 Runs API 路径并降低超时误报：
+    - `web/tests/e2e/helpers/backend.ts`：deterministic 模式下默认注入 `DISABLE_RUN_PERSISTENCE=false`（允许通过 `.env.test`/process.env 显式覆盖）。
+    - `web/playwright.config.ts`：deterministic 项目单测超时上限调整为 120s；并对复杂用例提升单用例 timeout（007/008/009）。
+    - 对历史 flaky 用例补齐 `page.goto(..., { waitUntil: 'domcontentloaded', timeout: 60_000 })` 等显式导航超时（001/006/102）。
+  - 修复 chat-create SSE 序列化崩溃：`src/interfaces/api/services/sse_emitter_handler.py` 使用 `jsonable_encoder` 防止 `datetime/UUID` 等导致断流。
 - 测试结果：
+  - `npm --prefix web run test:e2e:deterministic`
 - 遗留风险：
+  - chat-create 当前未显式传入 `project_id`；当后端启用 Runs API 且 UI 未提供 projectId 时，执行路径可能无法创建 run（本次 e2e 通过 query param 注入 projectId 规避）。需要在后续阶段统一“workflow 归属 project”的默认策略与 UI 选择入口。
+  - `web/tests/e2e/helpers/backend.ts` 仍会提示缺少 `.env.test`（目前 fallback 到 process.env，不阻塞）。
 
 ---
 
@@ -219,3 +249,24 @@
 - `/api/workflows/capabilities` 已成为 UI 与对话 prompt 的唯一能力来源（无硬编码回退）
 - textModel 多入边在 UI 上可表达、可配置、可保存、可执行（fail-closed + UX 防呆）
 - deterministic Playwright e2e 能稳定复现“任务完成”，并作为回归门禁
+
+### 5.1 执行记录（完成后填写）
+
+- 完成日期：2026-02-02
+- 变更摘要：
+  - Chat-create 默认归属 project（Runs API 可执行路径必需）：
+    - 后端：`src/interfaces/api/routes/workflows.py` 在 chat-create 时 fail-closed 生成/归属 `project_id`，并确保 `projects` 表存在该行（避免 `runs.project_id` FK 失败）。
+    - 前端：`web/src/features/workflows/pages/WorkflowEditorPage.tsx` chat-create 请求显式传 `project_id`，并导航携带 `?projectId=`（避免 editor 初始加载 race）。
+  - Deterministic e2e env 降噪：
+    - `web/tests/e2e/helpers/backend.ts` 自动回退读取 `.env.*.example`（`.env.test` 等缺失不再告警）；`.env.test.example` 提供 deterministic 最小默认值。
+  - UI 统一消费 capabilities（无硬编码回退）：
+    - `web/src/features/workflows/components/NodePalette.tsx` 与 `web/src/features/workflows/components/NodeConfigPanel.tsx` 通过 React Query 拉取 `GET /api/workflows/capabilities`；能力不可用时 fail-closed（不允许在未知能力边界下编辑/添加节点）。
+    - `src/domain/services/workflow_node_contracts.py` 增补 UI 需要的 enum 元信息（如 model/voice/aspectRatio/outputFormat/method），由 capabilities 输出统一驱动 UI 下拉选项。
+- 测试结果：
+  - `python -m pytest tests/unit/domain/services/test_workflow_save_validator.py -q --no-cov`
+  - `python -m pytest tests/unit/domain/services/test_workflow_chat_service_enhanced.py -q --no-cov`
+  - `python -m pytest tests/integration/api/workflows/test_workflow_capabilities_api.py -q --no-cov`
+  - `npm --prefix web test -- src/features/workflows/components/__tests__/NodeConfigPanel.test.tsx`
+  - `npm --prefix web run test:e2e:deterministic`
+- 遗留风险：
+  - 目前 `nodeTypeConfigs` 仍为 UI 展示元数据（label/icon/color），但节点“可用性/可执行性/字段约束”已以 capabilities 为唯一事实源；后续如新增节点类型需补齐展示配置。

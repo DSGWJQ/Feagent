@@ -11,6 +11,14 @@
  */
 
 import { test, expect } from '../fixtures/workflowFixtures';
+import type { Page } from '@playwright/test';
+
+async function gotoWorkflowEditor(page: Page, workflowId: string): Promise<void> {
+  await page.goto(`/workflows/${workflowId}/edit`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 60_000,
+  });
+}
 
 test.describe('UX-WF-001: Open Workflow Editor', () => {
   /**
@@ -33,7 +41,7 @@ test.describe('UX-WF-001: Open Workflow Editor', () => {
     console.log(`[UX-WF-001] Created workflow: ${workflow_id}`);
 
     // 2. Navigate to workflow editor
-    await page.goto(`/workflows/${workflow_id}/edit`);
+    await gotoWorkflowEditor(page, workflow_id);
     console.log('[UX-WF-001] Navigated to editor');
 
     // 3. Wait for canvas to load
@@ -68,7 +76,7 @@ test.describe('UX-WF-001: Open Workflow Editor', () => {
     });
 
     // 2. Navigate to editor
-    await page.goto(`/workflows/${workflow_id}/edit`);
+    await gotoWorkflowEditor(page, workflow_id);
 
     // 3. Wait for canvas
     await page.waitForSelector('[data-testid="workflow-canvas"]', {
@@ -106,7 +114,7 @@ test.describe('UX-WF-001: Open Workflow Editor', () => {
     });
 
     // 2. Navigate to editor
-    await page.goto(`/workflows/${workflow_id}/edit`);
+    await gotoWorkflowEditor(page, workflow_id);
 
     // 3. Wait for canvas
     await page.waitForSelector('[data-testid="workflow-canvas"]', {
@@ -139,7 +147,7 @@ test.describe('UX-WF-001: Open Workflow Editor', () => {
     });
 
     // 2. Navigate to editor
-    await page.goto(`/workflows/${workflow_id}/edit`);
+    await gotoWorkflowEditor(page, workflow_id);
 
     // 3. Wait for canvas
     await page.waitForSelector('[data-testid="workflow-canvas"]', {
@@ -178,7 +186,7 @@ test.describe('UX-WF-001: Open Workflow Editor', () => {
     for (let i = 1; i <= 3; i++) {
       console.log(`[UX-WF-001] Opening editor iteration ${i}`);
 
-      await page.goto(`/workflows/${workflow_id}/edit`);
+      await gotoWorkflowEditor(page, workflow_id);
 
       // Verify canvas loads each time
       const canvas = page.locator('[data-testid="workflow-canvas"]');
@@ -192,7 +200,7 @@ test.describe('UX-WF-001: Open Workflow Editor', () => {
 
       // Navigate away
       if (i < 3) {
-        await page.goto('/');
+        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
         await page.waitForTimeout(500);
       }
     }

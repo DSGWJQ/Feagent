@@ -57,6 +57,15 @@ function pickEnvFile(mode: string): string {
   }
 }
 
+function resolveEnvFile(primaryPath: string): string | null {
+  if (fs.existsSync(primaryPath)) return primaryPath;
+
+  const examplePath = `${primaryPath}.example`;
+  if (fs.existsSync(examplePath)) return examplePath;
+
+  return null;
+}
+
 export interface BackendHandle {
   pid: number;
   stop: () => Promise<void>;
@@ -79,13 +88,16 @@ export async function ensureBackendRunning(): Promise<BackendHandle | null> {
 
   const repoRoot = getRepoRootFromThisFile();
   const mode = (process.env.E2E_TEST_MODE || 'deterministic').trim();
-  const envFile = path.resolve(repoRoot, pickEnvFile(mode));
+  const envFilePrimary = path.resolve(repoRoot, pickEnvFile(mode));
+  const envFile = resolveEnvFile(envFilePrimary);
 
   let fileEnv: Record<string, string> = {};
-  if (fs.existsSync(envFile)) {
+  if (envFile) {
     fileEnv = parseDotenvFile(fs.readFileSync(envFile, 'utf-8'));
   } else {
-    console.warn(`[Backend] Env file not found: ${envFile} (falling back to process.env)`);
+    console.warn(
+      `[Backend] Env file not found: ${envFilePrimary} or ${envFilePrimary}.example (falling back to process.env)`
+    );
   }
 
   const childEnv: Record<string, string> = {
@@ -101,6 +113,11 @@ export async function ensureBackendRunning(): Promise<BackendHandle | null> {
   if (!childEnv.ENABLE_TEST_SEED_API) childEnv.ENABLE_TEST_SEED_API = 'true';
   if (!childEnv.ENV) childEnv.ENV = 'test';
   if (!childEnv.E2E_TEST_MODE) childEnv.E2E_TEST_MODE = mode;
+  // Most deterministic UX specs assert Runs API behavior; override dev `.env` rollback flag by default.
+  // Allow explicit opt-out via `.env.test` or process.env.
+  if (mode === 'deterministic' && typeof childEnv.DISABLE_RUN_PERSISTENCE === 'undefined') {
+    childEnv.DISABLE_RUN_PERSISTENCE = 'false';
+  }
 
   console.log(`[Backend] Starting uvicorn (mode=${childEnv.E2E_TEST_MODE})...`);
 

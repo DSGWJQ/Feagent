@@ -43,6 +43,7 @@ from src.interfaces.api.routes import (
     runs,
     scheduled_workflows,
     tools,
+    workflow_capabilities,
 )
 from src.interfaces.api.routes import workflows as workflows_routes
 from src.interfaces.api.routes import workflows_rag as workflows_rag_routes
@@ -481,6 +482,7 @@ async def root() -> JSONResponse:
 # NOTE: include "fixed" workflow subpaths before the catch-all `/{workflow_id}` routes,
 # otherwise Starlette will match `/{workflow_id}` first and return 405 for POST endpoints.
 app.include_router(concurrent_workflows.router, prefix="/api")
+app.include_router(workflow_capabilities.router, prefix="/api", tags=["Workflows"])
 app.include_router(workflows_routes.router, prefix="/api", tags=["Workflows"])
 app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
 app.include_router(auth.router, prefix="/api", tags=["Authentication"])

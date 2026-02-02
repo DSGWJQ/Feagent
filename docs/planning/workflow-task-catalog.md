@@ -5,9 +5,10 @@
 所有示例均以“对话提示词”形式给出，适用于工作流自动生成场景。
 
 ## 2. 可执行节点清单（执行边界）
-- start / end
-- http / httpRequest
-- llm / textModel
+- start
+- end
+- httpRequest
+- textModel
 - prompt
 - transform
 - database
@@ -15,12 +16,15 @@
 - notification
 - conditional
 - loop
-- python / javascript
+- python
+- javascript
 - tool
 - embeddingModel
 - imageGeneration
 - audio
 - structuredOutput
+
+> 说明：`http/llm/condition` 等别名仅用于历史兼容/导入，不进入新示例与新对话生成。
 
 ## 3. 任务场景清单（覆盖高频场景）
 
@@ -90,3 +94,5 @@
 ## 5. 注意事项
 - 上述任务均依赖真实执行器能力与有效配置（数据库连接、API 密钥等）。
 - 结构化输出节点需提供 JSON Schema 才可通过校验并执行。
+- database 节点当前仅支持 `sqlite:///`（非 sqlite 将在保存阶段 fail-closed）。
+- 模型类节点（textModel/embeddingModel/imageGeneration/audio/structuredOutput）当前仅承诺 OpenAI provider（`openai/*` 或不带 provider 前缀的 OpenAI 模型名）。

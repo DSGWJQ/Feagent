@@ -112,6 +112,57 @@ def test_validator_rejects_tool_node_missing_tool_id():
     assert "missing_tool_id" in codes
 
 
+def test_validator_allows_draft_to_contain_incomplete_tool_node_outside_main_subgraph():
+    # Draft editing: in-progress nodes outside the main start->end subgraph should not block saving.
+    # This specifically avoids tool nodes being a "dead end" if a user drags one onto the canvas
+    # but hasn't selected a tool yet.
+    registry = (
+        create_executor_registry()
+    )  # NOTE: tool executor is not registered without session_factory.
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    tool = _node(NodeType.TOOL, config={})
+    end = _node(NodeType.END)
+
+    # Main runnable path is start -> end; tool is disconnected (outside the main subgraph).
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, tool, end],
+        edges=[Edge.create(source_node_id=start.id, target_node_id=end.id)],
+    )
+
+    validator.validate_or_raise(workflow)
+
+
+def test_validator_rejects_tool_node_when_tool_repository_is_unavailable_fail_closed():
+    # Registry must include tool executor; otherwise we'd get a `missing_executor` drift.
+    registry = create_executor_registry(session_factory=lambda: None)
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=None)
+
+    start = _node(NodeType.START)
+    node = _node(NodeType.TOOL, config={"tool_id": "tool_123"})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, node, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=node.id),
+            Edge.create(source_node_id=node.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "tool_repository_unavailable" in codes
+    assert "missing_executor" not in codes
+
+
 def test_validator_rejects_deprecated_tool():
     registry = create_executor_registry()
     tool = Tool.create(
@@ -297,6 +348,41 @@ def test_validator_rejects_text_model_multi_input_without_prompt_source():
     assert "ambiguous_prompt_source" in codes
 
 
+def test_validator_rejects_text_model_when_prompt_source_node_id_not_in_incoming_sources():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    a = _node(NodeType.PYTHON, config={"code": "result = 1"})
+    b = _node(NodeType.PYTHON, config={"code": "result = 2"})
+    llm = _node(
+        NodeType.TEXT_MODEL,
+        config={"model": "openai/gpt-4", "promptSourceNodeId": "node_missing"},
+    )
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, a, b, llm, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=a.id),
+            Edge.create(source_node_id=start.id, target_node_id=b.id),
+            Edge.create(source_node_id=a.id, target_node_id=llm.id),
+            Edge.create(source_node_id=b.id, target_node_id=llm.id),
+            Edge.create(source_node_id=llm.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    invalid = [err for err in exc.value.errors if err.get("code") == "invalid_prompt_source"]
+    assert invalid, exc.value.errors
+    assert invalid[0].get("path") == "nodes[3].config.promptSourceNodeId"
+    assert set(invalid[0].get("meta", {}).get("incoming_sources", [])) == {a.id, b.id}
+
+
 def test_validator_rejects_database_url_when_not_sqlite():
     registry = create_executor_registry()
     validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
@@ -323,3 +409,246 @@ def test_validator_rejects_database_url_when_not_sqlite():
 
     codes = {err.get("code") for err in exc.value.errors}
     assert "unsupported_database_url" in codes
+
+
+def test_validator_rejects_text_model_when_provider_is_not_openai():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    llm = _node(NodeType.TEXT_MODEL, config={"model": "google/gemini-2.5-flash", "prompt": "hi"})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, llm, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=llm.id),
+            Edge.create(source_node_id=llm.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "unsupported_model_provider" in codes
+
+
+def test_validator_rejects_text_model_when_model_looks_like_non_openai_without_prefix():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    llm = _node(NodeType.TEXT_MODEL, config={"model": "gemini-2.5-flash", "prompt": "hi"})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, llm, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=llm.id),
+            Edge.create(source_node_id=llm.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "unsupported_model" in codes
+
+
+def test_validator_rejects_embedding_model_when_provider_is_not_openai():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    embedding = _node(NodeType.EMBEDDING, config={"model": "cohere/embed-v1"})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, embedding, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=embedding.id),
+            Edge.create(source_node_id=embedding.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "unsupported_model_provider" in codes
+
+
+def test_validator_rejects_image_generation_when_model_is_gemini_family():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    image = _node(NodeType.IMAGE, config={"model": "gemini-2.5-flash-image"})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, image, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=image.id),
+            Edge.create(source_node_id=image.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "unsupported_model" in codes
+
+
+def test_validator_rejects_structured_output_when_provider_is_not_openai():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    node = _node(
+        NodeType.STRUCTURED_OUTPUT,
+        config={
+            "model": "anthropic/claude-3.5-sonnet",
+            "schemaName": "S",
+            "schema": {"type": "object", "properties": {"a": {"type": "string"}}},
+        },
+    )
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, node, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=node.id),
+            Edge.create(source_node_id=node.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "unsupported_model_provider" in codes
+
+
+def test_validator_rejects_structured_output_missing_schema_fields():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    node = _node(NodeType.STRUCTURED_OUTPUT, config={})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, node, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=node.id),
+            Edge.create(source_node_id=node.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "missing_schema_name" in codes
+    assert "missing_schema" in codes
+
+
+def test_validator_rejects_structured_output_schema_when_json_is_invalid():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    node = _node(
+        NodeType.STRUCTURED_OUTPUT,
+        config={
+            "schemaName": "S",
+            "schema": "{not json}",
+        },
+    )
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, node, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=node.id),
+            Edge.create(source_node_id=node.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "invalid_json" in codes
+
+
+def test_validator_rejects_notification_webhook_missing_url_and_message():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    node = _node(NodeType.NOTIFICATION, config={"type": "webhook"})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, node, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=node.id),
+            Edge.create(source_node_id=node.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "missing_message" in codes
+    assert "missing_url" in codes
+
+
+def test_validator_rejects_notification_email_missing_required_fields():
+    registry = create_executor_registry()
+    validator = WorkflowSaveValidator(executor_registry=registry, tool_repository=Mock())
+
+    start = _node(NodeType.START)
+    node = _node(NodeType.NOTIFICATION, config={"type": "email", "message": "hi"})
+    end = _node(NodeType.END)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, node, end],
+        edges=[
+            Edge.create(source_node_id=start.id, target_node_id=node.id),
+            Edge.create(source_node_id=node.id, target_node_id=end.id),
+        ],
+    )
+
+    with pytest.raises(DomainValidationError) as exc:
+        validator.validate_or_raise(workflow)
+
+    codes = {err.get("code") for err in exc.value.errors}
+    assert "missing_smtp_host" in codes
+    assert "missing_sender" in codes
+    assert "missing_sender_password" in codes
+    assert "missing_recipients" in codes

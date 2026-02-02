@@ -437,6 +437,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     error: executionError,
     nodeStatusMap,
     nodeOutputMap,
+    finalResult,
   } = useWorkflowExecutionWithCallback({
     onWorkflowComplete: ({ finalResult, executionSummary }) => {
       const summaryFromBackend = executionSummary;
@@ -483,6 +484,16 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       });
     },
   });
+
+  // E2E hook: expose the latest workflow finalResult as JSON for deterministic Playwright assertions.
+  const finalResultJson = useMemo(() => {
+    if (finalResult == null) return '';
+    try {
+      return JSON.stringify(finalResult);
+    } catch {
+      return '';
+    }
+  }, [finalResult]);
 
   // Memoize edge options to avoid unnecessary re-renders
   const defaultEdgeOptions = useMemo(() => ({
@@ -1316,9 +1327,12 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
              data-testid="workflow-execution-status"
              data-status={isExecuting ? 'running' : (executionError ? 'idle' : (lastRunId ? 'completed' : 'idle'))}
              style={{ display: 'none' }}
-           />
-        </div>
-      </div>
+            />
+            <span data-testid="workflow-final-result" style={{ display: 'none' }}>
+              {finalResultJson}
+            </span>
+         </div>
+       </div>
 
       <Modal
         title="Execution Input (JSON)"
@@ -1327,6 +1341,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         onOk={() => setExecutionInputModalOpen(false)}
         okText="Done"
         cancelText="Cancel"
+        okButtonProps={{ 'data-testid': 'workflow-input-modal-done' }}
+        cancelButtonProps={{ 'data-testid': 'workflow-input-modal-cancel' }}
         width={760}
         destroyOnClose={false}
       >
@@ -1481,6 +1497,8 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       <NodeConfigPanel
         open={configPanelOpen}
         node={selectedNode}
+        nodes={nodes}
+        edges={edges}
         onClose={() => setConfigPanelOpen(false)}
         onSave={handleSaveNodeConfig}
       />

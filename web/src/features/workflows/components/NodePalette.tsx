@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { Tooltip } from 'antd';
+import { Alert, Spin, Tooltip } from 'antd';
 import {
   PlayCircleOutlined,
   CheckCircleOutlined,
@@ -25,7 +25,9 @@ import {
   BellOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
 import { nodeTypeConfigs } from '../utils/nodeUtils';
+import { getWorkflowCapabilities } from '../api/workflowsApi';
 import styles from '../styles/drafting.module.css';
 
 interface NodePaletteProps {
@@ -51,6 +53,16 @@ const iconMap: Record<string, React.ReactNode> = {
 };
 
 export default function NodePalette({ onAddNode }: NodePaletteProps) {
+  const {
+    data: capabilities,
+    isLoading: capabilitiesLoading,
+    error: capabilitiesError,
+  } = useQuery({
+    queryKey: ['workflows', 'capabilities'],
+    queryFn: getWorkflowCapabilities,
+    staleTime: 60_000,
+  });
+
   const handleDragStart = (
     event: React.DragEvent<HTMLDivElement>,
     nodeType: string
@@ -58,6 +70,34 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
     event.dataTransfer.setData('application/reactflow', nodeType);
     event.dataTransfer.effectAllowed = 'move';
   };
+
+  if (capabilitiesLoading) {
+    return (
+      <div className={styles.paletteContainer} style={{ padding: 16 }}>
+        <Spin />
+      </div>
+    );
+  }
+
+  if (capabilitiesError || !capabilities) {
+    return (
+      <div className={styles.paletteContainer} style={{ padding: 16 }}>
+        <Alert
+          type="error"
+          showIcon
+          message="Capabilities unavailable"
+          description="无法加载 /api/workflows/capabilities（fail-closed：节点面板不可用）。"
+        />
+      </div>
+    );
+  }
+
+  const enabledTypes = new Set(
+    (capabilities.node_types ?? [])
+      .filter((item) => item.executor_available)
+      .map((item) => item.type)
+  );
+  const visibleNodeConfigs = nodeTypeConfigs.filter((config) => enabledTypes.has(config.type));
 
   return (
     <div className={styles.paletteContainer}>
@@ -70,7 +110,7 @@ export default function NodePalette({ onAddNode }: NodePaletteProps) {
         </p>
       </div>
       <div style={{ padding: '12px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {nodeTypeConfigs.map((config) => (
+        {visibleNodeConfigs.map((config) => (
           <Tooltip key={config.type} title={config.description} placement="right">
             <div
               draggable

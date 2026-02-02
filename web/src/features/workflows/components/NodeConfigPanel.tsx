@@ -4,7 +4,7 @@
  * 右侧抽屉，用于配置选中节点的参数
  */
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   Drawer,
   Form,
@@ -16,21 +16,26 @@ import {
   Button,
   Space,
   Divider,
+  Alert,
+  Spin,
   message,
   ConfigProvider,
   theme,
 } from 'antd';
-import type { Node } from '@xyflow/react';
+import type { Edge, Node } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/services/api';
+import { getWorkflowCapabilities } from '../api/workflowsApi';
+import type { EnumFieldRequirement, WorkflowNodeCapability } from '../types/workflowCapabilities';
 import type { Tool } from '@/types/workflow';
 
 const { TextArea } = Input;
-const { Option } = Select;
 
 interface NodeConfigPanelProps {
   open: boolean;
   node: Node | null;
+  nodes: Node[];
+  edges: Edge[];
   onClose: () => void;
   onSave: (nodeId: string, data: Record<string, unknown>) => void;
 }
@@ -38,10 +43,60 @@ interface NodeConfigPanelProps {
 export default function NodeConfigPanel({
   open,
   node,
+  nodes,
+  edges,
   onClose,
   onSave,
 }: NodeConfigPanelProps) {
   const [form] = Form.useForm<Record<string, unknown>>();
+
+  const {
+    data: capabilities,
+    isLoading: capabilitiesLoading,
+    error: capabilitiesError,
+  } = useQuery({
+    queryKey: ['workflows', 'capabilities'],
+    queryFn: getWorkflowCapabilities,
+    enabled: open,
+    staleTime: 60_000,
+  });
+
+  const nodeCapability: WorkflowNodeCapability | null = useMemo(() => {
+    if (!node || !capabilities?.node_types) return null;
+    return capabilities.node_types.find((item) => item.type === node.type) ?? null;
+  }, [capabilities, node]);
+
+  const validationContract = nodeCapability?.validation_contract ?? null;
+
+  const getEnumSpec = useMemo(() => {
+    return (key: string): EnumFieldRequirement | null => {
+      if (!validationContract) return null;
+      return validationContract.enum_fields.find((spec) => spec.key === key) ?? null;
+    };
+  }, [validationContract]);
+
+  const buildEnumOptions = useMemo(() => {
+    return (spec: EnumFieldRequirement | null): Array<{ value: string; label: string }> => {
+      if (!spec) return [];
+      const meta = spec.meta;
+      const labels =
+        meta && typeof meta === 'object' && meta !== null
+          ? ((meta as Record<string, unknown>)['labels'] as unknown)
+          : null;
+      const labelMap: Record<string, string> = {};
+      if (labels && typeof labels === 'object' && labels !== null) {
+        for (const [k, v] of Object.entries(labels as Record<string, unknown>)) {
+          if (typeof v === 'string') {
+            labelMap[k] = v;
+          }
+        }
+      }
+      return (spec.allowed ?? []).map((value) => ({
+        value,
+        label: labelMap[value] ?? value,
+      }));
+    };
+  }, []);
 
   const isToolNode = node?.type === 'tool';
   const { data: tools = [], isLoading: toolsLoading } = useQuery({
@@ -58,6 +113,13 @@ export default function NodeConfigPanel({
     if (node) {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const normalized: Record<string, unknown> = { ...data };
+
+      if (node.type === 'httpRequest') {
+        // Back-compat: accept legacy `path` but display it in URL input as well.
+        if (!normalized.url && typeof data['path'] === 'string') {
+          normalized.url = data['path'];
+        }
+      }
 
       if (node.type === 'database') {
         const params = data['params'];
@@ -90,11 +152,24 @@ export default function NodeConfigPanel({
         ...normalized,
         // Back-compat: accept legacy toolId but persist tool_id.
         tool_id: data.tool_id ?? data.toolId ?? '',
+        // Back-compat: accept legacy promptSource but persist promptSourceNodeId.
+        promptSourceNodeId: data.promptSourceNodeId ?? data.promptSource ?? '',
       });
     }
   }, [node, form]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (capabilitiesError) {
+      message.error('Capabilities 加载失败：无法保存节点配置');
+      return;
+    }
+    try {
+      // Run AntD rules (required fields, conditional UI rules, etc.).
+      await form.validateFields();
+    } catch {
+      return;
+    }
+
     const values = form.getFieldsValue() as Record<string, unknown>;
 
     if (node?.type === 'transform') {
@@ -125,6 +200,36 @@ export default function NodeConfigPanel({
   const renderConfigForm = () => {
     if (!node) return null;
 
+    if (capabilitiesLoading) {
+      return (
+        <div style={{ padding: 16 }}>
+          <Spin />
+        </div>
+      );
+    }
+
+    if (capabilitiesError || !capabilities) {
+      return (
+        <Alert
+          type="error"
+          showIcon
+          message="Capabilities unavailable"
+          description="无法从后端加载 /api/workflows/capabilities（fail-closed：不允许在未知能力边界下编辑配置）。"
+        />
+      );
+    }
+
+    if (!nodeCapability || !validationContract) {
+      return (
+        <Alert
+          type="error"
+          showIcon
+          message="Unknown node type"
+          description={`该节点类型未出现在 capabilities 中：${node.type}`}
+        />
+      );
+    }
+
     switch (node.type) {
       case 'start':
       case 'end':
@@ -140,22 +245,37 @@ export default function NodeConfigPanel({
             <Form.Item
               label="URL"
               name="url"
-              rules={[{ required: true, message: 'Please enter URL' }]}
+              dependencies={['path']}
+              rules={[
+                ({ getFieldValue }) => ({
+                  validator: async (_, value) => {
+                    const rawUrl = typeof value === 'string' ? value.trim() : '';
+                    const rawPath = typeof getFieldValue('path') === 'string' ? (getFieldValue('path') as string).trim() : '';
+                    if (rawUrl || rawPath) return;
+                    const anyOf = validationContract.required_any_of.find((req) => req.keys.includes('url') || req.keys.includes('path'));
+                    throw new Error(anyOf?.message || 'url (or path) is required');
+                  },
+                }),
+              ]}
             >
               <Input placeholder="https://api.example.com" />
+            </Form.Item>
+            <Form.Item label="Path (legacy, optional)" name="path">
+              <Input placeholder="/v1/resource" />
             </Form.Item>
             <Form.Item
               label="Method"
               name="method"
-              rules={[{ required: true, message: 'Please select method' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'method')?.message ||
+                    'method is required',
+                },
+              ]}
             >
-              <Select>
-                <Option value="GET">GET</Option>
-                <Option value="POST">POST</Option>
-                <Option value="PUT">PUT</Option>
-                <Option value="DELETE">DELETE</Option>
-                <Option value="PATCH">PATCH</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('method'))} />
             </Form.Item>
             <Form.Item label="Headers" name="headers">
               <TextArea
@@ -169,23 +289,75 @@ export default function NodeConfigPanel({
           </>
         );
 
-      case 'textModel':
+      case 'textModel': {
+        const incomingSourceIds = Array.from(
+          new Set(
+            edges
+              .filter((edge) => edge.target === node.id)
+              .map((edge) => edge.source)
+              .filter(Boolean)
+          )
+        );
+
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        const promptValue = data['prompt'] ?? data['user_prompt'];
+        const hasPrompt = typeof promptValue === 'string' && promptValue.trim().length > 0;
+        const requiresPromptSource = incomingSourceIds.length > 1 && !hasPrompt;
+
+        const promptSourceOptions = incomingSourceIds.map((sourceId) => {
+          const sourceNode = nodes.find((n) => n.id === sourceId);
+          const sourceData = (sourceNode?.data ?? {}) as Record<string, unknown>;
+          const name =
+            typeof sourceData['name'] === 'string' ? sourceData['name'].trim() : '';
+          const type = sourceNode?.type ?? 'node';
+          return {
+            value: sourceId,
+            label: name ? `${name} (${type}:${sourceId})` : `${type} (${sourceId})`,
+          };
+        });
+
         return (
           <>
             <Form.Item
               label="Model"
               name="model"
-              rules={[{ required: true, message: 'Please select model' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'model')?.message ||
+                    'model is required',
+                },
+              ]}
             >
-              <Select>
-                <Option value="openai/gpt-5">OpenAI GPT-5</Option>
-                <Option value="openai/gpt-4">OpenAI GPT-4</Option>
-                <Option value="anthropic/claude-3.5-sonnet">
-                  Claude 3.5 Sonnet
-                </Option>
-                <Option value="google/gemini-2.5-flash">Gemini 2.5 Flash</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('model'))} />
             </Form.Item>
+            {requiresPromptSource ? (
+              <Alert
+                type="info"
+                showIcon
+                message="Multiple inputs detected"
+                description="This textModel node has multiple incoming edges. Select which upstream node should be used as the prompt source (or add a Prompt node to merge inputs)."
+                style={{ marginBottom: 12 }}
+              />
+            ) : null}
+            {incomingSourceIds.length > 1 && !hasPrompt ? (
+              <Form.Item
+                label="Prompt Source"
+                name="promptSourceNodeId"
+                rules={[
+                  {
+                    required: true,
+                    message: 'Please select prompt source node',
+                  },
+                ]}
+              >
+                <Select
+                  placeholder="Select which upstream node provides the prompt"
+                  options={promptSourceOptions}
+                />
+              </Form.Item>
+            ) : null}
             <Form.Item label="Temperature" name="temperature">
               <Slider min={0} max={2} step={0.1} marks={{ 0: '0', 1: '1', 2: '2' }} />
             </Form.Item>
@@ -219,6 +391,7 @@ export default function NodeConfigPanel({
             </Form.Item>
           </>
         );
+      }
 
       case 'embeddingModel':
         return (
@@ -226,16 +399,16 @@ export default function NodeConfigPanel({
             <Form.Item
               label="Model"
               name="model"
-              rules={[{ required: true, message: 'Please select model' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'model')?.message ||
+                    'model is required',
+                },
+              ]}
             >
-              <Select>
-                <Option value="openai/text-embedding-3-small">
-                  OpenAI Text Embedding 3 Small
-                </Option>
-                <Option value="openai/text-embedding-3-large">
-                  OpenAI Text Embedding 3 Large
-                </Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('model'))} />
             </Form.Item>
             <Form.Item label="Dimensions" name="dimensions">
               <InputNumber min={1} max={3072} style={{ width: '100%' }} />
@@ -249,26 +422,22 @@ export default function NodeConfigPanel({
             <Form.Item
               label="Model"
               name="model"
-              rules={[{ required: true, message: 'Please select model' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'model')?.message ||
+                    'model is required',
+                },
+              ]}
             >
-              <Select>
-                <Option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</Option>
-                <Option value="openai/dall-e-3">DALL-E 3</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('model'))} />
             </Form.Item>
             <Form.Item label="Aspect Ratio" name="aspectRatio">
-              <Select>
-                <Option value="1:1">1:1 (Square)</Option>
-                <Option value="16:9">16:9 (Landscape)</Option>
-                <Option value="9:16">9:16 (Portrait)</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('aspectRatio'))} />
             </Form.Item>
             <Form.Item label="Output Format" name="outputFormat">
-              <Select>
-                <Option value="png">PNG</Option>
-                <Option value="jpg">JPG</Option>
-                <Option value="webp">WebP</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('outputFormat'))} />
             </Form.Item>
           </>
         );
@@ -279,22 +448,19 @@ export default function NodeConfigPanel({
             <Form.Item
               label="Model"
               name="model"
-              rules={[{ required: true, message: 'Please select model' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'model')?.message ||
+                    'model is required',
+                },
+              ]}
             >
-              <Select>
-                <Option value="openai/tts-1">OpenAI TTS-1</Option>
-                <Option value="openai/tts-1-hd">OpenAI TTS-1 HD</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('model'))} />
             </Form.Item>
             <Form.Item label="Voice" name="voice">
-              <Select>
-                <Option value="alloy">Alloy</Option>
-                <Option value="echo">Echo</Option>
-                <Option value="fable">Fable</Option>
-                <Option value="onyx">Onyx</Option>
-                <Option value="nova">Nova</Option>
-                <Option value="shimmer">Shimmer</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('voice'))} />
             </Form.Item>
             <Form.Item label="Speed" name="speed">
               <Slider min={0.25} max={4.0} step={0.25} marks={{ 0.25: '0.25x', 1: '1x', 4: '4x' }} />
@@ -398,17 +564,16 @@ export default function NodeConfigPanel({
             <Form.Item
               label="Type"
               name="type"
-              rules={[{ required: true, message: 'Please select transform type' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'type')?.message ||
+                    'type is required',
+                },
+              ]}
             >
-              <Select>
-                <Option value="field_mapping">field_mapping</Option>
-                <Option value="type_conversion">type_conversion</Option>
-                <Option value="field_extraction">field_extraction</Option>
-                <Option value="array_mapping">array_mapping</Option>
-                <Option value="filtering">filtering</Option>
-                <Option value="aggregation">aggregation</Option>
-                <Option value="custom">custom</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('type'))} />
             </Form.Item>
 
             <Form.Item label="field" name="field">
@@ -482,20 +647,28 @@ export default function NodeConfigPanel({
             <Form.Item
               label="Operation"
               name="operation"
-              rules={[{ required: true, message: 'Please select operation' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'operation')?.message ||
+                    'operation is required',
+                },
+              ]}
             >
-              <Select>
-                <Option value="read">read</Option>
-                <Option value="write">write</Option>
-                <Option value="append">append</Option>
-                <Option value="delete">delete</Option>
-                <Option value="list">list</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('operation'))} />
             </Form.Item>
             <Form.Item
               label="Path"
               name="path"
-              rules={[{ required: true, message: 'Please enter file path' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'path')?.message ||
+                    'path is required',
+                },
+              ]}
             >
               <Input placeholder="tmp/report.txt" />
             </Form.Item>
@@ -514,13 +687,16 @@ export default function NodeConfigPanel({
             <Form.Item
               label="Type"
               name="type"
-              rules={[{ required: true, message: 'Please select notification type' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'type')?.message ||
+                    'type is required',
+                },
+              ]}
             >
-              <Select>
-                <Option value="webhook">webhook</Option>
-                <Option value="email">email</Option>
-                <Option value="slack">slack</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('type'))} />
             </Form.Item>
             <Form.Item label="Subject" name="subject">
               <Input placeholder="Notification" />
@@ -528,7 +704,14 @@ export default function NodeConfigPanel({
             <Form.Item
               label="Message"
               name="message"
-              rules={[{ required: true, message: 'Please enter message' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'message')?.message ||
+                    'message is required',
+                },
+              ]}
             >
               <TextArea rows={6} placeholder="Your message here" />
             </Form.Item>
@@ -570,13 +753,16 @@ export default function NodeConfigPanel({
             <Form.Item
               label="Type"
               name="type"
-              rules={[{ required: true, message: 'Please select loop type' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'type')?.message ||
+                    'type is required',
+                },
+              ]}
             >
-              <Select>
-                <Option value="for_each">for_each</Option>
-                <Option value="range">range</Option>
-                <Option value="while">while</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('type'))} />
             </Form.Item>
             <Form.Item
               noStyle
@@ -681,6 +867,15 @@ export default function NodeConfigPanel({
       case 'tool':
         return (
           <>
+            {!toolsLoading && tools.length === 0 ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="No tools available"
+                description="Create a tool in the tool library first, then select it here."
+                style={{ marginBottom: 12 }}
+              />
+            ) : null}
             <Form.Item
               label="Tool"
               name="tool_id"
@@ -691,6 +886,7 @@ export default function NodeConfigPanel({
                 placeholder="Select a tool from library"
                 loading={toolsLoading}
                 optionFilterProp="label"
+                notFoundContent={toolsLoading ? 'Loading...' : 'No tools found'}
                 options={tools.map((tool) => ({
                   value: tool.id,
                   label: `${tool.name} (${tool.id})`,
@@ -715,20 +911,31 @@ export default function NodeConfigPanel({
             <Form.Item
               label="Schema Name"
               name="schemaName"
-              rules={[{ required: true, message: 'Please enter schema name' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'schemaName')?.message ||
+                    'schemaName is required',
+                },
+              ]}
             >
               <Input placeholder="MySchema" />
             </Form.Item>
             <Form.Item label="Mode" name="mode">
-              <Select>
-                <Option value="object">Object</Option>
-                <Option value="array">Array</Option>
-              </Select>
+              <Select options={buildEnumOptions(getEnumSpec('mode'))} />
             </Form.Item>
             <Form.Item
               label="Schema"
               name="schema"
-              rules={[{ required: true, message: 'Please enter schema' }]}
+              rules={[
+                {
+                  required: true,
+                  message:
+                    validationContract.required_fields.find((r) => r.key === 'schema')?.message ||
+                    'schema is required',
+                },
+              ]}
             >
               <TextArea
                 rows={10}
@@ -798,6 +1005,7 @@ export default function NodeConfigPanel({
             <Button
               type="primary"
               onClick={handleSave}
+              disabled={Boolean(capabilitiesError) || capabilitiesLoading}
               style={{
                 background: 'var(--neo-gold)',
                 borderColor: 'var(--neo-gold)',

@@ -284,6 +284,29 @@ def test_build_system_prompt_includes_tool_id_constraints_and_candidates(
     assert 'tool_id="tool_beta"' in prompt
 
 
+def test_build_system_prompt_includes_ui_supported_node_types_and_model_constraints(
+    mock_llm, mock_repository, sample_workflow
+):
+    service = EnhancedWorkflowChatService(
+        workflow_id="wf_test", llm=mock_llm, chat_message_repository=mock_repository
+    )
+
+    prompt = service._build_system_prompt(sample_workflow, rag_context="")
+
+    # Keep the chat contract aligned with the UI palette (avoid "can express but can't generate").
+    for marker in (
+        "- javascript: JavaScript 代码执行节点",
+        "- embeddingModel: 向量嵌入节点",
+        "- imageGeneration: 图像生成节点",
+        "- audio: 音频生成节点",
+        "- structuredOutput: 结构化输出节点（需要 schema）",
+    ):
+        assert marker in prompt
+
+    assert "模型类节点约束" in prompt
+    assert "仅允许 OpenAI provider" in prompt
+
+
 def test_build_system_prompt_only_includes_main_subgraph_nodes_and_edges(mock_llm, mock_repository):
     """测试：system prompt 的 workflow_state 仅包含 start->end 主连通子图"""
     start = Node.create(type=NodeType.START, name="开始", config={}, position=Position(x=0, y=0))

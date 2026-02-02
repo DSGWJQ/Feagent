@@ -72,13 +72,13 @@
     - 若 config 有 `prompt`/`user_prompt`（非空）→ 通过
     - 若无 prompt：必须至少 1 条入边；若入边 > 1，必须配置 `promptSourceNodeId`（或 `promptSource`）
 - Runtime（Executor）约束：
-  - provider=`openai`/`anthropic`/`google`（google 未实现；anthropic 需要正确 key 注入）
+  - 代码路径包含 provider=`openai`/`anthropic`/`google` 分支，但当前对外 contract 已收敛为 OpenAI-only（保存阶段 fail-closed 拒绝非 openai）
+  - google provider 未实现；anthropic provider 目前未接入 Settings（不可配置）
   - 多入边 + 无 promptSourceNodeId → 必失败（抛 DomainError）
 - UI:
   - 可拖拽
   - 配置面板：Model（必填）、Temperature、MaxTokens、Structured Output（bool）+ Schema（可选）
-  - 风险：UI 允许选择 `anthropic/*` 与 `google/*`，但运行时能力目前不保证（见 §2）
-- Chat prompt（真实链路）：支持（但仅列出 textModel，不含多模态/embedding 等节点）
+- Chat prompt（真实链路）：支持（已对齐 UI 节点集合）
 - Chat stub（deterministic）：支持
 - API generate-from-form（deprecated）：支持
 
@@ -216,9 +216,10 @@
 - SaveValidator:
   - 必填：`model`
   - 输入规则：config 需包含 `input/text/prompt/content` 之一，或至少 1 条入边
+- 约束：仅支持 OpenAI provider（保存阶段 fail-closed）
 - Runtime（Executor）约束：仅支持 OpenAI；provider!=openai 会抛 DomainError
 - UI: 可拖拽；配置面板仅提供 model/dimensions（依赖入边提供 input）
-- Chat prompt（真实链路）：未列入支持节点类型
+- Chat prompt（真实链路）：支持
 - Chat stub（deterministic）：支持
 - API generate-from-form（deprecated）：支持
 
@@ -230,12 +231,12 @@
 - SaveValidator:
   - 必填：`model`
   - 输入规则：config 需包含 `prompt/text/input/content` 之一，或至少 1 条入边
-  - 重要缺口：未校验 provider（runtime 仅支持 OpenAI）
+- 约束：仅支持 OpenAI provider（保存阶段 fail-closed）
 - Runtime（Executor）约束：仅支持 OpenAI；provider!=openai 会抛 DomainError
 - UI:
   - 可拖拽
-  - 配置面板提供 `gemini-2.5-flash-image` 选项（无 provider 前缀），与 runtime 支持不一致（见 §2）
-- Chat prompt（真实链路）：未列入支持节点类型
+  - 配置面板：仅提供 OpenAI 图像模型选项
+- Chat prompt（真实链路）：支持
 - Chat stub（deterministic）：支持
 - API generate-from-form（deprecated）：支持
 
@@ -247,9 +248,10 @@
 - SaveValidator:
   - 必填：`model`
   - 输入规则：config 需包含 `text/input/prompt/content` 之一，或至少 1 条入边
+- 约束：仅支持 OpenAI provider（保存阶段 fail-closed）
 - Runtime（Executor）约束：仅支持 OpenAI；provider!=openai 会抛 DomainError
 - UI: 可拖拽；配置面板提供 openai 模型/voice/speed（依赖入边提供 text）
-- Chat prompt（真实链路）：未列入支持节点类型
+- Chat prompt（真实链路）：支持
 - Chat stub（deterministic）：支持
 - API generate-from-form（deprecated）：支持
 
@@ -261,9 +263,10 @@
 - SaveValidator:
   - 必填：`schemaName` + `schema`（schema 支持 dict 或 JSON string）
   - 输入规则：config 需包含 `prompt/text/input/content` 之一，或至少 1 条入边
+- 约束：若显式提供 `model`，则仅支持 OpenAI provider（保存阶段 fail-closed）
 - Runtime（Executor）约束：仅支持 OpenAI；schema 必须可解析为 JSON schema；prompt 缺省时会从输入推导
 - UI: 可拖拽；配置面板要求 schemaName/schema（依赖入边提供 input 或用户填 prompt）
-- Chat prompt（真实链路）：未列入支持节点类型
+- Chat prompt（真实链路）：支持
 - Chat stub（deterministic）：支持
 - API generate-from-form（deprecated）：支持
 
@@ -282,17 +285,18 @@
 - Chat stub（deterministic）：不支持（stub 不会规划/映射 tool 节点）
 - API generate-from-form（deprecated）：不在 node type 列表中（并显式提示避免使用 tool）
 
-## 2. 已识别的 Contract Drift（候选 P0）
+## 2. 已识别的 Contract Drift（P0：已修复/已对齐）
 
 > 定义：出现“保存通过但在当前实现下必然执行失败”或“UI/对话承诺了能力但事实源不支持”。
 
-1) textModel：UI 提供 `anthropic/*` 与 `google/*` 模型选项，但：
-   - `LlmExecutor` 的 `google` provider 未实现；
-   - `create_executor_registry()` 当前仅把 `openai_api_key` 注入 `LlmExecutor`，未注入 `anthropic_api_key`；
-   - SaveValidator 未对 provider/依赖做 fail-closed 校验。
-2) imageGeneration：UI 提供 `gemini-2.5-flash-image` 选项，但 `ImageGenerationExecutor` 仅支持 OpenAI；SaveValidator 未限制 provider。
-3) database：`DatabaseExecutor` 仅支持 `sqlite:///`（已通过 SaveValidator fail-closed 对齐）。
-4) chat（真实链路）：`EnhancedWorkflowChatService` 的 supported node list 未覆盖 UI 节点集合（缺失 `javascript/embeddingModel/imageGeneration/audio/structuredOutput`），但任务库文档已列出这些节点（口径漂移：可表达但不可生成）。
+1) textModel provider drift（已修复）
+   - UI 已收敛为 OpenAI-only；SaveValidator 已 fail-closed 拒绝非 openai provider。
+2) imageGeneration Gemini drift（已修复）
+   - UI 已移除 Gemini 选项；SaveValidator 已 fail-closed（拒绝非 openai provider，并拒绝 gemini 模型族）。
+3) database sqlite-only（已对齐）
+   - SaveValidator 已 fail-closed：仅允许 `sqlite:///`。
+4) chat supported node list drift（已修复）
+   - 对话 prompt 已与 UI 节点集合对齐（补齐 `javascript/embeddingModel/imageGeneration/audio/structuredOutput`）。
 
 ## 3. 备注：非本矩阵范围（并存体系）
 

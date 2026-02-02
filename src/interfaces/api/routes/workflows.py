@@ -42,6 +42,7 @@ from src.domain.services.event_bus import EventBus
 from src.domain.services.workflow_chat_service_enhanced import EnhancedWorkflowChatService
 from src.domain.services.workflow_save_validator import WorkflowSaveValidator
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.models import ProjectModel
 from src.infrastructure.llm import LangChainWorkflowChatLLM
 from src.infrastructure.llm.deterministic_workflow_chat_llm import (
     DeterministicWorkflowChatLLM,
@@ -64,6 +65,8 @@ from src.interfaces.api.dto.workflow_dto import (
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_CHAT_CREATE_PROJECT_ID = "default"
 
 _INTERNAL_CREATE_GONE_DETAIL = (
     "Internal workflow create endpoints are disabled by feature flag "
@@ -972,10 +975,34 @@ result = {"data": cleaned}
         workflow.add_edge(Edge.create(source_node_id=cleaning_node.id, target_node_id=end_node.id))
 
     try:
+        raw_project_id = request.project_id if isinstance(request.project_id, str) else ""
+        effective_project_id = raw_project_id.strip() or _DEFAULT_CHAT_CREATE_PROJECT_ID
+        if len(effective_project_id) > 36:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="project_id too long (max 36 chars)",
+            )
+
+        # Runs API uses a FK to `projects.id`; ensure the row exists so chat-created workflows can
+        # create runs without requiring test-only setup calls.
+        if db.get(ProjectModel, effective_project_id) is None:
+            db.add(
+                ProjectModel(
+                    id=effective_project_id,
+                    name="Default Project"
+                    if effective_project_id == _DEFAULT_CHAT_CREATE_PROJECT_ID
+                    else f"[Auto] {effective_project_id}",
+                    description="auto-created by /api/workflows/chat-create/stream",
+                    rules_text="",
+                    status="active",
+                    owner_user_id=getattr(current_user, "id", None) if current_user else None,
+                )
+            )
+
         deterministic_cleaning = _is_deterministic_cleaning_request(request.message)
         workflow = Workflow.create_base(
             description=request.message,
-            project_id=request.project_id,
+            project_id=effective_project_id,
             name="数据清洗工作流" if deterministic_cleaning else "新建工作流",
             source="e2e_test" if settings.enable_test_seed_api else "feagent",
         )
@@ -1005,7 +1032,7 @@ result = {"data": cleaned}
                 "decision_type": "api_request",
                 "action": "workflow_chat_create",
                 "workflow_id": workflow.id,
-                "project_id": request.project_id,
+                "project_id": effective_project_id,
                 "run_id": request.run_id,
                 "message_len": len(request.message or ""),
                 "correlation_id": correlation_id,
@@ -1052,8 +1079,8 @@ result = {"data": cleaned}
     handler = SSEEmitterHandler(emitter, http_request)
 
     base_metadata: dict[str, Any] = {"workflow_id": workflow.id}
-    if request.project_id:
-        base_metadata["project_id"] = request.project_id
+    if effective_project_id:
+        base_metadata["project_id"] = effective_project_id
     if request.run_id:
         base_metadata["run_id"] = request.run_id
 

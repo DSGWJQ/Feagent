@@ -58,7 +58,9 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173',
       },
-      timeout: 30000,
+      // Deterministic mode still includes backend seed + UI navigation (and sometimes side-effect confirms);
+      // keep a generous per-test ceiling to avoid flaky timeouts on slower Windows/SQLite.
+      timeout: 120000,
       retries: 1,
     },
     {

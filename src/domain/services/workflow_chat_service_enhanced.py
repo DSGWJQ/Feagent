@@ -24,6 +24,7 @@ from src.domain.exceptions import DomainError, DomainValidationError
 from src.domain.ports.chat_message_repository import ChatMessageRepository
 from src.domain.ports.tool_repository import ToolRepository
 from src.domain.ports.workflow_chat_llm import WorkflowChatLLM
+from src.domain.services.workflow_node_contracts import get_editor_workflow_node_contracts
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
 from src.domain.value_objects.workflow_modification_result import ModificationResult
@@ -383,6 +384,123 @@ class EnhancedWorkflowChatService:
 
         return "\n".join(lines)
 
+    def _build_supported_node_types_prompt(self) -> str:
+        """Render supported node types from the editor workflow contract spec (SoT)."""
+
+        contracts = get_editor_workflow_node_contracts()
+
+        descriptions: dict[str, str] = {
+            "start": "开始节点",
+            "end": "结束节点",
+            "httpRequest": "HTTP 请求节点",
+            "transform": "数据转换节点",
+            "database": "数据库操作节点",
+            "conditional": "条件分支节点",
+            "loop": "循环节点",
+            "python": "Python 代码执行节点",
+            "javascript": "JavaScript 代码执行节点",
+            "textModel": "LLM 调用节点（文本）",
+            "prompt": "提示词节点",
+            "file": "文件操作节点",
+            "notification": "消息通知节点",
+            "embeddingModel": "向量嵌入节点",
+            "imageGeneration": "图像生成节点",
+            "audio": "音频生成节点",
+            "structuredOutput": "结构化输出节点（需要 schema）",
+            "tool": "工具节点（必须在 config.tool_id 指定 Tool ID）",
+        }
+
+        preferred_order = [
+            "start",
+            "end",
+            "httpRequest",
+            "transform",
+            "database",
+            "conditional",
+            "loop",
+            "python",
+            "javascript",
+            "textModel",
+            "prompt",
+            "file",
+            "notification",
+            "embeddingModel",
+            "imageGeneration",
+            "audio",
+            "structuredOutput",
+            "tool",
+        ]
+
+        lines: list[str] = []
+        seen: set[str] = set()
+        for node_type in preferred_order:
+            if node_type not in contracts:
+                continue
+            desc = descriptions.get(node_type, "")
+            if desc:
+                lines.append(f"- {node_type}: {desc}")
+            else:
+                lines.append(f"- {node_type}")
+            seen.add(node_type)
+
+        # Any unexpected types (future extensions) are appended deterministically.
+        for node_type in sorted(set(contracts.keys()) - seen):
+            desc = descriptions.get(node_type, "")
+            if desc:
+                lines.append(f"- {node_type}: {desc}")
+            else:
+                lines.append(f"- {node_type}")
+
+        return "\n".join(lines)
+
+    def _build_capability_constraints_prompt(self) -> str:
+        """Render key fail-closed constraints derived from the editor contract spec (SoT)."""
+
+        contracts = get_editor_workflow_node_contracts()
+
+        model_nodes = [
+            node_type
+            for node_type, contract in contracts.items()
+            if contract.model_provider is not None
+        ]
+        model_nodes_str = "/".join(model_nodes)
+
+        text_model_contract = contracts.get("textModel")
+        text_model_prompt = text_model_contract.text_model_prompt if text_model_contract else None
+
+        database_contract = contracts.get("database")
+        database_url = database_contract.database_url if database_contract else None
+
+        parts: list[str] = []
+
+        # Model provider constraints.
+        parts.append("模型类节点约束（fail-closed，以保存校验为准）：")
+        parts.append(f"- {model_nodes_str} 当前仅允许 OpenAI provider")
+        parts.append("  - model 必须是 `openai/*` 或不带 provider 前缀的 OpenAI 模型名")
+        parts.append("  - 禁止输出 `google/*`、`anthropic/*`、`gemini*` 等当前实现不支持的模型")
+
+        # Multi-input textModel constraints (high-frequency failure mode).
+        if text_model_prompt is not None:
+            parts.append("")
+            parts.append("textModel 多输入约束（当 prompt/user_prompt 为空时）：")
+            parts.append("- 入边=0：必须提供 prompt 或至少 1 条入边（否则保存必失败）")
+            parts.append("- 入边=1：允许（自动使用该入边作为输入）")
+            parts.append(
+                f"- 入边>1：必须提供 config.{text_model_prompt.prompt_source_keys[0]} "
+                "指向某个入边，或先插入 Prompt 节点合并输入"
+            )
+
+        # SQLite-only database constraints.
+        if database_url is not None:
+            parts.append("")
+            parts.append("database 节点约束：")
+            parts.append(
+                f"- database_url 仅允许 `{database_url.supported_prefix}` 前缀（仅支持 sqlite）"
+            )
+            parts.append(f"- database_url 缺省时会写入默认值：`{database_url.default_value}`")
+
+        return "\n".join(parts)
+
     def add_message(self, content: str, is_user: bool) -> None:
         """添加消息到历史
 
@@ -591,6 +709,8 @@ class EnhancedWorkflowChatService:
         }
 
         tool_candidates = self._build_tool_candidates_prompt()
+        supported_node_types = self._build_supported_node_types_prompt()
+        capability_constraints = self._build_capability_constraints_prompt()
         base_prompt = f"""你是一个工作流编辑助手。用户会告诉你如何修改工作流，你需要：
 
 1. 理解用户意图
@@ -603,20 +723,10 @@ class EnhancedWorkflowChatService:
 {json.dumps(workflow_state, ensure_ascii=False, indent=2)}
 ```
 
-支持的节点类型：
-- start: 开始节点
-- end: 结束节点
-- httpRequest: HTTP 请求节点
-- transform: 数据转换节点
-- database: 数据库操作节点
-- conditional: 条件分支节点
-- loop: 循环节点
-- python: Python 代码执行节点
-- textModel: LLM 调用节点（文本）
-- prompt: 提示词节点
-- file: 文件操作节点
-- notification: 消息通知节点
-- tool: 工具节点（必须在 config.tool_id 指定 Tool ID）
+支持的节点类型（以保存校验/执行器注册为准）：
+{supported_node_types}
+
+{capability_constraints}
 
 工具节点约束：
 - 工具节点（type="tool"）必须包含 config.tool_id，且 tool_id 必须来自"允许工具列表"

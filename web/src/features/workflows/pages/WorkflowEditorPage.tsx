@@ -26,6 +26,12 @@ function generateRunId() {
   return `run_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function getDefaultChatCreateProjectId(): string {
+  const raw = (import.meta.env.VITE_DEFAULT_PROJECT_ID ?? '').toString().trim();
+  // Keep <=36 chars to match backend DB constraints (projects.id is String(36)).
+  return raw.length > 0 ? raw.slice(0, 36) : 'default';
+}
+
 function extractWorkflowId(event: PlanningSseEvent): string | null {
   const metadata = event.metadata ?? {};
   const candidate =
@@ -74,6 +80,8 @@ export const WorkflowEditorPage: React.FC = () => {
     const trimmed = createPrompt.trim();
     if (!trimmed || isCreating) return;
 
+    const projectId = getDefaultChatCreateProjectId();
+
     setIsCreating(true);
     setCreateError(null);
     setCreateProgress(null);
@@ -98,13 +106,15 @@ export const WorkflowEditorPage: React.FC = () => {
         setCreateError(errorMessage);
       };
 
-      // 契约要求：前 N 个事件内要拿到 workflow_id，这里按 N=2 做红线防御。
+      // Contract: workflow_id should arrive very early in the SSE stream.
+      // In practice (especially on Windows + SQLite cold writes), persisting the initial workflow can
+      // take >10s, so keep this timeout moderately relaxed to avoid false negatives.
       createTimeoutRef.current = window.setTimeout(() => {
         finishWithError('创建超时：未在预期时间内获取 workflow_id');
-      }, 10_000);
+      }, 20_000);
 
       cancelCreateRef.current = chatCreateWorkflowStreaming(
-        { message: trimmed, run_id: generateRunId() },
+        { message: trimmed, run_id: generateRunId(), project_id: projectId },
         (event) => {
           eventsSeen += 1;
 
@@ -128,7 +138,9 @@ export const WorkflowEditorPage: React.FC = () => {
             }
             setIsCreating(false);
             message.success('工作流已创建，正在进入编辑器...');
-            navigate(`/workflows/${newWorkflowId}/edit`, { replace: true });
+            navigate(`/workflows/${newWorkflowId}/edit?projectId=${encodeURIComponent(projectId)}`, {
+              replace: true,
+            });
             return;
           }
 
@@ -191,6 +203,7 @@ export const WorkflowEditorPage: React.FC = () => {
             ) : null}
 
             <Input.TextArea
+              data-testid="workflow-chat-create-textarea"
               value={createPrompt}
               onChange={(e) => setCreatePrompt(e.target.value)}
               placeholder="例如：帮我生成一个“用户注册与欢迎邮件”工作流"
@@ -203,6 +216,7 @@ export const WorkflowEditorPage: React.FC = () => {
                 type="primary"
                 onClick={() => void createNewWorkflow()}
                 disabled={!createPrompt.trim() || isCreating}
+                data-testid="workflow-chat-create-submit"
               >
                 创建并进入编辑器
               </Button>
