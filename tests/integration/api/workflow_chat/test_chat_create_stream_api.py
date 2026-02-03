@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 
 import pytest
@@ -307,13 +308,17 @@ class TestChatCreateStreamAPI:
             workflows_routes.get_update_workflow_by_chat_use_case_factory
         ] = override_use_case_factory
 
+        started = time.perf_counter()
         response = client.post(
             "/api/workflows/chat-create/stream",
             json={"message": "hello"},
             headers={"Accept": "text/event-stream"},
         )
+        elapsed = time.perf_counter() - started
 
         assert response.status_code == 200
+        assert elapsed < 1.0, f"SSE should terminate quickly, took {elapsed:.3f}s"
+        assert response.text.strip().endswith("data: [DONE]"), "stream must complete"
         events = _parse_sse_events(response.text)
         assert events[0]["metadata"]["workflow_id"].startswith("wf_")
         assert any(e.get("type") == "error" for e in events)

@@ -12,6 +12,36 @@ from src.config import settings
 from src.interfaces.api.main import app
 
 
+@pytest.fixture(scope="session", autouse=True)
+def normalize_test_feature_flags() -> None:
+    """Normalize feature flags for the pytest suite.
+
+    The repository `.env` is tuned for local demos (deterministic mode, legacy execution, test seed APIs).
+    The pytest suite, however, expects a test-like baseline:
+    - Runs enabled by default (tests patch disable_run_persistence explicitly when needed).
+    - Test seed APIs disabled by default (tests enable them explicitly when needed).
+    - Executor deterministic mode disabled by default (unit tests validate real error paths).
+    """
+
+    original_env = settings.env
+    original_disable_run_persistence = settings.disable_run_persistence
+    original_enable_test_seed_api = settings.enable_test_seed_api
+    original_e2e_test_mode = settings.e2e_test_mode
+
+    settings.env = "test"
+    settings.disable_run_persistence = False
+    settings.enable_test_seed_api = False
+    settings.e2e_test_mode = "hybrid"
+
+    try:
+        yield
+    finally:
+        settings.env = original_env
+        settings.disable_run_persistence = original_disable_run_persistence
+        settings.enable_test_seed_api = original_enable_test_seed_api
+        settings.e2e_test_mode = original_e2e_test_mode
+
+
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     """FastAPI 测试客户端"""

@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from src.config import settings
 from src.interfaces.api.routes import workflow_capabilities
 
 
@@ -19,7 +20,14 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def test_capabilities_endpoint_returns_schema_and_constraints(client: TestClient) -> None:
+@pytest.mark.parametrize("disable_run_persistence", [False, True])
+def test_capabilities_endpoint_returns_schema_and_constraints(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    disable_run_persistence: bool,
+) -> None:
+    monkeypatch.setattr(settings, "disable_run_persistence", disable_run_persistence)
+
     response = client.get("/api/workflows/capabilities")
     assert response.status_code == 200
     body = response.json()
@@ -33,6 +41,9 @@ def test_capabilities_endpoint_returns_schema_and_constraints(client: TestClient
     assert constraints["openai_only"] is True
     assert constraints["model_providers_supported"] == ["openai"]
     assert constraints["draft_validation_scope"] == "main_subgraph_only"
+
+    assert constraints["run_persistence_enabled"] is (not disable_run_persistence)
+    assert constraints["execute_stream_requires_run_id"] is (not disable_run_persistence)
 
 
 def test_capabilities_endpoint_covers_ui_canonical_node_types(client: TestClient) -> None:

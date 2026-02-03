@@ -530,7 +530,11 @@ class TestWorkflowChatAPI:
                     "position": {"x": 100, "y": 0},
                 }
             ],
-            "edges_to_add": [],
+            # Maintain a valid start->end path: insert the new node between start and end.
+            "edges_to_add": [
+                {"source": node1.id, "target": "获取天气数据"},
+                {"source": "获取天气数据", "target": node2.id},
+            ],
             "edges_to_delete": [edge1.id],
             "ai_message": "我已经添加了一个HTTP节点用于获取天气数据",
         }
@@ -630,7 +634,11 @@ class TestWorkflowChatAPI:
                     "position": {"x": 100, "y": 0},
                 }
             ],
-            "edges_to_add": [],
+            # Keep start->end reachable after replacing the direct edge.
+            "edges_to_add": [
+                {"source": node1.id, "target": "获取天气数据"},
+                {"source": "获取天气数据", "target": node2.id},
+            ],
             "edges_to_delete": [edge1.id],
             "ai_message": "ok",
         }

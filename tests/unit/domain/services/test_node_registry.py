@@ -72,7 +72,7 @@ class TestNodeTypeRegistration:
 
         验收标准：
         - 可以获取所有已注册类型的列表
-        - Registry初始化时已包含所有预定义类型（13种）
+        - 返回的是“对外可展示”的类型列表（会隐藏部分扩展类型）
         """
         # Arrange
         from src.domain.services.node_registry import NodeRegistry, NodeType
@@ -91,7 +91,13 @@ class TestNodeTypeRegistration:
         assert NodeType.CONDITION in types
         assert NodeType.LOOP in types
         assert NodeType.GENERIC in types
-        assert len(types) == 13  # 13种预定义类型
+
+        # 对外展示列表应排除隐藏类型
+        hidden_types = {NodeType.FILE, NodeType.TRANSFORM, NodeType.HUMAN}
+        assert all(t not in types for t in hidden_types)
+
+        # 口径：对外可展示类型 = 所有已注册类型 - 隐藏类型
+        assert set(types) == (set(registry.get_all_registered_types()) - hidden_types)
 
 
 class TestPredefinedNodeTypes:

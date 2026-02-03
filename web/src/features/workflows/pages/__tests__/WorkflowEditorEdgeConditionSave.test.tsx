@@ -27,6 +27,19 @@ vi.mock('../../api/workflowsApi', () => ({
   updateWorkflow: updateWorkflowMock,
   executeWorkflowStreaming: vi.fn(() => () => {}),
   confirmRunSideEffect: vi.fn().mockResolvedValue({ ok: true }),
+  getWorkflowCapabilities: vi.fn().mockResolvedValue({
+    schema_version: 'test',
+    constraints: {
+      sqlite_only: true,
+      sqlite_database_url_prefix: 'sqlite:///',
+      model_providers_supported: ['openai'],
+      openai_only: true,
+      run_persistence_enabled: false,
+      execute_stream_requires_run_id: false,
+      draft_validation_scope: 'main_subgraph_only',
+    },
+    node_types: [],
+  }),
 }));
 
 describe('Workflow editor edge.condition persistence', () => {

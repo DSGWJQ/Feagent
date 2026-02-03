@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from src.config import settings
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
 from src.domain.exceptions import (
@@ -27,6 +28,12 @@ from src.interfaces.api.routes.workflows import get_container, get_db_session, g
 
 class TestWorkflowExecutionErrorClassification:
     """Test error classification SSE contract for workflow execution"""
+
+    @pytest.fixture(autouse=True)
+    def _runs_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """These tests mock the Runs execution entry, so Runs must be enabled."""
+
+        monkeypatch.setattr(settings, "disable_run_persistence", False)
 
     @pytest.fixture
     def dependency_overrides(self):

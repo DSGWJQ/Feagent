@@ -219,7 +219,8 @@ def _node_config(node_type: str, idx: int, suffix: str) -> dict[str, Any]:
         return {"content": "请根据输入生成内容：{input1}"}
     if node_type == "textModel":
         return {
-            "model": "openai/gpt-4o-mini",
+            # Keep deterministic stub outputs aligned with the capabilities enum (SoT).
+            "model": "openai/gpt-4",
             "temperature": 0,
             "maxTokens": 200,
             "prompt": "生成结果",
@@ -277,7 +278,8 @@ def _node_config(node_type: str, idx: int, suffix: str) -> dict[str, Any]:
             "required": ["name", "phone", "issue", "priority"],
         }
         return {
-            "model": "openai/gpt-4o-mini",
+            # Keep deterministic stub outputs aligned with the capabilities enum (SoT).
+            "model": "openai/gpt-4",
             "schemaName": "Ticket",
             "schema": json.dumps(schema, ensure_ascii=False),
             "prompt": "Extract name/phone/issue/priority from the input.",

@@ -7,6 +7,7 @@ TDD RED 阶段：定义流式 API 的期望行为
 """
 
 import json
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -514,12 +515,15 @@ class TestChatStreamAPI:
         original_db_override = app.dependency_overrides.get(get_db_session)
         app.dependency_overrides[get_db_session] = _override_spy_db_session
         try:
+            started = time.perf_counter()
             response = client.post(
                 f"/api/workflows/{sample_workflow.id}/chat-stream",
                 json={"message": "danger"},
                 headers={"Accept": "text/event-stream"},
             )
+            elapsed = time.perf_counter() - started
             assert response.status_code == 200
+            assert elapsed < 1.0, f"SSE should terminate quickly, took {elapsed:.3f}s"
 
             events = []
             for line in response.text.strip().splitlines():

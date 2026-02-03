@@ -132,6 +132,20 @@ class WorkflowCapabilitiesConstraintsDto(BaseModel):
     sqlite_database_url_prefix: str
     model_providers_supported: list[str] = Field(default_factory=list)
     openai_only: bool = True
+    run_persistence_enabled: bool = Field(
+        default=True,
+        description=(
+            "Whether Runs API + run persistence are enabled on the backend "
+            "(i.e. disable_run_persistence=false)."
+        ),
+    )
+    execute_stream_requires_run_id: bool = Field(
+        default=True,
+        description=(
+            "Whether POST /api/workflows/{workflow_id}/execute/stream requires a run_id "
+            "in the request payload."
+        ),
+    )
     draft_validation_scope: str = Field(
         default="main_subgraph_only",
         description="Draft workflows are fail-closed only for the main start->end subgraph",

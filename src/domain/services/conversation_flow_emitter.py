@@ -177,6 +177,9 @@ class ConversationFlowEmitter:
 
         # 内部状态
         self._queue: asyncio.Queue[ConversationStep] = asyncio.Queue()
+        # Completion is a cross-cutting concern (agent task + SSE handler cleanup may race).
+        # Guard END emission so it is sent at most once.
+        self._completion_lock = asyncio.Lock()
         self._is_completed = False
         self._sequence_counter = 0
         self._delta_counter = 0
@@ -417,33 +420,46 @@ class ConversationFlowEmitter:
         标记 emitter 为已完成，并发送结束标记。
         此方法是幂等的，多次调用不会有副作用。
         """
-        if self._is_completed:
-            return
+        async with self._completion_lock:
+            if self._is_completed:
+                return
 
-        # 发送结束标记
-        end_step = ConversationStep(
-            kind=StepKind.END,
-            content="",
-            is_final=True,
-            sequence=self._next_sequence(),
-        )
-        await self._queue.put(end_step)
+            # Mark completed first so concurrent cleanup doesn't enqueue duplicate END.
+            self._is_completed = True
 
-        self._is_completed = True
+            # 发送结束标记
+            end_step = ConversationStep(
+                kind=StepKind.END,
+                content="",
+                is_final=True,
+                sequence=self._next_sequence(),
+            )
+            await self._queue.put(end_step)
 
     async def complete_with_error(self, error_message: str) -> None:
         """因错误完成发射
 
-        发送错误消息并关闭 emitter。
+        发送错误消息并关闭 emitter（error 后必须跟随 END）。
 
         参数:
             error_message: 错误消息
         """
-        if self._is_completed:
-            return
+        async with self._completion_lock:
+            if self._is_completed:
+                return
 
-        await self.emit_error(error_message, recoverable=False)
-        self._is_completed = True
+            # 先发送错误，再发送 END，避免 SSE handler 在 error 后等待到超时。
+            try:
+                await self.emit_error(error_message, recoverable=False)
+            finally:
+                self._is_completed = True
+                end_step = ConversationStep(
+                    kind=StepKind.END,
+                    content="",
+                    is_final=True,
+                    sequence=self._next_sequence(),
+                )
+                await self._queue.put(end_step)
 
     def get_statistics(self) -> dict[str, Any]:
         """获取发送统计

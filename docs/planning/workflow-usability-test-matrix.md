@@ -36,6 +36,10 @@
 | 渲染 | httpRequest 模板渲染 | request 前完成 `{input1.*}` 渲染 | 未渲染导致请求错 | assert 实际 url/headers/body 已渲染 | `tests/integration/test_workflow_engine_templating_http_stub.py` | DONE |
 | API | 保存校验结构化错误 | 400.detail 为结构化 dict | 返回纯 string 导致 UI 无法定位 | `detail.code` + `detail.errors[]` | `tests/integration/api/workflows/test_workflow_validation_contract.py::test_drag_update_returns_structured_validation_error` | DONE |
 | SSE | Tool 错误分类字段 | node_error 必含 classification fields | 前端无法判定 retry/hint | `error_level/error_type/retryable/hint/message` | `tests/integration/api/test_workflow_execution_error_classification.py` | DONE |
+| SSE | error 后必须 [DONE] 结束 | ERROR 后 <1s 内发送 `[DONE]` 并结束连接 | 30s 超时/二次 SSE_ERROR | SSE event 序列可断言（包含 error + DONE） | `tests/integration/api/test_sse_emitter_handler_end_semantics.py; tests/integration/api/workflow_chat/test_chat_create_stream_api.py::test_llm_error_emits_sse_error_event_and_deletes_base_workflow` | DONE |
+| Runs | Run 创建失败 fail-closed | Run 创建失败/缺 projectId 时不触发 execute/stream | UI 误导“降级”但后端 400 | 前端明确提示且 `executeWorkflowStreaming` 不被调用 | `web/src/features/workflows/pages/__tests__/WorkflowRunFailClosed.test.tsx` | DONE |
+| Runs | Runs gate（后端一致性） | Runs 开启缺 run_id → 400；Runs 关闭 → legacy 不因缺 run_id 失败 | 缺 run_id 仍走 execute 导致 drift | 错误信息稳定可解释 | `tests/integration/api/workflows/test_execute_stream_validation_gate.py` | DONE |
+| deterministic | enable_test_seed_api 下不触网 | 无 key 且 enable_test_seed_api=true → 必选 deterministic stub | 隐式触网/非 deterministic | 分支选择可测试断言 | `tests/unit/interfaces/api/test_workflow_chat_llm_selection.py` | DONE |
 | 兼容 | legacy key normalize | 保存前 normalize 为 canonical shape | 历史数据导致 drift/执行必败 | 保存后 shape 稳定可预期 | `tests/unit/domain/services/test_workflow_save_validator.py::test_validator_normalizes_http_path_to_url_before_persisting_shape` | DONE |
 | 兼容 | toolId -> tool_id normalize | 保存前 normalize | 旧字段落库 | 保存后只保留 `tool_id` | `tests/unit/domain/services/test_workflow_save_validator.py::test_validator_normalizes_tool_id_from_toolId_before_persisting_shape` | DONE |
 | 兼容 | loop for/iterations normalize | 保存前 normalize 到 `range/end` | 旧 UI 导入执行必败 | 保存后只保留 canonical | `tests/unit/domain/services/test_workflow_save_validator.py::test_validator_normalizes_loop_for_to_range_and_moves_iterations_to_end` | DONE |
@@ -50,6 +54,9 @@
 | 控制流 | loop(for_each) 空集合 | 执行成功并输出空列表 | 抛错/返回 None | execution_log 与 output 清晰可断言 | `tests/integration/test_workflow_p1_edge_cases.py::test_loop_for_each_empty_collection_returns_empty_list` | DONE |
 | 文件 | file.read 不存在 | 执行失败且定位到 path | 静默返回空 | node_error 含 node_id/node_type，且 error 包含 path | `tests/integration/test_workflow_p1_edge_cases.py::test_file_read_missing_file_emits_node_error_event` | DONE |
 | 口径 | draft 保存策略（非主连通子图） | 允许保存“进行中草稿”（非主子图节点不阻断保存） | 草稿被强校验阻断 | main start->end 子图仍 fail-closed；非主子图可 in-progress | `tests/unit/domain/services/test_workflow_save_validator.py::test_validator_allows_draft_to_contain_incomplete_tool_node_outside_main_subgraph` | DONE |
+| UI | enum unknown value fail-closed | 节点已有 enum 值不在 allowed 时提示并禁止保存 | UI 变空/误导/静默保存失败 | 必须显式提示“unsupported”并阻止 onSave | `web/src/features/workflows/components/__tests__/NodeConfigPanel.test.tsx` | DONE |
+| Domain | chat 防止孤立节点（新增未连通） | chat 修改不得产生不可达节点 | 新增节点未连通导致后续 chat 看不见/删不掉 | 返回 `workflow_modification_rejected` + nodes 列表 | `tests/unit/domain/services/test_workflow_chat_service_enhanced_modifications.py::test_apply_modifications_rejects_nodes_to_add_outside_main_subgraph` | DONE |
+| UI | 一键清理未连通节点 | 删除非 start->end 主连通子图节点+相关边并保存 | 历史孤立节点无法修复 | 清理后调用 updateWorkflow 且 payload 不含孤立节点 | `web/src/features/workflows/pages/__tests__/WorkflowCleanupUnreachableNodes.test.tsx` | DONE |
 
 ## 3. P2（长期治理 / 防漂移）
 

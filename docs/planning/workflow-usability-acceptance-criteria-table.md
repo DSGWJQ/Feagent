@@ -57,7 +57,7 @@
 
 ```json
 {
-  "model": "openai/gpt-4o-mini",
+  "model": "openai/gpt-4",
   "prompt": "hello"
 }
 ```

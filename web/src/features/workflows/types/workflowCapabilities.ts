@@ -129,6 +129,8 @@ export type WorkflowCapabilitiesConstraints = {
   sqlite_database_url_prefix: string;
   model_providers_supported: string[];
   openai_only: boolean;
+  run_persistence_enabled: boolean;
+  execute_stream_requires_run_id: boolean;
   draft_validation_scope: string;
 };
 

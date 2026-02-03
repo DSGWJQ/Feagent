@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from src.config import settings
 from src.domain.services.workflow_node_contracts import (
     CAPABILITIES_SCHEMA_VERSION,
     SQLITE_DATABASE_URL_PREFIX,
@@ -185,6 +186,8 @@ def get_workflow_capabilities(
         sqlite_database_url_prefix=SQLITE_DATABASE_URL_PREFIX,
         model_providers_supported=list(SUPPORTED_MODEL_PROVIDERS),
         openai_only=(set(SUPPORTED_MODEL_PROVIDERS) == {"openai"}),
+        run_persistence_enabled=(not settings.disable_run_persistence),
+        execute_stream_requires_run_id=(not settings.disable_run_persistence),
         draft_validation_scope="main_subgraph_only",
     )
 

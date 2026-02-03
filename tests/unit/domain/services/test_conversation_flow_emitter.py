@@ -498,7 +498,7 @@ class TestErrorHandling:
 
     @pytest.mark.asyncio
     async def test_complete_with_error(self):
-        """测试：complete_with_error 应发送错误并关闭"""
+        """测试：complete_with_error 应发送错误并关闭（error 后必须跟随 END）"""
         from src.domain.services.conversation_flow_emitter import (
             ConversationFlowEmitter,
             StepKind,
@@ -508,10 +508,13 @@ class TestErrorHandling:
 
         await emitter.complete_with_error("发生致命错误")
 
-        # 应有错误步骤
-        step = await emitter._queue.get()
-        assert step.kind == StepKind.ERROR
-        assert step.content == "发生致命错误"
+        # 应有错误步骤 + END（供 SSE handler 发送 [DONE]）
+        error_step = await emitter._queue.get()
+        assert error_step.kind == StepKind.ERROR
+        assert error_step.content == "发生致命错误"
+
+        end_step = await emitter._queue.get()
+        assert end_step.kind == StepKind.END
 
         # emitter 应已关闭
         assert emitter.is_completed is True

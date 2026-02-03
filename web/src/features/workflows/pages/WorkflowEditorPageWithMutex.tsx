@@ -28,6 +28,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Button, message, Empty, Spin, Modal, Alert, Drawer, Input, Collapse, Typography } from 'antd';
 import { PlayCircleOutlined, SaveOutlined, LeftOutlined, RightOutlined, UndoOutlined, RedoOutlined, WarningOutlined, HistoryOutlined, ExperimentOutlined, SearchOutlined, FileTextOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { ResearchResultDisplay, type ResearchResult } from '@/components/ResearchResultDisplay';
 import { useRunReplay, type RunEvent } from '@/hooks/useRunReplay';
@@ -37,7 +38,7 @@ import { useWorkflowHistory } from '../hooks/useWorkflowHistory';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useConflictResolution } from '../hooks/useConflictResolution';
 import { wouldCreateCycle } from '../utils/graphUtils';
-import { confirmRunSideEffect, updateWorkflow } from '../api/workflowsApi';
+import { confirmRunSideEffect, getWorkflowCapabilities, updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
 import { useWorkflow } from '@/hooks/useWorkflow';
 import type { Workflow } from '../types/workflow';
@@ -137,6 +138,52 @@ const getErrorMessage = (error: unknown): string => {
   return '未知错误';
 };
 
+function extractMainSubgraphNodeIds(nodes: Node[], edges: Edge[]): Set<string> {
+  const startIds = new Set(nodes.filter((n) => n.type === 'start').map((n) => n.id));
+  const endIds = new Set(nodes.filter((n) => n.type === 'end').map((n) => n.id));
+
+  // Fail-closed: without start/end, we cannot safely decide what to delete.
+  if (startIds.size === 0 || endIds.size === 0) {
+    return new Set();
+  }
+
+  const forward = new Map<string, string[]>();
+  const backward = new Map<string, string[]>();
+  for (const edge of edges) {
+    const source = edge.source;
+    const target = edge.target;
+    forward.set(source, (forward.get(source) ?? []).concat([target]));
+    backward.set(target, (backward.get(target) ?? []).concat([source]));
+  }
+
+  const bfs = (seeds: Set<string>, graph: Map<string, string[]>): Set<string> => {
+    const visited = new Set(seeds);
+    const queue: string[] = Array.from(seeds);
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) continue;
+      for (const nxt of graph.get(current) ?? []) {
+        if (!visited.has(nxt)) {
+          visited.add(nxt);
+          queue.push(nxt);
+        }
+      }
+    }
+    return visited;
+  };
+
+  const forwardReachable = bfs(startIds, forward);
+  const backwardReachable = bfs(endIds, backward);
+
+  const main = new Set<string>();
+  for (const id of forwardReachable) {
+    if (backwardReachable.has(id)) {
+      main.add(id);
+    }
+  }
+  return main;
+}
+
 interface WorkflowEditorPageWithMutexProps {
   workflowId: string;
   onWorkflowUpdate: (workflow: Workflow) => void;
@@ -151,8 +198,29 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 }) => {
   const [searchParams] = useSearchParams();
   const { isCanvasMode } = useWorkflowInteraction();
-  const disableRunPersistence =
-    (import.meta.env.VITE_DISABLE_RUN_PERSISTENCE ?? 'false').toString().toLowerCase() === 'true';
+
+  const { data: capabilities } = useQuery({
+    queryKey: ['workflows', 'capabilities'],
+    queryFn: getWorkflowCapabilities,
+    staleTime: 60_000,
+  });
+
+  const runPersistenceEnabled = capabilities?.constraints?.run_persistence_enabled ?? false;
+
+  const queryClient = useQueryClient();
+  const ensureCapabilities = useCallback(async () => {
+    if (capabilities) return capabilities;
+    try {
+      return await queryClient.ensureQueryData({
+        queryKey: ['workflows', 'capabilities'],
+        queryFn: getWorkflowCapabilities,
+        staleTime: 60_000,
+      });
+    } catch (err) {
+      console.warn('Failed to load capabilities:', err);
+      return null;
+    }
+  }, [capabilities, queryClient]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_, setInteractionMode] = useState('idle');
 
@@ -941,7 +1009,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
    * 保存工作流
    * Returns true on success, false on failure
    */
-  const handleSave = useCallback(async (): Promise<boolean> => {
+  const handleSave = useCallback(async (override?: { nodes?: Node[]; edges?: Edge[] }): Promise<boolean> => {
     if (!workflowId) {
       message.error('工作流 ID 不存在');
       return false;
@@ -949,8 +1017,11 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
     setIsSaving(true);
     try {
+      const nodesToSave = override?.nodes ?? nodes;
+      const edgesToSave = override?.edges ?? edges;
+
       // 转换为后端格式
-      const workflowNodes = nodes.map((node) => ({
+      const workflowNodes = nodesToSave.map((node) => ({
         id: node.id,
         type: node.type || 'default',
         name: node.data?.name || node.type || '',
@@ -961,7 +1032,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         data: node.data || {},
       }));
 
-      const workflowEdges = edges.map((edge) => ({
+      const workflowEdges = edgesToSave.map((edge) => ({
         id: edge.id,
         source: edge.source,
         target: edge.target,
@@ -1028,6 +1099,52 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     }
   }, [workflowId, nodes, edges]);
 
+  /**
+   * Phase 5 hardening: 清理未连通节点（非 start->end 主连通子图）并立即保存。
+   *
+   * Fail-closed:
+   * - 无法确定主连通子图（缺 start/end 或无路径）时拒绝清理，避免误删。
+   */
+  const handleCleanupUnreachableNodes = useCallback(async () => {
+    const currentNodes = nodesRef.current;
+    const currentEdges = edgesRef.current;
+
+    const mainNodeIds = extractMainSubgraphNodeIds(currentNodes, currentEdges);
+    if (mainNodeIds.size === 0) {
+      message.error('无法确定 start→end 主连通子图，拒绝清理');
+      return;
+    }
+
+    const unreachableNodes = currentNodes.filter((n) => !mainNodeIds.has(n.id));
+    if (unreachableNodes.length === 0) {
+      message.info('没有未连通节点，无需清理');
+      return;
+    }
+
+    const cleanedNodes = currentNodes.filter((n) => mainNodeIds.has(n.id));
+    const cleanedEdges = currentEdges.filter(
+      (e) => mainNodeIds.has(e.source) && mainNodeIds.has(e.target)
+    );
+
+    setNodes(cleanedNodes);
+    setEdges(cleanedEdges);
+
+    if (selectedNode && !mainNodeIds.has(selectedNode.id)) {
+      setSelectedNode(null);
+    }
+    if (
+      selectedEdge &&
+      (!mainNodeIds.has(selectedEdge.source) || !mainNodeIds.has(selectedEdge.target))
+    ) {
+      setSelectedEdge(null);
+    }
+
+    pushSnapshot(cleanedNodes, cleanedEdges);
+
+    message.info(`已清理 ${unreachableNodes.length} 个未连通节点，正在保存...`);
+    await handleSave({ nodes: cleanedNodes, edges: cleanedEdges });
+  }, [handleSave, pushSnapshot, selectedEdge, selectedNode]);
+
   // Keyboard shortcuts
   useKeyboardShortcuts(
     {
@@ -1053,7 +1170,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
     // Create run for unified session tracking
     let runIdForSession: string | null = null;
-    if (!disableRunPersistence && effectiveProjectId) {
+    if (runPersistenceEnabled && effectiveProjectId) {
       runIdForSession = await createResearchRun();
       if (runIdForSession) {
         setLastRunId(runIdForSession);
@@ -1062,7 +1179,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     }
 
     await generatePlan(researchGoal, runIdForSession);
-  }, [researchGoal, effectiveProjectId, disableRunPersistence, createResearchRun, generatePlan]);
+  }, [researchGoal, effectiveProjectId, runPersistenceEnabled, createResearchRun, generatePlan]);
 
   /**
    * MVP Step 1: 编译 Plan 到画布
@@ -1076,7 +1193,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
 
     // 确保有 run_id（如果没有则创建）
     let runIdForCompile = lastRunId;
-    if (!disableRunPersistence && !runIdForCompile && effectiveProjectId) {
+    if (runPersistenceEnabled && !runIdForCompile && effectiveProjectId) {
       runIdForCompile = await createResearchRun();
       if (runIdForCompile) {
         setLastRunId(runIdForCompile);
@@ -1085,7 +1202,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     }
 
     await compilePlan(researchPlan, runIdForCompile);
-  }, [researchPlan, compilePlan, lastRunId, effectiveProjectId, disableRunPersistence, createResearchRun]);
+  }, [researchPlan, compilePlan, lastRunId, effectiveProjectId, runPersistenceEnabled, createResearchRun]);
 
   /**
    * 执行工作流 (Step F.7: 创建 Run 后执行)
@@ -1094,6 +1211,13 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   const handleExecute = useCallback(async () => {
     if (!workflowId) {
       message.error('工作流 ID 不存在');
+      return;
+    }
+
+    // Fail-closed: we must not guess Runs mode; rely on backend capabilities (SoT).
+    const resolvedCapabilities = await ensureCapabilities();
+    if (!resolvedCapabilities) {
+      message.error('Capabilities 加载失败：无法判断 Runs 模式，拒绝执行');
       return;
     }
 
@@ -1118,46 +1242,76 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
     // 记录开始时间
     setExecutionStartTime(Date.now());
 
-    // MVP Step 2: 优先复用 lastRunId (来自 plan/compile 流程)
-    let runId: string | undefined = lastRunId ?? undefined;
+    const requiresRunId = Boolean(resolvedCapabilities.constraints.execute_stream_requires_run_id);
 
-    // 如果没有 lastRunId，且启用 run 持久化且有 projectId，则尝试创建新的 Run。
-    // 否则降级为 legacy execute（不带 run_id），保证 demo 可跑通。
-    if (!runId && !disableRunPersistence && effectiveProjectId) {
-      try {
-        const token = localStorage.getItem('authToken');
-        const headers: HeadersInit = { 'Content-Type': 'application/json' };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-        const runRes = await fetch(
-          `${API_BASE_URL}/projects/${effectiveProjectId}/workflows/${workflowId}/runs`,
-          { method: 'POST', headers, body: JSON.stringify({}) }
-        );
-        if (runRes.ok) {
-          const runData = await runRes.json();
-          runId = runData.id;
-          setLastRunId(runId);
-          message.info(`Session started (${runId?.slice(0, 8) ?? '?'}...)`);
-        } else {
-          const errData = await runRes.json().catch(() => ({}));
-          console.warn('Failed to create run:', { status: runRes.status, errData });
-          message.warning('无法创建 Run：将以 legacy 模式执行（无 run session）');
-        }
-      } catch (err) {
-        console.warn('Failed to create run:', err);
-        message.warning('无法创建 Run：将以 legacy 模式执行（无 run session）');
+    // Runs enabled => must create/attach a run_id before execute/stream.
+    if (requiresRunId) {
+      if (!effectiveProjectId) {
+        message.error('缺少 projectId，无法创建 Run，无法执行');
+        return;
       }
+
+      // MVP Step 2: 优先复用 lastRunId (来自 plan/compile 流程)
+      let runId: string | undefined = lastRunId ?? undefined;
+
+      if (!runId) {
+        try {
+          const token = localStorage.getItem('authToken');
+          const headers: HeadersInit = { 'Content-Type': 'application/json' };
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+          const runRes = await fetch(
+            `${API_BASE_URL}/projects/${effectiveProjectId}/workflows/${workflowId}/runs`,
+            { method: 'POST', headers, body: JSON.stringify({}) }
+          );
+          if (runRes.ok) {
+            const runData = await runRes.json().catch(() => null);
+            const nextRunId =
+              runData && typeof (runData as Record<string, unknown>).id === 'string'
+                ? ((runData as Record<string, unknown>).id as string)
+                : null;
+            if (!nextRunId) {
+              console.warn('Failed to parse run create response (missing id):', runData);
+              message.error('无法创建 Run，请稍后重试');
+              return;
+            }
+            runId = nextRunId;
+            setLastRunId(runId);
+            message.info(`Session started (${runId?.slice(0, 8) ?? '?'}...)`);
+          } else {
+            const errData = await runRes.json().catch(() => ({}));
+            console.warn('Failed to create run:', { status: runRes.status, errData });
+            message.error('无法创建 Run，请稍后重试');
+            return;
+          }
+        } catch (err) {
+          console.warn('Failed to create run:', err);
+          message.error('无法创建 Run，请稍后重试');
+          return;
+        }
+      }
+
+      if (!runId) {
+        message.error('无法创建 Run，请稍后重试');
+        return;
+      }
+
+      execute(workflowId, { initial_input: initialInput, run_id: runId });
+      return;
     }
 
-    // 执行工作流
-    execute(
-      workflowId,
-      runId && !disableRunPersistence
-        ? { initial_input: initialInput, run_id: runId }
-        : { initial_input: initialInput }
-    );
-  }, [workflowId, execute, handleSave, effectiveProjectId, lastRunId, disableRunPersistence, executionInputJson]);
+    // Runs disabled => legacy execute (no run_id, no Runs API).
+    execute(workflowId, { initial_input: initialInput });
+  }, [
+    workflowId,
+    ensureCapabilities,
+    execute,
+    handleSave,
+    effectiveProjectId,
+    lastRunId,
+    executionInputJson,
+  ]);
 
   // 初始化时加载工作流
   useEffect(() => {
@@ -1260,11 +1414,21 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
             Save
           </NeoButton>
           <NeoButton
+            variant="secondary"
+            icon={<WarningOutlined />}
+            onClick={handleCleanupUnreachableNodes}
+            disabled={isSaving || isExecuting || isGenerating || isCompiling || !isInitialized}
+            data-testid="workflow-clean-unreachable-button"
+            title="清理未连通节点（删除非 start→end 主连通子图节点并保存）"
+          >
+            清理未连通节点
+          </NeoButton>
+          <NeoButton
             variant="primary"
             icon={<PlayCircleOutlined />}
             onClick={handleExecute}
             loading={isExecuting}
-            disabled={isGenerating || isCompiling}
+            disabled={isExecuting || isGenerating || isCompiling}
             data-testid="workflow-run-button"
           >
             Run

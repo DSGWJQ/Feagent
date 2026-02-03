@@ -124,10 +124,15 @@ class TestRealWorldWorkflowDesign:
                         {
                             "type": "httpRequest",
                             "name": "order_validator",
-                            "config": {"url": "https://api.example.com/validate-order"},
+                            "config": {
+                                "url": "https://api.example.com/validate-order",
+                                "method": "POST",
+                            },
                             "position": {"x": 300, "y": 100},
                         }
                     ],
+                    # Use stable node-name references instead of magic placeholders.
+                    "edges_to_add": [{"source": "开始", "target": "order_validator"}],
                     "ai_message": "已添加订单验证节点 order_validator",
                 }
             )
@@ -163,7 +168,7 @@ class TestRealWorldWorkflowDesign:
                             "position": {"x": 500, "y": 100},
                         }
                     ],
-                    "edges_to_add": [{"source": order_validator_id, "target": "{{new_node_id}}"}],
+                    "edges_to_add": [{"source": order_validator_id, "target": "payment_check"}],
                     "ai_message": "已添加条件节点 payment_check，判断是否需要支付",
                 }
             )
@@ -191,14 +196,14 @@ class TestRealWorldWorkflowDesign:
                         {
                             "type": "httpRequest",
                             "name": "payment_gateway",
-                            "config": {"url": "https://api.payment.com/charge"},
+                            "config": {"url": "https://api.payment.com/charge", "method": "POST"},
                             "position": {"x": 700, "y": 50},
                         }
                     ],
                     "edges_to_add": [
                         {
                             "source": payment_check_id,
-                            "target": "{{new_node_id}}",
+                            "target": "payment_gateway",
                             "condition": "true",
                         }
                     ],
@@ -234,10 +239,10 @@ class TestRealWorldWorkflowDesign:
                         }
                     ],
                     "edges_to_add": [
-                        {"source": payment_gateway_id, "target": "{{new_node_id}}"},
+                        {"source": payment_gateway_id, "target": "结束"},
                         {
                             "source": payment_check_id,
-                            "target": "{{new_node_id}}",
+                            "target": "结束",
                             "condition": "false",
                         },
                     ],

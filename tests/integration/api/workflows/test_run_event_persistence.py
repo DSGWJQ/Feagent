@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.application.services.workflow_execution_orchestrator import WorkflowExecutionOrchestrator
 from src.config import settings
+from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.run import Run
 from src.domain.entities.workflow import Workflow
@@ -89,14 +90,15 @@ def test_t_run_1_execute_stream_persists_key_events(
 
     test_app.state.coordinator = _AllowCoordinator()
 
+    start_node = Node.create(
+        type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)
+    )
+    end_node = Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0))
     workflow = Workflow.create(
         name="test",
         description="",
-        nodes=[
-            Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)),
-            Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0)),
-        ],
-        edges=[],
+        nodes=[start_node, end_node],
+        edges=[Edge.create(source_node_id=start_node.id, target_node_id=end_node.id)],
     )
     workflow.id = "wf_123"
 
@@ -218,14 +220,15 @@ def test_t_run_1_terminal_event_is_not_duplicated_by_error_after_completion(
 
     test_app.state.coordinator = _AllowCoordinator()
 
+    start_node = Node.create(
+        type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)
+    )
+    end_node = Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0))
     workflow = Workflow.create(
         name="test",
         description="",
-        nodes=[
-            Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)),
-            Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0)),
-        ],
-        edges=[],
+        nodes=[start_node, end_node],
+        edges=[Edge.create(source_node_id=start_node.id, target_node_id=end_node.id)],
     )
     workflow.id = "wf_123"
 
@@ -346,14 +349,15 @@ def test_t_run_1_execute_stream_enforces_execution_event_contract(
 
     test_app.state.coordinator = _AllowCoordinator()
 
+    start_node = Node.create(
+        type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)
+    )
+    end_node = Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0))
     workflow = Workflow.create(
         name="test",
         description="",
-        nodes=[
-            Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)),
-            Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0)),
-        ],
-        edges=[],
+        nodes=[start_node, end_node],
+        edges=[Edge.create(source_node_id=start_node.id, target_node_id=end_node.id)],
     )
     workflow.id = "wf_123"
 

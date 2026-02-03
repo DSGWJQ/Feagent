@@ -147,13 +147,16 @@ class TestReActRealWorldScenario:
                         {
                             "type": "database",
                             "name": "check_inventory",
-                            "config": {"query": "SELECT stock FROM products WHERE id = ?"},
+                            "config": {
+                                "sql": "SELECT stock FROM products WHERE id = :id",
+                                "params": {"id": 1},
+                            },
                             "position": {"x": 400, "y": 100},
                         },
                         {
                             "type": "python",
                             "name": "calculate_price",
-                            "config": {"language": "python"},
+                            "config": {"code": "result = {'total': 100.0}"},
                             "position": {"x": 600, "y": 100},
                         },
                         {
@@ -165,13 +168,17 @@ class TestReActRealWorldScenario:
                         {
                             "type": "database",
                             "name": "save_order",
-                            "config": {"query": "INSERT INTO orders VALUES (...)"},
+                            "config": {"sql": "SELECT 1 as ok"},
                             "position": {"x": 1000, "y": 100},
                         },
                         {
                             "type": "notification",
                             "name": "send_confirmation",
-                            "config": {"type": "email"},
+                            "config": {
+                                "type": "webhook",
+                                "url": "https://example.test/webhook",
+                                "message": "订单确认已发送",
+                            },
                             "position": {"x": 1200, "y": 100},
                         },
                     ],
@@ -205,7 +212,10 @@ class TestReActRealWorldScenario:
                                 "node": {
                                     "type": "database",
                                     "name": "check_inventory",
-                                    "config": {"query": "SELECT stock FROM products WHERE id = ?"},
+                                    "config": {
+                                        "sql": "SELECT stock FROM products WHERE id = :id",
+                                        "params": {"id": 1},
+                                    },
                                     "position": {"x": 400, "y": 100},
                                 },
                             },
@@ -219,7 +229,7 @@ class TestReActRealWorldScenario:
                                 "node": {
                                     "type": "python",
                                     "name": "calculate_price",
-                                    "config": {"language": "python"},
+                                    "config": {"code": "result = {'total': 100.0}"},
                                     "position": {"x": 600, "y": 100},
                                 },
                             },
@@ -247,7 +257,7 @@ class TestReActRealWorldScenario:
                                 "node": {
                                     "type": "database",
                                     "name": "save_order",
-                                    "config": {"query": "INSERT INTO orders VALUES (...)"},
+                                    "config": {"sql": "SELECT 1 as ok"},
                                     "position": {"x": 1000, "y": 100},
                                 },
                             },
@@ -261,7 +271,11 @@ class TestReActRealWorldScenario:
                                 "node": {
                                     "type": "notification",
                                     "name": "send_confirmation",
-                                    "config": {"type": "email"},
+                                    "config": {
+                                        "type": "webhook",
+                                        "url": "https://example.test/webhook",
+                                        "message": "订单确认已发送",
+                                    },
                                     "position": {"x": 1200, "y": 100},
                                 },
                             },

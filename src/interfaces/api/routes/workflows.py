@@ -187,6 +187,8 @@ def get_workflow_chat_llm() -> WorkflowChatLLM:
     """Resolve the LLM implementation used for workflow chat."""
 
     if not settings.openai_api_key:
+        if settings.enable_test_seed_api:
+            return DeterministicWorkflowChatLLM()
         if settings.env == "test":
             # Test environment: allow a dummy key so tests can patch ChatOpenAI and feed
             # deterministic JSON payloads without requiring real credentials.
@@ -196,8 +198,6 @@ def get_workflow_chat_llm() -> WorkflowChatLLM:
                 base_url=settings.openai_base_url,
                 temperature=0.0,
             )
-        if settings.enable_test_seed_api:
-            return DeterministicWorkflowChatLLM()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="OpenAI API key is not configured for workflow chat.",
@@ -510,7 +510,7 @@ async def execute_workflow_streaming(
             WorkflowSaveValidator(
                 executor_registry=container.executor_registry,
                 tool_repository=container.tool_repository(db),
-            ).validate_or_raise(workflow)
+            ).validate_for_execution_or_raise(workflow)
         except DomainValidationError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -650,7 +650,7 @@ async def execute_workflow_streaming(
             WorkflowSaveValidator(
                 executor_registry=container.executor_registry,
                 tool_repository=container.tool_repository(db),
-            ).validate_or_raise(workflow)
+            ).validate_for_execution_or_raise(workflow)
         except DomainValidationError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

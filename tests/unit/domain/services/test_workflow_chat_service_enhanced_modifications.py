@@ -214,6 +214,47 @@ def test_apply_modifications_rejects_updates_outside_main_subgraph():
     assert excinfo.value.code == "workflow_modification_rejected"
 
 
+def test_apply_modifications_rejects_nodes_to_add_outside_main_subgraph():
+    start = Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0))
+    end = Node.create(type=NodeType.END, name="end", config={}, position=Position(x=200, y=0))
+    edge_main = Edge.create(source_node_id=start.id, target_node_id=end.id)
+
+    workflow = Workflow.create(
+        name="wf",
+        description="",
+        nodes=[start, end],
+        edges=[edge_main],
+    )
+
+    service = EnhancedWorkflowChatService(
+        workflow_id=workflow.id,
+        llm=_NoopLLM(),  # type: ignore[arg-type]
+        chat_message_repository=Mock(),
+        tool_repository=None,
+    )
+
+    with pytest.raises(DomainValidationError) as excinfo:
+        service._apply_modifications(
+            workflow,
+            {
+                "nodes_to_add": [
+                    {
+                        "type": NodeType.HTTP_REQUEST.value,
+                        "name": "isolated_new",
+                        "config": {"url": "https://new.test", "method": "GET"},
+                        "position": {"x": 100, "y": 100},
+                    }
+                ]
+            },
+        )
+
+    assert excinfo.value.code == "workflow_modification_rejected"
+    err = next((e for e in excinfo.value.errors if e.get("field") == "nodes_to_add"), None)
+    assert err is not None
+    assert err.get("reason") == "outside_main_subgraph"
+    assert any(n.get("name") == "isolated_new" for n in (err.get("nodes") or []))
+
+
 def test_apply_modifications_rejects_nodes_to_update_with_disallowed_fields():
     start = Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0))
     http = Node.create(

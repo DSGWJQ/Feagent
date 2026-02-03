@@ -8,9 +8,17 @@ from unittest.mock import Mock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from src.config import settings
+
 
 class TestConcurrentWorkflowsAPI:
     """测试并发工作流执行 API 端点"""
+
+    @pytest.fixture(autouse=True)
+    def _runs_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """These tests hit /api/runs endpoints, which are unavailable when Runs are disabled."""
+
+        monkeypatch.setattr(settings, "disable_run_persistence", False)
 
     @pytest.fixture
     def client(self):

@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from src.config import settings
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.run_event import RunEvent
@@ -35,6 +36,13 @@ def test_engine():
     Base.metadata.create_all(engine)
     yield engine
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _enable_runs_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Runs replay tests require Runs API to be enabled (fail-closed otherwise)."""
+
+    monkeypatch.setattr(settings, "disable_run_persistence", False)
 
 
 @pytest.fixture()

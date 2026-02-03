@@ -129,6 +129,11 @@ def _build_app(
     return TestClient(app)
 
 
+class _MissingWorkflowRepository:
+    def get_by_id(self, workflow_id: str):  # noqa: ARG002
+        return None
+
+
 @pytest.mark.parametrize(
     ("workflow_factory", "tool_repo_factory"),
     [
@@ -268,14 +273,13 @@ def test_execute_stream_coordinator_rejection_blocks_before_persisting_workflow_
     run = _seed_run(test_engine, workflow_id="wf_123")
 
     registry = NodeExecutorRegistry()
+    start = Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0))
+    end = Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0))
     workflow = Workflow.create(
         name="ok",
         description="",
-        nodes=[
-            Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)),
-            Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0)),
-        ],
-        edges=[],
+        nodes=[start, end],
+        edges=[Edge.create(source_node_id=start.id, target_node_id=end.id)],
     )
     workflow.id = "wf_123"
 
@@ -315,3 +319,80 @@ def test_execute_stream_coordinator_rejection_blocks_before_persisting_workflow_
         assert rows == []
     finally:
         db.close()
+
+
+def test_execute_stream_requires_run_id_when_runs_enabled(
+    monkeypatch: pytest.MonkeyPatch, test_engine
+) -> None:
+    """Contract: Runs enabled => execute/stream must reject requests without run_id."""
+    monkeypatch.setattr(settings, "disable_run_persistence", False)
+
+    def _noop_repo(_: Session):
+        return None
+
+    client = _build_app(
+        test_engine=test_engine,
+        coordinator=_AllowCoordinator(),
+        container=ApiContainer(
+            executor_registry=NodeExecutorRegistry(),
+            workflow_execution_kernel=lambda _s: _UnreachableKernel(),  # should not reach kernel
+            conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
+            user_repository=_noop_repo,
+            agent_repository=_noop_repo,
+            task_repository=_noop_repo,
+            workflow_repository=lambda _s: _MissingWorkflowRepository(),
+            chat_message_repository=_noop_repo,
+            llm_provider_repository=_noop_repo,
+            tool_repository=lambda _s: _FakeToolRepository(),
+            run_repository=_noop_repo,
+            scheduled_workflow_repository=_noop_repo,
+        ),
+    )
+
+    response = client.post(
+        "/api/workflows/wf_any/execute/stream",
+        json={"initial_input": {"k": "v"}},
+        headers={"Accept": "text/event-stream"},
+    )
+    assert response.status_code == 400
+    assert (
+        response.json()["detail"] == "run_id is required (create run first, then execute/stream)."
+    )
+
+
+def test_execute_stream_does_not_require_run_id_when_runs_disabled(
+    monkeypatch: pytest.MonkeyPatch, test_engine
+) -> None:
+    """Contract: Runs disabled => execute/stream should not fail with run_id-required 400."""
+    monkeypatch.setattr(settings, "disable_run_persistence", True)
+
+    def _noop_repo(_: Session):
+        return None
+
+    client = _build_app(
+        test_engine=test_engine,
+        coordinator=_AllowCoordinator(),
+        container=ApiContainer(
+            executor_registry=NodeExecutorRegistry(),
+            workflow_execution_kernel=lambda _s: _UnreachableKernel(),  # legacy path doesn't use kernel
+            conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
+            user_repository=_noop_repo,
+            agent_repository=_noop_repo,
+            task_repository=_noop_repo,
+            workflow_repository=lambda _s: _MissingWorkflowRepository(),
+            chat_message_repository=_noop_repo,
+            llm_provider_repository=_noop_repo,
+            tool_repository=lambda _s: _FakeToolRepository(),
+            run_repository=_noop_repo,
+            scheduled_workflow_repository=_noop_repo,
+        ),
+    )
+
+    response = client.post(
+        "/api/workflows/wf_missing/execute/stream",
+        json={"initial_input": {"k": "v"}},
+        headers={"Accept": "text/event-stream"},
+    )
+    # The workflow is missing (404), but it must NOT be the run_id-required 400.
+    assert response.status_code == 404
+    assert "Workflow not found" in response.json().get("detail", "")

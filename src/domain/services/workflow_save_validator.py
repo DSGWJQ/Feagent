@@ -232,6 +232,21 @@ class WorkflowSaveValidator:
     tool_repository: ToolRepository | None = None
 
     def validate_or_raise(self, workflow: Workflow) -> None:
+        """Validate a workflow for *persistence* (drag-save / chat-modify).
+
+        Draft workflows may be incomplete: missing END is allowed as long as we cannot execute
+        anything yet (main_subgraph_only contract).
+        """
+        self._validate_or_raise(workflow, allow_missing_end_in_draft=True)
+
+    def validate_for_execution_or_raise(self, workflow: Workflow) -> None:
+        """Validate a workflow for *execution* (execute/stream gate).
+
+        Fail-closed: missing END must be rejected even in draft mode.
+        """
+        self._validate_or_raise(workflow, allow_missing_end_in_draft=False)
+
+    def _validate_or_raise(self, workflow: Workflow, *, allow_missing_end_in_draft: bool) -> None:
         started = time.perf_counter()
         errors: list[dict[str, Any]] = []
 
@@ -239,7 +254,9 @@ class WorkflowSaveValidator:
         # persist the same canonical shape (fail-closed: still validates after).
         self._normalize_workflow_node_configs(workflow)
 
-        self._validate_main_subgraph(workflow, errors=errors)
+        self._validate_main_subgraph(
+            workflow, errors=errors, allow_missing_end_in_draft=allow_missing_end_in_draft
+        )
 
         node_ids = [node.id for node in workflow.nodes]
         if not node_ids and workflow.edges:
@@ -371,7 +388,20 @@ class WorkflowSaveValidator:
         if is_draft:
             # Draft workflows may contain in-progress nodes. We still fail-closed for the
             # main start->end subgraph because those nodes are runnable.
-            main_node_ids = _extract_main_subgraph_node_ids(workflow) or None
+            #
+            # NOTE (KISS + contract alignment):
+            # - "main_subgraph_only" means: only nodes on a runnable start->end path are subject to
+            #   strict executability validation; everything else may remain in-progress.
+            # - When START is missing, we cannot classify nodes as "outside main subgraph" safely,
+            #   so we validate everything to surface actionable errors (still fail-closed overall).
+            # - When END is missing (draft-only allowed), there are effectively no runnable nodes yet,
+            #   so we must not block saving by validating in-progress nodes.
+            has_start = any(node.type == NodeType.START for node in workflow.nodes)
+            has_end = any(node.type == NodeType.END for node in workflow.nodes)
+            if has_start and not has_end:
+                main_node_ids = set()
+            elif has_start and has_end:
+                main_node_ids = _extract_main_subgraph_node_ids(workflow)
 
         builtin_types: set[NodeType] = {
             NodeType.INPUT,
@@ -545,7 +575,13 @@ class WorkflowSaveValidator:
                     else "structuredOutput nodes must have config input or at least one incoming edge",
                 )
 
-    def _validate_main_subgraph(self, workflow: Workflow, *, errors: list[dict[str, Any]]) -> None:
+    def _validate_main_subgraph(
+        self,
+        workflow: Workflow,
+        *,
+        errors: list[dict[str, Any]],
+        allow_missing_end_in_draft: bool,
+    ) -> None:
         if not workflow.nodes:
             _append_error(
                 errors,
@@ -569,7 +605,7 @@ class WorkflowSaveValidator:
                 path="nodes",
             )
         if not end_ids:
-            if not is_draft:
+            if (not is_draft) or (not allow_missing_end_in_draft):
                 _append_error(
                     errors,
                     code="missing_end",

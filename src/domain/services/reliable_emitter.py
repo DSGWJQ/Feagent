@@ -562,34 +562,41 @@ class ReliableEmitter:
 
         标记 emitter 为已完成，并发送结束标记。
         """
-        if self._is_completed:
-            return
+        end_step: ConversationStep | None = None
 
-        # 发送结束标记
-        end_step = ConversationStep(
-            kind=StepKind.END,
-            content="",
-            is_final=True,
-            sequence=self._next_sequence(),
-        )
-
+        # Guard END emission so concurrent cleanup cannot enqueue duplicate END steps.
         async with self._lock:
+            if self._is_completed:
+                return
+
+            # 发送结束标记
+            end_step = ConversationStep(
+                kind=StepKind.END,
+                content="",
+                is_final=True,
+                sequence=self._next_sequence(),
+            )
             self._queue.append(end_step)
             self._update_events()
+            self._is_completed = True
 
         # 持久化结束标记
-        if self._message_store is not None:
+        if end_step is not None and self._message_store is not None:
             await self._message_store.save(self.session_id, end_step)
 
-        self._is_completed = True
-
     async def complete_with_error(self, error_message: str) -> None:
-        """因错误完成发射"""
+        """因错误完成发射（error 后必须跟随 END）。"""
         if self._is_completed:
             return
 
-        await self.emit_error(error_message, recoverable=False)
-        self._is_completed = True
+        # Best-effort: send error then ensure END is emitted so consumers don't hang.
+        try:
+            await self.emit_error(error_message, recoverable=False)
+        except EmitterClosedError:
+            # Another task may have completed the emitter concurrently.
+            pass
+        finally:
+            await self.complete()
 
     # =========================================================================
     # 统计信息

@@ -200,7 +200,8 @@ class WorkflowRunExecutionEntry:
 
     def _validate_workflow_or_raise(self, *, workflow_id: str) -> None:
         workflow = self._workflow_repository.get_by_id(workflow_id)
-        self._save_validator.validate_or_raise(workflow)
+        # Execution gate is stricter than save: missing END must be rejected even for drafts.
+        self._save_validator.validate_for_execution_or_raise(workflow)
 
     def _validate_run_gate_or_raise(self, *, workflow_id: str, run_id: str) -> None:
         try:
@@ -854,7 +855,7 @@ class WorkflowRunExecutionEntry:
             return False, {"reason": "patch_scope_violation"}
 
         # Fail-closed: patched workflow must still be executable.
-        self._save_validator.validate_or_raise(workflow)
+        self._save_validator.validate_for_execution_or_raise(workflow)
         self._workflow_repository.save(workflow)
         return True, patch
 

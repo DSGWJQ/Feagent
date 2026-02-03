@@ -761,6 +761,24 @@ class TestBackwardCompatibility:
         assert emitter.is_completed is True
 
     @pytest.mark.asyncio
+    async def test_reliable_emitter_complete_with_error_emits_end(self):
+        """测试：complete_with_error 必须发送 ERROR + END（避免消费者/SSE handler 卡死）"""
+        from src.domain.services.reliable_emitter import ReliableEmitter
+
+        emitter = ReliableEmitter(session_id="test")
+        await emitter.complete_with_error("fatal")
+
+        steps = []
+        async for step in emitter:
+            steps.append(step)
+            if step.kind == StepKind.END:
+                break
+
+        assert [s.kind for s in steps] == [StepKind.ERROR, StepKind.END]
+        assert steps[0].content == "fatal"
+        assert emitter.is_completed is True
+
+    @pytest.mark.asyncio
     async def test_reliable_emitter_has_all_emit_methods(self):
         """测试：ReliableEmitter 有所有 emit 方法"""
         from src.domain.services.reliable_emitter import ReliableEmitter

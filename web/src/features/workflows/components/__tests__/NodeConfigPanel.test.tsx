@@ -127,6 +127,43 @@ describe('NodeConfigPanel', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('fails closed when textModel has a model value not in enum', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(['workflows', 'capabilities'], mockCapabilities);
+
+    renderWithProviders(
+      <NodeConfigPanel
+        open={true}
+        node={
+          {
+            id: 'node_textModel',
+            type: 'textModel',
+            data: { model: 'openai/gpt-4o-mini' },
+            position: { x: 0, y: 0 },
+          } as any
+        }
+        nodes={[]}
+        edges={[]}
+        onClose={() => {}}
+        onSave={onSave}
+      />,
+      { queryClient }
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText('Unsupported model value')).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/unsupported textModel model: openai\/gpt-4o-mini/i)
+    ).toBeInTheDocument();
+  });
+
   it('imageGeneration model select does not expose Gemini option', async () => {
     const user = userEvent.setup();
     const queryClient = createTestQueryClient();

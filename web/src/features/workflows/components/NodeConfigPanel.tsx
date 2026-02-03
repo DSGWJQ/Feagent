@@ -31,6 +31,35 @@ import type { Tool } from '@/types/workflow';
 
 const { TextArea } = Input;
 
+function normalizeEnumValue(value: string, normalize: string | undefined): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (normalize === 'lower_strip') {
+    return trimmed.toLowerCase();
+  }
+  // default: strip
+  return trimmed;
+}
+
+function isEnumValueAllowed(value: unknown, spec: EnumFieldRequirement): boolean {
+  if (value == null) return true;
+  if (typeof value !== 'string') return false;
+
+  const normalized = normalizeEnumValue(value, spec.normalize);
+  if (!normalized) return true;
+
+  const allowedNormalized = new Set(
+    (spec.allowed ?? []).map((v) => normalizeEnumValue(v, spec.normalize))
+  );
+  return allowedNormalized.has(normalized);
+}
+
+function formatEnumErrorMessage(spec: EnumFieldRequirement, value: unknown): string {
+  const raw = typeof value === 'string' ? value : String(value);
+  const template = spec.message || 'Unsupported value: {value}';
+  return template.includes('{value}') ? template.replace('{value}', raw) : template;
+}
+
 interface NodeConfigPanelProps {
   open: boolean;
   node: Node | null;
@@ -49,6 +78,7 @@ export default function NodeConfigPanel({
   onSave,
 }: NodeConfigPanelProps) {
   const [form] = Form.useForm<Record<string, unknown>>();
+  const watchedModel = Form.useWatch('model', form);
 
   const {
     data: capabilities,
@@ -76,7 +106,9 @@ export default function NodeConfigPanel({
   }, [validationContract]);
 
   const buildEnumOptions = useMemo(() => {
-    return (spec: EnumFieldRequirement | null): Array<{ value: string; label: string }> => {
+    return (
+      spec: EnumFieldRequirement | null
+    ): Array<{ value: string; label: string; disabled?: boolean }> => {
       if (!spec) return [];
       const meta = spec.meta;
       const labels =
@@ -97,6 +129,27 @@ export default function NodeConfigPanel({
       }));
     };
   }, []);
+
+  const buildEnumOptionsWithUnknown = useMemo(() => {
+    return (
+      spec: EnumFieldRequirement | null,
+      currentValue: unknown
+    ): Array<{ value: string; label: string; disabled?: boolean }> => {
+      const options = buildEnumOptions(spec);
+      if (!spec) return options;
+      if (typeof currentValue !== 'string') return options;
+
+      const normalized = normalizeEnumValue(currentValue, spec.normalize);
+      if (!normalized) return options;
+      if (isEnumValueAllowed(currentValue, spec)) return options;
+      if (options.some((opt) => opt.value === currentValue)) return options;
+
+      return [
+        { value: currentValue, label: `Unknown (unsupported): ${currentValue}`, disabled: true },
+        ...options,
+      ];
+    };
+  }, [buildEnumOptions]);
 
   const isToolNode = node?.type === 'tool';
   const { data: tools = [], isLoading: toolsLoading } = useQuery({
@@ -316,8 +369,25 @@ export default function NodeConfigPanel({
           };
         });
 
+        const modelSpec = getEnumSpec('model');
+        const hasInvalidModelValue =
+          Boolean(modelSpec) && watchedModel != null && !isEnumValueAllowed(watchedModel, modelSpec!);
+
         return (
           <>
+            {hasInvalidModelValue ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="Unsupported model value"
+                description={
+                  typeof watchedModel === 'string'
+                    ? `Current value \"${watchedModel}\" is not in the allowed list. Please select a supported model to save.`
+                    : 'Current model value is invalid. Please select a supported model to save.'
+                }
+                style={{ marginBottom: 12 }}
+              />
+            ) : null}
             <Form.Item
               label="Model"
               name="model"
@@ -328,9 +398,21 @@ export default function NodeConfigPanel({
                     validationContract.required_fields.find((r) => r.key === 'model')?.message ||
                     'model is required',
                 },
+                ...(modelSpec
+                  ? [
+                      {
+                        validator: async (_rule, value: unknown) => {
+                          if (value == null || (typeof value === 'string' && !value.trim())) return;
+                          if (!isEnumValueAllowed(value, modelSpec)) {
+                            throw new Error(formatEnumErrorMessage(modelSpec, value));
+                          }
+                        },
+                      },
+                    ]
+                  : []),
               ]}
             >
-              <Select options={buildEnumOptions(getEnumSpec('model'))} />
+              <Select options={buildEnumOptionsWithUnknown(modelSpec, watchedModel)} />
             </Form.Item>
             {requiresPromptSource ? (
               <Alert
@@ -408,7 +490,7 @@ export default function NodeConfigPanel({
                 },
               ]}
             >
-              <Select options={buildEnumOptions(getEnumSpec('model'))} />
+              <Select options={buildEnumOptionsWithUnknown(getEnumSpec('model'), watchedModel)} />
             </Form.Item>
             <Form.Item label="Dimensions" name="dimensions">
               <InputNumber min={1} max={3072} style={{ width: '100%' }} />
@@ -431,7 +513,7 @@ export default function NodeConfigPanel({
                 },
               ]}
             >
-              <Select options={buildEnumOptions(getEnumSpec('model'))} />
+              <Select options={buildEnumOptionsWithUnknown(getEnumSpec('model'), watchedModel)} />
             </Form.Item>
             <Form.Item label="Aspect Ratio" name="aspectRatio">
               <Select options={buildEnumOptions(getEnumSpec('aspectRatio'))} />
@@ -457,7 +539,7 @@ export default function NodeConfigPanel({
                 },
               ]}
             >
-              <Select options={buildEnumOptions(getEnumSpec('model'))} />
+              <Select options={buildEnumOptionsWithUnknown(getEnumSpec('model'), watchedModel)} />
             </Form.Item>
             <Form.Item label="Voice" name="voice">
               <Select options={buildEnumOptions(getEnumSpec('voice'))} />

@@ -14,6 +14,7 @@ from src.application.services.workflow_execution_orchestrator import (
     WorkflowExecutionPolicy,
 )
 from src.config import settings
+from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.run import Run
 from src.domain.entities.workflow import Workflow
@@ -122,14 +123,13 @@ def test_execute_stream_endpoint_goes_through_orchestrator_and_policy_chain(
     def _noop_repo(_: Session):
         return None
 
+    start = Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0))
+    end = Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0))
     workflow = Workflow.create(
         name="test",
         description="",
-        nodes=[
-            Node.create(type=NodeType.START, name="start", config={}, position=Position(x=0, y=0)),
-            Node.create(type=NodeType.END, name="end", config={}, position=Position(x=1, y=0)),
-        ],
-        edges=[],
+        nodes=[start, end],
+        edges=[Edge.create(source_node_id=start.id, target_node_id=end.id)],
     )
     workflow.id = "wf_123"
 

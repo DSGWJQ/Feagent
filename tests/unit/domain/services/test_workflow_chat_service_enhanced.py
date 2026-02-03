@@ -181,6 +181,12 @@ def test_modification_result_contains_detailed_info(mock_llm, mock_repository, s
                 "position": {"x": 350, "y": 100},
             }
         ],
+        # hardening: 新增节点必须进入 start→end 主连通子图；因此需要同步补齐连线
+        # （edges_to_add 支持用 node.name 引用，避免依赖新节点的运行时 id）
+        "edges_to_add": [
+            {"source": "获取数据", "target": "处理数据"},
+            {"source": "处理数据", "target": "结束"},
+        ],
         "ai_message": "已添加 Python 节点",
         "intent": "add_node",
         "confidence": 0.95,

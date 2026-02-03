@@ -797,8 +797,10 @@ class TestEndToEndScenarios:
         custom_tools = unified_registry.list_by_category("custom")
         http_tools = unified_registry.list_by_category("http")
 
-        assert len(all_defs) == 13 + 5  # 13 节点 + 5 工具
-        assert len(nodes) == 13
+        # 节点数量以 NodeRegistry 对外暴露的类型为准（避免新增/隐藏节点类型导致测试脆弱）。
+        expected_node_count = len(node_registry.get_all_types())
+        assert len(all_defs) == expected_node_count + 5
+        assert len(nodes) == expected_node_count
         assert len(tools) == 5
         assert len(custom_tools) == 3  # tool_0, tool_2, tool_4
         assert len(http_tools) == 2  # tool_1, tool_3

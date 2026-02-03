@@ -1158,4 +1158,66 @@ class EnhancedWorkflowChatService:
             updated_at=workflow.updated_at,
         )
 
+        # Phase 5 hardening: chat modifications must not create unreachable nodes that the chat prompt
+        # cannot "see" and therefore cannot fix later. Fail-closed with structured detail so the
+        # orchestrator/LLM can propose a corrected patch (connect or delete).
+        if not allow_incomplete_draft_graph:
+            next_main_node_ids, _next_main_edge_ids = extract_main_subgraph(modified_workflow)
+            if not next_main_node_ids:
+                raise DomainValidationError(
+                    "修改被拒绝：主连通子图为空（start→end 不可达）",
+                    code="workflow_modification_rejected",
+                    errors=[{"field": "workflow", "reason": "main_subgraph_empty"}],
+                )
+
+            new_nodes_outside = [
+                node
+                for node in modified_workflow.nodes
+                if node.id not in original_node_ids and node.id not in next_main_node_ids
+            ]
+            nodes_became_unreachable = [
+                node
+                for node in modified_workflow.nodes
+                if node.id in main_node_ids and node.id not in next_main_node_ids
+            ]
+
+            if new_nodes_outside or nodes_became_unreachable:
+                errors: list[dict[str, Any]] = []
+                if new_nodes_outside:
+                    errors.append(
+                        {
+                            "field": "nodes_to_add",
+                            "reason": "outside_main_subgraph",
+                            "nodes": [
+                                {
+                                    "id": n.id,
+                                    "name": n.name,
+                                    "type": getattr(getattr(n, "type", None), "value", n.type),
+                                }
+                                for n in new_nodes_outside
+                            ],
+                        }
+                    )
+                if nodes_became_unreachable:
+                    errors.append(
+                        {
+                            "field": "workflow",
+                            "reason": "nodes_left_main_subgraph",
+                            "nodes": [
+                                {
+                                    "id": n.id,
+                                    "name": n.name,
+                                    "type": getattr(getattr(n, "type", None), "value", n.type),
+                                }
+                                for n in nodes_became_unreachable
+                            ],
+                        }
+                    )
+
+                raise DomainValidationError(
+                    "修改被拒绝：对话修改必须保持 start→end 主连通子图可修复",
+                    code="workflow_modification_rejected",
+                    errors=errors,
+                )
+
         return modified_workflow, modifications_count
