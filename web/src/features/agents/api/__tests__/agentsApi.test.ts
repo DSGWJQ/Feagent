@@ -9,17 +9,15 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { agentsApi } from '../agentsApi';
-import request from '@/shared/utils/request';
+import { del, get, post, put } from '@/shared/utils/request';
 import type { Agent, CreateAgentDto, UpdateAgentDto } from '@/shared/types';
 
 // Mock request 模块
 vi.mock('@/shared/utils/request', () => ({
-  default: {
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    delete: vi.fn(),
-  },
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  del: vi.fn(),
 }));
 
 describe('agentsApi', () => {
@@ -41,26 +39,26 @@ describe('agentsApi', () => {
           updated_at: '2024-01-15T00:00:00Z',
         },
       ];
-      vi.mocked(request.get).mockResolvedValue(mockAgents);
+      vi.mocked(get).mockResolvedValue(mockAgents);
 
       // Act: 执行测试
       const result = await agentsApi.getAgents();
 
       // Assert: 验证结果
-      expect(request.get).toHaveBeenCalledWith('/api/agents', { params: undefined });
+      expect(get).toHaveBeenCalledWith('/api/agents', { params: undefined });
       expect(result).toEqual(mockAgents);
     });
 
     it('应该传递查询参数', async () => {
       // Arrange
       const params = { skip: 0, limit: 10, search: 'test' };
-      vi.mocked(request.get).mockResolvedValue([]);
+      vi.mocked(get).mockResolvedValue([]);
 
       // Act
       await agentsApi.getAgents(params);
 
       // Assert
-      expect(request.get).toHaveBeenCalledWith('/api/agents', { params });
+      expect(get).toHaveBeenCalledWith('/api/agents', { params });
     });
   });
 
@@ -75,13 +73,13 @@ describe('agentsApi', () => {
         created_at: '2024-01-15T00:00:00Z',
         updated_at: '2024-01-15T00:00:00Z',
       };
-      vi.mocked(request.get).mockResolvedValue(mockAgent);
+      vi.mocked(get).mockResolvedValue(mockAgent);
 
       // Act
       const result = await agentsApi.getAgent('1');
 
       // Assert
-      expect(request.get).toHaveBeenCalledWith('/api/agents/1');
+      expect(get).toHaveBeenCalledWith('/api/agents/1');
       expect(result).toEqual(mockAgent);
     });
   });
@@ -96,17 +94,19 @@ describe('agentsApi', () => {
       };
       const mockAgent: Agent = {
         id: '1',
-        ...createData,
+        name: createData.name ?? '未命名 Agent',
+        start: createData.start,
+        goal: createData.goal,
         created_at: '2024-01-15T00:00:00Z',
         updated_at: '2024-01-15T00:00:00Z',
       };
-      vi.mocked(request.post).mockResolvedValue(mockAgent);
+      vi.mocked(post).mockResolvedValue(mockAgent);
 
       // Act
       const result = await agentsApi.createAgent(createData);
 
       // Assert
-      expect(request.post).toHaveBeenCalledWith('/api/agents', createData);
+      expect(post).toHaveBeenCalledWith('/api/agents', createData);
       expect(result).toEqual(mockAgent);
     });
   });
@@ -125,13 +125,13 @@ describe('agentsApi', () => {
         created_at: '2024-01-15T00:00:00Z',
         updated_at: '2024-01-15T00:00:00Z',
       };
-      vi.mocked(request.put).mockResolvedValue(mockAgent);
+      vi.mocked(put).mockResolvedValue(mockAgent);
 
       // Act
       const result = await agentsApi.updateAgent('1', updateData);
 
       // Assert
-      expect(request.put).toHaveBeenCalledWith('/api/agents/1', updateData);
+      expect(put).toHaveBeenCalledWith('/api/agents/1', updateData);
       expect(result).toEqual(mockAgent);
     });
   });
@@ -139,13 +139,13 @@ describe('agentsApi', () => {
   describe('deleteAgent', () => {
     it('应该调用 DELETE /api/agents/:id', async () => {
       // Arrange
-      vi.mocked(request.delete).mockResolvedValue(undefined);
+      vi.mocked(del).mockResolvedValue(undefined);
 
       // Act
       await agentsApi.deleteAgent('1');
 
       // Assert
-      expect(request.delete).toHaveBeenCalledWith('/api/agents/1');
+      expect(del).toHaveBeenCalledWith('/api/agents/1');
     });
   });
 });

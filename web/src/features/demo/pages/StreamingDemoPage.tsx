@@ -76,8 +76,7 @@ const exampleMessages: StreamingMessage[] = [
 
 export const StreamingDemoPage: React.FC = () => {
   const [showExamples, setShowExamples] = useState(true);
-  /* eslint-disable @typescript-eslint/no-unused-vars */
-  const [lastResponse, setLastResponse] = useState<string>('');
+  const [, setLastResponse] = useState<string>('');
 
   return (
     <PageShell

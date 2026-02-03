@@ -4,18 +4,20 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
-export interface EndNodeData {
+export interface EndNodeData extends Record<string, unknown> {
   status?: NodeStatus;
   output?: unknown;
 }
 
-function EndNode({ data, selected }: NodeProps<EndNodeData>) {
+type EndNodeType = Node<EndNodeData>;
+
+function EndNode({ data, selected }: NodeProps<EndNodeType>) {
   const status = data.status || 'idle';
 
   return (
@@ -43,7 +45,7 @@ function EndNode({ data, selected }: NodeProps<EndNodeData>) {
         </div>
       )}
 
-      {data.output && (
+      {data.output != null && (
         <div className={styles.nodeOutput}>
           <p className={styles.nodeOutputLabel}>
             Final Output:

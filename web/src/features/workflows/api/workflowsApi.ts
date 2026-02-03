@@ -30,6 +30,9 @@ export interface ChatCreateRequest {
   run_id?: string;
 }
 
+const WORKFLOW_CREATE_EXPLICIT_HEADER = 'X-Workflow-Create';
+const WORKFLOW_CREATE_EXPLICIT_VALUE = 'explicit';
+
 /**
  * 列出所有工作流
  */
@@ -186,6 +189,7 @@ export function chatCreateWorkflowStreaming(
     headers: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
+      [WORKFLOW_CREATE_EXPLICIT_HEADER]: WORKFLOW_CREATE_EXPLICIT_VALUE,
     },
     body: JSON.stringify(request),
     signal: abortController.signal,

@@ -24,6 +24,7 @@ export interface Position {
 export interface WorkflowNode {
   id: string;
   type: string;
+  name?: string;
   position: Position;
   data: Record<string, unknown>;
 }
@@ -51,11 +52,13 @@ export interface WorkflowEdge {
 /**
  * 工作流状态
  */
-export enum WorkflowStatus {
-  DRAFT = 'draft',
-  PUBLISHED = 'published',
-  ARCHIVED = 'archived',
-}
+export const WorkflowStatus = {
+  DRAFT: 'draft',
+  PUBLISHED: 'published',
+  ARCHIVED: 'archived',
+} as const;
+
+export type WorkflowStatus = (typeof WorkflowStatus)[keyof typeof WorkflowStatus];
 
 /**
  * 工作流
@@ -64,6 +67,7 @@ export interface Workflow {
   id: string;
   name: string;
   description: string;
+  project_id?: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   status: WorkflowStatus;

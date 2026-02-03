@@ -4,19 +4,21 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card } from 'antd';
 import { BranchesOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
-export interface ConditionalNodeData {
+export interface ConditionalNodeData extends Record<string, unknown> {
   condition: string;
   status?: NodeStatus;
   output?: unknown;
 }
 
-function ConditionalNode({ data, selected }: NodeProps<ConditionalNodeData>) {
+type ConditionalNodeType = Node<ConditionalNodeData>;
+
+function ConditionalNode({ data, selected }: NodeProps<ConditionalNodeType>) {
   const status = data.status || 'idle';
 
   return (

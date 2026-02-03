@@ -73,6 +73,31 @@ _INTERNAL_CREATE_GONE_DETAIL = (
     "(enable_internal_workflow_create_endpoints)."
 )
 
+# =========================
+# Explicit workflow creation gate (Header Gate)
+# =========================
+#
+# Contract (WF-EXPLICIT-CREATE):
+# - /api/workflows/chat-create/stream is allowed to create workflows ONLY when the request
+#   includes `X-Workflow-Create: explicit`.
+# - Missing/mismatched header must fail-closed and MUST NOT cause DB side-effects.
+#
+# NOTE: Keep these constants in sync with frontend + tests (but do not cross-import).
+_WORKFLOW_CHAT_CREATE_EXPLICIT_HEADER = "X-Workflow-Create"
+_WORKFLOW_CHAT_CREATE_EXPLICIT_VALUE = "explicit"
+
+_WORKFLOW_CHAT_CREATE_BLOCKED_EVENT = "workflow_chat_create_blocked"
+_WORKFLOW_CHAT_CREATE_ALLOWED_EVENT = "workflow_chat_create_allowed"
+
+
+def _explicit_create_required_detail() -> dict[str, str]:
+    # Stable, testable error body (no sensitive content).
+    return {
+        "error": "explicit_create_required",
+        "required_header": _WORKFLOW_CHAT_CREATE_EXPLICIT_HEADER,
+        "required_value": _WORKFLOW_CHAT_CREATE_EXPLICIT_VALUE,
+    }
+
 
 def _require_internal_workflow_create_access(
     *,
@@ -866,16 +891,40 @@ async def chat_create_stream(
     - Uses SSEEmitterHandler so the payload is `data: <json>\\n\\n` (fetch-friendly).
     """
 
+    # Explicit workflow creation gate (fail-closed, no DB side effects).
+    header_value = http_request.headers.get(_WORKFLOW_CHAT_CREATE_EXPLICIT_HEADER)
+    if (header_value or "").strip().lower() != _WORKFLOW_CHAT_CREATE_EXPLICIT_VALUE:
+        logger.info(
+            _WORKFLOW_CHAT_CREATE_BLOCKED_EVENT,
+            extra={
+                "audit_at_ms": int(time.time() * 1000),
+                "workflow_id": None,
+                "user_id": getattr(current_user, "id", None) if current_user else None,
+                "reason": "explicit_header_required",
+                "header_present": bool(header_value),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_explicit_create_required_detail(),
+        )
+
+    logger.info(
+        _WORKFLOW_CHAT_CREATE_ALLOWED_EVENT,
+        extra={
+            "audit_at_ms": int(time.time() * 1000),
+            "workflow_id": None,
+            "user_id": getattr(current_user, "id", None) if current_user else None,
+            "reason": "explicit_header_ok",
+        },
+    )
+
     from src.application.services.coordinator_policy_chain import (
         CoordinatorPolicyChain,
         CoordinatorRejectedError,
     )
-    from src.domain.entities.edge import Edge
-    from src.domain.entities.node import Node
     from src.domain.entities.workflow import Workflow
     from src.domain.services.conversation_flow_emitter import ConversationFlowEmitter
-    from src.domain.value_objects.node_type import NodeType
-    from src.domain.value_objects.position import Position
     from src.interfaces.api.services.sse_emitter_handler import SSEEmitterHandler
 
     repository = container.workflow_repository(db)
@@ -883,96 +932,15 @@ async def chat_create_stream(
         executor_registry=container.executor_registry,
         tool_repository=container.tool_repository(db),
     )
-
-    def _is_deterministic_cleaning_request(message: str) -> bool:
-        if not settings.enable_test_seed_api:
-            return False
-        if not isinstance(message, str):
-            return False
-        lower = message.lower()
-        if "数据清洗" in message or "data cleaning" in lower or "cleaning" in lower:
-            return True
-        # Fallback: user may omit the phrase but specify the 3 cleaning operations.
-        return (
-            ("去重" in message or "dedup" in lower)
-            and ("去空" in message or "null" in lower or "empty" in lower)
-            and ("类型" in message or "convert" in lower or "cast" in lower)
-        )
-
-    def _apply_cleaning_graph(workflow: Workflow) -> None:
-        start_node = next((n for n in workflow.nodes if n.type == NodeType.START), None)
-        end_node = next((n for n in workflow.nodes if n.type == NodeType.END), None)
-        if start_node is None or end_node is None:
-            raise DomainError("base workflow missing start/end node")
-
-        for edge in list(workflow.edges):
-            workflow.remove_edge(edge.id)
-
-        cleaning_code = """
-# NOTE: PythonExecutor runs with a restricted __builtins__ (no isinstance/Exception/repr).
-# Keep this snippet limited to SAFE_BUILTINS + basic object methods.
-
-payload = input1
-rows = payload.get("data") if payload.__class__ is dict else payload
-if rows.__class__ is not list:
-    rows = []
-
-def _to_number_or_str(value: str):
-    s = value.strip()
-    if s == "":
-        return None
-    if s.isdigit():
-        return int(s)
-    if s.count(".") == 1:
-        parts = s.split(".")
-        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-            return float(s)
-    return s
-
-cleaned = []
-seen = set()
-
-for row in rows:
-    if row is None:
-        continue
-    if row.__class__ is not dict:
-        continue
-
-    normalized = {}
-    for key, val in row.items():
-        if val is None:
-            continue
-        if val.__class__ is str:
-            converted = _to_number_or_str(val)
-            if converted is None:
-                continue
-            normalized[key] = converted
-        else:
-            normalized[key] = val
-
-    if len(normalized) == 0:
-        continue
-
-    dedup_key = tuple(sorted((str(k), str(normalized[k])) for k in normalized.keys()))
-    if dedup_key in seen:
-        continue
-    seen.add(dedup_key)
-    cleaned.append(normalized)
-
-result = {"data": cleaned}
-""".strip("\n")
-
-        cleaning_node = Node.create(
-            type=NodeType.PYTHON,
-            name="数据清洗",
-            config={"code": cleaning_code},
-            position=Position(x=225, y=100),
-        )
-        workflow.add_node(cleaning_node)
-        workflow.add_edge(
-            Edge.create(source_node_id=start_node.id, target_node_id=cleaning_node.id)
-        )
-        workflow.add_edge(Edge.create(source_node_id=cleaning_node.id, target_node_id=end_node.id))
+    from src.domain.services.deterministic_chat_create_templates import (
+        apply_template as apply_deterministic_template,
+    )
+    from src.domain.services.deterministic_chat_create_templates import (
+        detect_template as detect_deterministic_template,
+    )
+    from src.domain.services.deterministic_chat_create_templates import (
+        workflow_name_for_template,
+    )
 
     try:
         raw_project_id = request.project_id if isinstance(request.project_id, str) else ""
@@ -999,11 +967,15 @@ result = {"data": cleaned}
                 )
             )
 
-        deterministic_cleaning = _is_deterministic_cleaning_request(request.message)
+        deterministic_template = None
+        if settings.enable_test_seed_api:
+            deterministic_template = detect_deterministic_template(request.message)
         workflow = Workflow.create_base(
             description=request.message,
             project_id=effective_project_id,
-            name="数据清洗工作流" if deterministic_cleaning else "新建工作流",
+            name=workflow_name_for_template(deterministic_template)
+            if deterministic_template is not None
+            else "新建工作流",
             source="e2e_test" if settings.enable_test_seed_api else "feagent",
         )
         if current_user:
@@ -1012,8 +984,8 @@ result = {"data": cleaned}
         if settings.enable_test_seed_api:
             workflow.source_id = f"chat_create:{workflow.id}"
 
-        if deterministic_cleaning:
-            _apply_cleaning_graph(workflow)
+        if deterministic_template is not None:
+            apply_deterministic_template(workflow=workflow, template=deterministic_template)
             save_validator.validate_or_raise(workflow)
             repository.save(workflow)
             db.commit()
@@ -1087,7 +1059,7 @@ result = {"data": cleaned}
     # 1st event MUST include workflow_id (contract: <= 1 event)
     await emitter.emit_thinking("AI is analyzing the request.", **base_metadata)
 
-    if deterministic_cleaning:
+    if deterministic_template is not None:
         workflow_payload = WorkflowResponse.from_entity(workflow).model_dump()
         final_metadata = {
             **base_metadata,

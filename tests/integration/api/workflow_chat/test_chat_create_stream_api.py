@@ -27,6 +27,7 @@ from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.value_objects.node_type import NodeType
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.models import ProjectModel
 from src.infrastructure.database.repositories.workflow_repository import (
     SQLAlchemyWorkflowRepository,
 )
@@ -163,7 +164,10 @@ class TestChatCreateStreamAPI:
         response = client.post(
             "/api/workflows/chat-create/stream",
             json={"message": "hello", "project_id": "proj_1", "run_id": "run_1"},
-            headers={"Accept": "text/event-stream"},
+            headers={
+                "Accept": "text/event-stream",
+                "X-Workflow-Create": "explicit",
+            },
         )
 
         assert response.status_code == 200
@@ -208,6 +212,42 @@ class TestChatCreateStreamAPI:
         )
         assert response.status_code == 422
 
+    def test_missing_explicit_header_is_fail_closed_and_has_zero_db_side_effects(
+        self, client: TestClient, test_engine
+    ):
+        def override_use_case_factory() -> Callable[[str], object]:
+            def factory(_workflow_id: str):
+                raise AssertionError(
+                    "use case factory should not be called when header gate rejects"
+                )
+
+            return factory
+
+        client.app.dependency_overrides[
+            workflows_routes.get_update_workflow_by_chat_use_case_factory
+        ] = override_use_case_factory
+
+        response = client.post(
+            "/api/workflows/chat-create/stream",
+            json={"message": "hello", "project_id": "proj_1", "run_id": "run_1"},
+        )
+
+        assert response.status_code == 403
+        detail = response.json().get("detail", {})
+        assert detail.get("error") == "explicit_create_required"
+        assert detail.get("required_header") == "X-Workflow-Create"
+        assert detail.get("required_value") == "explicit"
+
+        # No DB side effects (neither workflow nor project persisted).
+        TestingSessionLocal = sessionmaker(bind=test_engine)
+        db: Session = TestingSessionLocal()
+        try:
+            repo = SQLAlchemyWorkflowRepository(db)
+            assert repo.find_all() == []
+            assert db.get(ProjectModel, "proj_1") is None
+        finally:
+            db.close()
+
     def test_missing_coordinator_is_fail_closed_and_has_zero_db_side_effects(
         self, client: TestClient, test_engine
     ):
@@ -225,6 +265,7 @@ class TestChatCreateStreamAPI:
         response = client.post(
             "/api/workflows/chat-create/stream",
             json={"message": "hello", "project_id": "proj_1", "run_id": "run_1"},
+            headers={"X-Workflow-Create": "explicit"},
         )
 
         assert response.status_code == 403
@@ -259,6 +300,7 @@ class TestChatCreateStreamAPI:
         response = client.post(
             "/api/workflows/chat-create/stream",
             json={"message": "hello", "project_id": "proj_1", "run_id": "run_1"},
+            headers={"X-Workflow-Create": "explicit"},
         )
 
         assert response.status_code == 403
@@ -292,6 +334,7 @@ class TestChatCreateStreamAPI:
         response = client.post(
             "/api/workflows/chat-create/stream",
             json={"message": "hello"},
+            headers={"X-Workflow-Create": "explicit"},
         )
         assert response.status_code == 503
 
@@ -312,7 +355,7 @@ class TestChatCreateStreamAPI:
         response = client.post(
             "/api/workflows/chat-create/stream",
             json={"message": "hello"},
-            headers={"Accept": "text/event-stream"},
+            headers={"Accept": "text/event-stream", "X-Workflow-Create": "explicit"},
         )
         elapsed = time.perf_counter() - started
 

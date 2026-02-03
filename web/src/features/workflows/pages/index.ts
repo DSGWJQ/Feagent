@@ -3,3 +3,4 @@
  */
 
 export { WorkflowEditorPage } from './WorkflowEditorPage';
+export { WorkflowCreatePage } from './WorkflowCreatePage';

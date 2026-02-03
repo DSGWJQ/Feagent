@@ -10,7 +10,7 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card, Input } from 'antd';
 import { BellOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
@@ -18,7 +18,7 @@ import styles from '../../styles/workflows.module.css';
 
 const { TextArea } = Input;
 
-export interface NotificationNodeData {
+export interface NotificationNodeData extends Record<string, unknown> {
   type: 'webhook' | 'email' | 'slack';
   subject: string;
   message: string;
@@ -28,7 +28,9 @@ export interface NotificationNodeData {
   output?: unknown;
 }
 
-function NotificationNode({ data, selected, id }: NodeProps<NotificationNodeData>) {
+type NotificationNodeType = Node<NotificationNodeData>;
+
+function NotificationNode({ data, selected, id }: NodeProps<NotificationNodeType>) {
   const status = data.status || 'idle';
 
   return (
@@ -189,7 +191,7 @@ function NotificationNode({ data, selected, id }: NodeProps<NotificationNodeData
         </div>
 
         {/* 执行结果 */}
-        {data.output && (
+        {data.output != null && (
           <div className={styles.nodeOutput}>
             <label
               style={{

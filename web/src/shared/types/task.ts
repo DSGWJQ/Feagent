@@ -9,19 +9,21 @@
  *
  * 对应后端 TaskStatus 枚举
  */
-export enum TaskStatus {
+export const TaskStatus = {
   /** 等待执行 */
-  PENDING = 'PENDING',
+  PENDING: 'PENDING',
 
   /** 执行中 */
-  RUNNING = 'RUNNING',
+  RUNNING: 'RUNNING',
 
   /** 执行成功 */
-  SUCCEEDED = 'SUCCEEDED',
+  SUCCEEDED: 'SUCCEEDED',
 
   /** 执行失败 */
-  FAILED = 'FAILED',
-}
+  FAILED: 'FAILED',
+} as const;
+
+export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
 
 /**
  * Task 状态显示配置

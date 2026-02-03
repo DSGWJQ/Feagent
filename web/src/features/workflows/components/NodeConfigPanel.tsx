@@ -401,7 +401,7 @@ export default function NodeConfigPanel({
                 ...(modelSpec
                   ? [
                       {
-                        validator: async (_rule, value: unknown) => {
+                        validator: async (_rule: unknown, value: unknown) => {
                           if (value == null || (typeof value === 'string' && !value.trim())) return;
                           if (!isEnumValueAllowed(value, modelSpec)) {
                             throw new Error(formatEnumErrorMessage(modelSpec, value));

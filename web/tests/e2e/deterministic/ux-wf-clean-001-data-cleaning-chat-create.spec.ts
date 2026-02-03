@@ -43,6 +43,7 @@ test.describe('UX-WF-CLEAN-001: Chat-create Data Cleaning Workflow', () => {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
+        'X-Workflow-Create': 'explicit',
       },
       timeout: 60_000,
     });

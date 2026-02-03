@@ -21,6 +21,7 @@ import { message } from 'antd';
 import { runsApi } from '@/features/runs/api/runsApi';
 import type {
   CreateRunDto,
+  Run,
   RunListParams,
 } from '@/shared/types';
 
@@ -105,27 +106,22 @@ export const useRun = (
     pollingInterval?: number;
   }
 ) => {
-  const query = useQuery({
+  return useQuery<Run>({
     queryKey: runKeys.detail(id),
     queryFn: () => runsApi.getRun(id),
     enabled: !!id,
     staleTime: 1 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
-  });
-
-  // 如果状态是 RUNNING，启用轮询
-  const shouldPoll =
-    options?.enablePolling !== false &&
-    query.data?.status === 'RUNNING';
-
-  // 使用 refetchInterval 实现轮询
-  const pollingInterval = shouldPoll
-    ? options?.pollingInterval || 3000
-    : false;
-
-  return useQuery({
-    ...query,
-    refetchInterval: pollingInterval,
+    // TanStack Query v5: refetchInterval can be a function of the current query.
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const shouldPoll =
+        options?.enablePolling !== false && data?.status === 'RUNNING';
+      if (!shouldPoll) {
+        return false;
+      }
+      return options?.pollingInterval || 3000;
+    },
   });
 };
 

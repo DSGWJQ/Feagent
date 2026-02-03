@@ -4,19 +4,21 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
-export interface PromptNodeData {
+export interface PromptNodeData extends Record<string, unknown> {
   content: string;
   status?: NodeStatus;
   output?: unknown;
 }
 
-function PromptNode({ data, selected }: NodeProps<PromptNodeData>) {
+type PromptNodeType = Node<PromptNodeData>;
+
+function PromptNode({ data, selected }: NodeProps<PromptNodeType>) {
   const status = data.status || 'idle';
 
   return (

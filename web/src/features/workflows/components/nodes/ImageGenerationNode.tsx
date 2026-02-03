@@ -4,13 +4,13 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card, Tag } from 'antd';
 import { PictureOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
-export interface ImageGenerationNodeData {
+export interface ImageGenerationNodeData extends Record<string, unknown> {
   model: string;
   aspectRatio: string;
   outputFormat: string;
@@ -19,10 +19,12 @@ export interface ImageGenerationNodeData {
   output?: unknown;
 }
 
+type ImageGenerationNodeType = Node<ImageGenerationNodeData>;
+
 function ImageGenerationNode({
   data,
   selected,
-}: NodeProps<ImageGenerationNodeData>) {
+}: NodeProps<ImageGenerationNodeType>) {
   const status = data.status || 'idle';
 
   return (
@@ -75,7 +77,7 @@ function ImageGenerationNode({
         )}
       </div>
 
-      {data.output && (
+      {data.output != null && (
         <div className={styles.nodeOutput}>
           <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500 }}>
             Generated Image:

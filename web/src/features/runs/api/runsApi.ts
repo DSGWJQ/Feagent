@@ -18,7 +18,7 @@
  * ```
  */
 
-import request from '@/shared/utils/request';
+import { get, post } from '@/shared/utils/request';
 import type {
   Run,
   CreateRunDto,
@@ -40,7 +40,7 @@ export const runsApi = {
    * API: GET /agents/{agent_id}/runs
    */
   getRunsByAgent: (agentId: string, params?: RunListParams): Promise<Run[]> => {
-    return request.get<Run[]>(`/agents/${agentId}/runs`, { params });
+    return get<Run[]>(`/agents/${agentId}/runs`, { params });
   },
 
   /**
@@ -52,7 +52,7 @@ export const runsApi = {
    * API: GET /runs/{id}
    */
   getRun: (id: string): Promise<Run> => {
-    return request.get<Run>(`/runs/${id}`);
+    return get<Run>(`/runs/${id}`);
   },
 
   /**
@@ -66,7 +66,7 @@ export const runsApi = {
    * 注意：此接口会立即开始执行 Run
    */
   createRun: (data: CreateRunDto): Promise<Run> => {
-    return request.post<Run>(`/agents/${data.agent_id}/runs`, data);
+    return post<Run>(`/agents/${data.agent_id}/runs`, data);
   },
 
   /**
@@ -80,7 +80,7 @@ export const runsApi = {
    * 注意：目前后端可能还没有实现此接口
    */
   getTasksByRun: (runId: string): Promise<Task[]> => {
-    return request.get<Task[]>(`/runs/${runId}/tasks`);
+    return get<Task[]>(`/runs/${runId}/tasks`);
   },
 };
 

@@ -4,13 +4,13 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card, Tag } from 'antd';
 import { ApartmentOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
-export interface EmbeddingModelNodeData {
+export interface EmbeddingModelNodeData extends Record<string, unknown> {
   model: string;
   dimensions: number;
   text?: string;
@@ -18,10 +18,12 @@ export interface EmbeddingModelNodeData {
   output?: unknown;
 }
 
+type EmbeddingModelNodeType = Node<EmbeddingModelNodeData>;
+
 function EmbeddingModelNode({
   data,
   selected,
-}: NodeProps<EmbeddingModelNodeData>) {
+}: NodeProps<EmbeddingModelNodeType>) {
   const status = data.status || 'idle';
 
   return (
@@ -68,7 +70,7 @@ function EmbeddingModelNode({
         )}
       </div>
 
-      {data.output && (
+      {data.output != null && (
         <div className={styles.nodeOutput}>
           <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500 }}>
             Embedding Vector:

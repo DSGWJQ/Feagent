@@ -76,6 +76,7 @@ def _build_container(
     )
     from src.infrastructure.adapters.in_memory_idempotency_store import InMemoryIdempotencyStore
     from src.infrastructure.adapters.model_metadata_adapter import create_model_metadata_adapter
+    from src.interfaces.api.container import AdapterFactory
 
     def user_repository(session: Session):
         from src.infrastructure.database.repositories.user_repository import (
@@ -131,6 +132,17 @@ def _build_container(
 
     _idempotency = IdempotencyCoordinator(store=InMemoryIdempotencyStore())
 
+    # Conversation LLM adapter is optional: if misconfigured, we fall back to offline-safe clarifier mode.
+    conversation_llm_port = None
+    try:
+        conversation_llm_port = AdapterFactory.create_llm_adapter()
+    except Exception as exc:  # noqa: BLE001 - startup must not be blocked by optional LLM
+        logger.info(
+            "conversation_llm_adapter_unavailable",
+            extra={"error_type": type(exc).__name__},
+        )
+        conversation_llm_port = None
+
     def workflow_run_execution_entry(session: Session):
         from src.application.services.workflow_run_execution_entry import (
             WorkflowRunExecutionEntry,
@@ -167,6 +179,7 @@ def _build_container(
             event_bus=event_bus,
             model_metadata_port=create_model_metadata_adapter(),
             coordinator=coordinator,
+            llm_port=conversation_llm_port,
         )
         from src.application.services.conversation_turn_orchestrator import (
             CoordinatorConversationTurnPolicy,

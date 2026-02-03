@@ -227,7 +227,11 @@ class TestAuthenticatedWorkflowCreation:
             workflows_routes.get_update_workflow_by_chat_use_case_factory
         ] = override_use_case_factory
         try:
-            headers = {"Authorization": f"Bearer {token}", "Accept": "text/event-stream"}
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "text/event-stream",
+                "X-Workflow-Create": "explicit",
+            }
             response = client.post(
                 "/api/workflows/chat-create/stream",
                 json={"message": "登录用户创建的工作流", "run_id": "run_auth_1"},
@@ -277,7 +281,7 @@ class TestAuthenticatedWorkflowCreation:
             response = client.post(
                 "/api/workflows/chat-create/stream",
                 json={"message": "非登录用户创建的工作流", "run_id": "run_anon_1"},
-                headers={"Accept": "text/event-stream"},
+                headers={"Accept": "text/event-stream", "X-Workflow-Create": "explicit"},
             )
             assert response.status_code == 200
             events = _parse_sse_events(response.text)
@@ -407,6 +411,7 @@ class TestJWTTokenValidation:
             headers = {
                 "Authorization": "Bearer invalid_fake_token_12345",
                 "Accept": "text/event-stream",
+                "X-Workflow-Create": "explicit",
             }
             response = client.post(
                 "/api/workflows/chat-create/stream",

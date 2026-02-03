@@ -132,7 +132,7 @@ const ToolResultMessage: React.FC<{
           </Text>
         )}
 
-        {showDetails && result && (
+        {showDetails && result != null && (
           <Collapse ghost size="small">
             <Panel
               header={<Text type="secondary" style={{ fontSize: '12px' }}>结果详情</Text>}

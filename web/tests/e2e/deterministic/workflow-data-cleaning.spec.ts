@@ -2,7 +2,7 @@
  * Deterministic UI E2E: Workflow Data Cleaning
  *
  * Flow (user-facing):
- * 1) Chat-create a workflow on the home page
+ * 1) Chat-create a workflow on the explicit create page (/workflows/new)
  * 2) Enter editor, save
  * 3) Configure execution input (JSON)
  * 4) Run and assert output semantics (dedupe + drop-empty + type conversion)
@@ -17,7 +17,7 @@ test.describe('Workflow Data Cleaning (UI, deterministic)', () => {
     const chatCreatePrompt =
       '请通过 Chat-create 创建一个“数据清洗”工作流：类型转换、去重、去空。输入数据在 initial_input.data 数组里，输出清洗后的 data。';
 
-    await page.goto('/');
+    await page.goto('/workflows/new');
 
     const createTextarea = page.locator('[data-testid="workflow-chat-create-textarea"]');
     await expect(createTextarea).toBeVisible({ timeout: 15_000 });

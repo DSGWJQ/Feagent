@@ -25,8 +25,7 @@ import styles from './HomePage.module.css';
 
 export const HomePage = () => {
   const navigate = useNavigate();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [hovering, setHovering] = useState(false);
+  const [, setHovering] = useState(false);
 
   const handleCreateAgent = () => {
     navigate('/agents/create');

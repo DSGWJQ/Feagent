@@ -241,34 +241,36 @@ const handleError = (error: unknown): string => {
     console.error('API Error:', { status, message });
 
     // Provide friendly messages for common errors
-    if (status === 404) {
-      if (message.includes('Workflow') && message.includes('不存在')) {
-        return '工作流不存在，系统将为您创建新的工作流';
+    if (typeof status === 'number') {
+      if (status === 404) {
+        if (message.includes('Workflow') && message.includes('不存在')) {
+          return '工作流不存在，系统将为您创建新的工作流';
+        }
+        if (message.includes('not found')) {
+          return '请求的资源不存在，请检查路径是否正确';
+        }
+        return '资源未找到，可能已被删除';
       }
-      if (message.includes('not found')) {
-        return '请求的资源不存在，请检查路径是否正确';
+
+      if (status === 403) {
+        return '没有权限访问该资源';
       }
-      return '资源未找到，可能已被删除';
-    }
 
-    if (status === 403) {
-      return '没有权限访问该资源';
-    }
+      if (status === 401) {
+        return '请先登录后再访问';
+      }
 
-    if (status === 401) {
-      return '请先登录后再访问';
-    }
+      if (status === 500) {
+        return '服务器内部错误，请稍后重试';
+      }
 
-    if (status === 500) {
-      return '服务器内部错误，请稍后重试';
-    }
+      if (status >= 500) {
+        return '服务暂时不可用，请稍后重试';
+      }
 
-    if (status >= 500) {
-      return '服务暂时不可用，请稍后重试';
-    }
-
-    if (status >= 400) {
-      return '请求失败，请检查输入信息';
+      if (status >= 400) {
+        return '请求失败，请检查输入信息';
+      }
     }
 
     return message as string;

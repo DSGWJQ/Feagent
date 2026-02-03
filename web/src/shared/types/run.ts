@@ -12,19 +12,21 @@
  *
  * 对应后端 RunStatus 枚举
  */
-export enum RunStatus {
+export const RunStatus = {
   /** 等待执行 */
-  PENDING = 'PENDING',
+  PENDING: 'PENDING',
 
   /** 执行中 */
-  RUNNING = 'RUNNING',
+  RUNNING: 'RUNNING',
 
   /** 执行成功 */
-  SUCCEEDED = 'SUCCEEDED',
+  SUCCEEDED: 'SUCCEEDED',
 
   /** 执行失败 */
-  FAILED = 'FAILED',
-}
+  FAILED: 'FAILED',
+} as const;
+
+export type RunStatus = (typeof RunStatus)[keyof typeof RunStatus];
 
 /**
  * Run 状态显示配置

@@ -61,8 +61,8 @@ const NodeExecutionStatus: React.FC<{
     }
   }, [status]);
 
-  const outputSummary = useMemo(() => {
-    if (!output) return null;
+  const outputSummary = useMemo<string | null>(() => {
+    if (output === null || output === undefined) return null;
 
     if (typeof output === 'string') {
       return output.length > 50 ? output.substring(0, 50) + '...' : output;
@@ -75,7 +75,9 @@ const NodeExecutionStatus: React.FC<{
       }
     }
 
-    return JSON.stringify(output).substring(0, 50) + '...';
+    const json = JSON.stringify(output);
+    if (typeof json !== 'string') return null;
+    return json.length > 50 ? json.substring(0, 50) + '...' : json;
   }, [output]);
 
   return (
@@ -91,7 +93,7 @@ const NodeExecutionStatus: React.FC<{
         </div>
       </Tooltip>
 
-      {output && outputSummary && (
+      {output != null && outputSummary != null && (
         <Tooltip title={typeof output === 'string' ? output : JSON.stringify(output, null, 2)}>
           <div className={styles.executionOutput}>
             {outputSummary}

@@ -4,13 +4,13 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card, Tag } from 'antd';
 import { GlobalOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
-export interface HttpRequestNodeData {
+export interface HttpRequestNodeData extends Record<string, unknown> {
   url: string;
   method: string;
   headers?: string;
@@ -19,7 +19,9 @@ export interface HttpRequestNodeData {
   output?: unknown;
 }
 
-function HttpRequestNode({ data, selected, id }: NodeProps<HttpRequestNodeData>) {
+type HttpRequestNodeType = Node<HttpRequestNodeData>;
+
+function HttpRequestNode({ data, selected, id }: NodeProps<HttpRequestNodeType>) {
   const status = data.status || 'idle';
 
   const getMethodColor = (method: string) => {
@@ -71,7 +73,7 @@ function HttpRequestNode({ data, selected, id }: NodeProps<HttpRequestNodeData>)
         )}
       </div>
 
-      {data.output && (
+      {data.output != null && (
         <div className={styles.nodeOutput}>
           <p className={styles.nodeOutputLabel}>Response:</p>
           <div className={styles.nodeOutputContent}>

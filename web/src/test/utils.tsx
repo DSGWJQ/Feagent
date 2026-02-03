@@ -4,8 +4,9 @@
  * 提供常用的测试辅助函数，如自定义渲染、Mock 数据等
  */
 
-import { ReactElement } from 'react';
-import { render, RenderOptions } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { render } from '@testing-library/react';
+import type { RenderOptions } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
@@ -32,11 +33,6 @@ export function createTestQueryClient() {
       mutations: {
         retry: false,
       },
-    },
-    logger: {
-      log: console.log,
-      warn: console.warn,
-      error: () => {}, // 测试时不显示错误日志
     },
   });
 }

@@ -23,7 +23,7 @@ import {
   type OnEdgesChange,
   type OnConnect,
   type ReactFlowInstance,
-  type NodeDragHandler,
+  type OnNodeDrag,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button, message, Empty, Spin, Modal, Alert, Drawer, Input, Collapse, Typography } from 'antd';
@@ -41,7 +41,7 @@ import { wouldCreateCycle } from '../utils/graphUtils';
 import { confirmRunSideEffect, getWorkflowCapabilities, updateWorkflow } from '../api/workflowsApi';
 import { useWorkflowExecutionWithCallback } from '../hooks/useWorkflowExecutionWithCallback';
 import { useWorkflow } from '@/hooks/useWorkflow';
-import type { Workflow } from '../types/workflow';
+import { WorkflowStatus, type Workflow } from '../types/workflow';
 import NodePalette from '../components/NodePalette';
 import NodeConfigPanel from '../components/NodeConfigPanel';
 import CodeExportModal from '../components/CodeExportModal';
@@ -371,11 +371,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   );
 
   // MVP Step 1: Research Plan hook
-  const workflowProjectId =
-    workflowData &&
-    typeof (workflowData as Record<string, unknown>).project_id === 'string'
-      ? ((workflowData as Record<string, unknown>).project_id as string)
-      : undefined;
+  const workflowProjectId = workflowData?.project_id;
   const effectiveProjectId = searchParams.get('projectId') ?? workflowProjectId ?? null;
 
   const {
@@ -401,9 +397,13 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       handleWorkflowUpdate({
         id: response.id,
         name: response.name,
-        description: response.description,
+        description: response.description ?? '',
+        project_id: workflowData?.project_id,
         nodes: response.nodes as Workflow['nodes'],
         edges: response.edges as Workflow['edges'],
+        status: workflowData?.status ?? WorkflowStatus.DRAFT,
+        created_at: workflowData?.created_at ?? '',
+        updated_at: workflowData?.updated_at ?? '',
       });
       setCompileWarnings(response.warnings);
       if (response.warnings.length > 0) {
@@ -580,7 +580,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       description: workflowData?.description ?? '',
       nodes: (nodes ?? []).map((n) => ({
         id: n.id,
-        type: n.type,
+        type: n.type ?? 'default',
         position: n.position,
         data: (n.data ?? {}) as Record<string, unknown>,
       })),
@@ -588,11 +588,14 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
         id: e.id,
         source: e.source,
         target: e.target,
-        sourceHandle: e.sourceHandle,
-        label: e.label,
-        condition: (e.data as EdgeConditionData | undefined)?.condition ?? null,
+        sourceHandle: e.sourceHandle ?? undefined,
+        label:
+          typeof e.label === 'string' || typeof e.label === 'number'
+            ? String(e.label)
+            : undefined,
+        condition: (e.data as EdgeConditionData | undefined)?.condition ?? undefined,
       })),
-      status: workflowData?.status ?? 'draft',
+      status: workflowData?.status ?? WorkflowStatus.DRAFT,
       created_at: workflowData?.created_at ?? '',
       updated_at: workflowData?.updated_at ?? '',
     };
@@ -887,7 +890,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
   /**
    * 节点拖拽开始处理
    */
-  const onNodeDragStart: NodeDragHandler = useCallback(() => {
+  const onNodeDragStart: OnNodeDrag = useCallback(() => {
     if (!isCanvasMode) {
       setInteractionMode('canvas');
     }
@@ -1024,23 +1027,29 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
       const workflowNodes = nodesToSave.map((node) => ({
         id: node.id,
         type: node.type || 'default',
-        name: node.data?.name || node.type || '',
+        name: (() => {
+          const raw = (node.data as Record<string, unknown> | undefined)?.name;
+          return typeof raw === 'string' && raw.trim() ? raw : (node.type || 'default');
+        })(),
         position: {
           x: node.position.x,
           y: node.position.y,
         },
-        data: node.data || {},
+        data: (node.data ?? {}) as Record<string, unknown>,
       }));
 
       const workflowEdges = edgesToSave.map((edge) => ({
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        sourceHandle: edge.sourceHandle || undefined,
-        label: (edge.label as string | undefined) || null,
+        sourceHandle: edge.sourceHandle ?? undefined,
+        label:
+          typeof edge.label === 'string' || typeof edge.label === 'number'
+            ? String(edge.label)
+            : undefined,
         condition:
           (edge.data as EdgeConditionData | undefined)?.condition ??
-          (typeof edge.label === 'string' ? edge.label : null),
+          (typeof edge.label === 'string' ? edge.label : undefined),
       }));
 
       await updateWorkflow(workflowId, {
@@ -1406,7 +1415,7 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
           <NeoButton
             variant="secondary"
             icon={<SaveOutlined />}
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             loading={isSaving}
             disabled={isExecuting || isGenerating || isCompiling}
             data-testid="workflow-save-button"
@@ -1587,7 +1596,6 @@ const WorkflowEditorPageWithMutex: React.FC<WorkflowEditorPageWithMutexProps> = 
                 });
               }
             }}
-            // @ts-expect-error - NodeType signature mismatch
             nodeTypes={nodeTypes}
             fitView
             style={{ backgroundColor: 'transparent' }}

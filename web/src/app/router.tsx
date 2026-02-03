@@ -1,18 +1,22 @@
 /**
  * 应用路由配置
  *
- * 单页面应用模式：只保留工作流编辑器
+ * Contract:
+ * - `/` 只做自然语言澄清对话（绝不创建 workflow）
+ * - 显式创建入口：`/workflows/new`
+ * - 编辑器只接受显式 workflow id：`/workflows/:id/edit`
  */
 
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import { WorkflowEditorPage } from '@/features/workflows/pages';
+import { ChatPage } from '@/features/chat/pages';
+import { WorkflowCreatePage, WorkflowEditorPage } from '@/features/workflows/pages';
 
 export const router = createBrowserRouter([
-  // 根路径直达编辑器（Editor组件内部会自动处理新建/重定向）
-  {
-    path: '/',
-    element: <WorkflowEditorPage />,
-  },
+  // 默认入口：仅澄清对话，不创建 workflow
+  { path: '/', element: <ChatPage /> },
+
+  // 显式创建入口
+  { path: '/workflows/new', element: <WorkflowCreatePage /> },
 
   // 编辑器具体路径
   {

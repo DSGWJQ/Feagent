@@ -4,13 +4,13 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card } from 'antd';
 import { ToolOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
-export interface ToolNodeData {
+export interface ToolNodeData extends Record<string, unknown> {
   tool_id?: string;
   toolId?: string; // legacy key (will be normalized server-side)
   name?: string;
@@ -20,7 +20,9 @@ export interface ToolNodeData {
   output?: unknown;
 }
 
-function ToolNode({ data, selected }: NodeProps<ToolNodeData>) {
+type ToolNodeType = Node<ToolNodeData>;
+
+function ToolNode({ data, selected }: NodeProps<ToolNodeType>) {
   const status = data.status || 'idle';
   const toolId = data.tool_id || data.toolId || '';
 
@@ -64,7 +66,7 @@ function ToolNode({ data, selected }: NodeProps<ToolNodeData>) {
         )}
       </div>
 
-      {data.output && (
+      {data.output != null && (
         <div className={styles.nodeOutput}>
           <p className={styles.nodeOutputLabel}>
             Output:

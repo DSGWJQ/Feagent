@@ -4,12 +4,9 @@
  * 这个文件会在所有测试运行之前执行
  */
 
-import { expect, afterEach, vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
-import * as matchers from '@testing-library/jest-dom/matchers';
-
-// 扩展 Vitest 的 expect 断言，添加 @testing-library/jest-dom 的匹配器
-expect.extend(matchers);
+import '@testing-library/jest-dom/vitest';
 
 // 每个测试后自动清理 DOM
 afterEach(() => {
@@ -32,7 +29,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 // Mock IntersectionObserver（某些组件可能需要）
-global.IntersectionObserver = class IntersectionObserver {
+globalThis.IntersectionObserver = class IntersectionObserver {
   constructor() {}
   disconnect() {}
   observe() {}
@@ -46,7 +43,7 @@ global.IntersectionObserver = class IntersectionObserver {
 Element.prototype.scrollIntoView = vi.fn();
 
 // Mock ResizeObserver（React Flow 需要）
-global.ResizeObserver = class ResizeObserver {
+globalThis.ResizeObserver = class ResizeObserver {
   constructor() {}
   disconnect() {}
   observe() {}

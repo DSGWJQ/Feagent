@@ -10,7 +10,7 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card, Input, Progress } from 'antd';
 import { RetweetOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
@@ -18,7 +18,7 @@ import styles from '../../styles/workflows.module.css';
 
 const { TextArea } = Input;
 
-export interface LoopNodeData {
+export interface LoopNodeData extends Record<string, unknown> {
   // Back-compat: keep `for` + `iterations` for older saved workflows.
   type: 'for_each' | 'range' | 'while' | 'for';
   array?: string;
@@ -35,7 +35,9 @@ export interface LoopNodeData {
   output?: unknown;
 }
 
-function LoopNode({ data, selected, id }: NodeProps<LoopNodeData>) {
+type LoopNodeType = Node<LoopNodeData>;
+
+function LoopNode({ data, selected, id }: NodeProps<LoopNodeType>) {
   const status = data.status || 'idle';
   const hasProgress = data.current_index !== undefined && data.total !== undefined;
   const progressPercent = hasProgress ? Math.round((data.current_index! / data.total!) * 100) : 0;
@@ -269,7 +271,7 @@ function LoopNode({ data, selected, id }: NodeProps<LoopNodeData>) {
         </div>
 
         {/* 执行结果 */}
-        {data.output && (
+        {data.output != null && (
           <div className={styles.nodeOutput}>
             <label
               style={{

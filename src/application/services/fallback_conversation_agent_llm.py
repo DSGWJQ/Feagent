@@ -18,39 +18,27 @@ class FallbackConversationAgentLLM:
         return "收到请求，开始处理并生成响应。"
 
     async def decide_action(self, context: dict[str, Any]) -> dict[str, Any]:
-        user_input = str(context.get("user_input", "")).lower()
-
-        # Allow an explicit local trigger to exercise coordinator deny path.
-        if "deny" in user_input or "reject" in user_input:
+        user_input = str(context.get("user_input", "")).strip()
+        if not user_input:
             return {
-                "action_type": "create_node",
-                "node_type": "HTTP",
-                "node_name": "invalid_node_for_validation",
-                "config": {},
-                "description": "intentionally invalid to exercise coordinator rejection",
-                "response": "已触发拒绝路径（deny/reject）。",
-            }
-
-        workflow_id = context.get("workflow_id")
-        if isinstance(workflow_id, str) and workflow_id.strip():
-            workflow_id = workflow_id.strip()
-            return {
-                "action_type": "tool_call",
-                "tool_name": "echo",
-                "tool_id": f"tool_echo_{workflow_id}",
-                "arguments": {"message": f"workflow_id={workflow_id}"},
-                "response": f"（fallback）已通过工具完成工作流分析：{workflow_id}",
-                "intent": "workflow_analysis",
+                "action_type": "respond",
+                "response": "你想达成什么目标？",
+                "intent": "conversation",
                 "confidence": 1.0,
-                "requires_followup": False,
+                "requires_followup": True,
             }
 
         return {
             "action_type": "respond",
-            "response": "（fallback）服务已启动，但未配置真实 LLM；当前为离线降级回复。",
-            "intent": "simple_query",
+            "response": (
+                "（fallback）当前未配置真实 LLM，我将以离线模式协助你澄清需求。\n"
+                "1) 你希望最终产出什么（例如报告、表格、通知、API 响应）？\n"
+                "2) 输入数据从哪里来（文件、数据库、接口、手动粘贴）？\n"
+                "3) 有哪些约束（频率、权限、成本、时限）？"
+            ),
+            "intent": "conversation",
             "confidence": 1.0,
-            "requires_followup": False,
+            "requires_followup": True,
         }
 
     async def should_continue(self, context: dict[str, Any]) -> bool:

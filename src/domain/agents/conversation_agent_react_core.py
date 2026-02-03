@@ -350,11 +350,14 @@ class ConversationAgentReActCoreMixin:
 
             # 思考
             try:
-                thought = await self.llm.think(context)
+                respond_only = bool(getattr(self, "_respond_only", False))
+                thought = ""
+                if not respond_only:
+                    thought = await self.llm.think(context)
 
-                # Phase 2: 发送思考步骤到 emitter
-                if self.emitter:
-                    await self.emitter.emit_thinking(thought)
+                    # Phase 2: 发送思考步骤到 emitter
+                    if self.emitter:
+                        await self.emitter.emit_thinking(thought)
             except Exception as e:
                 # Phase 2: 发送错误到 emitter
                 if self.emitter:
@@ -410,11 +413,42 @@ class ConversationAgentReActCoreMixin:
                 if self.session_context.is_approaching_limit():
                     self._log_context_warning()  # type: ignore[attr-defined]
 
+            if isinstance(action, dict):
+                action = dict(action)
+            else:
+                action = {"action_type": "continue"}
+
+            raw_action_type = action.get("action_type", "continue")
+            action_type = raw_action_type if isinstance(raw_action_type, str) else "continue"
+
+            # Contract (respond-only): the default conversation entrypoint must never execute tools
+            # or trigger workflow-affecting actions, even if the model tries to.
+            if respond_only and action_type != "respond":
+                session_id = str(getattr(self.session_context, "session_id", "") or "")
+                logging.getLogger(__name__).info(
+                    "conversation_respond_only_blocked",
+                    extra={
+                        "session_id": session_id,
+                        "blocked_action_type": action_type,
+                        "message_len": len(user_input or ""),
+                        "iteration": iteration_count + 1,
+                    },
+                )
+                action = {
+                    "action_type": "respond",
+                    "response": (
+                        "我目前只能进行澄清对话，不会执行工具调用或创建/执行工作流。\n"
+                        "1) 你希望最终产出什么（例如报告、表格、通知、API 响应）？\n"
+                        "2) 输入数据从哪里来（文件、数据库、接口、手动粘贴）？\n"
+                        "3) 有哪些约束（频率、权限、成本、时限）？"
+                    ),
+                    "forced": True,
+                    "blocked_action_type": action_type,
+                }
+                action_type = "respond"
+
             step = ReActStep(step_type=StepType.REASONING, thought=thought, action=action)
             result.steps.append(step)
-
-            # 处理行动
-            action_type = action.get("action_type", "continue")
 
             if action_type == "respond":
                 # Ensure respond decisions are still supervised by Coordinator via EventBus.

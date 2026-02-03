@@ -93,7 +93,6 @@ export const theme: ThemeConfig = {
     Button: {
       // 基础配置
       primaryColor: neoclassicalColors.scale.neutral.white,
-      primaryBg: neoclassicalColors.palette.classicalGold, // 古典金
       defaultBg: neoclassicalColors.scale.neutral.white,
       defaultBorderColor: neoclassicalColors.scale.neutral[200],
       borderRadius: parseInt(borderRadius.md),
@@ -116,9 +115,8 @@ export const theme: ThemeConfig = {
 
       // Danger按钮（帝国红）
       dangerColor: neoclassicalColors.scale.neutral.white,
-      dangerBg: neoclassicalColors.palette.imperialRed,
-      colorDangerHover: neoclassicalColors.scale.imperialRed[400],
-      colorDangerActive: neoclassicalColors.scale.imperialRed[700],
+      colorErrorHover: neoclassicalColors.scale.imperialRed[400],
+      colorErrorActive: neoclassicalColors.scale.imperialRed[700],
 
       // Text按钮
       textHoverBg: neoclassicalColors.scale.neutral[50],

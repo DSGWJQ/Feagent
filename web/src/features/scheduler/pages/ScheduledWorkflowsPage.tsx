@@ -39,7 +39,7 @@ import * as scheduledWorkflowsApi from '../api/scheduledWorkflowsApi';
 import * as workflowsApi from '../../workflows/api/workflowsApi';
 import { PageShell } from '@/shared/components/layout/PageShell';
 import { NeoCard } from '@/shared/components/common/NeoCard';
-import type { ScheduledWorkflow, Workflow } from '@/types/workflow';
+import type { ScheduledWorkflow } from '@/types/workflow';
 import styles from '../styles/scheduler.module.css';
 
 const statusColors: Record<string, string> = {
@@ -355,7 +355,7 @@ export default function ScheduledWorkflowsPage() {
           >
             {availableWorkflows.length > 0 ? (
               <Select placeholder="Select a workflow to schedule">
-                {availableWorkflows.map((wf: Workflow) => (
+                {availableWorkflows.map((wf) => (
                   <Select.Option key={wf.id} value={wf.id}>
                     {wf.name || wf.id}
                   </Select.Option>

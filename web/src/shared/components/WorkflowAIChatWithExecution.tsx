@@ -21,7 +21,7 @@ const { Text } = Typography;
 
 interface WorkflowAIChatWithExecutionProps {
   workflowId: string;
-  onWorkflowUpdate?: (workflow: unknown) => void;
+  onWorkflowUpdate?: (workflow: Workflow) => void;
   showWelcome?: boolean;
   diffBaselineWorkflow?: Workflow | null;
   onExecutionSummary?: (summary: {

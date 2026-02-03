@@ -15,7 +15,7 @@
  * 运行方式：pnpm test -- cors.test.ts
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { agentsApi } from '@/features/agents/api/agentsApi';
 
 describe.skip('CORS 跨域测试', () => {

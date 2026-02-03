@@ -4,18 +4,20 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card } from 'antd';
 import { PlayCircleOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
-export interface StartNodeData {
+export interface StartNodeData extends Record<string, unknown> {
   status?: NodeStatus;
   output?: unknown;
 }
 
-function StartNode({ data, selected }: NodeProps<StartNodeData>) {
+type StartNodeType = Node<StartNodeData>;
+
+function StartNode({ data, selected }: NodeProps<StartNodeType>) {
   const status = data.status || 'idle';
 
   return (

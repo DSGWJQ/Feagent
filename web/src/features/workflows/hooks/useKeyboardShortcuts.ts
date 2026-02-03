@@ -30,7 +30,9 @@ export function useKeyboardShortcuts(
     const element = containerRef?.current;
     const target = element ?? window;
 
-    const onKeyDown = (e: KeyboardEvent) => {
+    const onKeyDown: EventListener = (evt) => {
+      if (!(evt instanceof KeyboardEvent)) return;
+      const e = evt;
       const hasMod = e.ctrlKey || e.metaKey;
 
       if (hasMod && e.key.toLowerCase() === 's') {

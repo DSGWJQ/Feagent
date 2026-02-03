@@ -34,6 +34,73 @@ import type {
   KnowledgeStatsResponse,
 } from '@/types/workflow';
 
+type KnowledgeDocumentApi = {
+  id: string;
+  title: string;
+  workflow_id?: string;
+  source: string;
+  status: string;
+  chunk_count: number;
+  total_tokens: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type KnowledgeStatsResponseApi = {
+  total_documents: number;
+  total_chunks: number;
+  total_tokens: number;
+  by_workflow: Record<string, number>;
+  by_source: Record<string, number>;
+};
+
+function normalizeDocumentSource(source: string): KnowledgeDocument['source'] {
+  switch (source) {
+    case 'upload':
+    case 'import':
+    case 'crawl':
+      return source;
+    default:
+      return 'upload';
+  }
+}
+
+function normalizeDocumentStatus(status: string): KnowledgeDocument['status'] {
+  switch (status) {
+    case 'pending':
+    case 'processing':
+    case 'processed':
+    case 'failed':
+      return status;
+    default:
+      return 'pending';
+  }
+}
+
+function mapKnowledgeDocument(doc: KnowledgeDocumentApi): KnowledgeDocument {
+  return {
+    id: doc.id,
+    title: doc.title,
+    workflowId: doc.workflow_id,
+    source: normalizeDocumentSource(doc.source),
+    status: normalizeDocumentStatus(doc.status),
+    chunkCount: doc.chunk_count,
+    totalTokens: doc.total_tokens,
+    createdAt: doc.created_at,
+    updatedAt: doc.updated_at,
+  };
+}
+
+function mapKnowledgeStats(stats: KnowledgeStatsResponseApi): KnowledgeStatsResponse {
+  return {
+    totalDocuments: stats.total_documents,
+    totalChunks: stats.total_chunks,
+    totalTokens: stats.total_tokens,
+    byWorkflow: stats.by_workflow,
+    bySource: stats.by_source,
+  };
+}
+
 interface UseKnowledgeReturn {
   // 状态
   documents: KnowledgeDocument[];
@@ -153,7 +220,14 @@ export function useKnowledge(): UseKnowledgeReturn {
     setError(null);
 
     try {
-      const response = await apiClient.knowledge.upload(request);
+      const response = await apiClient.knowledge.upload({
+        title: request.title,
+        content: request.content,
+        workflow_id: request.workflowId,
+        source: request.source,
+        metadata: request.metadata,
+        file_path: request.filePath,
+      });
 
       // 上传成功提示
       console.log(`✅ 文档上传成功：${response.data.title}`);
@@ -189,8 +263,18 @@ export function useKnowledge(): UseKnowledgeReturn {
     setError(null);
 
     try {
-      const response = await apiClient.knowledge.list(params);
-      setDocuments(response.data.documents);
+      const response = await apiClient.knowledge.list(
+        params
+          ? {
+              workflow_id: params.workflowId,
+              user_id: params.userId,
+              source: params.source,
+              limit: params.limit,
+              offset: params.offset,
+            }
+          : undefined
+      );
+      setDocuments(response.data.documents.map(mapKnowledgeDocument));
 
       console.log(`📚 获取文档列表成功：${response.data.total} 条记录`);
     } catch (err) {
@@ -236,7 +320,7 @@ export function useKnowledge(): UseKnowledgeReturn {
 
     try {
       const response = await apiClient.knowledge.getStats({ workflow_id: workflowId });
-      setStats(response.data);
+      setStats(mapKnowledgeStats(response.data));
 
       console.log('📊 知识库统计:', response.data);
     } catch (err) {

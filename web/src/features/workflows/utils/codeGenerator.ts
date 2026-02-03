@@ -68,16 +68,23 @@ export function generatePythonCode(nodes: Node[], edges: Edge[]): string {
 `;
         break;
 
-      case 'javascript':
+      case 'javascript': {
+        const rawCode = node.data.code;
+        const jsCode =
+          typeof rawCode === 'string' && rawCode.trim().length > 0
+            ? rawCode.replace(/\n/g, '\n    # ')
+            : '// Your code here';
+
         code += `\nasync def node_${node.id}_javascript(context: Dict[str, Any]) -> Any:
     """JavaScript node (Python equivalent)"""
     # Original JS code:
-    # ${node.data.code?.replace(/\n/g, '\n    # ') || '// Your code here'}
+    # ${jsCode}
 
     # TODO: Implement Python equivalent
     return context.get("input1")
 `;
         break;
+      }
 
       case 'prompt':
         code += `\nasync def node_${node.id}_prompt(context: Dict[str, Any]) -> Any:

@@ -5,7 +5,6 @@
  * 显示Sun/Moon图标，带有平滑过渡动画
  */
 
-import React from 'react';
 import { BulbOutlined, BulbFilled } from '@ant-design/icons';
 import { useTheme } from '../contexts/ThemeContext';
 import styles from './ThemeToggle.module.css';

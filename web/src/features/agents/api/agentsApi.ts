@@ -22,7 +22,7 @@
  * ```
  */
 
-import request from '@/shared/utils/request';
+import { del, get, post, put } from '@/shared/utils/request';
 import type {
   Agent,
   CreateAgentDto,
@@ -43,7 +43,7 @@ export const agentsApi = {
    * API: GET /api/agents
    */
   getAgents: (params?: AgentListParams): Promise<Agent[]> => {
-    return request.get<Agent[]>('/api/agents', { params });
+    return get<Agent[]>('/api/agents', { params });
   },
 
   /**
@@ -55,7 +55,7 @@ export const agentsApi = {
    * API: GET /api/agents/{id}
    */
   getAgent: (id: string): Promise<Agent> => {
-    return request.get<Agent>(`/api/agents/${id}`);
+    return get<Agent>(`/api/agents/${id}`);
   },
 
   /**
@@ -67,7 +67,7 @@ export const agentsApi = {
    * API: POST /api/agents
    */
   createAgent: (data: CreateAgentDto): Promise<Agent> => {
-    return request.post<Agent>('/api/agents', data);
+    return post<Agent>('/api/agents', data);
   },
 
   /**
@@ -82,7 +82,7 @@ export const agentsApi = {
    * 注意：目前后端可能还没有实现此接口
    */
   updateAgent: (id: string, data: UpdateAgentDto): Promise<Agent> => {
-    return request.put<Agent>(`/api/agents/${id}`, data);
+    return put<Agent>(`/api/agents/${id}`, data);
   },
 
   /**
@@ -93,7 +93,7 @@ export const agentsApi = {
    * API: DELETE /api/agents/{id}
    */
   deleteAgent: (id: string): Promise<void> => {
-    return request.delete(`/api/agents/${id}`);
+    return del<void>(`/api/agents/${id}`);
   },
 };
 

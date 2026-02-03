@@ -137,14 +137,6 @@ class ConversationTurnOrchestrator:
             if isinstance(run_id, str) and run_id.strip():
                 cast(Any, agent)._run_id = run_id.strip()
 
-        await self._safe_emit(
-            session_id=session_id,
-            message=message,
-            emitter=emitter,
-            kind="thinking",
-            emit=lambda: emitter.emit_thinking(f"收到消息：{message[:50]}..."),
-        )
-
         return asyncio.create_task(
             self._run_streaming_turn(
                 session_id=session_id,

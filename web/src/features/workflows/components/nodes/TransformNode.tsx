@@ -4,13 +4,13 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card } from 'antd';
 import { SwapOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
 import styles from '../../styles/workflows.module.css';
 
-export interface TransformNodeData {
+export interface TransformNodeData extends Record<string, unknown> {
   type: string;
   mapping?: Record<string, unknown>;
   conversions?: Record<string, unknown>;
@@ -26,7 +26,9 @@ export interface TransformNodeData {
   output?: unknown;
 }
 
-function TransformNode({ id, data, selected }: NodeProps<TransformNodeData>) {
+type TransformNodeType = Node<TransformNodeData>;
+
+function TransformNode({ id, data, selected }: NodeProps<TransformNodeType>) {
   const status = data.status || 'idle';
 
   return (
@@ -70,7 +72,7 @@ function TransformNode({ id, data, selected }: NodeProps<TransformNodeData>) {
         )}
       </div>
 
-      {data.output && (
+      {data.output != null && (
         <div className={styles.nodeOutput}>
           <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 500 }}>Output:</p>
           <div

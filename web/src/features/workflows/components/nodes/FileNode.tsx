@@ -11,7 +11,7 @@
  */
 
 import { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { Card, Input } from 'antd';
 import { FileOutlined, LoadingOutlined } from '@ant-design/icons';
 import { getStatusColor, type NodeStatus } from '../../utils/nodeUtils';
@@ -19,7 +19,7 @@ import styles from '../../styles/workflows.module.css';
 
 const { TextArea } = Input;
 
-export interface FileNodeData {
+export interface FileNodeData extends Record<string, unknown> {
   operation: 'read' | 'write' | 'append' | 'delete';
   path: string;
   encoding: string;
@@ -28,7 +28,9 @@ export interface FileNodeData {
   output?: unknown;
 }
 
-function FileNode({ data, selected, id }: NodeProps<FileNodeData>) {
+type FileNodeType = Node<FileNodeData>;
+
+function FileNode({ data, selected, id }: NodeProps<FileNodeType>) {
   const status = data.status || 'idle';
   const isWriteOperation = data.operation === 'write' || data.operation === 'append';
 
@@ -165,7 +167,7 @@ function FileNode({ data, selected, id }: NodeProps<FileNodeData>) {
         </div>
 
         {/* 执行结果 */}
-        {data.output && (
+        {data.output != null && (
           <div className={styles.nodeOutput}>
             <label
               style={{
