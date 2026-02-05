@@ -42,3 +42,17 @@ def ensure_sqlite_schema() -> None:
             conn.execute(text("ALTER TABLE runs ADD COLUMN started_at DATETIME"))
         if "error" not in existing:
             conn.execute(text("ALTER TABLE runs ADD COLUMN error TEXT"))
+
+        # Additive migrations for run_events (create_all won't add columns/indexes).
+        event_rows = conn.execute(text("PRAGMA table_info(run_events)")).fetchall()
+        event_existing = {row[1] for row in event_rows}
+        if "idempotency_key" not in event_existing:
+            conn.execute(text("ALTER TABLE run_events ADD COLUMN idempotency_key VARCHAR(128)"))
+
+        # Ensure the unique idempotency index exists (critical for concurrent de-duplication).
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_run_events_idempotency "
+                "ON run_events (run_id, channel, idempotency_key)"
+            )
+        )

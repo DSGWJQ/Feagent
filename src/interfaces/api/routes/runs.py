@@ -332,7 +332,7 @@ def list_runs_by_workflow(
     if settings.disable_run_persistence:
         response.headers["Deprecation"] = "true"
         response.headers["Warning"] = (
-            '299 - "Runs API disabled: use /api/workflows/{workflow_id}/execute/stream"'
+            '299 - "Runs API disabled by feature flag (disable_run_persistence); workflow execution is also disabled."'
         )
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
@@ -384,9 +384,8 @@ def create_run(
 ) -> RunResponse:
     if settings.disable_run_persistence:
         response.headers["Deprecation"] = "true"
-        response.headers["Link"] = f'</api/workflows/{workflow_id}/execute/stream>; rel="alternate"'
         response.headers["Warning"] = (
-            '299 - "Runs API disabled: use /api/workflows/{workflow_id}/execute/stream"'
+            '299 - "Runs API disabled by feature flag (disable_run_persistence); workflow execution is also disabled."'
         )
         logger.info(
             "run_persistence_disabled_create_run_called",

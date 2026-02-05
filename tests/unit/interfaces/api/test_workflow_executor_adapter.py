@@ -37,11 +37,10 @@ async def test_audit_log_emitted_when_run_persistence_is_disabled(
         captured.append((message, dict(extra or {})))
 
     monkeypatch.setattr(adapter_module.logger, "warning", _warning)
-    monkeypatch.setattr(WorkflowExecutorAdapter, "_create_facade", lambda _self: _fake_facade_cm())
 
     adapter = WorkflowExecutorAdapter(session_factory=_DummySession, executor_registry=object())
-    result = await adapter.execute("wf_1", input_data={"secret": "should_not_leak"})
-    assert result["workflow_id"] == "wf_1"
+    with pytest.raises(DomainError):
+        await adapter.execute("wf_1", input_data={"secret": "should_not_leak"})
 
     assert captured, "should emit an audit log when run persistence rollback is active"
     msg, extra = captured[0]

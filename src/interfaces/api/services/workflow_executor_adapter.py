@@ -1,8 +1,8 @@
 """工作流执行器适配器（调度/后台执行）
 
-原则（WFCORE-030）：
+原则（WFCORE-030 / Phase 5）：
 - 当 run persistence 启用时：不得绕过 run gate / Coordinator gate，必须走 WorkflowRunExecutionEntryPort
-- 当 run persistence 关闭（回滚开关）时：允许使用 legacy WorkflowExecutionFacade 执行（无 run_id）
+- 当 run persistence 关闭（回滚开关）时：fail-closed（禁止无 run_id 执行），避免产生不可审计副作用
 """
 
 from __future__ import annotations
@@ -103,14 +103,12 @@ class WorkflowExecutorAdapter:
 
         实现 WorkflowExecutorPort.execute 接口
         """
-        if not settings.disable_run_persistence:
-            return await self._execute_via_run_entry(workflow_id=workflow_id, input_data=input_data)
-        self._audit_run_persistence_rollback(workflow_id=workflow_id, mode="execute")
-        with self._create_facade() as facade:
-            return await facade.execute(
-                workflow_id=workflow_id,
-                input_data=input_data,
+        if settings.disable_run_persistence:
+            self._audit_run_persistence_rollback(workflow_id=workflow_id, mode="execute")
+            raise DomainError(
+                "Workflow execution is disabled because Runs are disabled (disable_run_persistence=true)."
             )
+        return await self._execute_via_run_entry(workflow_id=workflow_id, input_data=input_data)
 
     async def execute_workflow(self, workflow_id: str, input_data: Any = None) -> dict[str, Any]:
         """Legacy-compatible alias used by scheduler/tests."""
@@ -128,28 +126,17 @@ class WorkflowExecutorAdapter:
         注意：由于 session 生命周期需要跨越整个流式执行，
         这里不使用 contextmanager，而是手动管理 session。
         """
-        if not settings.disable_run_persistence:
-            async for event in self._execute_streaming_via_run_entry(
-                workflow_id=workflow_id,
-                input_data=input_data,
-            ):
-                yield event
-            return
+        if settings.disable_run_persistence:
+            self._audit_run_persistence_rollback(workflow_id=workflow_id, mode="execute_streaming")
+            raise DomainError(
+                "Workflow execution is disabled because Runs are disabled (disable_run_persistence=true)."
+            )
 
-        self._audit_run_persistence_rollback(workflow_id=workflow_id, mode="execute_streaming")
-        session = self._session_factory()
-        repo = SQLAlchemyWorkflowRepository(session)
-        facade = WorkflowExecutionFacade(
-            workflow_repository=repo,
-            executor_registry=self.executor_registry,
-        )
-        try:
-            async for event in facade.execute_streaming(
-                workflow_id=workflow_id, input_data=input_data
-            ):
-                yield event
-        finally:
-            session.close()
+        async for event in self._execute_streaming_via_run_entry(
+            workflow_id=workflow_id,
+            input_data=input_data,
+        ):
+            yield event
 
     def _require_run_entry_dependencies(self) -> None:
         if self._workflow_run_execution_entry_factory is None:

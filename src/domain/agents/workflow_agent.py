@@ -2380,22 +2380,6 @@ class WorkflowAgent:
                     "workflow_id": "unknown",
                     "error": "workflow_id is required for execute_workflow",
                 }
-            entry = self.workflow_run_execution_entry
-            if entry is None:
-                # Backward-compatible fallback for offline/mocked multi-agent collaboration tests.
-                # Production execution should inject WorkflowRunExecutionEntryPort for run-gating/persistence,
-                # but when it's absent we still allow the legacy in-memory execution path.
-                logger.warning(
-                    "WorkflowAgent execute_workflow falling back to legacy execution (no WorkflowRunExecutionEntryPort); workflow_id=%s",
-                    workflow_id,
-                )
-                legacy = await self.execute_workflow()
-                return {
-                    "success": legacy.get("status") == "completed",
-                    "status": legacy.get("status", "unknown"),
-                    "workflow_id": workflow_id,
-                    "result": legacy,
-                }
 
             run_id = decision.get("run_id")
             if not isinstance(run_id, str) or not run_id.strip():
@@ -2406,6 +2390,20 @@ class WorkflowAgent:
                     "error": "run_id is required for execute_workflow (use the same contract as REST execute/stream)",
                 }
             run_id = run_id.strip()
+
+            entry = self.workflow_run_execution_entry
+            if entry is None:
+                # Phase 5: Fail-closed. Real executions MUST go through Runs (WorkflowRunExecutionEntryPort).
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "workflow_id": workflow_id,
+                    "run_id": run_id,
+                    "error": (
+                        "WorkflowRunExecutionEntryPort is required for execute_workflow "
+                        "(execution must be persisted and gated by Runs)."
+                    ),
+                }
 
             initial_input = decision.get("initial_input", decision.get("input_data"))
             try:

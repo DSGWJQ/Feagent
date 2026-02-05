@@ -24,6 +24,11 @@ class RunEvent:
     payload: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     sequence: int | None = None
+    # Optional idempotency key for persistence-level de-duplication.
+    # When present, repositories may treat (run_id, channel, idempotency_key) as unique.
+    idempotency_key: str | None = None
+    # Persistence metadata (not part of domain equality): True when repository returns an existing row.
+    deduped: bool = field(default=False, compare=False, repr=False)
 
     @classmethod
     def create(
@@ -35,6 +40,7 @@ class RunEvent:
         channel: str,
         payload: dict[str, Any] | None = None,
         sequence: int | None = None,
+        idempotency_key: str | None = None,
         event_id: int | str | None = None,
         id: int | str | None = None,  # noqa: A002 - compat alias for tests/legacy callers
     ) -> RunEvent:
@@ -50,6 +56,10 @@ class RunEvent:
         else:
             effective_id = f"evt_{uuid4().hex[:8]}"
 
+        normalized_key = None
+        if isinstance(idempotency_key, str) and idempotency_key.strip():
+            normalized_key = idempotency_key.strip()
+
         return cls(
             id=effective_id,
             run_id=run_id,
@@ -58,4 +68,5 @@ class RunEvent:
             payload=payload or {},
             created_at=datetime.now(UTC),
             sequence=sequence,
+            idempotency_key=normalized_key,
         )

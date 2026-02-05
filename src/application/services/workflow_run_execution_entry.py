@@ -52,6 +52,19 @@ _REACT_MAX_CONSECUTIVE_FAILURES = 3
 _REACT_MAX_SECONDS = 600.0
 _REACT_MAX_LLM_CALLS = 20
 
+# Critical execution events that must be persisted synchronously (fail-closed evidence).
+# Rationale:
+# - Streaming execution may record events asynchronously (via AsyncRunEventRecorder sink).
+# - Acceptance/Reflection must not race with eventual DB writes for terminal/confirm events.
+_CRITICAL_EXECUTION_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        "workflow_confirm_required",
+        "workflow_confirmed",
+        "workflow_complete",
+        "workflow_error",
+    }
+)
+
 
 def _find_first_side_effect_node_id(*, workflow: Any) -> str | None:
     node_map = {node.id: node for node in getattr(workflow, "nodes", []) or []}
@@ -154,17 +167,26 @@ class WorkflowRunExecutionEntry:
         execution_event_sink: Callable[[str, Mapping[str, Any]], None] | None,
         record_execution_events: bool,
     ) -> None:
+        event_type = sse_event.get("type")
+        is_critical = isinstance(event_type, str) and event_type in _CRITICAL_EXECUTION_EVENT_TYPES
+
+        sink_failed = False
         if execution_event_sink is not None:
             try:
                 execution_event_sink(run_id, sse_event)
             except Exception:
-                return
-            return
+                # Best-effort: do not let sink failures block the request.
+                sink_failed = True
 
-        if record_execution_events:
+        # Persist critical events synchronously so downstream acceptance can reliably
+        # query evidence from the DB immediately after execution terminates.
+        if is_critical or (execution_event_sink is None and record_execution_events):
             try:
                 self._record_execution_event_sync(run_id=run_id, sse_event=sse_event)
             except Exception:
+                # If both sink and sync fail, we still don't crash the execution stream.
+                if sink_failed:
+                    return
                 return
 
     def _record_execution_event(

@@ -550,11 +550,10 @@ class TestWorkflowAgentDecisionHandling:
 
         业务场景：
         - 收到执行工作流的决策
-        - 开始执行工作流
+        - Phase 5 起：必须通过 Runs（run_id + WorkflowRunExecutionEntryPort），否则 fail-closed
 
         验收标准：
-        - 工作流开始执行
-        - 返回执行结果
+        - 缺少 run_id 时不得执行（返回结构化错误）
         """
         # Arrange
         from src.domain.agents.workflow_agent import WorkflowAgent
@@ -590,8 +589,9 @@ class TestWorkflowAgentDecisionHandling:
         result = await agent.handle_decision(decision)
 
         # Assert
-        assert result["success"] is True
-        assert result["status"] == "completed"
+        assert result["success"] is False
+        assert result["status"] == "failed"
+        assert "run_id is required" in str(result.get("error", ""))
 
 
 class TestWorkflowAgentRealWorldScenario:

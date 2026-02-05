@@ -363,7 +363,7 @@ def test_execute_stream_requires_run_id_when_runs_enabled(
 def test_execute_stream_does_not_require_run_id_when_runs_disabled(
     monkeypatch: pytest.MonkeyPatch, test_engine
 ) -> None:
-    """Contract: Runs disabled => execute/stream should not fail with run_id-required 400."""
+    """Contract (Phase 5): Runs disabled => execute/stream must be fail-closed (no legacy execution)."""
     monkeypatch.setattr(settings, "disable_run_persistence", True)
 
     def _noop_repo(_: Session):
@@ -393,6 +393,5 @@ def test_execute_stream_does_not_require_run_id_when_runs_disabled(
         json={"initial_input": {"k": "v"}},
         headers={"Accept": "text/event-stream"},
     )
-    # The workflow is missing (404), but it must NOT be the run_id-required 400.
-    assert response.status_code == 404
-    assert "Workflow not found" in response.json().get("detail", "")
+    assert response.status_code == 410
+    assert "Runs are disabled" in response.json().get("detail", "")

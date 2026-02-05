@@ -373,7 +373,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 session = _create_session()
                 try:
                     entry = app.state.container.workflow_run_execution_entry(session)
-                    return await entry.execute_with_results(
+                    execution_result = await entry.execute_with_results(
                         workflow_id=workflow_id.strip(),
                         run_id=run_id.strip(),
                         input_data=input_data,
@@ -381,6 +381,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                         original_decision_id=run_id.strip(),
                         record_execution_events=True,
                     )
+
+                    # Phase 4: best-effort acceptance loop for non-HTTP execution paths (bridge/scheduler).
+                    try:
+                        from src.application.services.acceptance_loop_orchestrator import (
+                            AcceptanceLoopOrchestrator,
+                        )
+
+                        await AcceptanceLoopOrchestrator(
+                            db=session, event_bus=event_bus
+                        ).on_run_terminal(
+                            workflow_id=workflow_id.strip(),
+                            run_id=run_id.strip(),
+                            # DecisionExecutionBridge does not currently pass a stable session_id into
+                            # the decision payload; use run_id as the minimal audit correlation.
+                            session_id=run_id.strip(),
+                            attempt=1,
+                            max_replan_attempts=3,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "acceptance_loop_failed",
+                            extra={"workflow_id": workflow_id, "run_id": run_id},
+                        )
+
+                    return execution_result
                 finally:
                     session.close()
 

@@ -515,132 +515,12 @@ async def execute_workflow_streaming(
     """Execute a workflow and stream progress via SSE."""
 
     if settings.disable_run_persistence:
-        # Rollback path: stream directly via the legacy workflow engine (no run_id, no Runs API).
-        # This keeps `/api/workflows/{workflow_id}/execute/stream` as the alternate execution path
-        # when Runs are disabled (see runs.py warnings/Link headers).
-        from src.application.use_cases.execute_workflow import (
-            ExecuteWorkflowInput,
-            ExecuteWorkflowUseCase,
-        )
-
-        workflow_repo = container.workflow_repository(db)
-        workflow = workflow_repo.get_by_id(workflow_id)
-        if not workflow:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workflow not found: {workflow_id}",
-            )
-
-        try:
-            WorkflowSaveValidator(
-                executor_registry=container.executor_registry,
-                tool_repository=container.tool_repository(db),
-            ).validate_for_execution_or_raise(workflow)
-        except DomainValidationError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=exc.to_dict(),
-            ) from exc
-        except DomainError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
-            ) from exc
-
-        use_case = ExecuteWorkflowUseCase(
-            workflow_repository=workflow_repo,
-            executor_registry=container.executor_registry,
-        )
-
-        async def _legacy_event_generator() -> AsyncGenerator[str, None]:
-            started = time.perf_counter()
-            events_sent = 0
-            last_executor_id: str | None = None
-            diagnostics = settings.e2e_test_mode == "deterministic"
-            heartbeat_ms: float | None = None
-            first_event_ms: float | None = None
-            first_event_type: str | None = None
-            terminal_event_ms: float | None = None
-            serialization_total_ms = 0.0
-            serialization_max_ms = 0.0
-            serialization_count = 0
-
-            def _serialize(payload: dict[str, Any]) -> str:
-                nonlocal serialization_total_ms, serialization_max_ms, serialization_count
-                if not diagnostics:
-                    return json.dumps(jsonable_encoder(payload))
-                started_at = time.perf_counter()
-                encoded = json.dumps(jsonable_encoder(payload))
-                elapsed_ms = (time.perf_counter() - started_at) * 1000
-                serialization_total_ms += elapsed_ms
-                serialization_max_ms = max(serialization_max_ms, elapsed_ms)
-                serialization_count += 1
-                return encoded
-
-            try:
-                if diagnostics:
-                    heartbeat = {
-                        "type": "workflow_heartbeat",
-                        "message": "legacy_stream_started",
-                        "executor_id": "workflow_engine_v1",
-                        "ts_ms": int(time.time() * 1000),
-                    }
-                    events_sent += 1
-                    heartbeat_ms = (time.perf_counter() - started) * 1000
-                    yield f"data: {_serialize(heartbeat)}\n\n"
-                async for event in use_case.execute_streaming(
-                    ExecuteWorkflowInput(
-                        workflow_id=workflow_id, initial_input=request.initial_input
-                    )
-                ):
-                    if await http_request.is_disconnected():
-                        return
-                    last_executor_id = event.get("executor_id") if isinstance(event, dict) else None
-                    events_sent += 1
-                    if diagnostics and first_event_ms is None:
-                        first_event_ms = (time.perf_counter() - started) * 1000
-                        first_event_type = event.get("type") if isinstance(event, dict) else None
-                    if (
-                        diagnostics
-                        and terminal_event_ms is None
-                        and isinstance(event, dict)
-                        and event.get("type") in {"workflow_complete", "workflow_error"}
-                    ):
-                        terminal_event_ms = (time.perf_counter() - started) * 1000
-                    yield f"data: {_serialize(event)}\n\n"
-            finally:
-                duration_ms = int((time.perf_counter() - started) * 1000)
-                serialization_avg_ms = (
-                    serialization_total_ms / serialization_count if serialization_count else None
-                )
-                logger.info(
-                    "workflow_execute_stream_done",
-                    extra={
-                        "workflow_id": workflow_id,
-                        "executor_id": last_executor_id,
-                        "duration_ms": duration_ms,
-                        "events_sent": events_sent,
-                        "legacy_heartbeat_ms": heartbeat_ms,
-                        "legacy_first_event_ms": first_event_ms,
-                        "legacy_first_event_type": first_event_type,
-                        "legacy_terminal_event_ms": terminal_event_ms,
-                        "legacy_serialization_avg_ms": serialization_avg_ms,
-                        "legacy_serialization_max_ms": serialization_max_ms
-                        if serialization_count
-                        else None,
-                        "legacy_serialization_count": serialization_count,
-                        "run_id_present": False,
-                        "run_persistence_enabled": False,
-                    },
-                )
-
-        return StreamingResponse(
-            _legacy_event_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            },
+        # Fail-closed (Phase 5):
+        # When Runs are disabled, we MUST NOT execute workflows without a run_id, since
+        # it would create untracked side effects and violate the execution SoT contract.
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Workflow execution is disabled because Runs are disabled (disable_run_persistence=true).",
         )
 
     run_id = request.run_id
@@ -665,7 +545,13 @@ async def execute_workflow_streaming(
     )
     if entry_is_missing:
         workflow_repo = container.workflow_repository(db)
-        workflow = workflow_repo.get_by_id(workflow_id)
+        try:
+            workflow = workflow_repo.get_by_id(workflow_id)
+        except NotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"{exc.entity_type} not found: {exc.entity_id}",
+            ) from exc
         if not workflow:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -722,44 +608,13 @@ async def execute_workflow_streaming(
                 },
             ) from exc
 
-        # Fallback: when the entry factory is not configured, stream directly via the
-        # workflow execution kernel (orchestrator), which is what integration tests
-        # use to assert policy-chain behavior.
-        from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
-
-        run = SQLAlchemyRunRepository(db).get_by_id(run_id)
-        if not run:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "error": "run_not_found",
-                    "message": f"Run not found: {run_id}",
-                    "workflow_id": workflow_id,
-                    "run_id": run_id,
-                    "correlation_id": run_id,
-                },
-            )
-
-        kernel = container.workflow_execution_kernel(db)
-
-        async def _kernel_event_generator() -> AsyncGenerator[str, None]:
-            async for event in kernel.execute_streaming(
-                workflow_id=workflow_id,
-                input_data=request.initial_input,
-                correlation_id=run_id,
-                original_decision_id=run_id,
-            ):
-                if isinstance(event, dict) and "run_id" not in event:
-                    event = {**event, "run_id": run_id}
-                yield f"data: {json.dumps(jsonable_encoder(event))}\n\n"
-
-        return StreamingResponse(
-            _kernel_event_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            },
+        # Fail-closed: execution must go through WorkflowRunExecutionEntry when Runs are enabled.
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Server misconfiguration: workflow_run_execution_entry is not configured, "
+                "but Runs are enabled and execution requires run gating/persistence."
+            ),
         )
 
     entry = container.workflow_run_execution_entry(db)
@@ -849,6 +704,32 @@ async def execute_workflow_streaming(
                     event = {**event, "run_id": run_id}
                 yield f"data: {json.dumps(jsonable_encoder(event))}\n\n"
         finally:
+            # Phase 4: best-effort acceptance loop after the run reaches terminal state.
+            # Notes:
+            # - Critical execution events (confirm/terminal) are now persisted synchronously, so
+            #   evidence collection can safely read from the DB right after stream completion.
+            # - We keep this best-effort: execution results must not be masked by acceptance failures.
+            try:
+                from src.application.services.acceptance_loop_orchestrator import (
+                    AcceptanceLoopOrchestrator,
+                )
+
+                await AcceptanceLoopOrchestrator(db=db, event_bus=event_bus).on_run_terminal(
+                    workflow_id=workflow_id,
+                    run_id=run_id,
+                    session_id=None,
+                    attempt=1,
+                    max_replan_attempts=3,
+                )
+            except Exception:
+                logger.exception(
+                    "acceptance_loop_failed",
+                    extra={
+                        "workflow_id": workflow_id,
+                        "run_id": run_id,
+                    },
+                )
+
             duration_ms = int((time.perf_counter() - started) * 1000)
             logger.info(
                 "workflow_execute_stream_done",

@@ -174,6 +174,34 @@ class TestDecisionFlowWithValidation:
             event_bus=event_bus,
         )
 
+        # Phase 5: execute_workflow decisions must provide run_id and go through
+        # WorkflowRunExecutionEntryPort. Keep this integration test DB-free by injecting
+        # a minimal in-memory entry that delegates to the legacy in-process executor.
+        class _InMemoryRunExecutionEntry:
+            async def execute_with_results(
+                self,
+                *,
+                workflow_id: str,
+                run_id: str,
+                input_data=None,
+                correlation_id: str | None = None,
+                original_decision_id: str | None = None,
+                execution_event_sink=None,
+                record_execution_events: bool = False,
+            ) -> dict:
+                result = await workflow_agent.execute_workflow()
+                return {
+                    "success": result.get("status") == "completed",
+                    "status": result.get("status"),
+                    "workflow_id": workflow_id,
+                    "run_id": run_id,
+                    "executor_id": "in_memory_workflow_agent",
+                    "events": [],
+                    "result": result,
+                }
+
+        workflow_agent.workflow_run_execution_entry = _InMemoryRunExecutionEntry()
+
         # 捕获验证事件
         validated_events = []
 
@@ -442,10 +470,8 @@ class TestFeedbackLoop:
         # Mock LLM
         mock_llm = MagicMock()
 
-        # 创建对话Agent
-        conversation_agent = ConversationAgent(
-            session_context=session_ctx, llm=mock_llm, event_bus=event_bus
-        )
+        # 创建对话Agent（构造即可；本用例主要验证拒绝事件发布/订阅链路）
+        ConversationAgent(session_context=session_ctx, llm=mock_llm, event_bus=event_bus)
 
         # 创建协调者
         coordinator = CoordinatorAgent(event_bus=event_bus)
@@ -709,6 +735,34 @@ class TestRealWorldScenario:
             event_bus=event_bus,
         )
 
+        # Phase 5: execute_workflow decisions must provide run_id and go through
+        # WorkflowRunExecutionEntryPort. This test is intentionally DB-free, so we inject
+        # a minimal in-memory entry that delegates to the legacy in-process executor.
+        class _InMemoryRunExecutionEntry:
+            async def execute_with_results(
+                self,
+                *,
+                workflow_id: str,
+                run_id: str,
+                input_data=None,
+                correlation_id: str | None = None,
+                original_decision_id: str | None = None,
+                execution_event_sink=None,
+                record_execution_events: bool = False,
+            ) -> dict:
+                result = await workflow_agent.execute_workflow()
+                return {
+                    "success": result.get("status") == "completed",
+                    "status": result.get("status"),
+                    "workflow_id": workflow_id,
+                    "run_id": run_id,
+                    "executor_id": "in_memory_workflow_agent",
+                    "events": [],
+                    "result": result,
+                }
+
+        workflow_agent.workflow_run_execution_entry = _InMemoryRunExecutionEntry()
+
         # === 设置事件订阅 ===
         created_nodes = []
 
@@ -791,7 +845,11 @@ class TestRealWorldScenario:
             DecisionMadeEvent(
                 source="conversation_agent",
                 decision_type="execute_workflow",
-                payload={"workflow_id": "workflow_xyz"},
+                payload={
+                    "workflow_id": "workflow_xyz",
+                    # Phase 5: no real execution without run_id.
+                    "run_id": "run_test_complete_user_interaction_flow_1",
+                },
             )
         )
 

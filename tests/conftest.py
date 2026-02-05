@@ -9,7 +9,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.config import settings
-from src.interfaces.api.main import app
+
+# Force a test-scoped SQLite DB by default (fail-closed / deterministic).
+# Rationale:
+# - The repository `.env` may point to a local demo DB in a temp folder.
+# - Many tests import `SessionLocal` at module import time, so we must override
+#   settings BEFORE any engine/sessionmaker module is imported.
+if settings.database_url.startswith("sqlite"):
+    settings.database_url = "sqlite+aiosqlite:///./test_pytest.db"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -45,6 +52,9 @@ def normalize_test_feature_flags() -> None:
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     """FastAPI 测试客户端"""
+    # Import lazily so settings overrides above are applied before the app initializes engines.
+    from src.interfaces.api.main import app
+
     with TestClient(app) as client:
         yield client
 
@@ -79,7 +89,7 @@ def ensure_sync_event_loop(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def bootstrap_test_sqlite_schema() -> None:
+def bootstrap_test_sqlite_schema(normalize_test_feature_flags) -> None:  # noqa: ANN001
     """Ensure the configured SQLite DB has an up-to-date schema for tests.
 
     Red-team note:

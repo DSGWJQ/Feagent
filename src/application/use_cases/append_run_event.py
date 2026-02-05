@@ -42,12 +42,14 @@ class AppendRunEventInput:
         event_type: 事件类型 (如 node_start, workflow_complete)
         channel: 事件通道 (如 execution, planning)
         payload: 事件负载 (JSON 可序列化 dict)
+        idempotency_key: 幂等键（可选）。当提供时，Repository 可据此去重关键事件。
     """
 
     run_id: str
     event_type: str
     channel: str
     payload: dict[str, Any] | None = None
+    idempotency_key: str | None = None
 
 
 class AppendRunEventUseCase:
@@ -71,6 +73,10 @@ class AppendRunEventUseCase:
     # 终止事件类型映射
     TERMINAL_EVENT_COMPLETED = "workflow_complete"
     TERMINAL_EVENT_FAILED = "workflow_error"
+    _CONFIRM_EVENT_TYPES: frozenset[str] = frozenset(
+        {"workflow_confirm_required", "workflow_confirmed"}
+    )
+    _TERMINAL_IDEMPOTENCY_KEY = "workflow_terminal_v1"
 
     def __init__(
         self,
@@ -137,11 +143,23 @@ class AppendRunEventUseCase:
                 )
 
             # 4. 创建 RunEvent 实体
+            key = input_data.idempotency_key
+            if not (isinstance(key, str) and key.strip()):
+                key = None
+                if input_data.event_type in {
+                    self.TERMINAL_EVENT_COMPLETED,
+                    self.TERMINAL_EVENT_FAILED,
+                }:
+                    key = self._TERMINAL_IDEMPOTENCY_KEY
+                elif input_data.event_type in self._CONFIRM_EVENT_TYPES:
+                    key = input_data.event_type
+
             event = RunEvent.create(
                 run_id=input_data.run_id,
                 type=input_data.event_type,
                 channel=input_data.channel,
                 payload=input_data.payload,
+                idempotency_key=key,
             )
 
             # 5. 持久化事件 (获取自增 ID)

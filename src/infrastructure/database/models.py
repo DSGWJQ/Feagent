@@ -984,6 +984,14 @@ class RunEventModel(Base):
     # 可选序号 (用于外部事件序列兼容)
     sequence: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="可选序号")
 
+    # 幂等键（可选）：用于保证关键事件在并发下不重复写入（例如终态/确认/验收闭环事件）。
+    # 约束策略：仅当该字段非 NULL 时才参与唯一性约束（SQLite/Postgres 均允许多个 NULL）。
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        comment="Idempotency key (optional; unique within a run/channel when present)",
+    )
+
     # 关系
     run: Mapped["RunModel"] = relationship("RunModel", back_populates="events")
 
@@ -991,6 +999,13 @@ class RunEventModel(Base):
     __table_args__ = (
         Index("idx_run_events_run_id", "run_id"),
         Index("idx_run_events_run_id_id", "run_id", "id"),  # cursor 分页优化
+        Index(
+            "uq_run_events_idempotency",
+            "run_id",
+            "channel",
+            "idempotency_key",
+            unique=True,
+        ),
     )
 
     def __repr__(self) -> str:

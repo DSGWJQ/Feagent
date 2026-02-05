@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -25,7 +26,11 @@ from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
 from src.infrastructure.database.base import Base
 from src.infrastructure.database.engine import get_db_session
+from src.infrastructure.database.repositories.run_event_repository import (
+    SQLAlchemyRunEventRepository,
+)
 from src.infrastructure.database.repositories.run_repository import SQLAlchemyRunRepository
+from src.infrastructure.database.transaction_manager import SQLAlchemyTransactionManager
 from src.interfaces.api.container import ApiContainer
 from src.interfaces.api.routes import workflows as workflows_routes
 
@@ -147,9 +152,31 @@ def test_execute_stream_endpoint_goes_through_orchestrator_and_policy_chain(
             return type("Validation", (), {"is_valid": True, "errors": []})()
 
     test_app.state.coordinator = _AllowCoordinator()
+
+    # Phase 5: execute/stream must go through WorkflowRunExecutionEntry (Runs is the execution SoT).
+    def workflow_run_execution_entry_factory(session: Session):
+        from src.application.services.workflow_run_execution_entry import WorkflowRunExecutionEntry
+        from src.application.use_cases.append_run_event import AppendRunEventUseCase
+        from src.application.use_cases.execute_workflow import WORKFLOW_EXECUTION_KERNEL_ID
+
+        run_repo = SQLAlchemyRunRepository(session)
+        return WorkflowRunExecutionEntry(
+            workflow_repository=_FakeWorkflowRepository(),
+            run_repository=run_repo,
+            save_validator=MagicMock(validate_for_execution_or_raise=lambda _w: None),
+            run_event_use_case=AppendRunEventUseCase(
+                run_repository=run_repo,
+                run_event_repository=SQLAlchemyRunEventRepository(session),
+                transaction_manager=SQLAlchemyTransactionManager(session),
+            ),
+            kernel=orchestrator_factory(session),
+            executor_id=WORKFLOW_EXECUTION_KERNEL_ID,
+        )
+
     test_app.state.container = ApiContainer(
         executor_registry=NodeExecutorRegistry(),
         workflow_execution_kernel=orchestrator_factory,
+        workflow_run_execution_entry=workflow_run_execution_entry_factory,
         conversation_turn_orchestrator=lambda: None,  # type: ignore[return-value]
         user_repository=_noop_repo,
         agent_repository=_noop_repo,
