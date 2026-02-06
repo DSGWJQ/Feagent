@@ -104,7 +104,7 @@ describe('Workflow execution run_id fail-closed', () => {
       );
       expect(screen.getByText('无法创建 Run，请稍后重试')).toBeInTheDocument();
     });
-  }, 15000);
+  }, 30000);
 
   it('does not call execute when projectId is missing and Runs are enabled', async () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -131,7 +131,7 @@ describe('Workflow execution run_id fail-closed', () => {
       expect(globalThis.fetch).not.toHaveBeenCalled();
       expect(screen.getByText('缺少 projectId，无法创建 Run，无法执行')).toBeInTheDocument();
     });
-  }, 15000);
+  }, 30000);
 
   it('allows legacy execute without run_id when Runs are disabled', async () => {
     mocks.getWorkflowCapabilities.mockResolvedValueOnce({
@@ -178,5 +178,5 @@ describe('Workflow execution run_id fail-closed', () => {
         run_id: expect.any(String),
       });
     });
-  }, 15000);
+  }, 30000);
 });

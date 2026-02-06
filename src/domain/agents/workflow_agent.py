@@ -27,6 +27,11 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
+from src.domain.events.workflow_execution_events import (
+    NodeExecutionEvent,
+    WorkflowExecutionCompletedEvent,
+    WorkflowExecutionStartedEvent,
+)
 from src.domain.ports.workflow_execution_kernel import WorkflowExecutionKernelPort
 from src.domain.ports.workflow_run_execution_entry import WorkflowRunExecutionEntryPort
 from src.domain.services.context_manager import WorkflowContext
@@ -223,24 +228,6 @@ class ReflectionResult:
 
 
 @dataclass
-class WorkflowExecutionStartedEvent(Event):
-    """工作流执行开始事件"""
-
-    workflow_id: str = ""
-    node_count: int = 0
-
-
-@dataclass
-class WorkflowExecutionCompletedEvent(Event):
-    """工作流执行完成事件"""
-
-    workflow_id: str = ""
-    status: str = "completed"
-    success: bool = True
-    result: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
 class WorkflowReflectionCompletedEvent(Event):
     """工作流反思完成事件 - Phase 16"""
 
@@ -248,21 +235,6 @@ class WorkflowReflectionCompletedEvent(Event):
     assessment: str = ""
     should_retry: bool = False
     confidence: float = 0.0
-
-
-@dataclass
-class NodeExecutionEvent(Event):
-    """节点执行事件
-
-    Phase 35.5 修复：添加 workflow_id 字段以支持并发安全的状态监控。
-    """
-
-    workflow_id: str = ""  # Phase 35.5: 添加 workflow_id 以支持并发监控
-    node_id: str = ""
-    node_type: str = ""
-    status: str = ""  # running, completed, failed
-    result: dict[str, Any] | None = None
-    error: str | None = None
 
 
 @dataclass

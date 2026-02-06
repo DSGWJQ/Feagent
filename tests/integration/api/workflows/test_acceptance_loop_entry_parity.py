@@ -203,7 +203,6 @@ def test_editor_execute_stream_and_validated_decision_have_same_acceptance_seque
     test_engine,
 ) -> None:
     monkeypatch.setattr(settings, "disable_run_persistence", False)
-    monkeypatch.setattr(settings, "enable_langgraph_workflow_executor", False)
 
     project_id = "proj_entry_parity"
     workflow_id = "wf_entry_parity"

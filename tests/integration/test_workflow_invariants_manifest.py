@@ -12,6 +12,8 @@ from pathlib import Path
 
 def test_invariants_manifest_files_exist() -> None:
     required_paths = [
+        # Invariant 0: Architecture anti-regression (no websocket/callback dual track).
+        "tests/integration/test_architecture_guardrails.py",
         # Invariant 1/2/3/4: API contract guardrails (create/modify/execute/chat-stream).
         "tests/integration/api/workflows/test_route_guardrails.py",
         # Invariant 1: chat-create stream creates workflow and returns workflow_id.

@@ -20,7 +20,7 @@
 | CoordinatorAgent 是核心：对话入口必须进入监督域，能阻断/纠偏偏航 | **部分满足**：`conversation_stream`、`workflow chat`、`execute/stream` 都有 policy chain；但 `chat-create` 的 preflight gate 目前是 **fail-open（当 coordinator 未配置时）**，在“绝对必须有 coordinator”的前提下是漏洞 | `src/application/services/conversation_turn_orchestrator.py:269`、`src/application/use_cases/update_workflow_by_chat.py:110`、`src/interfaces/api/routes/workflows.py:563` |
 | 严格审查 ConversationAgent 的 ReAct（Action→真实执行→Observation） | **满足（对 ConversationAgent）/ 不适用（对 workflow chat）**：ConversationAgent 的 `tool_call` 会真实执行并产出 `tool_result`；workflow chat 的 `react_steps` 已被定义为解释性回放（`planning_step simulated=true`），不再伪装真实 tool execution | `src/domain/agents/conversation_agent_react_core.py:436`、`src/application/services/tool_call_executor.py:57`、`web/src/hooks/useWorkflowAI.ts:81` |
 | “执行成功”与用户点击 Run 一致（事实源一致、可追踪可回放） | **部分满足**：前端 run 创建失败会 fail-closed 不触发执行；后端以 Run + RunEvents 作为事实源；但存在 rollback flag `disable_run_persistence` 会关闭 Runs API/执行入口（需按你的产品要求界定） | `web/src/features/workflows/pages/__tests__/WorkflowRunFailClosed.test.tsx:50`、`src/interfaces/api/routes/runs.py:93`、`src/application/services/workflow_run_execution_entry.py:353` |
-| workflow 执行必须使用 LangGraph | **满足（默认启用）**：`enable_langgraph_workflow_executor` 默认 `true`，执行门面优先走 LangGraph adapter；关闭时会审计并回滚到 legacy | `src/config.py:145`、`src/application/services/workflow_execution_facade.py:46`、`src/infrastructure/lc_adapters/workflow/langgraph_workflow_executor_adapter.py:39` |
+| workflow 执行必须使用 LangGraph | **不再适用（已收敛并移除）**：workflow 执行语义已收敛为 `WorkflowExecutionKernelPort` → `ExecuteWorkflowUseCase` → `WorkflowEngine`；LangGraph **仅保留为 TaskExecutor（ReAct loop）实现** | `src/domain/services/workflow_engine.py:1`、`src/application/use_cases/execute_workflow.py:1`、`src/infrastructure/lc_adapters/agents/langgraph_task_executor.py:1` |
 | WorkflowAgent 与 ConversationAgent 必须闭环协作：WorkflowAgent 校验计划可达成并回馈纠偏 | **未满足（能力存在但未成为 workflow 主链路）**：存在反馈事件与 recovery mixin，但缺少“validated decision → 执行 → 反馈 → replanning”的主链路接线与端到端验收 | `src/domain/agents/conversation_agent_recovery.py:117`、`src/domain/agents/workflow_agent.py:2399`、`src/domain/services/decision_execution_bridge.py:1` |
 | DDD 分层不越界 | **部分满足**：通过 import-linter 强制 Domain 不依赖 Application/Infrastructure/Interfaces；但并未强制“Interface 只能依赖 Application”，且部分接口层直接使用 Domain service（这是否违规取决于你对 DDD-lite 的定义） | `.import-linter.toml:1`、`src/interfaces/api/routes/workflows.py:41` |
 
@@ -43,7 +43,7 @@
 5) CoordinatorAgent 是核心：所有对话入口进入监督域，能阻断/纠偏偏航。
 6) ConversationAgent 严格 ReAct：Action→真实执行→Observation 闭环。
 7) “执行成功”与用户点击 Run 一致：Run 为事实源，可追踪可回放。
-8) workflow 执行必须使用 LangGraph。
+8) workflow 执行不得依赖 LangGraph（执行语义收敛到 `WorkflowEngine`；LangGraph 仅用于 TaskExecutor）。
 9) WorkflowAgent ↔ ConversationAgent 协作：WorkflowAgent 验证计划可达成并回馈，ConversationAgent 能基于反馈恢复/重规划。
 10) DDD：Interface/Application/Domain/Infrastructure 边界不越界。
 

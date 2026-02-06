@@ -388,13 +388,13 @@ class TestExecutionMonitorEvents:
         monitor = ExecutionMonitor(event_bus=event_bus)
 
         # 订阅事件
-        from src.domain.services.execution_monitor import (
-            NodeExecutionStartedEvent,
+        from src.domain.events.workflow_execution_events import (
+            NodeExecutionEvent,
             WorkflowExecutionStartedEvent,
         )
 
         event_bus.subscribe(WorkflowExecutionStartedEvent, event_handler)
-        event_bus.subscribe(NodeExecutionStartedEvent, event_handler)
+        event_bus.subscribe(NodeExecutionEvent, event_handler)
 
         # 触发事件
         await monitor.on_workflow_start_async("wf_123", ["node_1"])

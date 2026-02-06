@@ -9,7 +9,7 @@
 1. WorkflowAgent 执行完成后，ConversationAgent 生成总结
 2. 总结包含执行日志、成功/失败状态、错误信息
 3. 总结包含规则应用、知识引用、工具使用记录
-4. Coordinator 记录总结并推送给前端
+4. Coordinator 记录总结并发布事件（由外部订阅者决定是否推送到前端）
 
 使用示例：
     # 生成总结
@@ -21,7 +21,7 @@
     )
 
     # 协调者记录并推送
-    await coordinator.record_and_push_summary(summary)
+    await coordinator.record_execution_summary_async(summary)
 """
 
 from __future__ import annotations

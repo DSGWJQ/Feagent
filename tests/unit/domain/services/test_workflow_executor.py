@@ -330,26 +330,35 @@ class TestWorkflowExecutor:
             edges=[edge_main, edge_invalid],
         )
 
-        events: list[tuple[str, dict[str, Any]]] = []
+        from src.domain.events.workflow_execution_events import NodeExecutionEvent
+        from src.domain.services.event_bus import EventBus
+
+        events: list[NodeExecutionEvent] = []
+
+        async def _on_event(event: Any) -> None:
+            if isinstance(event, NodeExecutionEvent):
+                events.append(event)
+
+        event_bus = EventBus()
+        event_bus.subscribe(NodeExecutionEvent, _on_event)
         registry = NodeExecutorRegistry()
         registry.register(NodeType.TRANSFORM.value, _EchoExecutor())
-        executor = WorkflowExecutor(executor_registry=registry)
-        executor.set_event_callback(lambda t, d: events.append((t, d)))
+        executor = WorkflowExecutor(executor_registry=registry, event_bus=event_bus)
 
-        result = await executor.execute(workflow, initial_input="test")
+        result = await executor.execute(workflow, initial_input="test", correlation_id="ut_skip")
 
         assert result is not None
         executed_ids = [row["node_id"] for row in executor.execution_log]
         assert node_should_skip.id not in executed_ids
         skip_events = [
-            d
-            for t, d in events
-            if t == "node_skipped"
-            and d.get("node_id") == node_should_skip.id
-            and d.get("reason") == "incoming_edge_conditions_not_met"
+            e
+            for e in events
+            if e.status == "skipped"
+            and e.node_id == node_should_skip.id
+            and e.reason == "incoming_edge_conditions_not_met"
         ]
         assert skip_events
-        details = skip_events[0].get("incoming_edge_conditions")
+        details = skip_events[0].metadata.get("incoming_edge_conditions")
         assert isinstance(details, list)
         assert any(
             d.get("source_node_id") == node_start.id and d.get("expression") == "value ==="

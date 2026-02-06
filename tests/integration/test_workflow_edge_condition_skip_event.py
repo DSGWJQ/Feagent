@@ -3,6 +3,8 @@ import pytest
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
+from src.domain.events.workflow_execution_events import NodeExecutionEvent
+from src.domain.services.event_bus import EventBus
 from src.domain.services.workflow_executor import WorkflowExecutor
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
@@ -51,16 +53,18 @@ async def test_edge_condition_skips_node_and_emits_node_skipped_event_integratio
     )
 
     registry = create_executor_registry(openai_api_key=None, anthropic_api_key=None)
-    executor = WorkflowExecutor(executor_registry=registry)
+    event_bus = EventBus()
+    captured: list[NodeExecutionEvent] = []
 
-    events: list[dict] = []
+    async def _on_event(event):  # pragma: no cover - type is asserted below
+        if isinstance(event, NodeExecutionEvent):
+            captured.append(event)
 
-    def event_callback(event_type: str, data: dict) -> None:
-        events.append({"type": event_type, **data})
+    event_bus.subscribe(NodeExecutionEvent, _on_event)
 
-    executor.set_event_callback(event_callback)
+    executor = WorkflowExecutor(executor_registry=registry, event_bus=event_bus)
 
-    result = await executor.execute(workflow, initial_input={})
+    result = await executor.execute(workflow, initial_input={}, correlation_id="it_skip")
     assert result == {"x": 1}
 
     executed = {row["node_id"] for row in executor.execution_log}
@@ -68,14 +72,14 @@ async def test_edge_condition_skips_node_and_emits_node_skipped_event_integratio
 
     skipped_events = [
         event
-        for event in events
-        if event.get("type") == "node_skipped" and event.get("node_id") == node_skipped.id
+        for event in captured
+        if event.status == "skipped" and event.node_id == node_skipped.id
     ]
     assert skipped_events
 
     payload = skipped_events[0]
-    assert payload.get("reason") == "incoming_edge_conditions_not_met"
-    conditions = payload.get("incoming_edge_conditions")
+    assert payload.reason == "incoming_edge_conditions_not_met"
+    conditions = payload.metadata.get("incoming_edge_conditions")
     assert isinstance(conditions, list) and conditions
     assert any(
         c.get("expression") == "false" and c.get("normalized") == "False" for c in conditions

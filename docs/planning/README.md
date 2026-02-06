@@ -13,9 +13,10 @@
 
 | # | 规划名称 | 优先级 | 工期 | 状态 | 文档路径 |
 |---|---------|--------|------|------|---------|
-| 1 | **事件系统修复** | P1 (中期) | 2-3周 | 📋 待启动 | [EVENT_SYSTEM_FIX_PLAN.md](./EVENT_SYSTEM_FIX_PLAN.md) |
+| 0 | **项目精简与去冗余总规划（一次性收敛版）** | P0 (近期) | 1-2周 | 🚧 进行中 | [PROJECT_SIMPLIFICATION_DEDUP_PLAN.md](./PROJECT_SIMPLIFICATION_DEDUP_PLAN.md) |
+| 1 | **事件系统修复** | P1 (中期) | 2-3周 | ✅ 已收敛（EventBus 单轨） | [EVENT_SYSTEM_FIX_PLAN.md](./EVENT_SYSTEM_FIX_PLAN.md) |
 | 2 | **Human 节点实现** | P2 (中期) | 2-3周 | 📋 待启动 | [HUMAN_NODE_IMPLEMENTATION_PLAN.md](./HUMAN_NODE_IMPLEMENTATION_PLAN.md) |
-| 3 | **EventBus 架构升级** | P3 (长期) | 2-3月 | 📋 待启动 | [EVENTBUS_ARCHITECTURE_UPGRADE_PLAN.md](./EVENTBUS_ARCHITECTURE_UPGRADE_PLAN.md) |
+| 3 | **EventBus 架构升级** | P3 (长期) | 2-3月 | 🧊 暂缓（长期备选） | [EVENTBUS_ARCHITECTURE_UPGRADE_PLAN.md](./EVENTBUS_ARCHITECTURE_UPGRADE_PLAN.md) |
 
 ---
 

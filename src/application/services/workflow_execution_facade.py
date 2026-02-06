@@ -4,41 +4,45 @@
 Application 层入口来执行 workflow（非流式/流式），以便在调度器/后台任务等场景复用。
 
 KISS：该 Facade 目前仅作为 `ExecuteWorkflowUseCase` 的轻量包装，避免接口层直接依赖
-Use Case 的构造细节；可在后续迭代中再引入更复杂的策略（例如 LangGraph executor）。
+Use Case 的构造细节。执行语义的事实源必须保持单一（避免引入第二套执行引擎）。
 """
 
 from __future__ import annotations
 
-import logging
-import time
+import inspect
 from collections.abc import AsyncGenerator
-from functools import lru_cache
 from typing import Any
 
 from src.application.use_cases.execute_workflow import (
-    WORKFLOW_EXECUTION_KERNEL_ID,
     ExecuteWorkflowInput,
     ExecuteWorkflowUseCase,
 )
-from src.config import settings
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.ports.workflow_repository import WorkflowRepository
+from src.domain.services.event_bus import EventBus
 
-logger = logging.getLogger(__name__)
 
+def _supports_kwarg(callable_obj: Any, name: str) -> bool:
+    """Best-effort check for whether a callable accepts a given keyword argument.
 
-@lru_cache(maxsize=1)
-def _audit_langgraph_rollback_once() -> None:
-    logger.warning(
-        "langgraph_workflow_executor_rollback_active",
-        extra={
-            "audit_at_ms": int(time.time() * 1000),
-            "actor": settings.langgraph_workflow_executor_rollback_actor or "unknown",
-            "scope": settings.langgraph_workflow_executor_rollback_scope or "global",
-            "reason": settings.langgraph_workflow_executor_rollback_reason or "",
-            "env": settings.env,
-        },
-    )
+    Why:
+    - Some unit tests patch ExecuteWorkflowUseCase with a simplified fake that doesn't accept
+      newer keyword-only args (e.g. correlation_id).
+    - We keep the facade tolerant and backward-compatible while still passing through the
+      richer contract for the real use case implementation.
+    """
+
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):  # pragma: no cover - defensive fallback
+        return False
+
+    parameters = signature.parameters
+    if name in parameters:
+        return True
+
+    # Accepts **kwargs
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
 
 
 class WorkflowExecutionFacade:
@@ -49,61 +53,53 @@ class WorkflowExecutionFacade:
         *,
         workflow_repository: WorkflowRepository,
         executor_registry: NodeExecutorRegistry | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         self._workflow_repository = workflow_repository
         self._executor_registry = executor_registry
+        self._event_bus = event_bus
 
-    async def execute(self, *, workflow_id: str, input_data: Any = None) -> dict[str, Any]:
-        if settings.enable_langgraph_workflow_executor:
-            from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
-                LangGraphWorkflowExecutorAdapter,
-            )
-
-            adapter = LangGraphWorkflowExecutorAdapter(
-                workflow_repository=self._workflow_repository,
-                executor_registry=self._executor_registry,
-            )
-            result = await adapter.execute(workflow_id=workflow_id, input_data=input_data)
-            result["executor_id"] = WORKFLOW_EXECUTION_KERNEL_ID
-            return result
-
-        _audit_langgraph_rollback_once()
-        use_case = ExecuteWorkflowUseCase(
-            workflow_repository=self._workflow_repository,
-            executor_registry=self._executor_registry,
-        )
-        return await use_case.execute(
-            ExecuteWorkflowInput(workflow_id=workflow_id, initial_input=input_data)
-        )
+    async def execute(
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any = None,
+        correlation_id: str | None = None,
+        original_decision_id: str | None = None,
+    ) -> dict[str, Any]:
+        uc_kwargs: dict[str, Any] = {
+            "workflow_repository": self._workflow_repository,
+            "executor_registry": self._executor_registry,
+        }
+        if self._event_bus is not None:
+            uc_kwargs["event_bus"] = self._event_bus
+        use_case = ExecuteWorkflowUseCase(**uc_kwargs)
+        execute_input = ExecuteWorkflowInput(workflow_id=workflow_id, initial_input=input_data)
+        if _supports_kwarg(use_case.execute, "correlation_id"):
+            return await use_case.execute(execute_input, correlation_id=correlation_id)
+        return await use_case.execute(execute_input)
 
     async def execute_streaming(
-        self, *, workflow_id: str, input_data: Any = None
+        self,
+        *,
+        workflow_id: str,
+        input_data: Any = None,
+        correlation_id: str | None = None,
+        original_decision_id: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        if settings.enable_langgraph_workflow_executor:
-            from src.infrastructure.lc_adapters.workflow.langgraph_workflow_executor_adapter import (
-                LangGraphWorkflowExecutorAdapter,
-            )
-
-            adapter = LangGraphWorkflowExecutorAdapter(
-                workflow_repository=self._workflow_repository,
-                executor_registry=self._executor_registry,
-            )
-            async for event in adapter.execute_streaming(
-                workflow_id=workflow_id,
-                input_data=input_data,
+        uc_kwargs: dict[str, Any] = {
+            "workflow_repository": self._workflow_repository,
+            "executor_registry": self._executor_registry,
+        }
+        if self._event_bus is not None:
+            uc_kwargs["event_bus"] = self._event_bus
+        use_case = ExecuteWorkflowUseCase(**uc_kwargs)
+        execute_input = ExecuteWorkflowInput(workflow_id=workflow_id, initial_input=input_data)
+        if _supports_kwarg(use_case.execute_streaming, "correlation_id"):
+            async for event in use_case.execute_streaming(
+                execute_input, correlation_id=correlation_id
             ):
-                yield {
-                    **event,
-                    "executor_id": event.get("executor_id", WORKFLOW_EXECUTION_KERNEL_ID),
-                }
-            return
-
-        _audit_langgraph_rollback_once()
-        use_case = ExecuteWorkflowUseCase(
-            workflow_repository=self._workflow_repository,
-            executor_registry=self._executor_registry,
-        )
-        async for event in use_case.execute_streaming(
-            ExecuteWorkflowInput(workflow_id=workflow_id, initial_input=input_data)
-        ):
-            yield event
+                yield event
+        else:
+            async for event in use_case.execute_streaming(execute_input):
+                yield event

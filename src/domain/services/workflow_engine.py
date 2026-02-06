@@ -10,18 +10,18 @@ from __future__ import annotations
 import logging
 import re
 from collections import deque
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import replace
 from typing import Any
 
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
+from src.domain.events.workflow_execution_events import NodeExecutionEvent
 from src.domain.exceptions import DomainError
 from src.domain.ports.node_executor import NodeExecutorRegistry
+from src.domain.services.event_bus import EventBus
 from src.domain.services.expression_evaluator import ExpressionEvaluator
 from src.domain.value_objects.node_type import NodeType
-
-EventCallback = Callable[[str, dict[str, Any]], None]
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,8 @@ class WorkflowEngine:
         *,
         workflow: Workflow,
         initial_input: Any = None,
-        event_callback: EventCallback | None = None,
+        event_bus: EventBus | None = None,
+        correlation_id: str | None = None,
     ) -> tuple[Any, list[dict[str, Any]]]:
         sorted_nodes = self.topological_sort(workflow)
         node_outputs: dict[str, Any] = {}
@@ -88,6 +89,8 @@ class WorkflowEngine:
         # "advanced" still enforces AST-based safety and a strict function allowlist.
         evaluator = ExpressionEvaluator(mode="advanced")
 
+        workflow_id = getattr(workflow, "id", "") or ""
+
         for node in sorted_nodes:
             if node.type not in {NodeType.INPUT, NodeType.START}:
                 if not _should_execute_node(
@@ -97,26 +100,25 @@ class WorkflowEngine:
                     evaluator=evaluator,
                     context=context,
                 ):
-                    if event_callback:
-                        event_callback(
-                            "node_skipped",
-                            {
-                                "node_id": node.id,
-                                "node_type": node.type.value,
-                                "reason": "incoming_edge_conditions_not_met",
-                                "incoming_edge_conditions": _collect_incoming_edge_condition_details(
-                                    incoming_edges=incoming_edges.get(node.id, []),
-                                    outputs=node_outputs,
-                                ),
-                            },
+                    if event_bus:
+                        await event_bus.publish(
+                            NodeExecutionEvent(
+                                source="workflow_engine",
+                                correlation_id=correlation_id,
+                                workflow_id=workflow_id,
+                                node_id=node.id,
+                                node_type=node.type.value,
+                                status="skipped",
+                                reason="incoming_edge_conditions_not_met",
+                                metadata={
+                                    "incoming_edge_conditions": _collect_incoming_edge_condition_details(
+                                        incoming_edges=incoming_edges.get(node.id, []),
+                                        outputs=node_outputs,
+                                    ),
+                                },
+                            )
                         )
                     continue
-
-            if event_callback:
-                event_callback(
-                    "node_start",
-                    {"node_id": node.id, "node_type": node.type.value},
-                )
 
             inputs = _get_node_inputs(
                 node_id=node.id,
@@ -125,6 +127,18 @@ class WorkflowEngine:
                 evaluator=evaluator,
                 context=context,
             )
+            if event_bus:
+                await event_bus.publish(
+                    NodeExecutionEvent(
+                        source="workflow_engine",
+                        correlation_id=correlation_id,
+                        workflow_id=workflow_id,
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        status="running",
+                        inputs=inputs,
+                    )
+                )
             try:
                 rendered_node = replace(
                     node,
@@ -142,25 +156,33 @@ class WorkflowEngine:
                     node=rendered_node, inputs=inputs, context=context
                 )
             except DomainError as exc:
-                if event_callback:
-                    event_callback(
-                        "node_error",
-                        {
-                            "node_id": node.id,
-                            "node_type": node.type.value,
-                            "error": str(exc),
-                        },
+                if event_bus:
+                    await event_bus.publish(
+                        NodeExecutionEvent(
+                            source="workflow_engine",
+                            correlation_id=correlation_id,
+                            workflow_id=workflow_id,
+                            node_id=node.id,
+                            node_type=node.type.value,
+                            status="failed",
+                            error=str(exc),
+                            metadata={"error_type": type(exc).__name__},
+                        )
                     )
                 raise
             except Exception as exc:  # noqa: BLE001 - Domain boundary for execution errors
-                if event_callback:
-                    event_callback(
-                        "node_error",
-                        {
-                            "node_id": node.id,
-                            "node_type": node.type.value,
-                            "error": str(exc),
-                        },
+                if event_bus:
+                    await event_bus.publish(
+                        NodeExecutionEvent(
+                            source="workflow_engine",
+                            correlation_id=correlation_id,
+                            workflow_id=workflow_id,
+                            node_id=node.id,
+                            node_type=node.type.value,
+                            status="failed",
+                            error=str(exc),
+                            metadata={"error_type": type(exc).__name__},
+                        )
                     )
                 raise DomainError(
                     f"Node execution failed: node_id={node.id} node_type={node.type.value}"
@@ -171,10 +193,17 @@ class WorkflowEngine:
                 {"node_id": node.id, "node_type": node.type.value, "output": output}
             )
 
-            if event_callback:
-                event_callback(
-                    "node_complete",
-                    {"node_id": node.id, "node_type": node.type.value, "output": output},
+            if event_bus:
+                await event_bus.publish(
+                    NodeExecutionEvent(
+                        source="workflow_engine",
+                        correlation_id=correlation_id,
+                        workflow_id=workflow_id,
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        status="completed",
+                        result=output,
+                    )
                 )
 
         end_node = next(

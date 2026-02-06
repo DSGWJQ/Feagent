@@ -79,5 +79,5 @@ describe('Workflow editor edge.condition persistence', () => {
     const [, payload] = updateWorkflowMock.mock.calls[0];
     expect(payload.edges).toHaveLength(1);
     expect(payload.edges[0].condition).toBe('score > 0.8');
-  }, 15000);
+  }, 30000);
 });

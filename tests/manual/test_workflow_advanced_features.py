@@ -197,11 +197,8 @@ async def test_event_callback():
     """测试事件回调（SSE）"""
     print("\n=== 测试 4: 事件回调（SSE） ===")
 
-    events = []
-
-    def event_callback(event_type: str, data: dict):
-        events.append({"type": event_type, "data": data})
-        print(f"📡 事件: {event_type} - {data}")
+    from src.domain.events.workflow_execution_events import NodeExecutionEvent
+    from src.domain.services.event_bus import EventBus
 
     # 创建简单工作流
     start_node = Node(
@@ -241,14 +238,27 @@ async def test_event_callback():
 
     # 创建执行器并设置回调
     registry = create_executor_registry()
-    executor = WorkflowExecutor(executor_registry=registry)
-    executor.set_event_callback(event_callback)
+    event_bus = EventBus()
+    captured: list[NodeExecutionEvent] = []
+
+    async def _on_event(event):  # pragma: no cover - manual smoke test
+        if isinstance(event, NodeExecutionEvent):
+            captured.append(event)
+            print(
+                f"📡 事件: status={event.status} node_id={event.node_id} node_type={event.node_type}"
+            )
+
+    event_bus.subscribe(NodeExecutionEvent, _on_event)
+
+    executor = WorkflowExecutor(executor_registry=registry, event_bus=event_bus)
 
     # 执行工作流
-    result = await executor.execute(workflow, initial_input={"message": "test"})
+    result = await executor.execute(
+        workflow, initial_input={"message": "test"}, correlation_id="manual_event_callback"
+    )
 
     print(f"\n✅ 执行结果: {result}")
-    print(f"✅ 收到 {len(events)} 个事件")
+    print(f"✅ 收到 {len(captured)} 个事件")
 
 
 async def main():

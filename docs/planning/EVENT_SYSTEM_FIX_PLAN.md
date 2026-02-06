@@ -6,6 +6,13 @@
 **预计工期**: 2-3周
 **负责人**: 待分配
 
+> 更新（2026-02-06）：本规划中描述的“事件缺失 / callback 双轨”问题，已在主链路通过 **EventBus 单轨**收敛：
+> - `WorkflowEngine` 直接发布 `NodeExecutionEvent`（`src/domain/events/workflow_execution_events.py`）
+> - `WorkflowEngine.event_callback` 已移除
+> - `src/domain/events/node_execution_events.py` 不再存在（避免同名不同义）
+>
+> 本文件保留为历史规划参考，不应再作为实施依据；请以 `docs/planning/PROJECT_SIMPLIFICATION_DEDUP_PLAN.md` 与当前代码为准。
+
 ---
 
 ## 一、背景与问题陈述

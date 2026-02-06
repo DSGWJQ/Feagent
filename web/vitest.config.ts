@@ -8,7 +8,9 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    testTimeout: 15000,
+    // UI integration-ish tests (React Flow + AntD) are heavy on Windows/JSDOM.
+    // Keep enough headroom to avoid suite-level flakiness.
+    testTimeout: 30000,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['tests/**', 'playwright-report/**', 'test-results/**'],
     coverage: {

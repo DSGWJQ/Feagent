@@ -3,7 +3,7 @@
 测试目标：
 1. 端到端验证进度事件从 WorkflowAgent 到 ConversationAgent 的流转
 2. 验证 EventBus 中间件不影响进度事件传递
-3. 验证 WebSocket/SSE 模拟输出
+3. 验证 SSE 模拟输出
 4. 验证完整的用户可见进度日志
 
 完成标准：
@@ -212,47 +212,6 @@ class TestProgressEventsWithCoordinatorMiddleware:
 
 class TestProgressStreamingOutput:
     """测试进度流式输出"""
-
-    @pytest.mark.asyncio
-    async def test_progress_events_formatted_for_websocket(self):
-        """进度事件应格式化为 WebSocket 消息
-
-        场景：ConversationAgent 收到进度事件
-        期望：转换为 WebSocket 可发送的 JSON 格式
-        """
-        from src.domain.agents.conversation_agent import ConversationAgent
-        from src.domain.agents.workflow_agent import ExecutionProgressEvent
-        from src.domain.services.context_manager import GlobalContext, SessionContext
-
-        global_ctx = GlobalContext(user_id="test_user")
-        session_ctx = SessionContext(session_id="session_001", global_context=global_ctx)
-
-        mock_llm = MagicMock()
-        mock_event_bus = MagicMock()
-
-        agent = ConversationAgent(
-            session_context=session_ctx,
-            llm=mock_llm,
-            event_bus=mock_event_bus,
-        )
-
-        event = ExecutionProgressEvent(
-            workflow_id="workflow_001",
-            node_id="node_1",
-            status="running",
-            progress=0.5,
-            message="正在执行",
-        )
-
-        # 格式化为 WebSocket 消息
-        ws_message = agent.format_progress_for_websocket(event)
-
-        assert isinstance(ws_message, dict)
-        assert "type" in ws_message
-        assert ws_message["type"] == "progress"
-        assert "data" in ws_message
-        assert ws_message["data"]["node_id"] == "node_1"
-        assert ws_message["data"]["progress"] == 0.5
 
     @pytest.mark.asyncio
     async def test_progress_events_formatted_for_sse(self):

@@ -50,7 +50,6 @@ def test_t_run_1_execute_stream_persists_key_events(
     monkeypatch: pytest.MonkeyPatch, test_engine
 ) -> None:
     monkeypatch.setattr(settings, "disable_run_persistence", False)
-    monkeypatch.setattr(settings, "enable_langgraph_workflow_executor", False)
 
     class FakeFacade:
         async def execute_streaming(self, *, workflow_id: str, input_data=None):
@@ -180,7 +179,6 @@ def test_t_run_1_terminal_event_is_not_duplicated_by_error_after_completion(
     monkeypatch: pytest.MonkeyPatch, test_engine
 ) -> None:
     monkeypatch.setattr(settings, "disable_run_persistence", False)
-    monkeypatch.setattr(settings, "enable_langgraph_workflow_executor", False)
 
     class FakeFacade:
         async def execute_streaming(self, *, workflow_id: str, input_data=None):
@@ -310,7 +308,6 @@ def test_t_run_1_execute_stream_enforces_execution_event_contract(
     """Contract: execute/stream only emits node_* and workflow_* events (no tool_call/planning)."""
 
     monkeypatch.setattr(settings, "disable_run_persistence", False)
-    monkeypatch.setattr(settings, "enable_langgraph_workflow_executor", False)
 
     class FakeFacade:
         async def execute_streaming(self, *, workflow_id: str, input_data=None):

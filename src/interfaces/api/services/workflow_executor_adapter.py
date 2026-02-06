@@ -8,15 +8,13 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator, Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator, Callable
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from src.application.services.workflow_execution_facade import WorkflowExecutionFacade
 from src.config import settings
 from src.domain.entities.run import Run
 from src.domain.exceptions import DomainError
@@ -24,9 +22,6 @@ from src.domain.ports.run_repository import RunRepository
 from src.domain.ports.workflow_repository import WorkflowRepository
 from src.domain.ports.workflow_run_execution_entry import WorkflowRunExecutionEntryPort
 from src.infrastructure.database.models import AgentModel
-from src.infrastructure.database.repositories.workflow_repository import (
-    SQLAlchemyWorkflowRepository,
-)
 from src.infrastructure.executors import create_executor_registry
 
 if TYPE_CHECKING:
@@ -43,7 +38,7 @@ class WorkflowExecutorAdapter:
         - 每次执行创建独立 session 和 Facade
 
     Step 3 重构：
-    - 统一使用 WorkflowExecutionFacade 执行
+    - 统一通过 WorkflowRunExecutionEntry 执行（Runs + RunEvents 为事实源）
     - 确保调度器执行与 API 执行产生相同格式的 SSE 事件
     """
 
@@ -64,21 +59,6 @@ class WorkflowExecutorAdapter:
         self._workflow_run_execution_entry_factory = workflow_run_execution_entry_factory
         self._workflow_repository_factory = workflow_repository_factory
         self._run_repository_factory = run_repository_factory
-
-    @contextmanager
-    def _create_facade(self) -> Iterator[WorkflowExecutionFacade]:
-        """为每次执行创建独立的 session 和 Facade"""
-        session = self._session_factory()
-        repo = SQLAlchemyWorkflowRepository(session)
-
-        facade = WorkflowExecutionFacade(
-            workflow_repository=repo,
-            executor_registry=self.executor_registry,
-        )
-        try:
-            yield facade
-        finally:
-            session.close()
 
     def _audit_run_persistence_rollback(self, *, workflow_id: str, mode: str) -> None:
         """Audit when rollback flag disables run persistence and legacy execution is used."""

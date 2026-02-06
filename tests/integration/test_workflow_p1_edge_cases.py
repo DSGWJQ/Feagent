@@ -8,7 +8,9 @@ import pytest
 from src.domain.entities.edge import Edge
 from src.domain.entities.node import Node
 from src.domain.entities.workflow import Workflow
+from src.domain.events.workflow_execution_events import NodeExecutionEvent
 from src.domain.exceptions import DomainError
+from src.domain.services.event_bus import EventBus
 from src.domain.services.workflow_executor import WorkflowExecutor
 from src.domain.value_objects.node_type import NodeType
 from src.domain.value_objects.position import Position
@@ -72,23 +74,27 @@ async def test_file_read_missing_file_emits_node_error_event():
         ],
     )
 
-    events: list[dict[str, object]] = []
+    event_bus = EventBus()
+    captured: list[NodeExecutionEvent] = []
 
-    def _event_callback(event_type: str, payload: dict[str, object]) -> None:
-        events.append({"type": event_type, **payload})
+    async def _on_event(event):  # pragma: no cover - type asserted below
+        if isinstance(event, NodeExecutionEvent):
+            captured.append(event)
 
-    executor = WorkflowExecutor(executor_registry=create_executor_registry())
-    executor.set_event_callback(_event_callback)
+    event_bus.subscribe(NodeExecutionEvent, _on_event)
+
+    executor = WorkflowExecutor(executor_registry=create_executor_registry(), event_bus=event_bus)
 
     with pytest.raises(DomainError) as exc:
-        await executor.execute(workflow, initial_input={"unused": True})
+        await executor.execute(
+            workflow, initial_input={"unused": True}, correlation_id="it_file_missing"
+        )
 
     assert "文件不存在" in str(exc.value)
     assert missing_path.name in str(exc.value)
 
-    node_errors = [e for e in events if e.get("type") == "node_error"]
-    assert node_errors, events
-    assert node_errors[0].get("node_id") == file_node.id
-    assert node_errors[0].get("node_type") == NodeType.FILE.value
-    assert "文件不存在" in str(node_errors[0].get("error"))
-    assert missing_path.name in str(node_errors[0].get("error"))
+    node_errors = [e for e in captured if e.status == "failed" and e.node_id == file_node.id]
+    assert node_errors, captured
+    assert node_errors[0].node_type == NodeType.FILE.value
+    assert "文件不存在" in str(node_errors[0].error)
+    assert missing_path.name in str(node_errors[0].error)

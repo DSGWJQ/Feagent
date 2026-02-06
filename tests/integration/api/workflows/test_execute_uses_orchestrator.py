@@ -51,7 +51,6 @@ def test_execute_stream_endpoint_goes_through_orchestrator_and_policy_chain(
     monkeypatch: pytest.MonkeyPatch, test_engine
 ) -> None:
     monkeypatch.setattr(settings, "disable_run_persistence", False)
-    monkeypatch.setattr(settings, "enable_langgraph_workflow_executor", False)
 
     calls: list[str] = []
 

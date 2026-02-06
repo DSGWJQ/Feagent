@@ -49,9 +49,6 @@ from src.interfaces.api.dto.tool_dto import (
     UpdateToolRequest,
 )
 from src.interfaces.api.dto.workflow_features_dto import (
-    ChatMessageRequest,
-    ChatMessageResponse,
-    EnhancedChatWorkflowResponse,
     ExecuteConcurrentWorkflowsRequest,
     ExecutionResultResponse,
     ScheduledWorkflowResponse,
@@ -85,7 +82,4 @@ __all__ = [
     "ScheduledWorkflowResponse",
     "ExecuteConcurrentWorkflowsRequest",
     "ExecutionResultResponse",
-    "ChatMessageRequest",
-    "ChatMessageResponse",
-    "EnhancedChatWorkflowResponse",
 ]

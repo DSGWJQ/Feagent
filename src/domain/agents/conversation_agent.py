@@ -864,33 +864,8 @@ class ConversationAgent(
         else:
             return f"[{status}] {message}"
 
-    def format_progress_for_websocket(self, event: Any) -> dict[str, Any]:
-        """格式化进度事件为 WebSocket 消息
-
-        .. deprecated:: Step 1.5
-            WebSocket 已被移除，请使用 format_progress_for_sse() 替代。
-            此方法将在未来版本中删除。
-
-        参数:
-            event: ExecutionProgressEvent 实例
-
-        返回:
-            WebSocket 消息字典
-        """
-        return {
-            "type": "progress",
-            "data": {
-                "workflow_id": event.workflow_id,
-                "node_id": event.node_id,
-                "status": event.status,
-                "progress": event.progress,
-                "message": event.message,
-            },
-        }
-
     def format_progress_for_sse(self, event: Any) -> str:
         """格式化进度事件为 SSE 消息
-
         参数:
             event: ExecutionProgressEvent 实例
 

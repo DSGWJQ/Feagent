@@ -68,34 +68,3 @@ class ExecutionResultResponse(BaseModel):
     @classmethod
     def from_entity(cls, entity: Any) -> "ExecutionResultResponse":
         return cls(workflow_id=entity.workflow_id, run_id=entity.run_id, status=entity.status)
-
-
-class ChatMessageRequest(BaseModel):
-    """Chat workflow message request."""
-
-    message: str = Field(..., description="User message", min_length=1)
-
-
-class ChatMessageResponse(BaseModel):
-    """Chat workflow message response."""
-
-    role: str = Field(description="user/assistant")
-    content: str = Field(description="Message content")
-
-
-class EnhancedChatWorkflowResponse(BaseModel):
-    """LLM-assisted workflow editing response."""
-
-    success: bool
-    response: str | None = None
-    error_message: str | None = None
-    modified_workflow: dict | None = None
-
-    @classmethod
-    def from_entity(cls, entity: Any) -> "EnhancedChatWorkflowResponse":
-        return cls(
-            success=entity.success,
-            response=getattr(entity, "response", None),
-            error_message=getattr(entity, "error_message", None),
-            modified_workflow=getattr(entity, "modified_workflow", None),
-        )

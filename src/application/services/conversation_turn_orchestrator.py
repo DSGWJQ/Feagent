@@ -3,7 +3,7 @@
 目标：
 - Interface 层不直接持有/调用 Domain Agent
 - 将“执行前/执行后/错误治理”等逻辑抽象为可插拔的 policy chain
-- 对流式输出通过 ConversationFlowEmitter 统一承载（SSE/WebSocket 均可复用）
+- 对流式输出通过 ConversationFlowEmitter 统一承载（SSE-only）
 """
 
 from __future__ import annotations

@@ -7,7 +7,7 @@
 - ReActConfig: ReAct循环配置（迭代次数、超时）
 - IntentConfig: 意图分类配置（置信度阈值）
 - WorkflowConfig: 工作流协调配置（子Agent、反馈监听）
-- StreamingConfig: 流式输出配置（WebSocket/SSE）
+- StreamingConfig: 流式输出配置（SSE）
 - ResourceConfig: 资源限制配置（token、成本、超时）
 - ConversationAgentConfig: 主配置类
 
@@ -163,14 +163,12 @@ class StreamingConfig:
     属性：
         emitter: ConversationFlowEmitter 实例（可选）
         stream_emitter: 流式输出器实例（可选）
-        enable_websocket: 是否启用 WebSocket 输出
         enable_sse: 是否启用 SSE 输出
         enable_save_request_channel: 是否启用保存请求通道
     """
 
     emitter: Any | None = None
     stream_emitter: Any | None = None
-    enable_websocket: bool = False  # Step 1.5: SSE-only 架构，默认禁用 WebSocket
     enable_sse: bool = True  # Step 1.5: 默认启用 SSE
     enable_save_request_channel: bool = False
 
@@ -326,10 +324,6 @@ class ConversationAgentConfig:
         if self.workflow.enable_subagent_spawn and self.workflow.coordinator is None:
             logger.warning("Subagent spawn enabled but coordinator not provided")
 
-        # 如果启用流式输出，必须提供 emitter
-        if self.streaming.enable_websocket and self.streaming.emitter is None:
-            logger.warning("WebSocket enabled but emitter not provided")
-
         # 如果启用进度事件，必须提供 event_bus
         if self.workflow.enable_progress_events and self.event_bus is None:
             logger.warning("Progress events enabled but event_bus not provided")
@@ -409,7 +403,6 @@ class ConversationAgentConfig:
             "streaming": {
                 "emitter_configured": self.streaming.emitter is not None,
                 "stream_emitter_configured": self.streaming.stream_emitter is not None,
-                "enable_websocket": self.streaming.enable_websocket,
                 "enable_sse": self.streaming.enable_sse,
                 "enable_save_request_channel": self.streaming.enable_save_request_channel,
             },

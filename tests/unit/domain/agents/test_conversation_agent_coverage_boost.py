@@ -271,26 +271,6 @@ class TestProgressEventFormatting:
         result = agent.format_progress_message(mock_event)
         assert result == "[paused] 已暂停"
 
-    def test_format_progress_for_websocket(self, agent_with_event_bus):
-        """测试：格式化为WebSocket消息"""
-        agent = agent_with_event_bus
-
-        mock_event = Mock()
-        mock_event.workflow_id = "wf_123"
-        mock_event.node_id = "node_456"
-        mock_event.status = "running"
-        mock_event.progress = 0.7
-        mock_event.message = "正在处理"
-
-        result = agent.format_progress_for_websocket(mock_event)
-
-        assert result["type"] == "progress"
-        assert result["data"]["workflow_id"] == "wf_123"
-        assert result["data"]["node_id"] == "node_456"
-        assert result["data"]["status"] == "running"
-        assert result["data"]["progress"] == 0.7
-        assert result["data"]["message"] == "正在处理"
-
     def test_format_progress_for_sse(self, agent_with_event_bus):
         """测试：格式化为SSE消息"""
         agent = agent_with_event_bus
@@ -402,7 +382,6 @@ class TestEdgeCasesAndErrorHandling:
         agent = agent_with_event_bus
 
         # 模拟并发状态变化
-        initial_state = agent._state
         agent._state = ConversationAgentState.PROCESSING
         assert agent._state == ConversationAgentState.PROCESSING
 

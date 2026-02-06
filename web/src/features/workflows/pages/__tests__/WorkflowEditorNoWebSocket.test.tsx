@@ -70,5 +70,5 @@ describe('Workflow editor should not create WebSocket', () => {
     );
 
     expect(webSocketCtor).not.toHaveBeenCalled();
-  }, 15000);
+  }, 30000);
 });

@@ -6,8 +6,7 @@
 
 测试场景：
 1. SSE格式化
-2. WebSocket格式化
-3. 按工作流ID查询进度事件
+2. 按工作流ID查询进度事件
 """
 
 from unittest.mock import AsyncMock, Mock
@@ -128,43 +127,6 @@ class TestProgressFormatting:
 
         assert data["workflow_id"] == "workflow_中文"
         assert '"quotes"' in data["message"]
-
-    def test_format_progress_for_websocket_includes_all_fields(
-        self, agent_with_event_bus, mock_progress_event
-    ):
-        """测试：format_progress_for_websocket包含所有字段（覆盖841行）"""
-        agent = agent_with_event_bus
-
-        # 调用格式化方法
-        ws_message = agent.format_progress_for_websocket(mock_progress_event)
-
-        # 验证返回字典格式
-        assert isinstance(ws_message, dict)
-        assert ws_message["type"] == "progress"
-
-        # 验证data字段包含所有必要信息
-        data = ws_message["data"]
-        assert data["workflow_id"] == "workflow_123"
-        assert data["node_id"] == "node_456"
-        assert data["status"] == "running"
-        assert data["progress"] == 0.5
-        assert data["message"] == "Processing data..."  # 覆盖841行
-
-    def test_format_progress_for_websocket_with_empty_message(self, agent_with_event_bus):
-        """测试：format_progress_for_websocket处理空消息"""
-        agent = agent_with_event_bus
-
-        event = Mock()
-        event.workflow_id = "wf_1"
-        event.node_id = "node_1"
-        event.status = "pending"
-        event.progress = 0.0
-        event.message = ""
-
-        ws_message = agent.format_progress_for_websocket(event)
-
-        # 验证空消息被正确处理
-        assert ws_message["data"]["message"] == ""
 
     def test_get_progress_events_by_workflow_filters_correctly(self, agent_with_event_bus):
         """测试：get_progress_events_by_workflow正确过滤（覆盖890行）"""

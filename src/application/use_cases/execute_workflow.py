@@ -17,10 +17,16 @@ import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
-from src.domain.exceptions import DomainError
+from src.domain.events.workflow_execution_events import (
+    NodeExecutionEvent,
+    WorkflowExecutionCompletedEvent,
+)
+from src.domain.exceptions import DomainError, NotFoundError
 from src.domain.ports.node_executor import NodeExecutorRegistry
 from src.domain.ports.workflow_repository import WorkflowRepository
+from src.domain.services.event_bus import EventBus
 from src.domain.services.workflow_executor import WorkflowExecutor
 
 WORKFLOW_EXECUTION_KERNEL_ID = "workflow_engine_v1"
@@ -67,6 +73,8 @@ class ExecuteWorkflowUseCase:
         self,
         workflow_repository: WorkflowRepository,
         executor_registry: NodeExecutorRegistry | None = None,
+        *,
+        event_bus: EventBus | None = None,
     ):
         """初始化 Use Case
 
@@ -81,8 +89,83 @@ class ExecuteWorkflowUseCase:
         """
         self.workflow_repository = workflow_repository
         self.executor_registry = executor_registry
+        self._event_bus = event_bus
 
-    async def execute(self, input_data: ExecuteWorkflowInput) -> dict[str, Any]:
+    def _default_correlation_id(self, workflow_id: str) -> str:
+        return f"workflow_execute:{workflow_id}:{uuid4().hex[:12]}"
+
+    def _to_sse_node_event(
+        self, *, event: NodeExecutionEvent, correlation_id: str
+    ) -> dict[str, Any] | None:
+        if event.correlation_id != correlation_id:
+            return None
+
+        status = (event.status or "").strip().lower()
+        if status not in {"running", "completed", "failed", "skipped"}:
+            return None
+
+        base: dict[str, Any] = {
+            "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
+            "node_id": event.node_id,
+            "node_type": event.node_type,
+        }
+
+        if status == "running":
+            payload = {"type": "node_start", **base}
+            if event.inputs is not None:
+                payload["inputs"] = event.inputs
+            return payload
+
+        if status == "completed":
+            return {"type": "node_complete", **base, "output": event.result}
+
+        if status == "failed":
+            payload: dict[str, Any] = {"type": "node_error", **base, "error": event.error or ""}
+            error_type = event.metadata.get("error_type")
+            if isinstance(error_type, str) and error_type.strip():
+                payload["error_type"] = error_type
+            return payload
+
+        # skipped
+        payload = {"type": "node_skipped", **base, "reason": event.reason or ""}
+        incoming = event.metadata.get("incoming_edge_conditions")
+        if incoming is not None:
+            payload["incoming_edge_conditions"] = incoming
+        return payload
+
+    def _to_sse_terminal_event(
+        self, *, event: WorkflowExecutionCompletedEvent, correlation_id: str
+    ) -> dict[str, Any] | None:
+        if event.correlation_id != correlation_id:
+            return None
+
+        status = (event.status or "").strip().lower()
+        if status == "completed":
+            return {
+                "type": "workflow_complete",
+                "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
+                "result": event.final_result,
+                "execution_log": list(event.execution_log or []),
+                "execution_summary": dict(event.execution_summary or {}),
+            }
+
+        if status == "failed":
+            error = event.error
+            if not error and isinstance(event.result, dict):
+                candidate = event.result.get("error")
+                if isinstance(candidate, str):
+                    error = candidate
+            return {
+                "type": "workflow_error",
+                "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
+                "error": error or "workflow_failed",
+            }
+
+        return None
+
+    async def execute(
+        self, input_data: ExecuteWorkflowInput, *, correlation_id: str | None = None
+    ) -> dict[str, Any]:
         """执行工作流（非流式）
 
         业务流程：
@@ -105,24 +188,35 @@ class ExecuteWorkflowUseCase:
             NotFoundError: 工作流不存在
             DomainError: 工作流执行失败（例如包含环）
         """
-        # 1. 获取工作流
         workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
+        if not workflow:
+            raise NotFoundError(entity_type="Workflow", entity_id=input_data.workflow_id)
 
-        # 2. 创建执行器
-        executor = WorkflowExecutor(executor_registry=self.executor_registry)
+        event_bus = self._event_bus or EventBus()
+        correlation_id = correlation_id or self._default_correlation_id(workflow.id)
 
-        # 3. 创建事件收集列表
         events: list[dict[str, Any]] = []
 
-        def event_callback(event_type: str, data: dict[str, Any]) -> None:
-            events.append({"type": event_type, "executor_id": WORKFLOW_EXECUTION_KERNEL_ID, **data})
+        async def _on_node_event(raw_event: Any) -> None:
+            if not isinstance(raw_event, NodeExecutionEvent):
+                return
+            mapped = self._to_sse_node_event(event=raw_event, correlation_id=correlation_id)
+            if mapped is None:
+                return
+            events.append(mapped)
 
-        # 4. 设置事件回调
-        executor.set_event_callback(event_callback)
+        event_bus.subscribe(NodeExecutionEvent, _on_node_event)
 
-        # 5. 执行工作流
+        executor = WorkflowExecutor(executor_registry=self.executor_registry, event_bus=event_bus)
+
         started_at = time.perf_counter()
-        final_result = await executor.execute(workflow, input_data.initial_input)
+        try:
+            final_result = await executor.execute(
+                workflow, input_data.initial_input, correlation_id=correlation_id
+            )
+        finally:
+            event_bus.unsubscribe(NodeExecutionEvent, _on_node_event)
+
         duration_ms = int((time.perf_counter() - started_at) * 1000)
 
         # 6. 返回结果
@@ -140,7 +234,7 @@ class ExecuteWorkflowUseCase:
         }
 
     async def execute_streaming(
-        self, input_data: ExecuteWorkflowInput
+        self, input_data: ExecuteWorkflowInput, *, correlation_id: str | None = None
     ) -> AsyncGenerator[dict[str, Any], None]:
         """执行工作流（流式返回）
 
@@ -165,74 +259,105 @@ class ExecuteWorkflowUseCase:
         异常：
             NotFoundError: 工作流不存在
         """
-        # 1. 获取工作流
         workflow = self.workflow_repository.get_by_id(input_data.workflow_id)
+        if not workflow:
+            raise NotFoundError(entity_type="Workflow", entity_id=input_data.workflow_id)
 
-        # 2. 创建执行器
-        executor = WorkflowExecutor(executor_registry=self.executor_registry)
+        event_bus = self._event_bus or EventBus()
+        correlation_id = correlation_id or self._default_correlation_id(workflow.id)
 
-        # 3. 创建事件队列（实时推送，避免阻塞导致 SSE 超时）
-        events: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
         done = asyncio.Event()
-        error: DomainError | None = None
-        final_result: Any = None
         started_at = time.perf_counter()
 
-        def event_callback(event_type: str, data: dict[str, Any]) -> None:
+        async def _on_node_event(raw_event: Any) -> None:
+            if not isinstance(raw_event, NodeExecutionEvent):
+                return
+            mapped = self._to_sse_node_event(event=raw_event, correlation_id=correlation_id)
+            if mapped is None:
+                return
             try:
-                events.put_nowait(
-                    {"type": event_type, "executor_id": WORKFLOW_EXECUTION_KERNEL_ID, **data}
-                )
+                queue.put_nowait(mapped)
             except asyncio.QueueFull:
-                # KISS: drop events on overflow to protect server responsiveness.
-                pass
+                # KISS: drop on overflow (same as legacy callback path).
+                return
 
-        # 4. 设置事件回调
-        executor.set_event_callback(event_callback)
+        event_bus.subscribe(NodeExecutionEvent, _on_node_event)
+
+        executor = WorkflowExecutor(executor_registry=self.executor_registry, event_bus=event_bus)
 
         async def _run_workflow() -> None:
-            nonlocal final_result, error
             try:
-                final_result = await executor.execute(workflow, input_data.initial_input)
+                final_result = await executor.execute(
+                    workflow, input_data.initial_input, correlation_id=correlation_id
+                )
+                duration_ms = int((time.perf_counter() - started_at) * 1000)
+
+                terminal_event = WorkflowExecutionCompletedEvent(
+                    source="execute_workflow",
+                    correlation_id=correlation_id,
+                    workflow_id=workflow.id,
+                    status="completed",
+                    success=True,
+                    final_result=final_result,
+                    execution_log=executor.execution_log,
+                    execution_summary={
+                        "total_nodes": len(executor.execution_log),
+                        "success_nodes": len(executor.execution_log),
+                        "failed_nodes": 0,
+                        "duration_ms": duration_ms,
+                    },
+                )
             except DomainError as exc:
-                error = exc
-            finally:
-                done.set()
+                terminal_event = WorkflowExecutionCompletedEvent(
+                    source="execute_workflow",
+                    correlation_id=correlation_id,
+                    workflow_id=workflow.id,
+                    status="failed",
+                    success=False,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+            except Exception as exc:  # noqa: BLE001 - use case boundary
+                terminal_event = WorkflowExecutionCompletedEvent(
+                    source="execute_workflow",
+                    correlation_id=correlation_id,
+                    workflow_id=workflow.id,
+                    status="failed",
+                    success=False,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+
+            # Publish to EventBus for monitors (best-effort).
+            try:
+                await event_bus.publish(terminal_event)
+            except Exception:
+                pass
+
+            mapped_terminal = self._to_sse_terminal_event(
+                event=terminal_event, correlation_id=correlation_id
+            )
+            if mapped_terminal is not None:
+                try:
+                    queue.put_nowait(mapped_terminal)
+                except asyncio.QueueFull:
+                    pass
+            done.set()
 
         task = asyncio.create_task(_run_workflow())
         try:
             while True:
-                if done.is_set() and events.empty():
+                if done.is_set() and queue.empty():
                     break
                 try:
-                    event = await asyncio.wait_for(events.get(), timeout=0.1)
+                    event = await asyncio.wait_for(queue.get(), timeout=0.1)
                 except TimeoutError:
                     continue
                 yield event
         finally:
+            event_bus.unsubscribe(NodeExecutionEvent, _on_node_event)
             if not task.done():
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
-
-        if error is not None:
-            yield {
-                "type": "workflow_error",
-                "error": str(error),
-                "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
-            }
-            return
-
-        duration_ms = int((time.perf_counter() - started_at) * 1000)
-        yield {
-            "type": "workflow_complete",
-            "result": final_result,
-            "execution_log": executor.execution_log,
-            "executor_id": WORKFLOW_EXECUTION_KERNEL_ID,
-            "execution_summary": {
-                "total_nodes": len(executor.execution_log),
-                "success_nodes": len(executor.execution_log),
-                "failed_nodes": 0,
-                "duration_ms": duration_ms,
-            },
-        }

@@ -6,6 +6,12 @@
 **预计工期**: 2-3个月
 **负责人**: Tech Lead + Architecture Team
 
+> 更新（2026-02-06）：主链路已完成“快速收敛”版本（EventBus 单轨 + SSE 订阅 + RunEvents 落库）：
+> - `WorkflowEngine` 发布 `NodeExecutionEvent`（`src/domain/events/workflow_execution_events.py`）
+> - callback 语义已从执行主链路移除（避免双轨）
+>
+> 本文件保留为“长期升级”备选方案（EventStore/CQRS/Saga）。在精简目标下，除非出现明确的业务/规模触发条件，否则不建议推进，以免引入不必要复杂度（YAGNI）。
+
 ---
 
 ## 一、背景与战略意义

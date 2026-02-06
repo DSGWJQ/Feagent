@@ -36,7 +36,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from src.domain.services.event_bus import Event, EventBus
+from src.domain.events.workflow_execution_events import (
+    NodeExecutionEvent,
+    WorkflowExecutionCompletedEvent,
+    WorkflowExecutionStartedEvent,
+)
+from src.domain.services.event_bus import EventBus
 
 logger = logging.getLogger(__name__)
 
@@ -350,52 +355,10 @@ class ExecutionContext:
 
 
 # === 事件定义 ===
-
-
-@dataclass
-class WorkflowExecutionStartedEvent(Event):
-    """工作流开始执行事件"""
-
-    workflow_id: str = ""
-    node_count: int = 0
-
-
-@dataclass
-class WorkflowExecutionCompletedEvent(Event):
-    """工作流执行完成事件"""
-
-    workflow_id: str = ""
-    status: str = ""
-    result: dict[str, Any] | None = None
-
-
-@dataclass
-class NodeExecutionStartedEvent(Event):
-    """节点开始执行事件"""
-
-    workflow_id: str = ""
-    node_id: str = ""
-    inputs: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class NodeExecutionCompletedEvent(Event):
-    """节点执行完成事件"""
-
-    workflow_id: str = ""
-    node_id: str = ""
-    outputs: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class NodeExecutionFailedEvent(Event):
-    """节点执行失败事件"""
-
-    workflow_id: str = ""
-    node_id: str = ""
-    error_type: str = ""
-    error_message: str = ""
-    action_taken: str = ""
+#
+# NOTE:
+# - This module is NOT integrated in production (see module docstring).
+# - Keep event types consistent with Domain SoT (`src/domain/events/workflow_execution_events.py`).
 
 
 class ExecutionMonitor:
@@ -487,10 +450,12 @@ class ExecutionMonitor:
         self.on_node_start(workflow_id, node_id, inputs)
 
         if self.event_bus:
-            event = NodeExecutionStartedEvent(
+            event = NodeExecutionEvent(
                 source="execution_monitor",
                 workflow_id=workflow_id,
                 node_id=node_id,
+                node_type="",
+                status="running",
                 inputs=inputs,
             )
             await self.event_bus.publish(event)
@@ -633,8 +598,6 @@ __all__ = [
     "ExecutionContext",
     "WorkflowExecutionStartedEvent",
     "WorkflowExecutionCompletedEvent",
-    "NodeExecutionStartedEvent",
-    "NodeExecutionCompletedEvent",
-    "NodeExecutionFailedEvent",
+    "NodeExecutionEvent",
     "ExecutionMonitor",
 ]

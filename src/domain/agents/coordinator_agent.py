@@ -3077,14 +3077,6 @@ class CoordinatorAgent:
 
     # ==================== Phase 34.7: 执行总结管理（委托到 ExecutionSummaryManager）====================
 
-    def set_channel_bridge(self, bridge: Any) -> None:
-        """设置通信桥接器
-
-        参数：
-            bridge: AgentChannelBridge 实例
-        """
-        self._summary_manager.set_channel_bridge(bridge)
-
     def record_execution_summary(self, summary: Any) -> None:
         """同步记录执行总结
 
@@ -3119,14 +3111,6 @@ class CoordinatorAgent:
             包含统计信息的字典
         """
         return self._summary_manager.get_summary_statistics()
-
-    async def record_and_push_summary(self, summary: Any) -> None:
-        """记录总结并推送到前端
-
-        参数：
-            summary: ExecutionSummary 实例
-        """
-        await self._summary_manager.record_and_push_summary(summary)
 
     def get_all_summaries(self) -> dict[str, Any]:
         """获取所有总结

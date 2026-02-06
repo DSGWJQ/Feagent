@@ -11,7 +11,6 @@
 """
 
 from datetime import datetime
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -505,138 +504,11 @@ class TestCoordinatorSummaryRecording:
         assert stats["failed"] == 2  # 1, 3
 
 
-# === 测试：WebSocket 推送最终状态 ===
-
-
-class TestWorkflowAgentPushFinalState:
-    """WorkflowAgent 推送最终状态测试"""
-
-    @pytest.mark.asyncio
-    async def test_push_summary_to_frontend(self):
-        """测试：推送总结到前端"""
-        from src.domain.agents.agent_channel import AgentChannelBridge, AgentWebSocketChannel
-        from src.domain.agents.execution_summary import ExecutionSummary
-
-        channel = AgentWebSocketChannel()
-        bridge = AgentChannelBridge(channel=channel)
-
-        # Mock WebSocket
-        mock_ws = AsyncMock()
-        await channel.register_session("session_1", mock_ws, "user_1")
-
-        summary = ExecutionSummary(
-            workflow_id="wf_123",
-            session_id="session_1",
-            success=True,
-        )
-
-        # 推送总结
-        await bridge.push_execution_summary("session_1", summary)
-
-        # 验证消息发送
-        mock_ws.send_json.assert_called()
-        sent_data = mock_ws.send_json.call_args[0][0]
-        assert sent_data["type"] == "execution_summary"
-        assert sent_data["payload"]["workflow_id"] == "wf_123"
-
-    @pytest.mark.asyncio
-    async def test_coordinator_triggers_frontend_push(self):
-        """测试：协调者触发前端推送"""
-        from src.domain.agents.agent_channel import AgentChannelBridge, AgentWebSocketChannel
-        from src.domain.agents.coordinator_agent import CoordinatorAgent
-        from src.domain.agents.execution_summary import ExecutionSummary
-        from src.domain.services.event_bus import EventBus
-
-        event_bus = EventBus()
-        channel = AgentWebSocketChannel()
-        bridge = AgentChannelBridge(channel=channel)
-
-        coordinator = CoordinatorAgent(event_bus=event_bus)
-        coordinator.set_channel_bridge(bridge)
-
-        # Mock WebSocket
-        mock_ws = AsyncMock()
-        await channel.register_session("session_1", mock_ws, "user_1")
-
-        summary = ExecutionSummary(
-            workflow_id="wf_123",
-            session_id="session_1",
-            success=True,
-        )
-
-        # 记录总结并触发推送
-        await coordinator.record_and_push_summary(summary)
-
-        # 验证推送
-        mock_ws.send_json.assert_called()
-        sent_data = mock_ws.send_json.call_args[0][0]
-        assert sent_data["type"] == "execution_summary"
-
-
 # === 测试：端到端流程 ===
 
 
 class TestEndToEndSummaryFlow:
     """端到端总结流程测试"""
-
-    @pytest.mark.asyncio
-    async def test_full_summary_flow(self):
-        """测试：完整总结流程（执行 → 生成总结 → 协调者记录 → 推送前端）"""
-        from src.domain.agents.agent_channel import AgentChannelBridge, AgentWebSocketChannel
-        from src.domain.agents.coordinator_agent import CoordinatorAgent
-        from src.domain.agents.execution_summary import (
-            SummaryGenerator,
-        )
-        from src.domain.services.event_bus import EventBus
-
-        # 设置组件
-        event_bus = EventBus()
-        channel = AgentWebSocketChannel()
-        bridge = AgentChannelBridge(channel=channel)
-        coordinator = CoordinatorAgent(event_bus=event_bus)
-        coordinator.set_channel_bridge(bridge)
-        generator = SummaryGenerator()
-
-        # Mock WebSocket
-        mock_ws = AsyncMock()
-        await channel.register_session("session_1", mock_ws, "user_1")
-
-        # 模拟工作流结果
-        workflow_result = {
-            "workflow_id": "wf_e2e",
-            "success": True,
-            "node_results": {
-                "node_1": {"success": True, "output": {"key": "value"}},
-            },
-        }
-
-        # 模拟协调者上下文
-        coordinator_context = {
-            "rules": [{"id": "r1", "name": "Rule 1", "description": "Test"}],
-            "knowledge": [{"source_id": "k1", "title": "Doc 1", "relevance_score": 0.8}],
-            "tools": [{"id": "t1", "name": "Tool 1"}],
-        }
-
-        # 1. 生成总结
-        summary = await generator.generate(
-            workflow_result=workflow_result,
-            session_id="session_1",
-            coordinator_context=coordinator_context,
-        )
-
-        # 2. 协调者记录并推送
-        await coordinator.record_and_push_summary(summary)
-
-        # 3. 验证记录
-        recorded = coordinator.get_execution_summary("wf_e2e")
-        assert recorded is not None
-        assert recorded.success is True
-
-        # 4. 验证推送
-        mock_ws.send_json.assert_called()
-        sent_data = mock_ws.send_json.call_args[0][0]
-        assert sent_data["type"] == "execution_summary"
-        assert sent_data["payload"]["success"] is True
 
     @pytest.mark.asyncio
     async def test_summary_contains_all_required_fields(self):
@@ -686,6 +558,5 @@ __all__ = [
     "TestExecutionSummaryStructure",
     "TestConversationAgentSummaryGeneration",
     "TestCoordinatorSummaryRecording",
-    "TestWorkflowAgentPushFinalState",
     "TestEndToEndSummaryFlow",
 ]

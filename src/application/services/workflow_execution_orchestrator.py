@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from typing import Any, Protocol
 
@@ -17,6 +18,29 @@ from src.application.services.coordinator_policy_chain import (
 from src.application.services.idempotency_coordinator import IdempotencyCoordinator
 from src.application.services.workflow_execution_facade import WorkflowExecutionFacade
 from src.domain.services.event_bus import EventBus
+
+
+def _supports_kwarg(callable_obj: Any, name: str) -> bool:
+    """Best-effort check for whether a callable accepts a given keyword argument.
+
+    Why:
+    - Some tests inject a lightweight fake facade that doesn't accept newer keyword args
+      (e.g. correlation_id / original_decision_id).
+    - We keep the orchestrator defensive while still passing through the richer contract
+      for the real facade implementation.
+    """
+
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):  # pragma: no cover - defensive fallback
+        return False
+
+    parameters = signature.parameters
+    if name in parameters:
+        return True
+
+    # Accepts **kwargs
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
 
 
 class WorkflowExecutionPolicy(Protocol):
@@ -91,16 +115,23 @@ class WorkflowExecutionOrchestrator:
         )
 
         try:
+            facade_kwargs: dict[str, Any] = {
+                "workflow_id": workflow_id,
+                "input_data": input_data,
+            }
+            if _supports_kwarg(self._facade.execute, "correlation_id"):
+                facade_kwargs["correlation_id"] = correlation_id
+            if _supports_kwarg(self._facade.execute, "original_decision_id"):
+                facade_kwargs["original_decision_id"] = original_decision_id
+
             if idempotency_key is None:
-                result = await self._facade.execute(workflow_id=workflow_id, input_data=input_data)
+                result = await self._facade.execute(**facade_kwargs)
             else:
                 if self._idempotency is None:
                     raise RuntimeError("Idempotency requested but IdempotencyCoordinator not set")
 
                 async def _work() -> dict[str, Any]:
-                    return await self._facade.execute(
-                        workflow_id=workflow_id, input_data=input_data
-                    )
+                    return await self._facade.execute(**facade_kwargs)
 
                 result = await self._idempotency.run(
                     idempotency_key=idempotency_key,
@@ -157,9 +188,17 @@ class WorkflowExecutionOrchestrator:
         original_decision_id: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         try:
+            facade_kwargs: dict[str, Any] = {
+                "workflow_id": workflow_id,
+                "input_data": input_data,
+            }
+            if _supports_kwarg(self._facade.execute_streaming, "correlation_id"):
+                facade_kwargs["correlation_id"] = correlation_id
+            if _supports_kwarg(self._facade.execute_streaming, "original_decision_id"):
+                facade_kwargs["original_decision_id"] = original_decision_id
+
             async for event in self._facade.execute_streaming(
-                workflow_id=workflow_id,
-                input_data=input_data,
+                **facade_kwargs,
             ):
                 for policy in self._policies:
                     await policy.on_event(

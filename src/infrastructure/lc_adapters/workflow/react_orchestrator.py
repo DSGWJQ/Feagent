@@ -127,7 +127,7 @@ class ReActOrchestrator:
                 self.llm = None
         self.system_prompt_generator = WorkflowChatSystemPrompt()
         self.action_parser = WorkflowActionParser()
-        self.event_callbacks: list[Callable[[ReActEvent], None]] = []
+        self._event_listeners: list[Callable[[ReActEvent], None]] = []
         self._final_state: ReActLoopState | None = None
 
     def orchestrate(self) -> ReActLoopState | None:
@@ -144,7 +144,7 @@ class ReActOrchestrator:
         参数：
             callback: 事件回调函数
         """
-        self.event_callbacks.append(callback)
+        self._event_listeners.append(callback)
 
     def emit_event(self, event: ReActEvent) -> None:
         """发出事件
@@ -152,7 +152,7 @@ class ReActOrchestrator:
         参数：
             event: 要发出的事件
         """
-        for callback in self.event_callbacks:
+        for callback in self._event_listeners:
             try:
                 callback(event)
             except Exception as e:

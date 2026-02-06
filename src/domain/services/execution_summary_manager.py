@@ -4,20 +4,18 @@
 - 存储与查询执行总结
 - 发布执行总结记录事件
 - 提供统计信息
-- 集成通道桥接器推送到前端
 
 设计原则：
 - 懒加载初始化存储
 - 支持同步与异步操作
-- 可选的 EventBus 与 ChannelBridge
+- 可选的 EventBus（事件驱动）
 - 返回副本保证数据不可变性
 
 使用示例：
     manager = ExecutionSummaryManager(event_bus=event_bus)
-    manager.set_channel_bridge(bridge)
 
-    # 异步记录并推送
-    await manager.record_and_push_summary(summary)
+    # 异步记录并发布事件
+    await manager.record_execution_summary_async(summary)
 
     # 查询
     summary = manager.get_execution_summary(workflow_id)
@@ -25,10 +23,7 @@
 """
 
 import copy
-import logging
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 
 class ExecutionSummaryManager:
@@ -45,15 +40,6 @@ class ExecutionSummaryManager:
         """
         self.event_bus = event_bus
         self._execution_summaries: dict[str, Any] = {}
-        self._channel_bridge: Any | None = None
-
-    def set_channel_bridge(self, bridge: Any) -> None:
-        """设置通信桥接器
-
-        参数：
-            bridge: AgentChannelBridge 实例
-        """
-        self._channel_bridge = bridge
 
     def record_execution_summary(self, summary: Any) -> None:
         """同步记录执行总结
@@ -126,33 +112,6 @@ class ExecutionSummaryManager:
             "successful": successful,
             "failed": failed,
         }
-
-    async def record_and_push_summary(self, summary: Any) -> None:
-        """记录总结并推送到前端
-
-        参数：
-            summary: ExecutionSummary 实例
-        """
-        # Fix: 确保事件发布失败不影响通道推送
-        try:
-            # 记录总结（异步，发布事件）
-            await self.record_execution_summary_async(summary)
-        except Exception as e:
-            # 记录异常但不中断流程
-            logger.warning(
-                f"Failed to record execution summary for workflow {getattr(summary, 'workflow_id', 'unknown')}: {e}"
-            )
-
-        # 推送到前端（如果有桥接器且有 session_id）
-        if self._channel_bridge:
-            session_id = getattr(summary, "session_id", "")
-            if session_id:
-                try:
-                    await self._channel_bridge.push_execution_summary(session_id, summary)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to push execution summary to channel for session {session_id}: {e}"
-                    )
 
     def get_all_summaries(self) -> dict[str, Any]:
         """获取所有总结

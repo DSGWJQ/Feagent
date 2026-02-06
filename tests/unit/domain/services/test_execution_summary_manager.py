@@ -4,7 +4,6 @@
 - 存储与查询执行总结
 - 事件发布
 - 统计信息
-- 通道桥接集成
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -22,14 +21,6 @@ def mock_event_bus():
     bus = MagicMock()
     bus.publish = AsyncMock()
     return bus
-
-
-@pytest.fixture
-def mock_channel_bridge():
-    """Mock AgentChannelBridge"""
-    bridge = MagicMock()
-    bridge.push_execution_summary = AsyncMock()
-    return bridge
 
 
 @pytest.fixture
@@ -59,7 +50,6 @@ def manager(mock_event_bus):
 def test_manager_initialization(manager):
     """测试管理器初始化"""
     assert manager._execution_summaries == {}
-    assert manager._channel_bridge is None
     assert manager.event_bus is not None
 
 
@@ -67,13 +57,7 @@ def test_lazy_storage_initialization(manager):
     """测试懒加载初始化"""
     # 初始状态应该已经初始化
     assert hasattr(manager, "_execution_summaries")
-    assert hasattr(manager, "_channel_bridge")
-
-
-def test_set_channel_bridge(manager, mock_channel_bridge):
-    """测试设置通道桥接器"""
-    manager.set_channel_bridge(mock_channel_bridge)
-    assert manager._channel_bridge == mock_channel_bridge
+    assert not hasattr(manager, "_channel_bridge")
 
 
 # =====================================================================
@@ -219,61 +203,6 @@ def test_get_all_summaries_returns_copy(manager, mock_execution_summary):
 
 
 # =====================================================================
-# Test: 通道桥接集成
-# =====================================================================
-
-
-@pytest.mark.asyncio
-async def test_record_and_push_summary_with_bridge(
-    manager, mock_execution_summary, mock_channel_bridge, mock_event_bus
-):
-    """测试记录并推送到前端"""
-    manager.set_channel_bridge(mock_channel_bridge)
-
-    await manager.record_and_push_summary(mock_execution_summary)
-
-    # 验证存储
-    assert "wf_001" in manager._execution_summaries
-
-    # 验证事件发布
-    mock_event_bus.publish.assert_called_once()
-
-    # 验证推送到前端
-    mock_channel_bridge.push_execution_summary.assert_called_once_with(
-        "session_001", mock_execution_summary
-    )
-
-
-@pytest.mark.asyncio
-async def test_record_and_push_summary_without_bridge(manager, mock_execution_summary):
-    """测试记录并推送（无桥接器）"""
-    # 不设置桥接器
-    await manager.record_and_push_summary(mock_execution_summary)
-
-    # 验证存储成功
-    assert "wf_001" in manager._execution_summaries
-    # 不会推送到前端，但不应抛出异常
-
-
-@pytest.mark.asyncio
-async def test_record_and_push_summary_without_session_id(manager, mock_channel_bridge):
-    """测试记录并推送（无 session_id）"""
-    manager.set_channel_bridge(mock_channel_bridge)
-
-    summary = MagicMock()
-    summary.workflow_id = "wf_001"
-    summary.session_id = ""  # 空 session_id
-
-    await manager.record_and_push_summary(summary)
-
-    # 验证存储成功
-    assert "wf_001" in manager._execution_summaries
-
-    # 不应推送到前端（因为没有 session_id）
-    mock_channel_bridge.push_execution_summary.assert_not_called()
-
-
-# =====================================================================
 # Test: 边界情况
 # =====================================================================
 
@@ -400,47 +329,3 @@ async def test_success_default_consistency_with_statistics(manager):
     assert stats["total"] == 1
     assert stats["successful"] == 0
     assert stats["failed"] == 1
-
-
-@pytest.mark.asyncio
-async def test_record_and_push_with_event_bus_failure(
-    mock_event_bus, mock_channel_bridge, mock_execution_summary
-):
-    """测试事件发布失败不阻止通道推送"""
-    from src.domain.services.execution_summary_manager import ExecutionSummaryManager
-
-    manager = ExecutionSummaryManager(event_bus=mock_event_bus)
-    manager.set_channel_bridge(mock_channel_bridge)
-
-    # 模拟事件发布失败
-    mock_event_bus.publish = AsyncMock(side_effect=Exception("Event bus error"))
-
-    # 记录并推送（不应抛出异常）
-    await manager.record_and_push_summary(mock_execution_summary)
-
-    # 验证通道推送仍然被调用
-    mock_channel_bridge.push_execution_summary.assert_called_once_with(
-        "session_001", mock_execution_summary
-    )
-
-
-@pytest.mark.asyncio
-async def test_record_and_push_with_channel_push_failure(
-    mock_event_bus, mock_channel_bridge, mock_execution_summary
-):
-    """测试通道推送失败不抛出异常"""
-    from src.domain.services.execution_summary_manager import ExecutionSummaryManager
-
-    manager = ExecutionSummaryManager(event_bus=mock_event_bus)
-    manager.set_channel_bridge(mock_channel_bridge)
-
-    # 模拟通道推送失败
-    mock_channel_bridge.push_execution_summary = AsyncMock(
-        side_effect=Exception("Channel push error")
-    )
-
-    # 记录并推送（不应抛出异常）
-    await manager.record_and_push_summary(mock_execution_summary)
-
-    # 验证事件发布成功
-    mock_event_bus.publish.assert_called_once()
